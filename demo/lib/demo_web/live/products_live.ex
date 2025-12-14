@@ -243,6 +243,12 @@ defmodule DemoWeb.ProductsLive do
                   <span class="text-gray-400 ml-1">{Decimal.to_string(product.rating)}</span>
                 </span>
               </div>
+              <a
+                href={"/products/#{product.id}/edit"}
+                class="mt-3 block text-center text-sm text-indigo-600 hover:text-indigo-800 border-t pt-3"
+              >
+                Edit
+              </a>
             </div>
           </div>
 

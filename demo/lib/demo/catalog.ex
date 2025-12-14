@@ -3,6 +3,26 @@ defmodule Demo.Catalog do
   alias Demo.Repo
   alias Demo.Catalog.Product
 
+  # Ash-based functions for form handling
+  def get_product(id) do
+    Ash.get(Product, id)
+  end
+
+  def get_product!(id) do
+    Ash.get!(Product, id)
+  end
+
+  def update_product(%Product{} = product, attrs) do
+    product
+    |> Ash.Changeset.for_update(:update, attrs)
+    |> Ash.update()
+  end
+
+  def change_product(%Product{} = product, attrs \\ %{}) do
+    Ash.Changeset.for_update(product, :update, attrs)
+  end
+
+  # Ecto-based functions for list/filter (keeping for compatibility)
   def list_products(filters \\ %{}) do
     Product
     |> apply_filters(filters)

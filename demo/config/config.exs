@@ -9,7 +9,8 @@ import Config
 
 config :demo,
   ecto_repos: [Demo.Repo],
-  generators: [timestamp_type: :utc_datetime]
+  generators: [timestamp_type: :utc_datetime],
+  ash_domains: [Demo.Catalog.Domain]
 
 # Configures the endpoint
 config :demo, DemoWeb.Endpoint,

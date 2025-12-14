@@ -1,20 +1,46 @@
 defmodule Demo.Catalog.Product do
-  use Ecto.Schema
-  import Ecto.Changeset
+  use Ash.Resource,
+    domain: Demo.Catalog.Domain,
+    data_layer: AshSqlite.DataLayer
 
-  schema "products" do
-    field :name, :string
-    field :category, :string
-    field :price, :decimal
-    field :in_stock, :boolean, default: true
-    field :rating, :decimal
-
-    timestamps(type: :utc_datetime)
+  sqlite do
+    table "products"
+    repo Demo.Repo
   end
 
-  def changeset(product, attrs) do
-    product
-    |> cast(attrs, [:name, :category, :price, :in_stock, :rating])
-    |> validate_required([:name, :category, :price])
+  attributes do
+    integer_primary_key :id
+
+    attribute :name, :string do
+      allow_nil? false
+    end
+
+    attribute :category, :string do
+      allow_nil? false
+    end
+
+    attribute :price, :decimal do
+      allow_nil? false
+    end
+
+    attribute :in_stock, :boolean do
+      default true
+    end
+
+    attribute :rating, :decimal
+
+    timestamps()
+  end
+
+  actions do
+    defaults [:read]
+
+    create :create do
+      accept [:name, :category, :price, :in_stock, :rating]
+    end
+
+    update :update do
+      accept [:name, :category, :price, :in_stock, :rating]
+    end
   end
 end
