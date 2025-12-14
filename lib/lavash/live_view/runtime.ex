@@ -118,9 +118,18 @@ defmodule Lavash.LiveView.Runtime do
   end
 
   def handle_info(module, {:lavash_async, field, result}, socket) do
+    # Normalize the result - if it's already {:ok, _} or {:error, _}, use as-is
+    # Otherwise wrap in {:ok, _}
+    normalized =
+      case result do
+        {:ok, _} -> result
+        {:error, _} -> result
+        value -> {:ok, value}
+      end
+
     socket =
       socket
-      |> LSocket.put_derived(field, {:ok, result})
+      |> LSocket.put_derived(field, normalized)
       |> Graph.recompute_dependents(module, field)
       |> Assigns.project(module)
 

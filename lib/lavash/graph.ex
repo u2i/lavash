@@ -7,6 +7,7 @@ defmodule Lavash.Graph do
   - Dirty tracking and invalidation
   - Incremental recomputation
   - Async task management
+  - Automatic propagation of special states (:loading, :error, nil)
   """
 
   alias Lavash.Socket, as: LSocket
@@ -92,25 +93,49 @@ defmodule Lavash.Graph do
   defp compute_field(socket, _module, field) do
     deps = build_deps_map(socket, field.depends_on)
 
-    # Check if any async deps are still loading
-    if any_loading?(deps) do
+    # Check for propagating states in dependencies
+    case check_deps_state(deps) do
+      {:propagate, state} ->
+        # Propagate the special state without running compute
+        LSocket.put_derived(socket, field.name, state)
+
+      :ready ->
+        # All deps are ready - run the compute function
+        run_compute(socket, field, deps)
+    end
+  end
+
+  defp check_deps_state(deps) do
+    # Check for states that should propagate through the chain
+    Enum.reduce_while(deps, :ready, fn {_key, value}, _acc ->
+      cond do
+        value == :loading ->
+          {:halt, {:propagate, :loading}}
+
+        match?({:error, _}, value) ->
+          {:halt, {:propagate, value}}
+
+        true ->
+          {:cont, :ready}
+      end
+    end)
+  end
+
+  defp run_compute(socket, field, deps) do
+    if field.async do
+      # Start async task
+      self_pid = self()
+
+      Task.start(fn ->
+        result = field.compute.(deps)
+        send(self_pid, {:lavash_async, field.name, result})
+      end)
+
       LSocket.put_derived(socket, field.name, :loading)
     else
-      if field.async do
-        # Start async task
-        self_pid = self()
-
-        Task.start(fn ->
-          result = field.compute.(deps)
-          send(self_pid, {:lavash_async, field.name, result})
-        end)
-
-        LSocket.put_derived(socket, field.name, :loading)
-      else
-        # Non-async: store raw result (no wrapping)
-        result = field.compute.(deps)
-        LSocket.put_derived(socket, field.name, result)
-      end
+      # Non-async: store raw result (no wrapping)
+      result = field.compute.(deps)
+      LSocket.put_derived(socket, field.name, result)
     end
   end
 
@@ -125,7 +150,8 @@ defmodule Lavash.Graph do
             Map.get(state, dep)
 
           Map.has_key?(derived, dep) ->
-            # Unwrap async results so dependents get raw values
+            # Unwrap {:ok, value} from async results
+            # But preserve :loading and {:error, _} for propagation checks
             case Map.get(derived, dep) do
               {:ok, v} -> v
               other -> other
@@ -137,10 +163,6 @@ defmodule Lavash.Graph do
 
       Map.put(acc, dep, value)
     end)
-  end
-
-  defp any_loading?(deps) do
-    Enum.any?(deps, fn {_k, v} -> v == :loading end)
   end
 
   defp topological_sort(fields) do

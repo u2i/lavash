@@ -11,7 +11,6 @@ defmodule DemoWeb.ProductEditLive do
   use Lavash.LiveView
 
   alias Demo.Catalog
-  alias Demo.Catalog.Product
 
   state do
     url do
@@ -26,46 +25,30 @@ defmodule DemoWeb.ProductEditLive do
 
   derived do
     # Load the product async based on product_id
+    # Returns {:ok, product} or {:error, reason} - errors propagate automatically
     field :product, depends_on: [:product_id], async: true, compute: fn %{product_id: id} ->
       case id do
-        nil -> nil
-        id ->
-          case Catalog.get_product(id) do
-            {:ok, product} -> product
-            {:error, _} -> nil
-          end
+        nil -> {:error, :no_id}
+        id -> Catalog.get_product(id)
       end
     end
 
     # Ash changeset is derived from product + form_data
-    # This recomputes whenever either changes
-    # Note: async values are unwrapped before being passed to compute functions
+    # Only runs when product is ready (not :loading or {:error, _})
     field :changeset, depends_on: [:product, :form_data], compute: fn
-      %{product: %Product{} = product, form_data: form_data} ->
+      %{product: product, form_data: form_data} ->
         Catalog.change_product(product, form_data)
-
-      %{product: nil} ->
-        nil
-
-      %{product: :loading} ->
-        nil
-
-      _ ->
-        nil
     end
 
     # Form struct using AshPhoenix.Form
-    field :form, depends_on: [:changeset], compute: fn
-      %{changeset: %Ash.Changeset{} = changeset} ->
-        changeset.data
-        |> AshPhoenix.Form.for_update(:update,
-          params: changeset.params || %{},
-          errors: changeset.errors != []
-        )
-        |> Phoenix.Component.to_form()
-
-      _ ->
-        nil
+    # Only runs when changeset is ready
+    field :form, depends_on: [:changeset], compute: fn %{changeset: changeset} ->
+      changeset.data
+      |> AshPhoenix.Form.for_update(:update,
+        params: changeset.params || %{},
+        errors: changeset.errors != []
+      )
+      |> Phoenix.Component.to_form()
     end
   end
 
@@ -145,7 +128,7 @@ defmodule DemoWeb.ProductEditLive do
             </div>
           </div>
 
-        <% {:ok, nil} -> %>
+        <% {:error, _reason} -> %>
           <div class="bg-white rounded-lg shadow p-6 text-center">
             <p class="text-gray-500 text-lg">Product not found</p>
             <a href="/products" class="mt-4 inline-block text-indigo-600 hover:text-indigo-800">
@@ -153,7 +136,7 @@ defmodule DemoWeb.ProductEditLive do
             </a>
           </div>
 
-        <% {:ok, _product} when @form != nil and @form != :loading -> %>
+        <% {:ok, _product} when is_struct(@form, Phoenix.HTML.Form) -> %>
           <div class="bg-white rounded-lg shadow p-6">
             <.form for={@form} phx-change="validate" phx-submit="save" class="space-y-4">
               <div>
