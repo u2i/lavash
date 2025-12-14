@@ -43,11 +43,18 @@ defmodule Lavash.State do
       Enum.reduce(socket_fields, socket.assigns.__lavash_state__, fn field, state ->
         # Try to get from client state, fall back to default
         key = to_string(field.name)
+        raw_value = Map.get(client_state, key)
+
         value =
-          if Map.has_key?(client_state, key) do
-            decode_type(client_state[key], field.type)
-          else
-            field.default
+          cond do
+            # No key in client state - use default
+            not Map.has_key?(client_state, key) -> field.default
+            # Nil value - use default
+            is_nil(raw_value) -> field.default
+            # Empty string for non-string types - use default
+            raw_value == "" and field.type != :string -> field.default
+            # Decode the value
+            true -> decode_type(raw_value, field.type)
           end
 
         Map.put(state, field.name, value)

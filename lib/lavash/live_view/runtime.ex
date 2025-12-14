@@ -23,6 +23,8 @@ defmodule Lavash.LiveView.Runtime do
         %{}
       end
 
+    IO.puts("[Lavash] mount connect_params: #{inspect(connect_params)}")
+
     socket =
       socket
       |> init_lavash_state(module)
@@ -208,6 +210,8 @@ defmodule Lavash.LiveView.Runtime do
           value = Map.get(state, field.name)
           Map.put(acc, to_string(field.name), encode_value(value, field.type))
         end)
+
+      IO.puts("[Lavash] syncing socket state to client: #{inspect(socket_state)}")
 
       socket
       |> Phoenix.Component.assign(:__lavash_socket_changed__, false)
