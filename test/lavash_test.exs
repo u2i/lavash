@@ -1,8 +1,7 @@
 defmodule LavashTest do
   use ExUnit.Case
-  doctest Lavash
 
-  test "greets the world" do
-    assert Lavash.hello() == :world
+  test "Lavash module exists" do
+    assert Code.ensure_loaded?(Lavash)
   end
 end
