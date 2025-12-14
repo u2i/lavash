@@ -69,6 +69,117 @@ defmodule Lavash.LiveViewTest do
     end
   end
 
+  describe "chained derived fields" do
+    test "computes initial chain on mount", %{conn: conn} do
+      # count=3 → doubled=6 → quadrupled=12 → octupled=24
+      {:ok, view, _html} = live(conn, "/chained?count=3")
+
+      assert has_element?(view, "#count", "3")
+      assert has_element?(view, "#doubled", "6")
+      assert has_element?(view, "#quadrupled", "12")
+      assert has_element?(view, "#octupled", "24")
+    end
+
+    test "propagates changes through derived chain", %{conn: conn} do
+      # Start with count=1 → doubled=2 → quadrupled=4 → octupled=8
+      {:ok, view, _html} = live(conn, "/chained")
+
+      assert has_element?(view, "#count", "1")
+      assert has_element?(view, "#doubled", "2")
+      assert has_element?(view, "#quadrupled", "4")
+      assert has_element?(view, "#octupled", "8")
+
+      # Increment: count=2 → doubled=4 → quadrupled=8 → octupled=16
+      view |> element("#inc") |> render_click()
+
+      assert has_element?(view, "#count", "2")
+      assert has_element?(view, "#doubled", "4")
+      assert has_element?(view, "#quadrupled", "8")
+      assert has_element?(view, "#octupled", "16")
+    end
+
+    test "handles multiple increments through chain", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/chained?count=1")
+
+      # Increment twice
+      view |> element("#inc") |> render_click()
+      view |> element("#inc") |> render_click()
+
+      # count=3 → doubled=6 → quadrupled=12 → octupled=24
+      assert has_element?(view, "#count", "3")
+      assert has_element?(view, "#doubled", "6")
+      assert has_element?(view, "#quadrupled", "12")
+      assert has_element?(view, "#octupled", "24")
+    end
+  end
+
+  describe "chained derived fields with ephemeral state" do
+    # This tests recompute_dirty, not recompute_all, since ephemeral
+    # state changes don't trigger handle_params
+
+    test "computes initial chain on mount", %{conn: conn} do
+      # base=1 → doubled=2 → quadrupled=4 → octupled=8
+      {:ok, view, _html} = live(conn, "/chained-ephemeral")
+
+      assert has_element?(view, "#base", "1")
+      assert has_element?(view, "#doubled", "2")
+      assert has_element?(view, "#quadrupled", "4")
+      assert has_element?(view, "#octupled", "8")
+    end
+
+    test "propagates ephemeral state change through derived chain", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/chained-ephemeral")
+
+      # Increment: base=2 → doubled=4 → quadrupled=8 → octupled=16
+      view |> element("#inc") |> render_click()
+
+      assert has_element?(view, "#base", "2")
+      assert has_element?(view, "#doubled", "4")
+      assert has_element?(view, "#quadrupled", "8")
+      assert has_element?(view, "#octupled", "16")
+    end
+  end
+
+  describe "async derived chain" do
+    test "shows loading state initially, then computes chain", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/async-chain")
+
+      # Initially both should be loading (doubled is async, quadrupled depends on it)
+      assert has_element?(view, "#doubled", "loading")
+      assert has_element?(view, "#quadrupled", "loading")
+
+      # Wait for async to complete
+      Process.sleep(100)
+
+      # After async completes, both should have values
+      # count=1 → doubled=2 → quadrupled=4
+      # Use text_content matching which handles whitespace
+      assert element(view, "#doubled") |> render() =~ "2"
+      assert element(view, "#quadrupled") |> render() =~ "4"
+    end
+
+    test "propagates through chain when async completes after action", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/async-chain")
+
+      # Wait for initial async to complete
+      Process.sleep(100)
+
+      # Increment count
+      view |> element("#inc") |> render_click()
+
+      # Should show loading again
+      assert has_element?(view, "#doubled", "loading")
+      assert has_element?(view, "#quadrupled", "loading")
+
+      # Wait for async to complete
+      Process.sleep(100)
+
+      # count=2 → doubled=4 → quadrupled=8
+      assert element(view, "#doubled") |> render() =~ "4"
+      assert element(view, "#quadrupled") |> render() =~ "8"
+    end
+  end
+
   describe "typed URL fields" do
     test "parses integer from URL", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/typed?page=42")

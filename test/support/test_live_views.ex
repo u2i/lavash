@@ -57,6 +57,178 @@ defmodule Lavash.TestCounterLive do
   end
 end
 
+defmodule Lavash.TestChainedDerivedLive do
+  @moduledoc """
+  Test fixture: Derived fields that depend on other derived fields.
+  count → doubled → quadrupled
+  """
+  use Lavash.LiveView
+
+  state do
+    url do
+      field :count, :integer, default: 1
+    end
+  end
+
+  derived do
+    field :doubled, depends_on: [:count], compute: fn %{count: c} ->
+      c * 2
+    end
+
+    field :quadrupled, depends_on: [:doubled], compute: fn %{doubled: d} ->
+      d * 2
+    end
+
+    field :octupled, depends_on: [:quadrupled], compute: fn %{quadrupled: q} ->
+      q * 2
+    end
+  end
+
+  assigns do
+    assign :count
+    assign :doubled
+    assign :quadrupled
+    assign :octupled
+  end
+
+  actions do
+    action :increment do
+      update :count, &(&1 + 1)
+    end
+
+    action :set_count, [:value] do
+      set :count, &String.to_integer(&1.params.value)
+    end
+  end
+
+  def render(assigns) do
+    ~H"""
+    <div>
+      <span id="count">{@count}</span>
+      <span id="doubled">{@doubled}</span>
+      <span id="quadrupled">{@quadrupled}</span>
+      <span id="octupled">{@octupled}</span>
+      <button id="inc" phx-click="increment">+</button>
+    </div>
+    """
+  end
+end
+
+defmodule Lavash.TestChainedEphemeralLive do
+  @moduledoc """
+  Test fixture: Chained derived fields from ephemeral state.
+  This tests recompute_dirty (not recompute_all) since ephemeral
+  state changes don't trigger handle_params.
+  """
+  use Lavash.LiveView
+
+  state do
+    ephemeral do
+      field :base, :integer, default: 1
+    end
+  end
+
+  derived do
+    field :doubled, depends_on: [:base], compute: fn %{base: b} ->
+      b * 2
+    end
+
+    field :quadrupled, depends_on: [:doubled], compute: fn %{doubled: d} ->
+      d * 2
+    end
+
+    field :octupled, depends_on: [:quadrupled], compute: fn %{quadrupled: q} ->
+      q * 2
+    end
+  end
+
+  assigns do
+    assign :base
+    assign :doubled
+    assign :quadrupled
+    assign :octupled
+  end
+
+  actions do
+    action :increment do
+      update :base, &(&1 + 1)
+    end
+  end
+
+  def render(assigns) do
+    ~H"""
+    <div>
+      <span id="base">{@base}</span>
+      <span id="doubled">{@doubled}</span>
+      <span id="quadrupled">{@quadrupled}</span>
+      <span id="octupled">{@octupled}</span>
+      <button id="inc" phx-click="increment">+</button>
+    </div>
+    """
+  end
+end
+
+defmodule Lavash.TestAsyncChainLive do
+  @moduledoc """
+  Test fixture: Async derived fields in a chain.
+  count → async_doubled → sync_quadrupled
+  """
+  use Lavash.LiveView
+
+  state do
+    url do
+      field :count, :integer, default: 1
+    end
+  end
+
+  derived do
+    field :doubled, depends_on: [:count], async: true, compute: fn %{count: c} ->
+      Process.sleep(50)
+      c * 2
+    end
+
+    field :quadrupled, depends_on: [:doubled], compute: fn %{doubled: d} ->
+      # d will be the raw value (unwrapped from {:ok, value})
+      d * 2
+    end
+  end
+
+  assigns do
+    assign :count
+    assign :doubled
+    assign :quadrupled
+  end
+
+  actions do
+    action :increment do
+      update :count, &(&1 + 1)
+    end
+  end
+
+  def render(assigns) do
+    ~H"""
+    <div>
+      <span id="count">{@count}</span>
+      <span id="doubled">
+        <%= case @doubled do %>
+          <% :loading -> %>loading
+          <% {:ok, val} -> %>{val}
+          <% val -> %>{val}
+        <% end %>
+      </span>
+      <span id="quadrupled">
+        <%= case @quadrupled do %>
+          <% :loading -> %>loading
+          <% {:ok, val} -> %>{val}
+          <% val -> %>{val}
+        <% end %>
+      </span>
+      <button id="inc" phx-click="increment">+</button>
+    </div>
+    """
+  end
+end
+
 defmodule Lavash.TestTypedLive do
   @moduledoc """
   Test fixture: LiveView with various typed URL fields.

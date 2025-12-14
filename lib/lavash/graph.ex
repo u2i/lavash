@@ -26,33 +26,63 @@ defmodule Lavash.Graph do
     else
       derived_fields = module.__lavash__(:derived_fields)
 
-      # Find all derived fields affected by dirty state
-      affected =
-        derived_fields
-        |> Enum.filter(fn field ->
-          Enum.any?(field.depends_on, &MapSet.member?(dirty, &1))
-        end)
-        |> topological_sort()
+      # Find all derived fields affected by dirty state, including transitive dependencies
+      # e.g., if :base is dirty and :doubled depends on :base, and :quadrupled depends on :doubled,
+      # we need to recompute both :doubled and :quadrupled
+      affected = find_affected_derived(derived_fields, dirty)
+      sorted = topological_sort(affected)
 
       socket = Phoenix.Component.assign(socket, :__lavash_dirty__, MapSet.new())
 
-      Enum.reduce(affected, socket, fn field, sock ->
+      Enum.reduce(sorted, socket, fn field, sock ->
         compute_field(sock, module, field)
       end)
+    end
+  end
+
+  defp find_affected_derived(derived_fields, dirty) do
+    # Start with fields directly affected by dirty state
+    directly_affected =
+      derived_fields
+      |> Enum.filter(fn field ->
+        Enum.any?(field.depends_on, &MapSet.member?(dirty, &1))
+      end)
+      |> MapSet.new(& &1.name)
+
+    # Transitively find all derived fields that depend on affected fields
+    all_affected = expand_affected(directly_affected, derived_fields)
+
+    # Return the actual field structs
+    Enum.filter(derived_fields, fn f -> MapSet.member?(all_affected, f.name) end)
+  end
+
+  defp expand_affected(affected, all_fields) do
+    # Find fields that depend on any affected field
+    newly_affected =
+      all_fields
+      |> Enum.filter(fn field ->
+        not MapSet.member?(affected, field.name) and
+          Enum.any?(field.depends_on, &MapSet.member?(affected, &1))
+      end)
+      |> MapSet.new(& &1.name)
+
+    if MapSet.size(newly_affected) == 0 do
+      # No more fields to add
+      affected
+    else
+      # Recurse with expanded set
+      expand_affected(MapSet.union(affected, newly_affected), all_fields)
     end
   end
 
   def recompute_dependents(socket, module, changed_field) do
     derived_fields = module.__lavash__(:derived_fields)
 
-    dependents =
-      derived_fields
-      |> Enum.filter(fn field ->
-        changed_field in field.depends_on
-      end)
-      |> topological_sort()
+    # Find all derived fields affected by the changed field, including transitive dependencies
+    affected = find_affected_derived(derived_fields, MapSet.new([changed_field]))
+    sorted = topological_sort(affected)
 
-    Enum.reduce(dependents, socket, fn field, sock ->
+    Enum.reduce(sorted, socket, fn field, sock ->
       compute_field(sock, module, field)
     end)
   end
@@ -89,10 +119,18 @@ defmodule Lavash.Graph do
     Enum.reduce(deps, %{}, fn dep, acc ->
       value =
         cond do
-          Map.has_key?(state, dep) -> Map.get(state, dep)
-          # Pass derived values as-is (async: :loading/{:ok,_}/{:error,_}, sync: raw value)
-          Map.has_key?(derived, dep) -> Map.get(derived, dep)
-          true -> nil
+          Map.has_key?(state, dep) ->
+            Map.get(state, dep)
+
+          Map.has_key?(derived, dep) ->
+            # Unwrap async results so dependents get raw values
+            case Map.get(derived, dep) do
+              {:ok, v} -> v
+              other -> other
+            end
+
+          true ->
+            nil
         end
 
       Map.put(acc, dep, value)

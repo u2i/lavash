@@ -15,5 +15,8 @@ defmodule Lavash.TestRouter do
 
     live "/counter", TestCounterLive
     live "/typed", TestTypedLive
+    live "/chained", TestChainedDerivedLive
+    live "/chained-ephemeral", TestChainedEphemeralLive
+    live "/async-chain", TestAsyncChainLive
   end
 end
