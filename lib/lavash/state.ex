@@ -3,6 +3,8 @@ defmodule Lavash.State do
   State hydration and management.
   """
 
+  alias Lavash.Type
+
   def hydrate_url(socket, module, params) do
     url_fields = module.__lavash__(:url_fields)
 
@@ -81,16 +83,10 @@ defmodule Lavash.State do
     end
   end
 
-  defp decode_type(value, :string), do: value
-  defp decode_type(value, :integer), do: String.to_integer(value)
-  defp decode_type("true", :boolean), do: true
-  defp decode_type("false", :boolean), do: false
-  defp decode_type(value, :boolean), do: !!value
-  defp decode_type(value, :atom), do: String.to_existing_atom(value)
-  defp decode_type(value, {:array, inner_type}) do
-    value
-    |> String.split(",")
-    |> Enum.map(&decode_type(&1, inner_type))
+  defp decode_type(value, type) do
+    case Type.parse(type, value) do
+      {:ok, parsed} -> parsed
+      {:error, reason} -> raise ArgumentError, "Failed to parse #{inspect(value)} as #{inspect(type)}: #{reason}"
+    end
   end
-  defp decode_type(value, _type), do: value
 end

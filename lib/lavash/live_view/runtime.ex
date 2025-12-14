@@ -13,6 +13,7 @@ defmodule Lavash.LiveView.Runtime do
   alias Lavash.State
   alias Lavash.Graph
   alias Lavash.Assigns
+  alias Lavash.Type
 
   def mount(module, _params, _session, socket) do
     # Get connect params if available (contains client-synced socket state)
@@ -177,7 +178,7 @@ defmodule Lavash.LiveView.Runtime do
               if field.encode do
                 field.encode.(value)
               else
-                to_string(value)
+                Type.dump(field.type, value)
               end
 
             Map.put(acc, to_string(field.name), encoded)
@@ -223,7 +224,7 @@ defmodule Lavash.LiveView.Runtime do
     end
   end
 
-  defp encode_value(value, _type), do: value
+  defp encode_value(value, type), do: Type.dump(type, value)
 
   defp put_derived_result(socket, field, result) do
     derived = socket.assigns.__lavash_derived__
