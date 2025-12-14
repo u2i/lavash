@@ -8,6 +8,10 @@ defmodule Lavash.Assigns do
     state = socket.assigns.__lavash_state__
     derived = socket.assigns.__lavash_derived__
 
+    # Store component states in process dictionary for child lavash_component calls
+    component_states = Map.get(socket.assigns, :__lavash_component_states__, %{})
+    Lavash.LiveView.Helpers.put_component_states(component_states)
+
     Enum.reduce(assigns_config, socket, fn assign_def, sock ->
       value = compute_assign(assign_def, state, derived)
       Phoenix.Component.assign(sock, assign_def.name, value)

@@ -5,6 +5,7 @@ defmodule Lavash.LiveView.Compiler do
 
   defmacro __before_compile__(env) do
     has_on_mount = Module.defines?(env.module, {:on_mount, 1})
+    has_render = Module.defines?(env.module, {:render, 1})
 
     mount_callback =
       if has_on_mount do

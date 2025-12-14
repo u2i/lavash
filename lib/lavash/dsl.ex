@@ -125,8 +125,8 @@ defmodule Lavash.Dsl do
       ],
       depends_on: [
         type: {:list, :atom},
-        required: true,
-        doc: "List of state/derived fields this depends on"
+        default: [],
+        doc: "List of state/derived fields this depends on. Empty means compute once on mount."
       ],
       async: [
         type: :boolean,

@@ -13,12 +13,15 @@ defmodule DemoWeb.ComponentsDemoLive do
   alias Demo.Catalog
   alias DemoWeb.ProductCard
 
-  # No state/derived/actions needed - this is just a container
-  # Using Lavash.LiveView gives us automatic component state handling
+  # Derived with empty deps = computed once on mount
+  derived do
+    field :products, compute: fn _deps ->
+      Catalog.list_products(%{}) |> Enum.take(6)
+    end
+  end
 
-  def on_mount(socket) do
-    products = Catalog.list_products(%{}) |> Enum.take(6)
-    {:ok, assign(socket, products: products)}
+  assigns do
+    assign :products
   end
 
   def render(assigns) do
