@@ -47,6 +47,78 @@ defmodule Lavash.LiveViewTest do
       # When count is 0 (default), it should not appear in URL
       assert_patch(view, "/counter")
     end
+
+    test "works with path parameters in route", %{conn: conn} do
+      # Route: /products/:product_id/counter
+      {:ok, view, _html} = live(conn, "/products/123/counter")
+
+      assert has_element?(view, "#count", "0")
+
+      view |> element("#inc") |> render_click()
+
+      assert has_element?(view, "#count", "1")
+      # URL should preserve the path parameter and add query param
+      assert_patch(view, "/products/123/counter?count=1")
+    end
+
+    test "works with path parameters and initial query params", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/products/456/counter?count=5")
+
+      assert has_element?(view, "#count", "5")
+
+      view |> element("#inc") |> render_click()
+
+      assert has_element?(view, "#count", "6")
+      assert_patch(view, "/products/456/counter?count=6")
+    end
+  end
+
+  describe "path parameter updates" do
+    test "renders initial product_id from path", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/products/123")
+      assert has_element?(view, "#product-id", "123")
+      assert has_element?(view, "#tab", "details")
+    end
+
+    test "updates path param via action and push_patch", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/products/100")
+
+      assert has_element?(view, "#product-id", "100")
+
+      view |> element("#next-product") |> render_click()
+
+      assert has_element?(view, "#product-id", "101")
+      # The URL should update with the new path param
+      assert_patch(view, "/products/101")
+    end
+
+    test "updates both path param and query param", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/products/50")
+
+      # Update the tab (query param)
+      view |> element("#set-reviews") |> render_click()
+
+      assert has_element?(view, "#tab", "reviews")
+      assert_patch(view, "/products/50?tab=reviews")
+
+      # Now update the product (path param)
+      view |> element("#next-product") |> render_click()
+
+      assert has_element?(view, "#product-id", "51")
+      assert has_element?(view, "#tab", "reviews")
+      # Both path and query should be updated
+      assert_patch(view, "/products/51?tab=reviews")
+    end
+
+    test "path param changes trigger handle_params", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/products/10")
+
+      # Navigate to a different product
+      view |> element("#next-product") |> render_click()
+
+      # The state should reflect the new product_id
+      assert has_element?(view, "#product-id", "11")
+    end
   end
 
   describe "derived state" do

@@ -229,6 +229,51 @@ defmodule Lavash.TestAsyncChainLive do
   end
 end
 
+defmodule Lavash.TestPathParamLive do
+  @moduledoc """
+  Test fixture: LiveView with path parameter as URL state.
+  Used to test updating path params via push_patch.
+  """
+  use Lavash.LiveView
+
+  state do
+    url do
+      field :product_id, :integer
+      field :tab, :string, default: "details"
+    end
+  end
+
+  assigns do
+    assign :product_id
+    assign :tab
+  end
+
+  actions do
+    action :set_product, [:id] do
+      set :product_id, &String.to_integer(&1.params.id)
+    end
+
+    action :set_tab, [:name] do
+      set :tab, & &1.params.name
+    end
+
+    action :next_product do
+      update :product_id, &(&1 + 1)
+    end
+  end
+
+  def render(assigns) do
+    ~H"""
+    <div>
+      <span id="product-id">{@product_id}</span>
+      <span id="tab">{@tab}</span>
+      <button id="next-product" phx-click="next_product">Next Product</button>
+      <button id="set-reviews" phx-click="set_tab" phx-value-name="reviews">Reviews</button>
+    </div>
+    """
+  end
+end
+
 defmodule Lavash.TestTypedLive do
   @moduledoc """
   Test fixture: LiveView with various typed URL fields.

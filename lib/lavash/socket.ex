@@ -18,7 +18,9 @@ defmodule Lavash.Socket do
       socket_changed: Map.get(opts, :socket_changed, false),
       url_fields: Map.get(opts, :url_fields, MapSet.new()),
       socket_fields: Map.get(opts, :socket_fields, MapSet.new()),
-      path: Map.get(opts, :path),
+      # Route info for URL rebuilding
+      route_pattern: Map.get(opts, :route_pattern),
+      path_param_names: Map.get(opts, :path_param_names, MapSet.new()),
       # Component-specific
       props: Map.get(opts, :props, %{}),
       component_id: Map.get(opts, :component_id),

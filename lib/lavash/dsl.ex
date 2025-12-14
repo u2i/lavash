@@ -91,7 +91,12 @@ defmodule Lavash.Dsl do
 
   @url_section %Spark.Dsl.Section{
     name: :url,
-    describe: "URL-backed state fields. These are bidirectionally synced with URL params.",
+    describe: """
+    URL-backed state fields. These are bidirectionally synced with the URL.
+
+    Fields that match route path parameters (e.g., :product_id in /products/:product_id)
+    are automatically detected and placed in the path. Other fields become query parameters.
+    """,
     entities: [@url_field]
   }
 

@@ -18,5 +18,7 @@ defmodule Lavash.TestRouter do
     live "/chained", TestChainedDerivedLive
     live "/chained-ephemeral", TestChainedEphemeralLive
     live "/async-chain", TestAsyncChainLive
+    live "/products/:product_id/counter", TestCounterLive
+    live "/products/:product_id", TestPathParamLive
   end
 end
