@@ -23,13 +23,15 @@ defmodule Lavash.LiveView.Runtime do
         %{}
       end
 
-    IO.puts("[Lavash] mount connect_params: #{inspect(connect_params)}")
+    # Extract component states for child Lavash components
+    component_states = get_in(connect_params, ["_lavash_state", "_components"]) || %{}
 
     socket =
       socket
       |> init_lavash_state(module)
       |> State.hydrate_socket(module, connect_params)
       |> State.hydrate_ephemeral(module)
+      |> Phoenix.Component.assign(:__lavash_component_states__, component_states)
 
     {:ok, socket}
   end

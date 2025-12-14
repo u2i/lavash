@@ -3,12 +3,29 @@ defmodule Lavash.LiveView.Compiler do
   Compiles the Lavash DSL into LiveView callbacks.
   """
 
-  defmacro __before_compile__(_env) do
-    quote do
-      @impl Phoenix.LiveView
-      def mount(params, session, socket) do
-        Lavash.LiveView.Runtime.mount(__MODULE__, params, session, socket)
+  defmacro __before_compile__(env) do
+    has_on_mount = Module.defines?(env.module, {:on_mount, 1})
+
+    mount_callback =
+      if has_on_mount do
+        quote do
+          @impl Phoenix.LiveView
+          def mount(params, session, socket) do
+            {:ok, socket} = Lavash.LiveView.Runtime.mount(__MODULE__, params, session, socket)
+            on_mount(socket)
+          end
+        end
+      else
+        quote do
+          @impl Phoenix.LiveView
+          def mount(params, session, socket) do
+            Lavash.LiveView.Runtime.mount(__MODULE__, params, session, socket)
+          end
+        end
       end
+
+    quote do
+      unquote(mount_callback)
 
       @impl Phoenix.LiveView
       def handle_params(params, uri, socket) do

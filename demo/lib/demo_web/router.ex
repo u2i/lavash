@@ -20,6 +20,7 @@ defmodule DemoWeb.Router do
     live "/", CounterLive
     live "/products", ProductsLive
     live "/products-socket", ProductsSocketLive
+    live "/components", ComponentsDemoLive
   end
 
   # Other scopes may use custom stacks.

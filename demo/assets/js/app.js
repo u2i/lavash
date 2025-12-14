@@ -24,13 +24,24 @@ import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 import topbar from "../vendor/topbar"
 
-// Lavash socket state - survives reconnects, lost on page refresh
-let lavashState = {}
+// Lavash state - survives reconnects, lost on page refresh
+let lavashState = {
+  // Page-level state (LiveView)
+  // Component state is stored under _components keyed by component ID
+  _components: {}
+}
 
-// Listen for Lavash state sync events from the server
+// Listen for LiveView state sync events
 window.addEventListener("phx:_lavash_sync", (e) => {
   lavashState = { ...lavashState, ...e.detail }
-  console.debug("[Lavash] State synced:", lavashState)
+  console.debug("[Lavash] LiveView state synced:", lavashState)
+})
+
+// Listen for component state sync events
+window.addEventListener("phx:_lavash_component_sync", (e) => {
+  const { id, state } = e.detail
+  lavashState._components[id] = { ...lavashState._components[id], ...state }
+  console.debug(`[Lavash] Component ${id} state synced:`, lavashState._components[id])
 })
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
