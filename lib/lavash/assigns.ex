@@ -3,13 +3,15 @@ defmodule Lavash.Assigns do
   Projects state and derived values into socket assigns.
   """
 
+  alias Lavash.Socket, as: LSocket
+
   def project(socket, module) do
     assigns_config = module.__lavash__(:assigns)
-    state = socket.assigns.__lavash_state__
-    derived = socket.assigns.__lavash_derived__
+    state = LSocket.state(socket)
+    derived = LSocket.derived(socket)
 
     # Store component states in process dictionary for child lavash_component calls
-    component_states = Map.get(socket.assigns, :__lavash_component_states__, %{})
+    component_states = LSocket.get(socket, :component_states) || %{}
     Lavash.LiveView.Helpers.put_component_states(component_states)
 
     Enum.reduce(assigns_config, socket, fn assign_def, sock ->

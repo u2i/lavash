@@ -9,6 +9,8 @@ defmodule Lavash.Graph do
   - Async task management
   """
 
+  alias Lavash.Socket, as: LSocket
+
   def recompute_all(socket, module) do
     derived_fields = module.__lavash__(:derived_fields)
     sorted = topological_sort(derived_fields)
@@ -19,7 +21,7 @@ defmodule Lavash.Graph do
   end
 
   def recompute_dirty(socket, module) do
-    dirty = socket.assigns.__lavash_dirty__
+    dirty = LSocket.dirty(socket)
 
     if MapSet.size(dirty) == 0 do
       socket
@@ -32,7 +34,7 @@ defmodule Lavash.Graph do
       affected = find_affected_derived(derived_fields, dirty)
       sorted = topological_sort(affected)
 
-      socket = Phoenix.Component.assign(socket, :__lavash_dirty__, MapSet.new())
+      socket = LSocket.clear_dirty(socket)
 
       Enum.reduce(sorted, socket, fn field, sock ->
         compute_field(sock, module, field)
@@ -92,7 +94,7 @@ defmodule Lavash.Graph do
 
     # Check if any async deps are still loading
     if any_loading?(deps) do
-      put_derived(socket, field.name, :loading)
+      LSocket.put_derived(socket, field.name, :loading)
     else
       if field.async do
         # Start async task
@@ -103,18 +105,18 @@ defmodule Lavash.Graph do
           send(self_pid, {:lavash_async, field.name, result})
         end)
 
-        put_derived(socket, field.name, :loading)
+        LSocket.put_derived(socket, field.name, :loading)
       else
         # Non-async: store raw result (no wrapping)
         result = field.compute.(deps)
-        put_derived(socket, field.name, result)
+        LSocket.put_derived(socket, field.name, result)
       end
     end
   end
 
   defp build_deps_map(socket, deps) do
-    state = socket.assigns.__lavash_state__
-    derived = socket.assigns.__lavash_derived__
+    state = LSocket.state(socket)
+    derived = LSocket.derived(socket)
 
     Enum.reduce(deps, %{}, fn dep, acc ->
       value =
@@ -139,11 +141,6 @@ defmodule Lavash.Graph do
 
   defp any_loading?(deps) do
     Enum.any?(deps, fn {_k, v} -> v == :loading end)
-  end
-
-  defp put_derived(socket, field, value) do
-    derived = socket.assigns.__lavash_derived__
-    Phoenix.Component.assign(socket, :__lavash_derived__, Map.put(derived, field, value))
   end
 
   defp topological_sort(fields) do

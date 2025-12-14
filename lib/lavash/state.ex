@@ -4,24 +4,25 @@ defmodule Lavash.State do
   """
 
   alias Lavash.Type
+  alias Lavash.Socket, as: LSocket
 
   def hydrate_url(socket, module, params) do
     url_fields = module.__lavash__(:url_fields)
 
     state =
-      Enum.reduce(url_fields, socket.assigns.__lavash_state__, fn field, state ->
+      Enum.reduce(url_fields, LSocket.state(socket), fn field, state ->
         value = parse_url_field(field, params)
         Map.put(state, field.name, value)
       end)
 
-    Phoenix.Component.assign(socket, :__lavash_state__, state)
+    LSocket.put(socket, :state, state)
   end
 
   def hydrate_ephemeral(socket, module) do
     ephemeral_fields = module.__lavash__(:ephemeral_fields)
 
     state =
-      Enum.reduce(ephemeral_fields, socket.assigns.__lavash_state__, fn field, state ->
+      Enum.reduce(ephemeral_fields, LSocket.state(socket), fn field, state ->
         # Only set if not already present (preserve across reconnects if needed)
         if Map.has_key?(state, field.name) do
           state
@@ -30,7 +31,7 @@ defmodule Lavash.State do
         end
       end)
 
-    Phoenix.Component.assign(socket, :__lavash_state__, state)
+    LSocket.put(socket, :state, state)
   end
 
   @doc """
@@ -42,7 +43,7 @@ defmodule Lavash.State do
     client_state = get_in(connect_params, ["_lavash_state"]) || %{}
 
     state =
-      Enum.reduce(socket_fields, socket.assigns.__lavash_state__, fn field, state ->
+      Enum.reduce(socket_fields, LSocket.state(socket), fn field, state ->
         # Try to get from client state, fall back to default
         key = to_string(field.name)
         raw_value = Map.get(client_state, key)
@@ -62,7 +63,7 @@ defmodule Lavash.State do
         Map.put(state, field.name, value)
       end)
 
-    Phoenix.Component.assign(socket, :__lavash_state__, state)
+    LSocket.put(socket, :state, state)
   end
 
   defp parse_url_field(field, params) do

@@ -12,6 +12,7 @@ defmodule Lavash.Component.Runtime do
 
   alias Lavash.Graph
   alias Lavash.Assigns
+  alias Lavash.Socket, as: LSocket
 
   def update(module, assigns, socket) do
     socket =
@@ -60,7 +61,7 @@ defmodule Lavash.Component.Runtime do
   # Private
 
   defp first_mount?(socket) do
-    not Map.has_key?(socket.assigns, :__lavash_state__)
+    socket.private[:lavash] == nil
   end
 
   defp init_lavash_state(socket, module, assigns) do
@@ -72,26 +73,21 @@ defmodule Lavash.Component.Runtime do
     # Component ID for namespacing socket state
     component_id = Map.get(assigns, :id, "unknown")
 
-    socket
-    |> Phoenix.Component.assign(:__lavash_state__, %{})
-    |> Phoenix.Component.assign(:__lavash_props__, %{})
-    |> Phoenix.Component.assign(:__lavash_derived__, %{})
-    |> Phoenix.Component.assign(:__lavash_dirty__, MapSet.new())
-    |> Phoenix.Component.assign(:__lavash_socket_changed__, false)
-    |> Phoenix.Component.assign(:__lavash_socket_fields__, socket_field_names)
-    |> Phoenix.Component.assign(:__lavash_component_id__, component_id)
+    LSocket.init(socket, %{
+      socket_fields: socket_field_names,
+      component_id: component_id
+    })
   end
 
   defp hydrate_socket_state(socket, module, assigns) do
     socket_fields = module.__lavash__(:socket_fields)
-    component_id = Map.get(assigns, :id, "unknown")
 
     # Get initial state from parent via __lavash_initial_state__ prop
     # This is populated by the parent LiveView from connect_params
     client_state = Map.get(assigns, :__lavash_initial_state__, %{})
 
     state =
-      Enum.reduce(socket_fields, socket.assigns.__lavash_state__, fn field, state ->
+      Enum.reduce(socket_fields, LSocket.state(socket), fn field, state ->
         key = to_string(field.name)
         raw_value = Map.get(client_state, key)
 
@@ -106,7 +102,7 @@ defmodule Lavash.Component.Runtime do
         Map.put(state, field.name, value)
       end)
 
-    Phoenix.Component.assign(socket, :__lavash_state__, state)
+    LSocket.put(socket, :state, state)
   end
 
   defp preserve_livecomponent_assigns(socket, assigns) do
@@ -119,7 +115,7 @@ defmodule Lavash.Component.Runtime do
     ephemeral_fields = module.__lavash__(:ephemeral_fields)
 
     state =
-      Enum.reduce(ephemeral_fields, socket.assigns.__lavash_state__, fn field, state ->
+      Enum.reduce(ephemeral_fields, LSocket.state(socket), fn field, state ->
         if Map.has_key?(state, field.name) do
           state
         else
@@ -127,7 +123,7 @@ defmodule Lavash.Component.Runtime do
         end
       end)
 
-    Phoenix.Component.assign(socket, :__lavash_state__, state)
+    LSocket.put(socket, :state, state)
   end
 
   defp store_props(socket, module, assigns) do
@@ -147,14 +143,14 @@ defmodule Lavash.Component.Runtime do
 
     # Store props separately and also merge into state for derived field access
     socket
-    |> Phoenix.Component.assign(:__lavash_props__, prop_values)
+    |> LSocket.put(:props, prop_values)
     |> update_state_with_props(prop_values)
   end
 
   defp update_state_with_props(socket, prop_values) do
     # Merge props into state so derived fields can depend on them
-    state = Map.merge(socket.assigns.__lavash_state__, prop_values)
-    Phoenix.Component.assign(socket, :__lavash_state__, state)
+    state = Map.merge(LSocket.state(socket), prop_values)
+    LSocket.put(socket, :state, state)
   end
 
   defp execute_action(socket, module, action, event_params) do
@@ -175,7 +171,7 @@ defmodule Lavash.Component.Runtime do
   end
 
   defp guards_pass?(socket, _module, guards) do
-    state = get_full_state(socket)
+    state = LSocket.full_state(socket)
     Enum.all?(guards, fn guard -> Map.get(state, guard) == true end)
   end
 
@@ -184,34 +180,34 @@ defmodule Lavash.Component.Runtime do
       value =
         case set.value do
           fun when is_function(fun, 1) ->
-            fun.(%{params: params, state: get_state(sock)})
+            fun.(%{params: params, state: LSocket.state(sock)})
           value ->
             value
         end
 
-      put_state(sock, set.field, value)
+      LSocket.put_state(sock, set.field, value)
     end)
   end
 
   defp apply_updates(socket, updates, _params) do
     Enum.reduce(updates, socket, fn update, sock ->
-      current = get_state(sock, update.field)
+      current = LSocket.get_state(sock, update.field)
       new_value = update.fun.(current)
-      put_state(sock, update.field, new_value)
+      LSocket.put_state(sock, update.field, new_value)
     end)
   end
 
   defp apply_effects(socket, effects, _params) do
-    state = get_full_state(socket)
+    state = LSocket.full_state(socket)
     Enum.each(effects, fn effect -> effect.fun.(state) end)
     socket
   end
 
   defp maybe_sync_socket_state(socket, module) do
-    if socket.assigns.__lavash_socket_changed__ do
+    if LSocket.socket_changed?(socket) do
       socket_fields = module.__lavash__(:socket_fields)
-      state = socket.assigns.__lavash_state__
-      component_id = socket.assigns.__lavash_component_id__
+      state = LSocket.state(socket)
+      component_id = LSocket.get(socket, :component_id)
 
       socket_state =
         Enum.reduce(socket_fields, %{}, fn field, acc ->
@@ -221,7 +217,7 @@ defmodule Lavash.Component.Runtime do
 
       # Push component state to JS, namespaced by component ID
       socket
-      |> Phoenix.Component.assign(:__lavash_socket_changed__, false)
+      |> LSocket.clear_socket_changed()
       |> Phoenix.LiveView.push_event("_lavash_component_sync", %{
         id: component_id,
         state: socket_state
@@ -229,43 +225,6 @@ defmodule Lavash.Component.Runtime do
     else
       socket
     end
-  end
-
-  defp get_state(socket) do
-    socket.assigns.__lavash_state__
-  end
-
-  defp get_state(socket, field) do
-    Map.get(socket.assigns.__lavash_state__, field)
-  end
-
-  defp get_full_state(socket) do
-    Map.merge(socket.assigns.__lavash_state__, socket.assigns.__lavash_derived__)
-  end
-
-  defp put_state(socket, field, value) do
-    state = socket.assigns.__lavash_state__
-    old_value = Map.get(state, field)
-
-    socket = Phoenix.Component.assign(socket, :__lavash_state__, Map.put(state, field, value))
-
-    socket =
-      Phoenix.Component.assign(
-        socket,
-        :__lavash_dirty__,
-        MapSet.put(socket.assigns.__lavash_dirty__, field)
-      )
-
-    # Check if this is a socket field (not a prop or ephemeral)
-    if socket_field?(socket, field) and old_value != value do
-      Phoenix.Component.assign(socket, :__lavash_socket_changed__, true)
-    else
-      socket
-    end
-  end
-
-  defp socket_field?(socket, field) do
-    MapSet.member?(socket.assigns.__lavash_socket_fields__, field)
   end
 
   defp decode_type(value, :string), do: value
