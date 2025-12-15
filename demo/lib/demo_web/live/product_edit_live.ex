@@ -22,21 +22,10 @@ defmodule DemoWeb.ProductEditLive do
   end
 
   # Form - creates AshPhoenix.Form, auto-detects create vs update
+  # Also auto-projects @form_action (:create or :update) for UI
   form :form, Product do
     data result(:product)
     params input(:form_params)
-  end
-
-  # Derive whether this is a new product for UI display
-  derive :is_new do
-    argument :product, result(:product)
-    run fn %{product: product}, _ ->
-      case product do
-        nil -> true
-        %{id: nil} -> true
-        _ -> false
-      end
-    end
   end
 
   # Declarative form submission with error handling
@@ -58,7 +47,7 @@ defmodule DemoWeb.ProductEditLive do
     <div class="max-w-2xl mx-auto p-6">
       <div class="flex items-center justify-between mb-6">
         <div>
-          <h1 class="text-3xl font-bold">{if @is_new, do: "New Product", else: "Edit Product"}</h1>
+          <h1 class="text-3xl font-bold">{if @form_action == :create, do: "New Product", else: "Edit Product"}</h1>
           <p class="text-gray-500 mt-1">Form handling with Lavash + Ash changesets</p>
         </div>
         <a href="/products" class="text-indigo-600 hover:text-indigo-800">&larr; Back to Products</a>
@@ -164,10 +153,10 @@ defmodule DemoWeb.ProductEditLive do
                   ]}
                 >
                   {cond do
-                  @submitting -> "Saving..."
-                  @is_new -> "Create Product"
-                  true -> "Save Changes"
-                end}
+                    @submitting -> "Saving..."
+                    @form_action == :create -> "Create Product"
+                    true -> "Save Changes"
+                  end}
                 </button>
                 <a
                   href="/products"

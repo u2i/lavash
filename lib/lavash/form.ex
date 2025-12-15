@@ -11,7 +11,7 @@ defmodule Lavash.Form do
   in templates via the `form` field.
   """
 
-  defstruct [:changeset, :form]
+  defstruct [:changeset, :form, :action_type]
 
   @doc """
   Creates a form for an Ash resource.
@@ -47,7 +47,8 @@ defmodule Lavash.Form do
 
     %__MODULE__{
       changeset: changeset,
-      form: phoenix_form
+      form: phoenix_form,
+      action_type: changeset.action_type
     }
   end
 

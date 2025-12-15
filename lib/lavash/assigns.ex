@@ -20,16 +20,42 @@ defmodule Lavash.Assigns do
     all_fields = collect_field_names(module)
 
     # Project each field as an assign
-    Enum.reduce(all_fields, socket, fn field_name, sock ->
-      raw_value =
-        cond do
-          Map.has_key?(state, field_name) -> Map.get(state, field_name)
-          Map.has_key?(derived, field_name) -> Map.get(derived, field_name)
-          true -> nil
+    socket =
+      Enum.reduce(all_fields, socket, fn field_name, sock ->
+        raw_value =
+          cond do
+            Map.has_key?(state, field_name) -> Map.get(state, field_name)
+            Map.has_key?(derived, field_name) -> Map.get(derived, field_name)
+            true -> nil
+          end
+
+        value = unwrap_for_assign(raw_value)
+        Phoenix.Component.assign(sock, field_name, value)
+      end)
+
+    # Project form metadata (action_type) for each form
+    project_form_metadata(socket, module, derived)
+  end
+
+  # For each form, project :form_action assign with the action type
+  defp project_form_metadata(socket, module, derived) do
+    forms = safe_get(module, :forms)
+
+    Enum.reduce(forms, socket, fn form_entity, sock ->
+      form_name = form_entity.name
+      action_assign = :"#{form_name}_action"
+
+      raw_value = Map.get(derived, form_name)
+
+      action_type =
+        case raw_value do
+          %Lavash.Form{action_type: type} -> type
+          :loading -> :loading
+          {:error, _} = err -> err
+          _ -> nil
         end
 
-      value = unwrap_for_assign(raw_value)
-      Phoenix.Component.assign(sock, field_name, value)
+      Phoenix.Component.assign(sock, action_assign, action_type)
     end)
   end
 
