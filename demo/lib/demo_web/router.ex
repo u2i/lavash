@@ -19,6 +19,7 @@ defmodule DemoWeb.Router do
 
     live "/", CounterLive
     live "/products", ProductsLive
+    live "/products/new", ProductEditLive
     live "/products-socket", ProductsSocketLive
     live "/products/:product_id/edit", ProductEditLive
     live "/components", ComponentsDemoLive

@@ -19,7 +19,15 @@ defmodule Demo.Catalog do
   end
 
   def change_product(%Product{} = product, attrs \\ %{}) do
-    Ash.Changeset.for_update(product, :update, attrs)
+    if product.id do
+      Ash.Changeset.for_update(product, :update, attrs)
+    else
+      Ash.Changeset.for_create(Product, :create, attrs)
+    end
+  end
+
+  def new_product do
+    %Product{}
   end
 
   # Ecto-based functions for list/filter (keeping for compatibility)

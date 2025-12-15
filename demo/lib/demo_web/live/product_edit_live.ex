@@ -3,7 +3,7 @@ defmodule DemoWeb.ProductEditLive do
   Demo: Form handling with Lavash using declarative actions.
 
   This demonstrates how to handle forms where:
-  - The product is loaded async based on URL param
+  - The product is loaded async based on URL param (or new product if no id)
   - Form data is stored in ephemeral state via form binding
   - Changeset returns Ash.Changeset which is auto-wrapped by Lavash
   - Submission is declarative with on_error branching to another action
@@ -26,10 +26,10 @@ defmodule DemoWeb.ProductEditLive do
   end
 
   derived do
-    # Load the product async based on product_id
+    # Load product if id provided, otherwise create new
     field :product, depends_on: [:product_id], async: true, compute: fn %{product_id: id} ->
       case id do
-        nil -> {:error, :no_id}
+        nil -> Catalog.new_product()
         id -> Catalog.get_product(id)
       end
     end
@@ -37,9 +37,16 @@ defmodule DemoWeb.ProductEditLive do
     # Form: returns Ash.Changeset which Lavash auto-wraps to provide:
     # - Phoenix.HTML.Form for rendering (via assigns projection)
     # - Submission via Lavash.Form.submit
+    # Uses for_create or for_update based on whether product has an id
     field :form, depends_on: [:product, :form_params], compute: fn
       %{product: product, form_params: params} ->
         Catalog.change_product(product, params)
+    end
+
+    # Derive whether this is a new product for UI display
+    field :is_new, depends_on: [:product], compute: fn
+      %{product: %{id: nil}} -> true
+      %{product: _} -> false
     end
   end
 
@@ -48,6 +55,7 @@ defmodule DemoWeb.ProductEditLive do
     assign :product
     assign :form
     assign :submitting
+    assign :is_new
   end
 
   # Declarative form submission with error handling
@@ -55,7 +63,7 @@ defmodule DemoWeb.ProductEditLive do
     action :save do
       set :submitting, true
       submit :form, on_error: :save_failed
-      flash :info, "Product updated successfully!"
+      flash :info, "Product saved successfully!"
       navigate "/products"
     end
 
@@ -69,7 +77,7 @@ defmodule DemoWeb.ProductEditLive do
     <div class="max-w-2xl mx-auto p-6">
       <div class="flex items-center justify-between mb-6">
         <div>
-          <h1 class="text-3xl font-bold">Edit Product</h1>
+          <h1 class="text-3xl font-bold">{if @is_new, do: "New Product", else: "Edit Product"}</h1>
           <p class="text-gray-500 mt-1">Form handling with Lavash + Ash changesets</p>
         </div>
         <a href="/products" class="text-indigo-600 hover:text-indigo-800">&larr; Back to Products</a>
@@ -94,7 +102,7 @@ defmodule DemoWeb.ProductEditLive do
             </a>
           </div>
 
-        <% {:ok, _product} when is_struct(@form, Phoenix.HTML.Form) -> %>
+        <% _ when is_struct(@form, Phoenix.HTML.Form) -> %>
           <div class="bg-white rounded-lg shadow p-6">
             <.form for={@form} phx-change="validate" phx-submit="save" class="space-y-4">
               <div>
@@ -174,7 +182,11 @@ defmodule DemoWeb.ProductEditLive do
                     !@submitting && "bg-indigo-600 hover:bg-indigo-700"
                   ]}
                 >
-                  {if @submitting, do: "Saving...", else: "Save Changes"}
+                  {cond do
+                  @submitting -> "Saving..."
+                  @is_new -> "Create Product"
+                  true -> "Save Changes"
+                end}
                 </button>
                 <a
                   href="/products"
