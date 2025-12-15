@@ -13,7 +13,6 @@ defmodule DemoWeb.ProductEditLive do
 
   # Inputs - mutable state from external sources
   input :product_id, :integer, from: :url
-  input :form_params, :map, from: :ephemeral, default: %{}
   input :submitting, :boolean, from: :ephemeral, default: false
 
   # Read - async load the product by ID
@@ -23,9 +22,9 @@ defmodule DemoWeb.ProductEditLive do
 
   # Form - creates AshPhoenix.Form, auto-detects create vs update
   # Also auto-projects @form_action (:create or :update) for UI
+  # Params are implicit: :form_params is auto-created and bound to phx-change events
   form :form, Product do
     data result(:product)
-    params input(:form_params)
   end
 
   # Declarative form submission with error handling

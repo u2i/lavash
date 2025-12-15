@@ -32,8 +32,10 @@ defmodule Lavash.Dsl do
 
       form :form, Product do
         data result(:product)
-        params input(:form_params)
       end
+
+  Form params are implicit - `:form_params` is auto-created and bound to `phx-change` events.
+  You can override with explicit params if needed: `params input(:custom_params)`
 
   ## Example
 
@@ -41,7 +43,6 @@ defmodule Lavash.Dsl do
         use Lavash.LiveView
 
         input :product_id, :integer, from: :url
-        input :form_params, :map, from: :ephemeral, default: %{}
 
         read :product, Product do
           id input(:product_id)
@@ -49,7 +50,6 @@ defmodule Lavash.Dsl do
 
         form :form, Product do
           data result(:product)
-          params input(:form_params)
         end
 
         actions do
