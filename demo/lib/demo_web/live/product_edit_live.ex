@@ -17,9 +17,6 @@ defmodule DemoWeb.ProductEditLive do
       field :product_id, :integer
     end
 
-    # Form binding: auto-sync "form" params → :form_params state
-    form :form_params, from: "form"
-
     ephemeral do
       field :submitting, :boolean, default: false
     end
@@ -34,15 +31,17 @@ defmodule DemoWeb.ProductEditLive do
       end
     end
 
-    # Declarative form: auto-creates changeset for create or update
-    form :form, resource: Product, load: :product
-
     # Derive whether this is a new product for UI display
     field :is_new, depends_on: [:product], compute: fn
       %{product: nil} -> true
       %{product: %{id: nil}} -> true
       %{product: _} -> false
     end
+  end
+
+  # Top-level form declaration - handles params capture, changeset building
+  forms do
+    form :form, resource: Product, load: :product
   end
 
   assigns do

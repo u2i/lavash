@@ -14,10 +14,36 @@ defmodule Lavash.Graph do
 
   def recompute_all(socket, module) do
     derived_fields = module.__lavash__(:derived_fields)
-    sorted = topological_sort(derived_fields)
+    form_fields = expand_forms(module)
+    all_fields = derived_fields ++ form_fields
+    sorted = topological_sort(all_fields)
 
     Enum.reduce(sorted, socket, fn field, sock ->
       compute_field(sock, module, field)
+    end)
+  end
+
+  # Expand form declarations into derived-like field structs
+  defp expand_forms(module) do
+    forms = module.__lavash__(:forms)
+
+    Enum.map(forms, fn form ->
+      params_field = :"#{form.name}_params"
+
+      %Lavash.Derived.Field{
+        name: form.name,
+        depends_on: [form.load, params_field],
+        async: false,
+        compute: fn deps ->
+          params = Map.get(deps, params_field, %{})
+          record = Map.get(deps, form.load)
+
+          Lavash.Form.for_resource(form.resource, record, params,
+            create: form.create,
+            update: form.update
+          )
+        end
+      }
     end)
   end
 
@@ -28,11 +54,13 @@ defmodule Lavash.Graph do
       socket
     else
       derived_fields = module.__lavash__(:derived_fields)
+      form_fields = expand_forms(module)
+      all_fields = derived_fields ++ form_fields
 
       # Find all derived fields affected by dirty state, including transitive dependencies
       # e.g., if :base is dirty and :doubled depends on :base, and :quadrupled depends on :doubled,
       # we need to recompute both :doubled and :quadrupled
-      affected = find_affected_derived(derived_fields, dirty)
+      affected = find_affected_derived(all_fields, dirty)
       sorted = topological_sort(affected)
 
       socket = LSocket.clear_dirty(socket)
@@ -80,9 +108,11 @@ defmodule Lavash.Graph do
 
   def recompute_dependents(socket, module, changed_field) do
     derived_fields = module.__lavash__(:derived_fields)
+    form_fields = expand_forms(module)
+    all_fields = derived_fields ++ form_fields
 
     # Find all derived fields affected by the changed field, including transitive dependencies
-    affected = find_affected_derived(derived_fields, MapSet.new([changed_field]))
+    affected = find_affected_derived(all_fields, MapSet.new([changed_field]))
     sorted = topological_sort(affected)
 
     Enum.reduce(sorted, socket, fn field, sock ->

@@ -89,23 +89,6 @@ defmodule Lavash.Dsl do
     ]
   }
 
-  @form_field %Spark.Dsl.Entity{
-    name: :form,
-    target: Lavash.State.FormField,
-    args: [:name],
-    schema: [
-      name: [
-        type: :atom,
-        required: true,
-        doc: "The state field name to store form params"
-      ],
-      from: [
-        type: :string,
-        required: true,
-        doc: "The form namespace in event params (e.g., \"product\" for params[\"product\"])"
-      ]
-    ]
-  }
 
   @url_section %Spark.Dsl.Section{
     name: :url,
@@ -133,8 +116,7 @@ defmodule Lavash.Dsl do
   @state_section %Spark.Dsl.Section{
     name: :state,
     describe: "Define the state sources for this LiveView.",
-    sections: [@url_section, @socket_section, @ephemeral_section],
-    entities: [@form_field]
+    sections: [@url_section, @socket_section, @ephemeral_section]
   }
 
   @derived_field %Spark.Dsl.Entity{
@@ -165,46 +147,10 @@ defmodule Lavash.Dsl do
     ]
   }
 
-  @derived_form %Spark.Dsl.Entity{
-    name: :form,
-    target: Lavash.Derived.Form,
-    args: [:name],
-    schema: [
-      name: [
-        type: :atom,
-        required: true,
-        doc: "The name of the form field"
-      ],
-      resource: [
-        type: :atom,
-        required: true,
-        doc: "The Ash resource module"
-      ],
-      load: [
-        type: :atom,
-        doc: "The derived field containing the record to edit (nil for new)"
-      ],
-      create: [
-        type: :atom,
-        default: :create,
-        doc: "The create action name"
-      ],
-      update: [
-        type: :atom,
-        default: :update,
-        doc: "The update action name"
-      ],
-      params: [
-        type: :atom,
-        doc: "The state field containing form params (defaults to :{name}_params)"
-      ]
-    ]
-  }
-
   @derived_section %Spark.Dsl.Section{
     name: :derived,
     describe: "Derived state computed from other state with dependency tracking.",
-    entities: [@derived_field, @derived_form]
+    entities: [@derived_field]
   }
 
   @assign_entity %Spark.Dsl.Entity{
@@ -368,7 +314,51 @@ defmodule Lavash.Dsl do
     entities: [@action_entity]
   }
 
+  @form_entity %Spark.Dsl.Entity{
+    name: :form,
+    target: Lavash.Form.Section,
+    args: [:name],
+    schema: [
+      name: [
+        type: :atom,
+        required: true,
+        doc: "The name of the form (becomes the assign name)"
+      ],
+      resource: [
+        type: :atom,
+        required: true,
+        doc: "The Ash resource module"
+      ],
+      load: [
+        type: :atom,
+        required: true,
+        doc: "The derived field containing the record to edit (nil for new)"
+      ],
+      from: [
+        type: :string,
+        default: "form",
+        doc: "The form namespace in event params"
+      ],
+      create: [
+        type: :atom,
+        default: :create,
+        doc: "The create action name"
+      ],
+      update: [
+        type: :atom,
+        default: :update,
+        doc: "The update action name"
+      ]
+    ]
+  }
+
+  @forms_section %Spark.Dsl.Section{
+    name: :forms,
+    describe: "Forms for editing Ash resources. Handles params capture, changeset building, and submission.",
+    entities: [@form_entity]
+  }
+
   use Spark.Dsl.Extension,
-    sections: [@state_section, @derived_section, @assigns_section, @actions_section],
+    sections: [@state_section, @derived_section, @forms_section, @assigns_section, @actions_section],
     imports: [Phoenix.Component]
 end

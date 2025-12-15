@@ -161,15 +161,17 @@ defmodule Lavash.LiveView.Runtime do
   end
 
   defp apply_form_bindings(socket, module, params) do
-    form_fields = module.__lavash__(:form_fields)
+    forms = module.__lavash__(:forms)
 
-    Enum.reduce(form_fields, socket, fn field, sock ->
-      case Map.get(params, field.from) do
+    Enum.reduce(forms, socket, fn form, sock ->
+      params_field = :"#{form.name}_params"
+
+      case Map.get(params, form.from) do
         nil ->
           sock
 
         form_params when is_map(form_params) ->
-          LSocket.put_state(sock, field.name, form_params)
+          LSocket.put_state(sock, params_field, form_params)
 
         _ ->
           sock
