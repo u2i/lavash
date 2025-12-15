@@ -9,23 +9,22 @@ defmodule DemoWeb.ProductEditLive do
   """
   use Lavash.LiveView
 
-  alias Demo.Catalog
   alias Demo.Catalog.Product
 
-  # Inputs - mutable state with storage location
+  # Inputs - mutable state from external sources
   input :product_id, :integer, from: :url
+  input :form_params, :map, from: :ephemeral, default: %{}
   input :submitting, :boolean, from: :ephemeral, default: false
 
-  # Derive product from product_id
-  derive :product do
-    async true
-    argument :id, input(:product_id)
-    run fn %{id: id}, _ ->
-      case id do
-        nil -> nil
-        id -> Catalog.get_product(id)
-      end
-    end
+  # Read - async load the product by ID
+  read :product, Product do
+    id input(:product_id)
+  end
+
+  # Form - creates AshPhoenix.Form, auto-detects create vs update
+  form :form, Product do
+    data result(:product)
+    params input(:form_params)
   end
 
   # Derive whether this is a new product for UI display
@@ -39,9 +38,6 @@ defmodule DemoWeb.ProductEditLive do
       end
     end
   end
-
-  # Form as input - initializes from :product, then lives as mutable state
-  input :form, :form, resource: Product, from: result(:product)
 
   # Declarative form submission with error handling
   actions do

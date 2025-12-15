@@ -47,14 +47,17 @@ defmodule Lavash.LiveView.Compiler do
         Spark.Dsl.Extension.get_entities(__MODULE__, [:inputs])
       end
 
+      def __lavash__(:reads) do
+        Spark.Dsl.Extension.get_entities(__MODULE__, [:reads])
+      end
+
+      def __lavash__(:forms) do
+        Spark.Dsl.Extension.get_entities(__MODULE__, [:forms])
+      end
+
       def __lavash__(:derived_fields) do
         Spark.Dsl.Extension.get_entities(__MODULE__, [:derives])
         |> Enum.map(&Lavash.LiveView.Compiler.normalize_derived/1)
-      end
-
-      # Form inputs - inputs with type :form
-      def __lavash__(:forms) do
-        __lavash__(:inputs) |> Enum.filter(&(&1.type == :form))
       end
 
       def __lavash__(:actions) do
@@ -71,7 +74,7 @@ defmodule Lavash.LiveView.Compiler do
       end
 
       def __lavash__(:ephemeral_fields) do
-        __lavash__(:inputs) |> Enum.filter(&(&1.from == :ephemeral))
+        __lavash__(:inputs) |> Enum.filter(&(is_nil(&1.from) || &1.from == :ephemeral))
       end
     end
   end

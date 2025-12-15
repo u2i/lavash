@@ -42,12 +42,13 @@ defmodule Lavash.Assigns do
 
     # LiveView-specific fields
     url_fields = safe_get(module, :url_fields) |> Enum.map(& &1.name)
+    read_fields = safe_get(module, :reads) |> Enum.map(& &1.name)
     form_fields = safe_get(module, :forms) |> Enum.map(& &1.name)
 
     # Component-specific fields
     prop_fields = safe_get(module, :props) |> Enum.map(& &1.name)
 
-    url_fields ++ ephemeral_fields ++ socket_fields ++ derived_fields ++ form_fields ++ prop_fields
+    url_fields ++ ephemeral_fields ++ socket_fields ++ derived_fields ++ read_fields ++ form_fields ++ prop_fields
   end
 
   # Safely get entities, returning empty list if not defined

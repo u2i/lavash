@@ -3,29 +3,54 @@ defmodule Lavash.Dsl do
   The Spark DSL extension for Lavash LiveViews.
 
   Provides declarative state management with Reactor-inspired syntax:
-  - `input` - mutable state with storage location (url, socket, ephemeral)
-  - `derive` - computed values from inputs/other derivations
+  - `input` - mutable state from external sources (URL, socket, ephemeral)
+  - `read` - async load an Ash resource by ID
+  - `form` - create an AshPhoenix.Form from a resource
+  - `derive` - custom computed values
   - `actions` - state transformers
 
   All declared fields are automatically projected as assigns.
 
-  Forms are a special input type that initialize from a dependency:
-  - `input :form, :form, resource: Product, from: result(:product)`
+  ## Inputs
 
-  Example:
+  Inputs are mutable state from external sources:
+
+      input :product_id, :integer, from: :url
+      input :form_params, :map, from: :ephemeral, default: %{}
+
+  ## Read
+
+  Load an Ash resource by ID (async by default):
+
+      read :product, Product do
+        id input(:product_id)
+      end
+
+  ## Form
+
+  Create an AshPhoenix.Form that auto-detects create vs update:
+
+      form :form, Product do
+        data result(:product)
+        params input(:form_params)
+      end
+
+  ## Example
+
       defmodule MyApp.ProductEditLive do
         use Lavash.LiveView
 
         input :product_id, :integer, from: :url
+        input :form_params, :map, from: :ephemeral, default: %{}
 
-        derive :product do
-          async true
-          argument :id, input(:product_id)
-          run fn %{id: id}, _ -> Catalog.get_product(id) end
+        read :product, Product do
+          id input(:product_id)
         end
 
-        # Form initializes from :product, then lives as mutable state
-        input :form, :form, resource: Product, from: result(:product)
+        form :form, Product do
+          data result(:product)
+          params input(:form_params)
+        end
 
         actions do
           action :save do
@@ -53,12 +78,12 @@ defmodule Lavash.Dsl do
       type: [
         type: :any,
         required: true,
-        doc: "The type of the field (:string, :integer, :boolean, :map, :form, {:array, type})"
+        doc: "The type: :string, :integer, :boolean, :float, :map, :any, etc."
       ],
       from: [
-        type: :any,
+        type: {:in, [:url, :socket, :ephemeral]},
         default: :ephemeral,
-        doc: "Where to store/init from: :url, :socket, :ephemeral, or result(:x)/input(:x) for forms"
+        doc: "Storage location: :url (synced with URL), :socket (survives reconnects), :ephemeral (default)"
       ],
       default: [
         type: :any,
@@ -76,21 +101,6 @@ defmodule Lavash.Dsl do
       decode: [
         type: {:fun, 1},
         doc: "Custom decoder function from URL params"
-      ],
-      # Form-specific options (only for type: :form)
-      resource: [
-        type: :atom,
-        doc: "The Ash resource module (required for :form type)"
-      ],
-      create: [
-        type: :atom,
-        default: :create,
-        doc: "The create action name (for :form type)"
-      ],
-      update: [
-        type: :atom,
-        default: :update,
-        doc: "The update action name (for :form type)"
       ]
     ]
   }
@@ -98,8 +108,99 @@ defmodule Lavash.Dsl do
   @inputs_section %Spark.Dsl.Section{
     name: :inputs,
     top_level?: true,
-    describe: "Mutable state inputs with storage location (url, socket, ephemeral).",
+    describe: "Mutable state inputs from external sources (URL, socket, ephemeral).",
     entities: [@input_entity]
+  }
+
+  # ============================================
+  # Read - async resource loading
+  # ============================================
+
+  @read_entity %Spark.Dsl.Entity{
+    name: :read,
+    target: Lavash.Read,
+    args: [:name, :resource],
+    schema: [
+      name: [
+        type: :atom,
+        required: true,
+        doc: "The name of the read result"
+      ],
+      resource: [
+        type: :atom,
+        required: true,
+        doc: "The Ash resource module to load"
+      ],
+      id: [
+        type: :any,
+        required: true,
+        doc: "The ID source: input(:field) or result(:derive)"
+      ],
+      action: [
+        type: :atom,
+        default: :read,
+        doc: "The read action to use"
+      ],
+      async: [
+        type: :boolean,
+        default: true,
+        doc: "Whether to load asynchronously"
+      ]
+    ]
+  }
+
+  @reads_section %Spark.Dsl.Section{
+    name: :reads,
+    top_level?: true,
+    describe: "Async resource loading by ID.",
+    entities: [@read_entity]
+  }
+
+  # ============================================
+  # Form - AshPhoenix.Form creation
+  # ============================================
+
+  @form_entity %Spark.Dsl.Entity{
+    name: :form,
+    target: Lavash.FormStep,
+    args: [:name, :resource],
+    schema: [
+      name: [
+        type: :atom,
+        required: true,
+        doc: "The name of the form"
+      ],
+      resource: [
+        type: :atom,
+        required: true,
+        doc: "The Ash resource module"
+      ],
+      data: [
+        type: :any,
+        doc: "The record source: result(:read_name). If nil, creates a create form."
+      ],
+      params: [
+        type: :any,
+        doc: "The params source: input(:form_params). Defaults to implicit :name_params."
+      ],
+      create: [
+        type: :atom,
+        default: :create,
+        doc: "The create action name"
+      ],
+      update: [
+        type: :atom,
+        default: :update,
+        doc: "The update action name"
+      ]
+    ]
+  }
+
+  @forms_section %Spark.Dsl.Section{
+    name: :forms,
+    top_level?: true,
+    describe: "AshPhoenix.Form creation with auto create/update detection.",
+    entities: [@form_entity]
   }
 
   # ============================================
@@ -299,6 +400,6 @@ defmodule Lavash.Dsl do
   # ============================================
 
   use Spark.Dsl.Extension,
-    sections: [@inputs_section, @derives_section, @actions_section],
+    sections: [@inputs_section, @reads_section, @forms_section, @derives_section, @actions_section],
     imports: [Phoenix.Component, Lavash.DslHelpers]
 end

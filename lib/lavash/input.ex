@@ -1,18 +1,16 @@
 defmodule Lavash.Input do
   @moduledoc """
-  A unified input field declaration.
+  A mutable state input from an external source.
 
-  Inputs are mutable state values with a storage location:
+  Inputs declare where mutable state comes from:
   - `:url` - bidirectionally synced with the URL (query params or path)
-  - `:socket` - survives reconnects via JS sync, lost on page refresh
-  - `:ephemeral` - socket-only, lost on disconnect
+  - `:socket` - survives reconnects via JS client sync
+  - `:ephemeral` - socket-only, lost on disconnect (default)
 
-  For `:form` type inputs, additional options:
-  - `resource` - the Ash resource module
-  - `init_from` - dependency for initialization (e.g., `result(:product)`)
-  - `create` / `update` - action names for create/update operations
+  ## Example
 
-  Inspired by Reactor's `input` declarations.
+      input :product_id, :integer, from: :url
+      input :form_params, :map, from: :ephemeral, default: %{}
   """
 
   defstruct [
@@ -23,11 +21,6 @@ defmodule Lavash.Input do
     :required,
     :encode,
     :decode,
-    # Form-specific options
-    :resource,
-    :init_from,
-    :create,
-    :update,
     __spark_metadata__: nil
   ]
 end

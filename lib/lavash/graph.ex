@@ -13,9 +13,7 @@ defmodule Lavash.Graph do
   alias Lavash.Socket, as: LSocket
 
   def recompute_all(socket, module) do
-    derived_fields = module.__lavash__(:derived_fields)
-    form_fields = expand_forms(module)
-    all_fields = derived_fields ++ form_fields
+    all_fields = collect_all_fields(module)
     sorted = topological_sort(all_fields)
 
     Enum.reduce(sorted, socket, fn field, sock ->
@@ -23,50 +21,96 @@ defmodule Lavash.Graph do
     end)
   end
 
-  # Expand form inputs into derived-like field structs
+  # Collect all derived-like fields from different DSL sections
+  defp collect_all_fields(module) do
+    derived_fields = module.__lavash__(:derived_fields)
+    read_fields = expand_reads(module)
+    form_fields = expand_forms(module)
+    derived_fields ++ read_fields ++ form_fields
+  end
+
+  # Expand read entities into derived-like field structs
+  defp expand_reads(module) do
+    reads = module.__lavash__(:reads)
+
+    Enum.map(reads, fn read ->
+      # Extract dependency from id option
+      id_dep = extract_dependency(read.id)
+      resource = read.resource
+      action = read.action || :read
+      is_async = read.async != false
+
+      %Lavash.Derived.Field{
+        name: read.name,
+        depends_on: [id_dep],
+        async: is_async,
+        compute: fn deps ->
+          id = Map.get(deps, id_dep)
+
+          case id do
+            nil -> nil
+            id ->
+              case Ash.get(resource, id, action: action) do
+                {:ok, record} -> record
+                {:error, %Ash.Error.Query.NotFound{}} -> nil
+                {:error, error} -> raise error
+              end
+          end
+        end
+      }
+    end)
+  end
+
+  # Expand form entities into derived-like field structs
   defp expand_forms(module) do
     forms = module.__lavash__(:forms)
 
     Enum.map(forms, fn form ->
-      params_field = :"#{form.name}_params"
+      # Extract dependencies from data and params options
+      data_dep = extract_dependency(form.data)
 
-      # Extract init_from dependency
-      init_dep = extract_init_dependency(form.from)
-
-      # Build depends_on list: always include params_field, plus init dependency
-      depends_on =
-        if init_dep do
-          [init_dep, params_field]
+      # Params defaults to implicit :name_params if not specified
+      params_dep =
+        if form.params do
+          extract_dependency(form.params)
         else
-          [params_field]
+          :"#{form.name}_params"
         end
+
+      depends_on =
+        if data_dep do
+          [data_dep, params_dep]
+        else
+          [params_dep]
+        end
+
+      resource = form.resource
+      create_action = form.create || :create
+      update_action = form.update || :update
 
       %Lavash.Derived.Field{
         name: form.name,
         depends_on: depends_on,
         async: false,
         compute: fn deps ->
-          params = Map.get(deps, params_field, %{})
-          record = if init_dep, do: Map.get(deps, init_dep), else: nil
+          params = Map.get(deps, params_dep, %{})
+          data = if data_dep, do: Map.get(deps, data_dep), else: nil
 
-          Lavash.Form.for_resource(form.resource, record, params,
-            create: form.create || :create,
-            update: form.update || :update
+          Lavash.Form.for_resource(resource, data, params,
+            create: create_action,
+            update: update_action
           )
         end
       }
     end)
   end
 
-  # Extract the init dependency from form's from option
-  defp extract_init_dependency(from) do
-    case from do
+  # Extract the field name from input(:x) or result(:x) tuples
+  defp extract_dependency(source) do
+    case source do
       {:input, name} -> name
       {:result, name} -> name
-      # Regular storage locations don't have init deps
-      :url -> nil
-      :socket -> nil
-      :ephemeral -> nil
+      name when is_atom(name) -> name
       nil -> nil
     end
   end
@@ -77,13 +121,9 @@ defmodule Lavash.Graph do
     if MapSet.size(dirty) == 0 do
       socket
     else
-      derived_fields = module.__lavash__(:derived_fields)
-      form_fields = expand_forms(module)
-      all_fields = derived_fields ++ form_fields
+      all_fields = collect_all_fields(module)
 
       # Find all derived fields affected by dirty state, including transitive dependencies
-      # e.g., if :base is dirty and :doubled depends on :base, and :quadrupled depends on :doubled,
-      # we need to recompute both :doubled and :quadrupled
       affected = find_affected_derived(all_fields, dirty)
       sorted = topological_sort(affected)
 
@@ -131,9 +171,7 @@ defmodule Lavash.Graph do
   end
 
   def recompute_dependents(socket, module, changed_field) do
-    derived_fields = module.__lavash__(:derived_fields)
-    form_fields = expand_forms(module)
-    all_fields = derived_fields ++ form_fields
+    all_fields = collect_all_fields(module)
 
     # Find all derived fields affected by the changed field, including transitive dependencies
     affected = find_affected_derived(all_fields, MapSet.new([changed_field]))
