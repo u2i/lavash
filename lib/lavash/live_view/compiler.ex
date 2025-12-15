@@ -3,6 +3,40 @@ defmodule Lavash.LiveView.Compiler do
   Compiles the Lavash DSL into LiveView callbacks.
   """
 
+  @doc """
+  Expands derived form declarations into derived field structs.
+  """
+  def expand_derived(%Lavash.Derived.Form{} = form) do
+    params_field = form.params || :"#{form.name}_params"
+    load_field = form.load
+
+    depends_on =
+      if load_field do
+        [load_field, params_field]
+      else
+        [params_field]
+      end
+
+    compute = fn deps ->
+      params = Map.get(deps, params_field, %{})
+      record = if load_field, do: Map.get(deps, load_field), else: nil
+
+      Lavash.Form.for_resource(form.resource, record, params,
+        create: form.create,
+        update: form.update
+      )
+    end
+
+    %Lavash.Derived.Field{
+      name: form.name,
+      depends_on: depends_on,
+      async: false,
+      compute: compute
+    }
+  end
+
+  def expand_derived(field), do: field
+
   defmacro __before_compile__(env) do
     has_on_mount = Module.defines?(env.module, {:on_mount, 1})
     has_render = Module.defines?(env.module, {:render, 1})
@@ -63,6 +97,7 @@ defmodule Lavash.LiveView.Compiler do
 
       def __lavash__(:derived_fields) do
         Spark.Dsl.Extension.get_entities(__MODULE__, [:derived])
+        |> Enum.map(&Lavash.LiveView.Compiler.expand_derived/1)
       end
 
       def __lavash__(:assigns) do

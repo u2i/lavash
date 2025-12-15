@@ -3,14 +3,14 @@ defmodule DemoWeb.ProductEditLive do
   Demo: Form handling with Lavash using declarative actions.
 
   This demonstrates how to handle forms where:
-  - The product is loaded async based on URL param (or new product if no id)
-  - Form data is stored in ephemeral state via form binding
-  - Changeset returns Ash.Changeset which is auto-wrapped by Lavash
+  - The product is loaded async based on URL param (nil for new)
+  - Form is declared with the `form` DSL which handles create vs update
   - Submission is declarative with on_error branching to another action
   """
   use Lavash.LiveView
 
   alias Demo.Catalog
+  alias Demo.Catalog.Product
 
   state do
     url do
@@ -26,25 +26,20 @@ defmodule DemoWeb.ProductEditLive do
   end
 
   derived do
-    # Load product if id provided, otherwise create new
+    # Load product if id provided, nil for new
     field :product, depends_on: [:product_id], async: true, compute: fn %{product_id: id} ->
       case id do
-        nil -> Catalog.new_product()
+        nil -> nil
         id -> Catalog.get_product(id)
       end
     end
 
-    # Form: returns Ash.Changeset which Lavash auto-wraps to provide:
-    # - Phoenix.HTML.Form for rendering (via assigns projection)
-    # - Submission via Lavash.Form.submit
-    # Uses for_create or for_update based on whether product has an id
-    field :form, depends_on: [:product, :form_params], compute: fn
-      %{product: product, form_params: params} ->
-        Catalog.change_product(product, params)
-    end
+    # Declarative form: auto-creates changeset for create or update
+    form :form, resource: Product, load: :product
 
     # Derive whether this is a new product for UI display
     field :is_new, depends_on: [:product], compute: fn
+      %{product: nil} -> true
       %{product: %{id: nil}} -> true
       %{product: _} -> false
     end
@@ -83,8 +78,8 @@ defmodule DemoWeb.ProductEditLive do
         <a href="/products" class="text-indigo-600 hover:text-indigo-800">&larr; Back to Products</a>
       </div>
 
-      <%= case @product do %>
-        <% :loading -> %>
+      <%= cond do %>
+        <% @product == :loading -> %>
           <div class="bg-white rounded-lg shadow p-6">
             <div class="animate-pulse">
               <div class="h-4 bg-gray-200 rounded w-1/4 mb-4"></div>
@@ -94,7 +89,7 @@ defmodule DemoWeb.ProductEditLive do
             </div>
           </div>
 
-        <% {:error, _reason} -> %>
+        <% match?({:error, _}, @product) -> %>
           <div class="bg-white rounded-lg shadow p-6 text-center">
             <p class="text-gray-500 text-lg">Product not found</p>
             <a href="/products" class="mt-4 inline-block text-indigo-600 hover:text-indigo-800">
@@ -102,7 +97,7 @@ defmodule DemoWeb.ProductEditLive do
             </a>
           </div>
 
-        <% _ when is_struct(@form, Phoenix.HTML.Form) -> %>
+        <% is_struct(@form, Phoenix.HTML.Form) -> %>
           <div class="bg-white rounded-lg shadow p-6">
             <.form for={@form} phx-change="validate" phx-submit="save" class="space-y-4">
               <div>
@@ -213,7 +208,7 @@ defmodule DemoWeb.ProductEditLive do
             </dl>
           </div>
 
-        <% _ -> %>
+        <% true -> %>
           <!-- Fallback: product loaded but form not ready yet -->
           <div class="bg-white rounded-lg shadow p-6">
             <div class="animate-pulse">

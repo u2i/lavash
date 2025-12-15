@@ -65,11 +65,17 @@ defmodule Demo.Catalog.Product do
       )
     end
 
-    read :list_categories do
-      prepare fn query, _context ->
-        query
-        |> Ash.Query.select([:category])
-        |> Ash.Query.sort(:category)
+    action :list_categories, {:array, :string} do
+      run fn _input, _context ->
+        {:ok, products} = Ash.read(__MODULE__)
+
+        categories =
+          products
+          |> Enum.map(& &1.category)
+          |> Enum.sort()
+          |> Enum.uniq()
+
+        {:ok, categories}
       end
     end
   end

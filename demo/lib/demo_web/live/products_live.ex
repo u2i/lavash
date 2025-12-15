@@ -31,7 +31,8 @@ defmodule DemoWeb.ProductsLive do
       end
 
     field :categories, depends_on: [], compute: fn _ ->
-      Catalog.list_categories()
+      {:ok, categories} = Catalog.list_categories()
+      categories
     end
 
     field :result_count, depends_on: [:products], compute: fn %{products: products} ->

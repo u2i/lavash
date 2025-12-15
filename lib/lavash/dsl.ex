@@ -165,10 +165,46 @@ defmodule Lavash.Dsl do
     ]
   }
 
+  @derived_form %Spark.Dsl.Entity{
+    name: :form,
+    target: Lavash.Derived.Form,
+    args: [:name],
+    schema: [
+      name: [
+        type: :atom,
+        required: true,
+        doc: "The name of the form field"
+      ],
+      resource: [
+        type: :atom,
+        required: true,
+        doc: "The Ash resource module"
+      ],
+      load: [
+        type: :atom,
+        doc: "The derived field containing the record to edit (nil for new)"
+      ],
+      create: [
+        type: :atom,
+        default: :create,
+        doc: "The create action name"
+      ],
+      update: [
+        type: :atom,
+        default: :update,
+        doc: "The update action name"
+      ],
+      params: [
+        type: :atom,
+        doc: "The state field containing form params (defaults to :{name}_params)"
+      ]
+    ]
+  }
+
   @derived_section %Spark.Dsl.Section{
     name: :derived,
     describe: "Derived state computed from other state with dependency tracking.",
-    entities: [@derived_field]
+    entities: [@derived_field, @derived_form]
   }
 
   @assign_entity %Spark.Dsl.Entity{

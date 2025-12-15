@@ -14,6 +14,27 @@ defmodule Lavash.Form do
   defstruct [:changeset, :form]
 
   @doc """
+  Creates a form for an Ash resource.
+
+  If record is nil or has no id, creates a form for the create action.
+  Otherwise creates a form for the update action.
+  """
+  def for_resource(resource, record, params, opts \\ []) do
+    create_action = Keyword.get(opts, :create, :create)
+    update_action = Keyword.get(opts, :update, :update)
+
+    if is_nil(record) or is_nil(Map.get(record, :id)) do
+      # Create new
+      changeset = Ash.Changeset.for_create(resource, create_action, params)
+      wrap(changeset)
+    else
+      # Update existing
+      changeset = Ash.Changeset.for_update(record, update_action, params)
+      wrap(changeset)
+    end
+  end
+
+  @doc """
   Wraps an Ash.Changeset, creating both the form for rendering and preserving
   the changeset for submission.
   """
