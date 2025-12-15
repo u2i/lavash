@@ -66,6 +66,7 @@ defmodule Lavash.Socket do
   def state(socket), do: get(socket, :state) || %{}
   def derived(socket), do: get(socket, :derived) || %{}
   def dirty(socket), do: get(socket, :dirty) || MapSet.new()
+  def dirty?(socket), do: MapSet.size(dirty(socket)) > 0
   def props(socket), do: get(socket, :props) || %{}
 
   def url_changed?(socket), do: get(socket, :url_changed) == true

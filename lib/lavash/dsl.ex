@@ -89,6 +89,24 @@ defmodule Lavash.Dsl do
     ]
   }
 
+  @form_field %Spark.Dsl.Entity{
+    name: :form,
+    target: Lavash.State.FormField,
+    args: [:name],
+    schema: [
+      name: [
+        type: :atom,
+        required: true,
+        doc: "The state field name to store form params"
+      ],
+      from: [
+        type: :string,
+        required: true,
+        doc: "The form namespace in event params (e.g., \"product\" for params[\"product\"])"
+      ]
+    ]
+  }
+
   @url_section %Spark.Dsl.Section{
     name: :url,
     describe: """
@@ -115,7 +133,8 @@ defmodule Lavash.Dsl do
   @state_section %Spark.Dsl.Section{
     name: :state,
     describe: "Define the state sources for this LiveView.",
-    sections: [@url_section, @socket_section, @ephemeral_section]
+    sections: [@url_section, @socket_section, @ephemeral_section],
+    entities: [@form_field]
   }
 
   @derived_field %Spark.Dsl.Entity{
@@ -228,6 +247,54 @@ defmodule Lavash.Dsl do
     ]
   }
 
+  @submit_entity %Spark.Dsl.Entity{
+    name: :submit,
+    target: Lavash.Actions.Submit,
+    args: [:field],
+    schema: [
+      field: [
+        type: :atom,
+        required: true,
+        doc: "The form field to submit (must be a derived AshPhoenix.Form)"
+      ],
+      on_error: [
+        type: :atom,
+        doc: "Action to trigger on submission error"
+      ]
+    ]
+  }
+
+  @navigate_entity %Spark.Dsl.Entity{
+    name: :navigate,
+    target: Lavash.Actions.Navigate,
+    args: [:to],
+    schema: [
+      to: [
+        type: :string,
+        required: true,
+        doc: "The URL to navigate to"
+      ]
+    ]
+  }
+
+  @flash_entity %Spark.Dsl.Entity{
+    name: :flash,
+    target: Lavash.Actions.Flash,
+    args: [:kind, :message],
+    schema: [
+      kind: [
+        type: :atom,
+        required: true,
+        doc: "Flash kind (:info, :error, etc.)"
+      ],
+      message: [
+        type: :string,
+        required: true,
+        doc: "The flash message"
+      ]
+    ]
+  }
+
   @action_entity %Spark.Dsl.Entity{
     name: :action,
     target: Lavash.Actions.Action,
@@ -235,7 +302,10 @@ defmodule Lavash.Dsl do
     entities: [
       sets: [@set_entity],
       updates: [@update_entity],
-      effects: [@effect_entity]
+      effects: [@effect_entity],
+      submits: [@submit_entity],
+      navigates: [@navigate_entity],
+      flashes: [@flash_entity]
     ],
     schema: [
       name: [

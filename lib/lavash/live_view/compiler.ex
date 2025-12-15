@@ -56,6 +56,11 @@ defmodule Lavash.LiveView.Compiler do
         Spark.Dsl.Extension.get_entities(__MODULE__, [:state, :socket])
       end
 
+      def __lavash__(:form_fields) do
+        Spark.Dsl.Extension.get_entities(__MODULE__, [:state])
+        |> Enum.filter(&is_struct(&1, Lavash.State.FormField))
+      end
+
       def __lavash__(:derived_fields) do
         Spark.Dsl.Extension.get_entities(__MODULE__, [:derived])
       end

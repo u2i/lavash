@@ -35,6 +35,25 @@ defmodule Lavash.State do
   end
 
   @doc """
+  Hydrates form fields - these are ephemeral maps bound to form params.
+  """
+  def hydrate_forms(socket, module) do
+    form_fields = module.__lavash__(:form_fields)
+
+    state =
+      Enum.reduce(form_fields, LSocket.state(socket), fn field, state ->
+        # Form fields always start as empty maps
+        if Map.has_key?(state, field.name) do
+          state
+        else
+          Map.put(state, field.name, field.default)
+        end
+      end)
+
+    LSocket.put(socket, :state, state)
+  end
+
+  @doc """
   Hydrates socket fields from connect params.
   Socket fields survive reconnects via JS client sync.
   """

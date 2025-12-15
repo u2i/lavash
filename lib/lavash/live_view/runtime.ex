@@ -47,6 +47,7 @@ defmodule Lavash.LiveView.Runtime do
       })
       |> State.hydrate_socket(module, connect_params)
       |> State.hydrate_ephemeral(module)
+      |> State.hydrate_forms(module)
 
     {:ok, socket}
   end
@@ -96,25 +97,84 @@ defmodule Lavash.LiveView.Runtime do
   end
 
   def handle_event(module, event, params, socket) do
+    # First, check for form bindings and update state if params match
+    socket = apply_form_bindings(socket, module, params)
+
+    # Then try to find and execute a matching action
     action_name = String.to_existing_atom(event)
     actions = module.__lavash__(:actions)
 
     case Enum.find(actions, &(&1.name == action_name)) do
       nil ->
-        # No matching action, let it fall through
-        {:noreply, socket}
+        # No matching action - but form bindings may have updated state
+        if LSocket.dirty?(socket) do
+          socket =
+            socket
+            |> Graph.recompute_dirty(module)
+            |> Assigns.project(module)
+
+          {:noreply, socket}
+        else
+          {:noreply, socket}
+        end
 
       action ->
-        socket =
-          socket
-          |> execute_action(module, action, params)
-          |> maybe_push_patch(module)
-          |> maybe_sync_socket_state(module)
-          |> Graph.recompute_dirty(module)
-          |> Assigns.project(module)
+        case execute_action(socket, module, action, params) do
+          {:ok, socket} ->
+            # Action succeeded - apply post-success operations
+            socket =
+              socket
+              |> apply_flashes(action.flashes || [])
+              |> apply_navigates(action.navigates || [])
+              |> maybe_push_patch(module)
+              |> maybe_sync_socket_state(module)
+              |> Graph.recompute_dirty(module)
+              |> Assigns.project(module)
 
-        {:noreply, socket}
+            {:noreply, socket}
+
+          {:error, socket, on_error_action} ->
+            # Action failed with on_error - trigger the error action
+            actions = module.__lavash__(:actions)
+            error_action = Enum.find(actions, &(&1.name == on_error_action))
+
+            socket =
+              if error_action do
+                case execute_action(socket, module, error_action, params) do
+                  {:ok, sock} -> sock
+                  {:error, sock, _} -> sock
+                end
+              else
+                socket
+              end
+
+            socket =
+              socket
+              |> maybe_push_patch(module)
+              |> maybe_sync_socket_state(module)
+              |> Graph.recompute_dirty(module)
+              |> Assigns.project(module)
+
+            {:noreply, socket}
+        end
     end
+  end
+
+  defp apply_form_bindings(socket, module, params) do
+    form_fields = module.__lavash__(:form_fields)
+
+    Enum.reduce(form_fields, socket, fn field, sock ->
+      case Map.get(params, field.from) do
+        nil ->
+          sock
+
+        form_params when is_map(form_params) ->
+          LSocket.put_state(sock, field.name, form_params)
+
+        _ ->
+          sock
+      end
+    end)
   end
 
   def handle_info(module, {:lavash_async, field, result}, socket) do
@@ -145,19 +205,23 @@ defmodule Lavash.LiveView.Runtime do
   defp execute_action(socket, module, action, event_params) do
     # Build params map from event
     params =
-      Enum.reduce(action.params, %{}, fn param, acc ->
+      Enum.reduce(action.params || [], %{}, fn param, acc ->
         key = to_string(param)
         Map.put(acc, param, Map.get(event_params, key))
       end)
 
     # Check guards
     if guards_pass?(socket, module, action.when) do
-      socket
-      |> apply_sets(action.sets || [], params)
-      |> apply_updates(action.updates || [], params)
-      |> apply_effects(action.effects || [], params)
+      socket =
+        socket
+        |> apply_sets(action.sets || [], params)
+        |> apply_updates(action.updates || [], params)
+        |> apply_effects(action.effects || [], params)
+
+      # Handle submits - these can fail and trigger on_error
+      apply_submits(socket, module, action.submits || [])
     else
-      socket
+      {:ok, socket}
     end
   end
 
@@ -193,6 +257,61 @@ defmodule Lavash.LiveView.Runtime do
     state = LSocket.full_state(socket)
     Enum.each(effects, fn effect -> effect.fun.(state) end)
     socket
+  end
+
+  defp apply_submits(socket, _module, []) do
+    {:ok, socket}
+  end
+
+  defp apply_submits(socket, module, [submit | rest]) do
+    # Recompute derived state to get the latest form
+    socket =
+      socket
+      |> Graph.recompute_dirty(module)
+
+    # Get the form from derived state
+    form = LSocket.derived(socket)[submit.field]
+
+    # Handle the form value - it might be wrapped in {:ok, form} from async
+    form =
+      case form do
+        {:ok, f} -> f
+        f -> f
+      end
+
+    case AshPhoenix.Form.submit(form) do
+      {:ok, _result} ->
+        # Success - continue with remaining submits
+        apply_submits(socket, module, rest)
+
+      {:error, _form_with_errors} ->
+        # Failure - trigger on_error action if specified
+        if submit.on_error do
+          {:error, socket, submit.on_error}
+        else
+          # No on_error handler, just return ok with current socket
+          {:ok, socket}
+        end
+    end
+  end
+
+  defp apply_flashes(socket, []) do
+    socket
+  end
+
+  defp apply_flashes(socket, [flash | rest]) do
+    socket
+    |> Phoenix.LiveView.put_flash(flash.kind, flash.message)
+    |> apply_flashes(rest)
+  end
+
+  defp apply_navigates(socket, []) do
+    socket
+  end
+
+  defp apply_navigates(socket, [nav | _rest]) do
+    # Only apply the first navigate (can't navigate twice)
+    Phoenix.LiveView.push_navigate(socket, to: nav.to)
   end
 
   defp maybe_push_patch(socket, module) do
