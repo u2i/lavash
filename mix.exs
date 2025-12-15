@@ -28,9 +28,11 @@ defmodule Lavash.MixProject do
     [
       {:spark, "~> 2.0"},
       {:phoenix_live_view, "~> 1.1"},
+      {:ash, "~> 3.0"},
+      {:ash_phoenix, "~> 2.0"},
       {:floki, ">= 0.30.0", only: :test},
       {:lazy_html, ">= 0.1.0", only: :test},
-      {:jason, "~> 1.2", only: :test},
+      {:jason, "~> 1.2"},
       {:bandit, "~> 1.5", only: :test}
     ]
   end

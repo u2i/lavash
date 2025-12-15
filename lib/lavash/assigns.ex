@@ -25,11 +25,15 @@ defmodule Lavash.Assigns do
 
     values =
       Enum.map(sources, fn source ->
-        cond do
-          Map.has_key?(state, source) -> Map.get(state, source)
-          Map.has_key?(derived, source) -> Map.get(derived, source)
-          true -> nil
-        end
+        raw_value =
+          cond do
+            Map.has_key?(state, source) -> Map.get(state, source)
+            Map.has_key?(derived, source) -> Map.get(derived, source)
+            true -> nil
+          end
+
+        # Auto-extract form from Lavash.Form wrapper for template rendering
+        unwrap_for_assign(raw_value)
       end)
 
     case assign_def.transform do
@@ -49,4 +53,8 @@ defmodule Lavash.Assigns do
         end
     end
   end
+
+  # Extract the Phoenix form from Lavash.Form for template rendering
+  defp unwrap_for_assign(%Lavash.Form{form: form}), do: form
+  defp unwrap_for_assign(other), do: other
 end

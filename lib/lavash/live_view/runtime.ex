@@ -279,7 +279,9 @@ defmodule Lavash.LiveView.Runtime do
         f -> f
       end
 
-    case AshPhoenix.Form.submit(form) do
+    # Use Lavash.Form.submit which handles Lavash.Form, Ash.Changeset,
+    # AshPhoenix.Form, and Phoenix.HTML.Form
+    case Lavash.Form.submit(form) do
       {:ok, _result} ->
         # Success - continue with remaining submits
         apply_submits(socket, module, rest)

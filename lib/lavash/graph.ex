@@ -133,11 +133,19 @@ defmodule Lavash.Graph do
 
       LSocket.put_derived(socket, field.name, :loading)
     else
-      # Non-async: store raw result (no wrapping)
+      # Non-async: store result, auto-wrapping changesets
       result = field.compute.(deps)
-      LSocket.put_derived(socket, field.name, result)
+      wrapped = maybe_wrap_changeset(result)
+      LSocket.put_derived(socket, field.name, wrapped)
     end
   end
+
+  # Auto-wrap Ash.Changeset to provide both form rendering and submission
+  defp maybe_wrap_changeset(%Ash.Changeset{} = changeset) do
+    Lavash.Form.wrap(changeset)
+  end
+
+  defp maybe_wrap_changeset(other), do: other
 
   defp build_deps_map(socket, deps) do
     state = LSocket.state(socket)
