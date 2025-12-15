@@ -55,19 +55,6 @@ defmodule DemoWeb.ProductsSocketLive do
       end
   end
 
-  assigns do
-    assign :search
-    assign :category
-    assign :in_stock
-    assign :min_price
-    assign :max_price
-    assign :min_rating
-    assign :products
-    assign :categories
-    assign :result_count
-    assign :has_filters
-  end
-
   actions do
     action :set_search, [:value] do
       set :search, & &1.params.value

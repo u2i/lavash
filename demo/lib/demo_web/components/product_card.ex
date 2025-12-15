@@ -29,13 +29,6 @@ defmodule DemoWeb.ProductCard do
       compute: fn %{expanded: e, hovered: h} -> e or h end
   end
 
-  assigns do
-    assign :product
-    assign :expanded
-    assign :hovered
-    assign :show_details
-  end
-
   actions do
     action :toggle_expand do
       update :expanded, &(!&1)

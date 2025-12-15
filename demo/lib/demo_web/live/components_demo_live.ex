@@ -20,10 +20,6 @@ defmodule DemoWeb.ComponentsDemoLive do
     end
   end
 
-  assigns do
-    assign :products
-  end
-
   def render(assigns) do
     ~H"""
     <div class="max-w-6xl mx-auto p-6">

@@ -6,8 +6,10 @@ defmodule Lavash.Dsl do
   - URL-backed state (bidirectional sync)
   - Ephemeral state (socket-only)
   - Derived state (computed with dependency tracking)
-  - Assigns (projection to templates)
+  - Forms (Ash resource editing)
   - Actions (state transformers)
+
+  All declared fields are automatically projected as assigns.
   """
 
   @url_field %Spark.Dsl.Entity{
@@ -151,33 +153,6 @@ defmodule Lavash.Dsl do
     name: :derived,
     describe: "Derived state computed from other state with dependency tracking.",
     entities: [@derived_field]
-  }
-
-  @assign_entity %Spark.Dsl.Entity{
-    name: :assign,
-    target: Lavash.Assigns.Assign,
-    args: [:name],
-    schema: [
-      name: [
-        type: :atom,
-        required: true,
-        doc: "The assign name (available in templates)"
-      ],
-      from: [
-        type: {:list, :atom},
-        doc: "Source fields to derive from. If not provided, passes through field of same name."
-      ],
-      transform: [
-        type: {:fun, 1},
-        doc: "Transform function applied to source(s)"
-      ]
-    ]
-  }
-
-  @assigns_section %Spark.Dsl.Section{
-    name: :assigns,
-    describe: "Projection of state/derived into socket assigns for templates.",
-    entities: [@assign_entity]
   }
 
   @set_entity %Spark.Dsl.Entity{
@@ -359,6 +334,6 @@ defmodule Lavash.Dsl do
   }
 
   use Spark.Dsl.Extension,
-    sections: [@state_section, @derived_section, @forms_section, @assigns_section, @actions_section],
+    sections: [@state_section, @derived_section, @forms_section, @actions_section],
     imports: [Phoenix.Component]
 end

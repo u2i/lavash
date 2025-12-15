@@ -8,6 +8,8 @@ defmodule Lavash.Component.Dsl do
   - Ephemeral state (lost on reconnect)
   - Derived state
   - Actions
+
+  All declared fields are automatically projected as assigns.
   """
 
   # Props - passed from parent
@@ -143,34 +145,6 @@ defmodule Lavash.Component.Dsl do
     entities: [@derived_field]
   }
 
-  # Assigns
-  @assign_entity %Spark.Dsl.Entity{
-    name: :assign,
-    target: Lavash.Assigns.Assign,
-    args: [:name],
-    schema: [
-      name: [
-        type: :atom,
-        required: true,
-        doc: "The assign name (available in templates)"
-      ],
-      from: [
-        type: {:list, :atom},
-        doc: "Source fields to derive from"
-      ],
-      transform: [
-        type: {:fun, 1},
-        doc: "Transform function"
-      ]
-    ]
-  }
-
-  @assigns_section %Spark.Dsl.Section{
-    name: :assigns,
-    describe: "Projection of props/state/derived into socket assigns.",
-    entities: [@assign_entity]
-  }
-
   # Actions
   @set_entity %Spark.Dsl.Entity{
     name: :set,
@@ -256,6 +230,6 @@ defmodule Lavash.Component.Dsl do
   }
 
   use Spark.Dsl.Extension,
-    sections: [@props_section, @state_section, @derived_section, @assigns_section, @actions_section],
+    sections: [@props_section, @state_section, @derived_section, @actions_section],
     imports: [Phoenix.Component]
 end

@@ -32,16 +32,13 @@ defmodule Lavash.Component.Compiler do
         Spark.Dsl.Extension.get_entities(__MODULE__, [:derived])
       end
 
-      def __lavash__(:assigns) do
-        Spark.Dsl.Extension.get_entities(__MODULE__, [:assigns])
-      end
-
       def __lavash__(:actions) do
         Spark.Dsl.Extension.get_entities(__MODULE__, [:actions])
       end
 
-      # Empty URL fields (components don't have URL state)
+      # Empty fields for LiveView-only features (components don't have these)
       def __lavash__(:url_fields), do: []
+      def __lavash__(:forms), do: []
     end
   end
 end

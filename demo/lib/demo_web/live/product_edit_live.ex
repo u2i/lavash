@@ -44,14 +44,6 @@ defmodule DemoWeb.ProductEditLive do
     form :form, resource: Product, load: :product
   end
 
-  assigns do
-    assign :product_id
-    assign :product
-    assign :form
-    assign :submitting
-    assign :is_new
-  end
-
   # Declarative form submission with error handling
   actions do
     action :save do

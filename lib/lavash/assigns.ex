@@ -1,12 +1,14 @@
 defmodule Lavash.Assigns do
   @moduledoc """
   Projects state and derived values into socket assigns.
+
+  All declared fields (state, derived, forms) are automatically
+  projected as assigns - no explicit assigns section needed.
   """
 
   alias Lavash.Socket, as: LSocket
 
   def project(socket, module) do
-    assigns_config = module.__lavash__(:assigns)
     state = LSocket.state(socket)
     derived = LSocket.derived(socket)
 
@@ -14,43 +16,46 @@ defmodule Lavash.Assigns do
     component_states = LSocket.get(socket, :component_states) || %{}
     Lavash.LiveView.Helpers.put_component_states(component_states)
 
-    Enum.reduce(assigns_config, socket, fn assign_def, sock ->
-      value = compute_assign(assign_def, state, derived)
-      Phoenix.Component.assign(sock, assign_def.name, value)
+    # Collect all field names - different for LiveViews vs Components
+    all_fields = collect_field_names(module)
+
+    # Project each field as an assign
+    Enum.reduce(all_fields, socket, fn field_name, sock ->
+      raw_value =
+        cond do
+          Map.has_key?(state, field_name) -> Map.get(state, field_name)
+          Map.has_key?(derived, field_name) -> Map.get(derived, field_name)
+          true -> nil
+        end
+
+      value = unwrap_for_assign(raw_value)
+      Phoenix.Component.assign(sock, field_name, value)
     end)
   end
 
-  defp compute_assign(assign_def, state, derived) do
-    sources = assign_def.from || [assign_def.name]
+  # Collect field names based on module type (LiveView vs Component)
+  defp collect_field_names(module) do
+    # Common fields for both LiveViews and Components
+    ephemeral_fields = safe_get(module, :ephemeral_fields) |> Enum.map(& &1.name)
+    socket_fields = safe_get(module, :socket_fields) |> Enum.map(& &1.name)
+    derived_fields = safe_get(module, :derived_fields) |> Enum.map(& &1.name)
 
-    values =
-      Enum.map(sources, fn source ->
-        raw_value =
-          cond do
-            Map.has_key?(state, source) -> Map.get(state, source)
-            Map.has_key?(derived, source) -> Map.get(derived, source)
-            true -> nil
-          end
+    # LiveView-specific fields
+    url_fields = safe_get(module, :url_fields) |> Enum.map(& &1.name)
+    form_fields = safe_get(module, :forms) |> Enum.map(& &1.name)
 
-        # Auto-extract form from Lavash.Form wrapper for template rendering
-        unwrap_for_assign(raw_value)
-      end)
+    # Component-specific fields
+    prop_fields = safe_get(module, :props) |> Enum.map(& &1.name)
 
-    case assign_def.transform do
-      nil when length(values) == 1 ->
-        hd(values)
+    url_fields ++ ephemeral_fields ++ socket_fields ++ derived_fields ++ form_fields ++ prop_fields
+  end
 
-      nil ->
-        # Multiple sources, no transform - return as map
-        sources
-        |> Enum.zip(values)
-        |> Map.new()
-
-      transform when is_function(transform, 1) ->
-        case values do
-          [single] -> transform.(single)
-          multiple -> transform.(multiple)
-        end
+  # Safely get entities, returning empty list if not defined
+  defp safe_get(module, key) do
+    try do
+      module.__lavash__(key)
+    rescue
+      _ -> []
     end
   end
 

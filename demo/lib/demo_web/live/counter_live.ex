@@ -23,13 +23,6 @@ defmodule DemoWeb.CounterLive do
     end
   end
 
-  assigns do
-    assign :count
-    assign :multiplier
-    assign :doubled
-    assign :fact
-  end
-
   actions do
     action :increment do
       update :count, &(&1 + 1)
