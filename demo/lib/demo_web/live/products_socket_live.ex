@@ -28,14 +28,15 @@ defmodule DemoWeb.ProductsSocketLive do
   derived do
     field :products, depends_on: [:search, :category, :in_stock, :min_price, :max_price, :min_rating],
       compute: fn filters ->
-        Catalog.list_products(%{
-          search: filters.search,
-          category: if(filters.category == "", do: nil, else: filters.category),
-          in_stock: parse_bool(filters.in_stock),
-          min_price: filters.min_price,
-          max_price: filters.max_price,
-          min_rating: filters.min_rating
-        })
+        {:ok, products} = Catalog.list_products(
+          filters.search,
+          if(filters.category == "", do: nil, else: filters.category),
+          parse_bool(filters.in_stock),
+          filters.min_price,
+          filters.max_price,
+          filters.min_rating
+        )
+        products
       end
 
     field :categories, depends_on: [], compute: fn _ ->
