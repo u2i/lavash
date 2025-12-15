@@ -1,0 +1,37 @@
+defmodule Lavash.DslHelpers do
+  @moduledoc """
+  Helper functions for use in Lavash DSL declarations.
+
+  These create source references for argument declarations:
+  - `input(:field)` - reference an input field
+  - `result(:derive)` - reference a derived field's result
+  """
+
+  @doc """
+  Reference an input field as a dependency source.
+
+  ## Example
+
+      derive :product do
+        argument :id, input(:product_id)
+        run fn %{id: id}, _ -> Catalog.get_product(id) end
+      end
+  """
+  def input(field_name) when is_atom(field_name) do
+    {:input, field_name}
+  end
+
+  @doc """
+  Reference a derived field's result as a dependency source.
+
+  ## Example
+
+      derive :doubled do
+        argument :base, result(:base_value)
+        run fn %{base: b}, _ -> b * 2 end
+      end
+  """
+  def result(field_name) when is_atom(field_name) do
+    {:result, field_name}
+  end
+end

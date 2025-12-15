@@ -10,23 +10,15 @@ defmodule DemoWeb.ProductCard do
   """
   use Lavash.Component
 
-  props do
-    prop :product, :map, required: true
-  end
+  prop :product, :map, required: true
 
-  state do
-    socket do
-      field :expanded, :boolean, default: false
-    end
+  input :expanded, :boolean, from: :socket, default: false
+  input :hovered, :boolean, from: :ephemeral, default: false
 
-    ephemeral do
-      field :hovered, :boolean, default: false
-    end
-  end
-
-  derived do
-    field :show_details, depends_on: [:expanded, :hovered],
-      compute: fn %{expanded: e, hovered: h} -> e or h end
+  derive :show_details do
+    argument :expanded, input(:expanded)
+    argument :hovered, input(:hovered)
+    run fn %{expanded: e, hovered: h}, _ -> e or h end
   end
 
   actions do

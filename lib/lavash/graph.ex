@@ -30,13 +30,24 @@ defmodule Lavash.Graph do
     Enum.map(forms, fn form ->
       params_field = :"#{form.name}_params"
 
+      # Extract record dependency from arguments
+      record_dep = extract_record_dependency(form.arguments || [])
+
+      # Build depends_on list: always include params_field, plus any argument dependencies
+      depends_on =
+        if record_dep do
+          [record_dep, params_field]
+        else
+          [params_field]
+        end
+
       %Lavash.Derived.Field{
         name: form.name,
-        depends_on: [form.load, params_field],
+        depends_on: depends_on,
         async: false,
         compute: fn deps ->
           params = Map.get(deps, params_field, %{})
-          record = Map.get(deps, form.load)
+          record = if record_dep, do: Map.get(deps, record_dep), else: nil
 
           Lavash.Form.for_resource(form.resource, record, params,
             create: form.create,
@@ -45,6 +56,20 @@ defmodule Lavash.Graph do
         end
       }
     end)
+  end
+
+  # Extract the record dependency from form arguments
+  defp extract_record_dependency(arguments) do
+    # Look for an argument named :record (convention for forms)
+    case Enum.find(arguments, &(&1.name == :record)) do
+      nil -> nil
+      arg ->
+        case arg.source do
+          {:input, name} -> name
+          {:result, name} -> name
+          name when is_atom(name) -> name
+        end
+    end
   end
 
   def recompute_dirty(socket, module) do

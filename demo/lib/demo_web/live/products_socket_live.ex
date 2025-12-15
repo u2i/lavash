@@ -13,46 +13,59 @@ defmodule DemoWeb.ProductsSocketLive do
   alias Demo.Catalog
 
   # All filter state stored in socket - survives reconnects, not in URL
-  state do
-    socket do
-      field :search, :string, default: ""
-      field :category, :string, default: ""
-      field :in_stock, :string, default: ""  # "", "true", "false"
-      field :min_price, :integer, default: nil
-      field :max_price, :integer, default: nil
-      field :min_rating, :integer, default: nil
+  input :search, :string, from: :socket, default: ""
+  input :category, :string, from: :socket, default: ""
+  input :in_stock, :string, from: :socket, default: ""  # "", "true", "false"
+  input :min_price, :integer, from: :socket, default: nil
+  input :max_price, :integer, from: :socket, default: nil
+  input :min_rating, :integer, from: :socket, default: nil
+
+  # Products are derived from filter state
+  derive :products do
+    argument :search, input(:search)
+    argument :category, input(:category)
+    argument :in_stock, input(:in_stock)
+    argument :min_price, input(:min_price)
+    argument :max_price, input(:max_price)
+    argument :min_rating, input(:min_rating)
+    run fn filters, _ ->
+      {:ok, products} = Catalog.list_products(
+        filters.search,
+        if(filters.category == "", do: nil, else: filters.category),
+        parse_bool(filters.in_stock),
+        filters.min_price,
+        filters.max_price,
+        filters.min_rating
+      )
+      products
     end
   end
 
-  # Products are derived from filter state
-  derived do
-    field :products, depends_on: [:search, :category, :in_stock, :min_price, :max_price, :min_rating],
-      compute: fn filters ->
-        {:ok, products} = Catalog.list_products(
-          filters.search,
-          if(filters.category == "", do: nil, else: filters.category),
-          parse_bool(filters.in_stock),
-          filters.min_price,
-          filters.max_price,
-          filters.min_rating
-        )
-        products
-      end
-
-    field :categories, depends_on: [], compute: fn _ ->
+  derive :categories do
+    run fn _, _ ->
       {:ok, categories} = Catalog.list_categories()
       categories
     end
+  end
 
-    field :result_count, depends_on: [:products], compute: fn %{products: products} ->
+  derive :result_count do
+    argument :products, result(:products)
+    run fn %{products: products}, _ ->
       length(products)
     end
+  end
 
-    field :has_filters, depends_on: [:search, :category, :in_stock, :min_price, :max_price, :min_rating],
-      compute: fn f ->
-        f.search != "" or f.category != "" or f.in_stock != "" or
-        f.min_price != nil or f.max_price != nil or f.min_rating != nil
-      end
+  derive :has_filters do
+    argument :search, input(:search)
+    argument :category, input(:category)
+    argument :in_stock, input(:in_stock)
+    argument :min_price, input(:min_price)
+    argument :max_price, input(:max_price)
+    argument :min_rating, input(:min_rating)
+    run fn f, _ ->
+      f.search != "" or f.category != "" or f.in_stock != "" or
+      f.min_price != nil or f.max_price != nil or f.min_rating != nil
+    end
   end
 
   actions do

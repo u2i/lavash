@@ -2,39 +2,72 @@ defmodule Lavash.Dsl do
   @moduledoc """
   The Spark DSL extension for Lavash LiveViews.
 
-  Provides declarative state management with:
-  - URL-backed state (bidirectional sync)
-  - Ephemeral state (socket-only)
-  - Derived state (computed with dependency tracking)
-  - Forms (Ash resource editing)
-  - Actions (state transformers)
+  Provides declarative state management with Reactor-inspired syntax:
+  - `input` - mutable state with storage location (url, socket, ephemeral)
+  - `derive` - computed values from inputs/other derivations
+  - `load_form` - Ash resource editing
+  - `actions` - state transformers
 
   All declared fields are automatically projected as assigns.
+
+  Example:
+      defmodule MyApp.ProductEditLive do
+        use Lavash.LiveView
+
+        input :product_id, :integer, from: :url
+
+        derive :product do
+          async true
+          argument :id, input(:product_id)
+          run fn %{id: id}, _ -> Catalog.get_product(id) end
+        end
+
+        load_form :form do
+          resource Product
+          argument :record, result(:product)
+        end
+
+        actions do
+          action :save do
+            submit :form
+            navigate "/products"
+          end
+        end
+      end
   """
 
-  @url_field %Spark.Dsl.Entity{
-    name: :field,
-    target: Lavash.State.UrlField,
+  # ============================================
+  # Input - mutable state fields
+  # ============================================
+
+  @input_entity %Spark.Dsl.Entity{
+    name: :input,
+    target: Lavash.Input,
     args: [:name, :type],
     schema: [
       name: [
         type: :atom,
         required: true,
-        doc: "The name of the field"
+        doc: "The name of the input field"
       ],
       type: [
         type: :any,
         required: true,
         doc: "The type of the field (:string, :integer, :boolean, :map, {:array, type})"
       ],
+      from: [
+        type: {:one_of, [:url, :socket, :ephemeral]},
+        default: :ephemeral,
+        doc: "Where to store the state: :url (synced with URL), :socket (survives reconnects), :ephemeral (socket only)"
+      ],
       default: [
         type: :any,
-        doc: "Default value when not present in URL"
+        doc: "Default value when not present"
       ],
       required: [
         type: :boolean,
         default: false,
-        doc: "Whether this field must be present in URL params"
+        doc: "Whether this field must be present (for URL inputs)"
       ],
       encode: [
         type: {:fun, 1},
@@ -47,113 +80,135 @@ defmodule Lavash.Dsl do
     ]
   }
 
-  @ephemeral_field %Spark.Dsl.Entity{
-    name: :field,
-    target: Lavash.State.EphemeralField,
-    args: [:name, :type],
+  @inputs_section %Spark.Dsl.Section{
+    name: :inputs,
+    top_level?: true,
+    describe: "Mutable state inputs with storage location (url, socket, ephemeral).",
+    entities: [@input_entity]
+  }
+
+  # ============================================
+  # Derive - computed values
+  # ============================================
+
+  @argument_entity %Spark.Dsl.Entity{
+    name: :argument,
+    target: Lavash.Argument,
+    args: [:name, :source],
     schema: [
       name: [
         type: :atom,
         required: true,
-        doc: "The name of the field"
+        doc: "The name of the argument (key in the deps map passed to run)"
       ],
-      type: [
+      source: [
         type: :any,
         required: true,
-        doc: "The type of the field"
-      ],
-      default: [
-        type: :any,
-        doc: "Default value for this field"
+        doc: "The source: input(:field) or result(:derive_name)"
       ]
     ]
   }
 
-  @socket_field %Spark.Dsl.Entity{
-    name: :field,
-    target: Lavash.State.SocketField,
-    args: [:name, :type],
-    schema: [
-      name: [
-        type: :atom,
-        required: true,
-        doc: "The name of the field"
-      ],
-      type: [
-        type: :any,
-        required: true,
-        doc: "The type of the field"
-      ],
-      default: [
-        type: :any,
-        doc: "Default value for this field"
-      ]
-    ]
-  }
-
-
-  @url_section %Spark.Dsl.Section{
-    name: :url,
-    describe: """
-    URL-backed state fields. These are bidirectionally synced with the URL.
-
-    Fields that match route path parameters (e.g., :product_id in /products/:product_id)
-    are automatically detected and placed in the path. Other fields become query parameters.
-    """,
-    entities: [@url_field]
-  }
-
-  @ephemeral_section %Spark.Dsl.Section{
-    name: :ephemeral,
-    describe: "Ephemeral state fields. These live only in the socket and are lost on disconnect.",
-    entities: [@ephemeral_field]
-  }
-
-  @socket_section %Spark.Dsl.Section{
-    name: :socket,
-    describe: "Socket state fields. Survive reconnects via JS sync but lost on page refresh. Not in URL.",
-    entities: [@socket_field]
-  }
-
-  @state_section %Spark.Dsl.Section{
-    name: :state,
-    describe: "Define the state sources for this LiveView.",
-    sections: [@url_section, @socket_section, @ephemeral_section]
-  }
-
-  @derived_field %Spark.Dsl.Entity{
-    name: :field,
+  @derive_entity %Spark.Dsl.Entity{
+    name: :derive,
     target: Lavash.Derived.Field,
     args: [:name],
+    entities: [
+      arguments: [@argument_entity]
+    ],
     schema: [
       name: [
         type: :atom,
         required: true,
         doc: "The name of the derived field"
       ],
-      depends_on: [
-        type: {:list, :atom},
-        default: [],
-        doc: "List of state/derived fields this depends on. Empty means compute once on mount."
-      ],
       async: [
         type: :boolean,
         default: false,
         doc: "Whether this computation is async (returns loading/ok/error states)"
       ],
-      compute: [
-        type: {:fun, 1},
-        required: true,
-        doc: "Function that computes the derived value from dependencies"
+      run: [
+        type: {:fun, 2},
+        doc: "Function that computes the value: fn %{arg1: val1, ...}, context -> result end"
       ]
     ]
   }
 
-  @derived_section %Spark.Dsl.Section{
-    name: :derived,
-    describe: "Derived state computed from other state with dependency tracking.",
-    entities: [@derived_field]
+  @derives_section %Spark.Dsl.Section{
+    name: :derives,
+    top_level?: true,
+    describe: "Derived values computed from inputs or other derivations.",
+    entities: [@derive_entity]
   }
+
+  # ============================================
+  # Form - Ash resource editing
+  # ============================================
+
+  @form_argument_entity %Spark.Dsl.Entity{
+    name: :argument,
+    target: Lavash.Argument,
+    args: [:name, :source],
+    schema: [
+      name: [
+        type: :atom,
+        required: true,
+        doc: "The name of the argument (typically :record for the loaded record)"
+      ],
+      source: [
+        type: :any,
+        required: true,
+        doc: "The source: input(:field) or result(:derive_name)"
+      ]
+    ]
+  }
+
+  @form_entity %Spark.Dsl.Entity{
+    name: :load_form,
+    target: Lavash.Form.Section,
+    args: [:name],
+    entities: [
+      arguments: [@form_argument_entity]
+    ],
+    schema: [
+      name: [
+        type: :atom,
+        required: true,
+        doc: "The name of the form (becomes the assign name)"
+      ],
+      resource: [
+        type: :atom,
+        required: true,
+        doc: "The Ash resource module"
+      ],
+      from: [
+        type: :string,
+        default: "form",
+        doc: "The form namespace in event params"
+      ],
+      create: [
+        type: :atom,
+        default: :create,
+        doc: "The create action name"
+      ],
+      update: [
+        type: :atom,
+        default: :update,
+        doc: "The update action name"
+      ]
+    ]
+  }
+
+  @forms_section %Spark.Dsl.Section{
+    name: :forms,
+    top_level?: true,
+    describe: "Forms for editing Ash resources.",
+    entities: [@form_entity]
+  }
+
+  # ============================================
+  # Actions - state transformers
+  # ============================================
 
   @set_entity %Spark.Dsl.Entity{
     name: :set,
@@ -289,51 +344,11 @@ defmodule Lavash.Dsl do
     entities: [@action_entity]
   }
 
-  @form_entity %Spark.Dsl.Entity{
-    name: :form,
-    target: Lavash.Form.Section,
-    args: [:name],
-    schema: [
-      name: [
-        type: :atom,
-        required: true,
-        doc: "The name of the form (becomes the assign name)"
-      ],
-      resource: [
-        type: :atom,
-        required: true,
-        doc: "The Ash resource module"
-      ],
-      load: [
-        type: :atom,
-        required: true,
-        doc: "The derived field containing the record to edit (nil for new)"
-      ],
-      from: [
-        type: :string,
-        default: "form",
-        doc: "The form namespace in event params"
-      ],
-      create: [
-        type: :atom,
-        default: :create,
-        doc: "The create action name"
-      ],
-      update: [
-        type: :atom,
-        default: :update,
-        doc: "The update action name"
-      ]
-    ]
-  }
-
-  @forms_section %Spark.Dsl.Section{
-    name: :forms,
-    describe: "Forms for editing Ash resources. Handles params capture, changeset building, and submission.",
-    entities: [@form_entity]
-  }
+  # ============================================
+  # Extension setup
+  # ============================================
 
   use Spark.Dsl.Extension,
-    sections: [@state_section, @derived_section, @forms_section, @actions_section],
-    imports: [Phoenix.Component]
+    sections: [@inputs_section, @derives_section, @forms_section, @actions_section],
+    imports: [Phoenix.Component, Lavash.DslHelpers]
 end

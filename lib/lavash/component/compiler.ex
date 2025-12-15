@@ -15,25 +15,31 @@ defmodule Lavash.Component.Compiler do
         Lavash.Component.Runtime.handle_event(__MODULE__, event, params, socket)
       end
 
-      # Introspection functions
+      # Introspection functions - entities from top_level? sections
       def __lavash__(:props) do
         Spark.Dsl.Extension.get_entities(__MODULE__, [:props])
       end
 
-      def __lavash__(:socket_fields) do
-        Spark.Dsl.Extension.get_entities(__MODULE__, [:state, :socket])
-      end
-
-      def __lavash__(:ephemeral_fields) do
-        Spark.Dsl.Extension.get_entities(__MODULE__, [:state, :ephemeral])
+      def __lavash__(:inputs) do
+        Spark.Dsl.Extension.get_entities(__MODULE__, [:inputs])
       end
 
       def __lavash__(:derived_fields) do
-        Spark.Dsl.Extension.get_entities(__MODULE__, [:derived])
+        Spark.Dsl.Extension.get_entities(__MODULE__, [:derives])
+        |> Enum.map(&Lavash.LiveView.Compiler.normalize_derived/1)
       end
 
       def __lavash__(:actions) do
         Spark.Dsl.Extension.get_entities(__MODULE__, [:actions])
+      end
+
+      # Convenience accessors by storage type
+      def __lavash__(:socket_fields) do
+        __lavash__(:inputs) |> Enum.filter(&(&1.from == :socket))
+      end
+
+      def __lavash__(:ephemeral_fields) do
+        __lavash__(:inputs) |> Enum.filter(&(&1.from == :ephemeral))
       end
 
       # Empty fields for LiveView-only features (components don't have these)

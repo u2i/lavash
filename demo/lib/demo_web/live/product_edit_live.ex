@@ -12,36 +12,38 @@ defmodule DemoWeb.ProductEditLive do
   alias Demo.Catalog
   alias Demo.Catalog.Product
 
-  state do
-    url do
-      field :product_id, :integer
-    end
+  # Inputs - mutable state with storage location
+  input :product_id, :integer, from: :url
+  input :submitting, :boolean, from: :ephemeral, default: false
 
-    ephemeral do
-      field :submitting, :boolean, default: false
-    end
-  end
-
-  derived do
-    # Load product if id provided, nil for new
-    field :product, depends_on: [:product_id], async: true, compute: fn %{product_id: id} ->
+  # Derive product from product_id
+  derive :product do
+    async true
+    argument :id, input(:product_id)
+    run fn %{id: id}, _ ->
       case id do
         nil -> nil
         id -> Catalog.get_product(id)
       end
     end
+  end
 
-    # Derive whether this is a new product for UI display
-    field :is_new, depends_on: [:product], compute: fn
-      %{product: nil} -> true
-      %{product: %{id: nil}} -> true
-      %{product: _} -> false
+  # Derive whether this is a new product for UI display
+  derive :is_new do
+    argument :product, result(:product)
+    run fn %{product: product}, _ ->
+      case product do
+        nil -> true
+        %{id: nil} -> true
+        _ -> false
+      end
     end
   end
 
-  # Top-level form declaration - handles params capture, changeset building
-  forms do
-    form :form, resource: Product, load: :product
+  # Top-level form declaration with argument-based dependency
+  load_form :form do
+    resource Product
+    argument :record, result(:product)
   end
 
   # Declarative form submission with error handling

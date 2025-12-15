@@ -3,16 +3,39 @@ defmodule Lavash.Component.Dsl do
   The Spark DSL extension for Lavash Components.
 
   Similar to Lavash.Dsl but for LiveComponents:
-  - Props (from parent, read-only)
-  - Socket state (survives reconnects, namespaced by component ID)
-  - Ephemeral state (lost on reconnect)
-  - Derived state
-  - Actions
+  - `prop` - passed from parent (read-only)
+  - `input` - internal state (socket or ephemeral)
+  - `derive` - computed from props and state
+  - `actions` - state transformers
 
   All declared fields are automatically projected as assigns.
+
+  Example:
+      defmodule MyApp.ProductCard do
+        use Lavash.Component
+
+        prop :product, :map, required: true
+        prop :on_click, :any
+
+        input :expanded, :boolean, from: :ephemeral, default: false
+
+        derive :display_price do
+          argument :product, input(:product)
+          run fn %{product: p}, _ -> format_price(p.price) end
+        end
+
+        actions do
+          action :toggle_expand do
+            update :expanded, &(!&1)
+          end
+        end
+      end
   """
 
+  # ============================================
   # Props - passed from parent
+  # ============================================
+
   @prop_entity %Spark.Dsl.Entity{
     name: :prop,
     target: Lavash.Component.Prop,
@@ -42,110 +65,107 @@ defmodule Lavash.Component.Dsl do
 
   @props_section %Spark.Dsl.Section{
     name: :props,
+    top_level?: true,
     describe: "Props passed from the parent. Read-only from the component's perspective.",
     entities: [@prop_entity]
   }
 
-  # Socket state - survives reconnects
-  @socket_field %Spark.Dsl.Entity{
-    name: :field,
-    target: Lavash.State.SocketField,
+  # ============================================
+  # Input - internal mutable state
+  # ============================================
+
+  @input_entity %Spark.Dsl.Entity{
+    name: :input,
+    target: Lavash.Input,
     args: [:name, :type],
     schema: [
       name: [
         type: :atom,
         required: true,
-        doc: "The name of the field"
+        doc: "The name of the input field"
       ],
       type: [
         type: :any,
         required: true,
         doc: "The type of the field"
       ],
+      from: [
+        type: {:one_of, [:socket, :ephemeral]},
+        default: :ephemeral,
+        doc: "Where to store: :socket (survives reconnects) or :ephemeral (socket only)"
+      ],
       default: [
         type: :any,
-        doc: "Default value for this field"
+        doc: "Default value when not present"
       ]
     ]
   }
 
-  # Ephemeral state - lost on reconnect
-  @ephemeral_field %Spark.Dsl.Entity{
-    name: :field,
-    target: Lavash.State.EphemeralField,
-    args: [:name, :type],
+  @inputs_section %Spark.Dsl.Section{
+    name: :inputs,
+    top_level?: true,
+    describe: "Internal mutable state (socket or ephemeral).",
+    entities: [@input_entity]
+  }
+
+  # ============================================
+  # Derive - computed values
+  # ============================================
+
+  @argument_entity %Spark.Dsl.Entity{
+    name: :argument,
+    target: Lavash.Argument,
+    args: [:name, :source],
     schema: [
       name: [
         type: :atom,
         required: true,
-        doc: "The name of the field"
+        doc: "The name of the argument (key in the deps map passed to run)"
       ],
-      type: [
+      source: [
         type: :any,
         required: true,
-        doc: "The type of the field"
-      ],
-      default: [
-        type: :any,
-        doc: "Default value for this field"
+        doc: "The source: input(:field) or result(:derive_name)"
       ]
     ]
   }
 
-  @socket_section %Spark.Dsl.Section{
-    name: :socket,
-    describe: "Socket state. Survives reconnects via JS sync, namespaced by component ID.",
-    entities: [@socket_field]
-  }
-
-  @ephemeral_section %Spark.Dsl.Section{
-    name: :ephemeral,
-    describe: "Ephemeral state. Lost on reconnect.",
-    entities: [@ephemeral_field]
-  }
-
-  @state_section %Spark.Dsl.Section{
-    name: :state,
-    describe: "Define the internal state for this component.",
-    sections: [@socket_section, @ephemeral_section]
-  }
-
-  # Derived state
-  @derived_field %Spark.Dsl.Entity{
-    name: :field,
+  @derive_entity %Spark.Dsl.Entity{
+    name: :derive,
     target: Lavash.Derived.Field,
     args: [:name],
+    entities: [
+      arguments: [@argument_entity]
+    ],
     schema: [
       name: [
         type: :atom,
         required: true,
         doc: "The name of the derived field"
       ],
-      depends_on: [
-        type: {:list, :atom},
-        required: true,
-        doc: "List of props/state/derived fields this depends on"
-      ],
       async: [
         type: :boolean,
         default: false,
         doc: "Whether this computation is async"
       ],
-      compute: [
-        type: {:fun, 1},
-        required: true,
-        doc: "Function that computes the derived value"
+      run: [
+        type: {:fun, 2},
+        doc: "Function that computes the value: fn %{arg1: val1, ...}, context -> result end"
       ]
     ]
   }
 
-  @derived_section %Spark.Dsl.Section{
-    name: :derived,
-    describe: "Derived state computed from props and internal state.",
-    entities: [@derived_field]
+  @derives_section %Spark.Dsl.Section{
+    name: :derives,
+    top_level?: true,
+    describe: "Derived values computed from props and internal state.",
+    entities: [@derive_entity]
   }
 
-  # Actions
+  # ============================================
+  # Actions - state transformers
+  # ============================================
+
   @set_entity %Spark.Dsl.Entity{
     name: :set,
     target: Lavash.Actions.Set,
@@ -229,7 +249,11 @@ defmodule Lavash.Component.Dsl do
     entities: [@action_entity]
   }
 
+  # ============================================
+  # Extension setup
+  # ============================================
+
   use Spark.Dsl.Extension,
-    sections: [@props_section, @state_section, @derived_section, @actions_section],
-    imports: [Phoenix.Component]
+    sections: [@props_section, @inputs_section, @derives_section, @actions_section],
+    imports: [Phoenix.Component, Lavash.DslHelpers]
 end

@@ -4,17 +4,22 @@ defmodule Lavash.Form.Section do
 
   A form encapsulates the full lifecycle of editing an Ash resource:
   - Captures params from events (implicitly creates ephemeral state)
-  - Depends on a loaded record (from derived state)
+  - Depends on a loaded record via argument declarations
   - Builds changesets for create/update
   - Provides Phoenix.HTML.Form for rendering
   - Supports submission via actions
+
+  Example:
+      form :form, resource: Product do
+        argument :record, result(:product)
+      end
   """
 
   defstruct [
     :name,
     :resource,
-    :load,
     :from,
+    arguments: [],
     create: :create,
     update: :update,
     __spark_metadata__: nil

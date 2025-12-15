@@ -13,9 +13,9 @@ defmodule DemoWeb.ComponentsDemoLive do
   alias Demo.Catalog
   alias DemoWeb.ProductCard
 
-  # Derived with empty deps = computed once on mount
-  derived do
-    field :products, compute: fn _deps ->
+  # Derive products (computed once on mount - no arguments)
+  derive :products do
+    run fn _, _ ->
       Catalog.list_products(%{}) |> Enum.take(6)
     end
   end

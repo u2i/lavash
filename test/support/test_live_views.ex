@@ -4,26 +4,13 @@ defmodule Lavash.TestCounterLive do
   """
   use Lavash.LiveView
 
-  state do
-    url do
-      field :count, :integer, default: 0
-    end
+  input :count, :integer, from: :url, default: 0
+  input :multiplier, :integer, from: :ephemeral, default: 2
 
-    ephemeral do
-      field :multiplier, :integer, default: 2
-    end
-  end
-
-  derived do
-    field :doubled, depends_on: [:count, :multiplier], compute: fn %{count: c, multiplier: m} ->
-      c * m
-    end
-  end
-
-  assigns do
-    assign :count
-    assign :multiplier
-    assign :doubled
+  derive :doubled do
+    argument :count, input(:count)
+    argument :multiplier, input(:multiplier)
+    run fn %{count: c, multiplier: m}, _ -> c * m end
   end
 
   actions do
@@ -64,31 +51,21 @@ defmodule Lavash.TestChainedDerivedLive do
   """
   use Lavash.LiveView
 
-  state do
-    url do
-      field :count, :integer, default: 1
-    end
+  input :count, :integer, from: :url, default: 1
+
+  derive :doubled do
+    argument :count, input(:count)
+    run fn %{count: c}, _ -> c * 2 end
   end
 
-  derived do
-    field :doubled, depends_on: [:count], compute: fn %{count: c} ->
-      c * 2
-    end
-
-    field :quadrupled, depends_on: [:doubled], compute: fn %{doubled: d} ->
-      d * 2
-    end
-
-    field :octupled, depends_on: [:quadrupled], compute: fn %{quadrupled: q} ->
-      q * 2
-    end
+  derive :quadrupled do
+    argument :doubled, result(:doubled)
+    run fn %{doubled: d}, _ -> d * 2 end
   end
 
-  assigns do
-    assign :count
-    assign :doubled
-    assign :quadrupled
-    assign :octupled
+  derive :octupled do
+    argument :quadrupled, result(:quadrupled)
+    run fn %{quadrupled: q}, _ -> q * 2 end
   end
 
   actions do
@@ -122,31 +99,21 @@ defmodule Lavash.TestChainedEphemeralLive do
   """
   use Lavash.LiveView
 
-  state do
-    ephemeral do
-      field :base, :integer, default: 1
-    end
+  input :base, :integer, from: :ephemeral, default: 1
+
+  derive :doubled do
+    argument :base, input(:base)
+    run fn %{base: b}, _ -> b * 2 end
   end
 
-  derived do
-    field :doubled, depends_on: [:base], compute: fn %{base: b} ->
-      b * 2
-    end
-
-    field :quadrupled, depends_on: [:doubled], compute: fn %{doubled: d} ->
-      d * 2
-    end
-
-    field :octupled, depends_on: [:quadrupled], compute: fn %{quadrupled: q} ->
-      q * 2
-    end
+  derive :quadrupled do
+    argument :doubled, result(:doubled)
+    run fn %{doubled: d}, _ -> d * 2 end
   end
 
-  assigns do
-    assign :base
-    assign :doubled
-    assign :quadrupled
-    assign :octupled
+  derive :octupled do
+    argument :quadrupled, result(:quadrupled)
+    run fn %{quadrupled: q}, _ -> q * 2 end
   end
 
   actions do
@@ -175,28 +142,23 @@ defmodule Lavash.TestAsyncChainLive do
   """
   use Lavash.LiveView
 
-  state do
-    url do
-      field :count, :integer, default: 1
-    end
-  end
+  input :count, :integer, from: :url, default: 1
 
-  derived do
-    field :doubled, depends_on: [:count], async: true, compute: fn %{count: c} ->
+  derive :doubled do
+    async true
+    argument :count, input(:count)
+    run fn %{count: c}, _ ->
       Process.sleep(50)
       c * 2
     end
+  end
 
-    field :quadrupled, depends_on: [:doubled], compute: fn %{doubled: d} ->
+  derive :quadrupled do
+    argument :doubled, result(:doubled)
+    run fn %{doubled: d}, _ ->
       # d will be the raw value (unwrapped from {:ok, value})
       d * 2
     end
-  end
-
-  assigns do
-    assign :count
-    assign :doubled
-    assign :quadrupled
   end
 
   actions do
@@ -236,17 +198,8 @@ defmodule Lavash.TestPathParamLive do
   """
   use Lavash.LiveView
 
-  state do
-    url do
-      field :product_id, :integer
-      field :tab, :string, default: "details"
-    end
-  end
-
-  assigns do
-    assign :product_id
-    assign :tab
-  end
+  input :product_id, :integer, from: :url
+  input :tab, :string, from: :url, default: "details"
 
   actions do
     action :set_product, [:id] do
@@ -280,21 +233,10 @@ defmodule Lavash.TestTypedLive do
   """
   use Lavash.LiveView
 
-  state do
-    url do
-      field :page, :integer, default: 1
-      field :active, :boolean, default: false
-      field :query, :string, default: ""
-      field :tags, {:array, :string}, default: []
-    end
-  end
-
-  assigns do
-    assign :page
-    assign :active
-    assign :query
-    assign :tags
-  end
+  input :page, :integer, from: :url, default: 1
+  input :active, :boolean, from: :url, default: false
+  input :query, :string, from: :url, default: ""
+  input :tags, {:array, :string}, from: :url, default: []
 
   actions do
     action :set_page, [:value] do
