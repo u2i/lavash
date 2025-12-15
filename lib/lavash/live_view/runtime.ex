@@ -165,8 +165,10 @@ defmodule Lavash.LiveView.Runtime do
 
     Enum.reduce(forms, socket, fn form, sock ->
       params_field = :"#{form.name}_params"
+      # Use the form name as the params namespace (e.g., "form" for :form input)
+      param_key = to_string(form.name)
 
-      case Map.get(params, form.from) do
+      case Map.get(params, param_key) do
         nil ->
           sock
 

@@ -52,8 +52,9 @@ defmodule Lavash.LiveView.Compiler do
         |> Enum.map(&Lavash.LiveView.Compiler.normalize_derived/1)
       end
 
+      # Form inputs - inputs with type :form
       def __lavash__(:forms) do
-        Spark.Dsl.Extension.get_entities(__MODULE__, [:forms])
+        __lavash__(:inputs) |> Enum.filter(&(&1.type == :form))
       end
 
       def __lavash__(:actions) do

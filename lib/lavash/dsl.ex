@@ -5,10 +5,12 @@ defmodule Lavash.Dsl do
   Provides declarative state management with Reactor-inspired syntax:
   - `input` - mutable state with storage location (url, socket, ephemeral)
   - `derive` - computed values from inputs/other derivations
-  - `load_form` - Ash resource editing
   - `actions` - state transformers
 
   All declared fields are automatically projected as assigns.
+
+  Forms are a special input type that initialize from a dependency:
+  - `input :form, :form, resource: Product, from: result(:product)`
 
   Example:
       defmodule MyApp.ProductEditLive do
@@ -22,10 +24,8 @@ defmodule Lavash.Dsl do
           run fn %{id: id}, _ -> Catalog.get_product(id) end
         end
 
-        load_form :form do
-          resource Product
-          argument :record, result(:product)
-        end
+        # Form initializes from :product, then lives as mutable state
+        input :form, :form, resource: Product, from: result(:product)
 
         actions do
           action :save do
@@ -53,12 +53,12 @@ defmodule Lavash.Dsl do
       type: [
         type: :any,
         required: true,
-        doc: "The type of the field (:string, :integer, :boolean, :map, {:array, type})"
+        doc: "The type of the field (:string, :integer, :boolean, :map, :form, {:array, type})"
       ],
       from: [
-        type: {:one_of, [:url, :socket, :ephemeral]},
+        type: :any,
         default: :ephemeral,
-        doc: "Where to store the state: :url (synced with URL), :socket (survives reconnects), :ephemeral (socket only)"
+        doc: "Where to store/init from: :url, :socket, :ephemeral, or result(:x)/input(:x) for forms"
       ],
       default: [
         type: :any,
@@ -76,6 +76,21 @@ defmodule Lavash.Dsl do
       decode: [
         type: {:fun, 1},
         doc: "Custom decoder function from URL params"
+      ],
+      # Form-specific options (only for type: :form)
+      resource: [
+        type: :atom,
+        doc: "The Ash resource module (required for :form type)"
+      ],
+      create: [
+        type: :atom,
+        default: :create,
+        doc: "The create action name (for :form type)"
+      ],
+      update: [
+        type: :atom,
+        default: :update,
+        doc: "The update action name (for :form type)"
       ]
     ]
   }
@@ -139,71 +154,6 @@ defmodule Lavash.Dsl do
     top_level?: true,
     describe: "Derived values computed from inputs or other derivations.",
     entities: [@derive_entity]
-  }
-
-  # ============================================
-  # Form - Ash resource editing
-  # ============================================
-
-  @form_argument_entity %Spark.Dsl.Entity{
-    name: :argument,
-    target: Lavash.Argument,
-    args: [:name, :source],
-    schema: [
-      name: [
-        type: :atom,
-        required: true,
-        doc: "The name of the argument (typically :record for the loaded record)"
-      ],
-      source: [
-        type: :any,
-        required: true,
-        doc: "The source: input(:field) or result(:derive_name)"
-      ]
-    ]
-  }
-
-  @form_entity %Spark.Dsl.Entity{
-    name: :load_form,
-    target: Lavash.Form.Section,
-    args: [:name],
-    entities: [
-      arguments: [@form_argument_entity]
-    ],
-    schema: [
-      name: [
-        type: :atom,
-        required: true,
-        doc: "The name of the form (becomes the assign name)"
-      ],
-      resource: [
-        type: :atom,
-        required: true,
-        doc: "The Ash resource module"
-      ],
-      from: [
-        type: :string,
-        default: "form",
-        doc: "The form namespace in event params"
-      ],
-      create: [
-        type: :atom,
-        default: :create,
-        doc: "The create action name"
-      ],
-      update: [
-        type: :atom,
-        default: :update,
-        doc: "The update action name"
-      ]
-    ]
-  }
-
-  @forms_section %Spark.Dsl.Section{
-    name: :forms,
-    top_level?: true,
-    describe: "Forms for editing Ash resources.",
-    entities: [@form_entity]
   }
 
   # ============================================
@@ -349,6 +299,6 @@ defmodule Lavash.Dsl do
   # ============================================
 
   use Spark.Dsl.Extension,
-    sections: [@inputs_section, @derives_section, @forms_section, @actions_section],
+    sections: [@inputs_section, @derives_section, @actions_section],
     imports: [Phoenix.Component, Lavash.DslHelpers]
 end

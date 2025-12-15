@@ -7,6 +7,11 @@ defmodule Lavash.Input do
   - `:socket` - survives reconnects via JS sync, lost on page refresh
   - `:ephemeral` - socket-only, lost on disconnect
 
+  For `:form` type inputs, additional options:
+  - `resource` - the Ash resource module
+  - `init_from` - dependency for initialization (e.g., `result(:product)`)
+  - `create` / `update` - action names for create/update operations
+
   Inspired by Reactor's `input` declarations.
   """
 
@@ -18,6 +23,11 @@ defmodule Lavash.Input do
     :required,
     :encode,
     :decode,
+    # Form-specific options
+    :resource,
+    :init_from,
+    :create,
+    :update,
     __spark_metadata__: nil
   ]
 end

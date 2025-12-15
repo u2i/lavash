@@ -23,20 +23,20 @@ defmodule Lavash.Graph do
     end)
   end
 
-  # Expand form declarations into derived-like field structs
+  # Expand form inputs into derived-like field structs
   defp expand_forms(module) do
     forms = module.__lavash__(:forms)
 
     Enum.map(forms, fn form ->
       params_field = :"#{form.name}_params"
 
-      # Extract record dependency from arguments
-      record_dep = extract_record_dependency(form.arguments || [])
+      # Extract init_from dependency
+      init_dep = extract_init_dependency(form.from)
 
-      # Build depends_on list: always include params_field, plus any argument dependencies
+      # Build depends_on list: always include params_field, plus init dependency
       depends_on =
-        if record_dep do
-          [record_dep, params_field]
+        if init_dep do
+          [init_dep, params_field]
         else
           [params_field]
         end
@@ -47,28 +47,27 @@ defmodule Lavash.Graph do
         async: false,
         compute: fn deps ->
           params = Map.get(deps, params_field, %{})
-          record = if record_dep, do: Map.get(deps, record_dep), else: nil
+          record = if init_dep, do: Map.get(deps, init_dep), else: nil
 
           Lavash.Form.for_resource(form.resource, record, params,
-            create: form.create,
-            update: form.update
+            create: form.create || :create,
+            update: form.update || :update
           )
         end
       }
     end)
   end
 
-  # Extract the record dependency from form arguments
-  defp extract_record_dependency(arguments) do
-    # Look for an argument named :record (convention for forms)
-    case Enum.find(arguments, &(&1.name == :record)) do
+  # Extract the init dependency from form's from option
+  defp extract_init_dependency(from) do
+    case from do
+      {:input, name} -> name
+      {:result, name} -> name
+      # Regular storage locations don't have init deps
+      :url -> nil
+      :socket -> nil
+      :ephemeral -> nil
       nil -> nil
-      arg ->
-        case arg.source do
-          {:input, name} -> name
-          {:result, name} -> name
-          name when is_atom(name) -> name
-        end
     end
   end
 

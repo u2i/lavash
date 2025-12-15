@@ -40,11 +40,8 @@ defmodule DemoWeb.ProductEditLive do
     end
   end
 
-  # Top-level form declaration with argument-based dependency
-  load_form :form do
-    resource Product
-    argument :record, result(:product)
-  end
+  # Form as input - initializes from :product, then lives as mutable state
+  input :form, :form, resource: Product, from: result(:product)
 
   # Declarative form submission with error handling
   actions do
