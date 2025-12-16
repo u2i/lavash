@@ -50,6 +50,15 @@ defmodule Lavash.Component do
         end
       end
 
+  ## Extensions
+
+  You can add behavior plugins via the `extensions` option:
+
+      use Lavash.Component, extensions: [Lavash.Modal]
+
+  Available extensions:
+  - `Lavash.Modal` - Adds modal behavior (open/close state, escape handling, etc.)
+
   ## State Types
 
   - **props** - Passed from parent, read-only
@@ -64,11 +73,30 @@ defmodule Lavash.Component do
   @impl Spark.Dsl
   def handle_opts(opts) do
     quote do
-      use Phoenix.LiveComponent, unquote(opts)
+      use Phoenix.LiveComponent, unquote(Keyword.drop(opts, [:extensions]))
+
       require Phoenix.Component
       import Phoenix.Component
 
       @before_compile Lavash.Component.Compiler
+    end
+  end
+
+  @impl Spark.Dsl
+  def handle_before_compile(opts) do
+    extensions = Keyword.get(opts, :extensions, [])
+
+    # Add extension DSLs to the list
+    extension_list =
+      Enum.flat_map(extensions, fn
+        Lavash.Modal -> [Lavash.Modal.Dsl]
+        other -> [other]
+      end)
+
+    if extension_list != [] do
+      [single_extension_kinds: [:extensions], extensions: extension_list]
+    else
+      []
     end
   end
 end
