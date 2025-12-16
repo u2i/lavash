@@ -22,6 +22,19 @@ defmodule Lavash.DslHelpers do
   end
 
   @doc """
+  Reference a prop field as a dependency source (for components).
+
+  ## Example
+
+      read :product, Product do
+        id prop(:product_id)
+      end
+  """
+  def prop(field_name) when is_atom(field_name) do
+    {:prop, field_name}
+  end
+
+  @doc """
   Reference a derived field's result as a dependency source.
 
   ## Example

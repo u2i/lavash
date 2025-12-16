@@ -10,5 +10,5 @@ defmodule Lavash.Actions.Action do
   - `navigate` - Navigate to a URL on success
   - `flash` - Show a flash message on success
   """
-  defstruct [:name, :params, :when, :sets, :updates, :effects, :submits, :navigates, :flashes, __spark_metadata__: nil]
+  defstruct [:name, :params, :when, :sets, :updates, :effects, :submits, :navigates, :flashes, :notify_parents, __spark_metadata__: nil]
 end

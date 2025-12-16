@@ -199,6 +199,23 @@ defmodule Lavash.LiveView.Runtime do
     {:noreply, socket}
   end
 
+  def handle_info(module, {:lavash_component_event, event, params}, socket) do
+    # Handle events sent from child Lavash components via notify_parent
+    # Treat this as if it were a handle_event call
+    handle_event(module, event, params, socket)
+  end
+
+  def handle_info(_module, {:lavash_component_async, component_module, component_id, field, result}, socket) do
+    # Handle async results for Lavash components
+    # Use send_update to deliver the result to the component
+    Phoenix.LiveView.send_update(self(), component_module, %{
+      id: component_id,
+      __lavash_async_result__: {field, result}
+    })
+
+    {:noreply, socket}
+  end
+
   def handle_info(_module, _msg, socket) do
     {:noreply, socket}
   end

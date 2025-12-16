@@ -107,11 +107,12 @@ defmodule Lavash.Graph do
     end)
   end
 
-  # Extract the field name from input(:x) or result(:x) tuples
+  # Extract the field name from input(:x), result(:x), or prop(:x) tuples
   defp extract_dependency(source) do
     case source do
       {:input, name} -> name
       {:result, name} -> name
+      {:prop, name} -> name
       name when is_atom(name) -> name
       nil -> nil
     end
@@ -220,10 +221,26 @@ defmodule Lavash.Graph do
       # Start async task
       self_pid = self()
 
-      Task.start(fn ->
-        result = field.compute.(deps)
-        send(self_pid, {:lavash_async, field.name, result})
-      end)
+      # Check if we're in a component context (has component_id in lavash state)
+      component_id = LSocket.get(socket, :component_id)
+
+      if component_id do
+        # For components, we need to use send_update to deliver async results
+        # Get the component module from socket assigns
+        component_module = socket.assigns[:__component_module__]
+
+        Task.start(fn ->
+          result = field.compute.(deps)
+          # Send update to the component via the LiveView process
+          send(self_pid, {:lavash_component_async, component_module, component_id, field.name, result})
+        end)
+      else
+        # For LiveViews, use the standard approach
+        Task.start(fn ->
+          result = field.compute.(deps)
+          send(self_pid, {:lavash_async, field.name, result})
+        end)
+      end
 
       LSocket.put_derived(socket, field.name, :loading)
     else

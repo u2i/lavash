@@ -90,6 +90,7 @@ defmodule Lavash.LiveView.Compiler do
         case arg.source do
           {:input, name} -> name
           {:result, name} -> name
+          {:prop, name} -> name
           name when is_atom(name) -> name
         end
       end)
@@ -102,6 +103,7 @@ defmodule Lavash.LiveView.Compiler do
           case arg.source do
             {:input, name} -> name
             {:result, name} -> name
+            {:prop, name} -> name
             name when is_atom(name) -> name
           end
         {arg.name, source_field}

@@ -24,6 +24,14 @@ defmodule Lavash.Component.Compiler do
         Spark.Dsl.Extension.get_entities(__MODULE__, [:inputs])
       end
 
+      def __lavash__(:reads) do
+        Spark.Dsl.Extension.get_entities(__MODULE__, [:reads])
+      end
+
+      def __lavash__(:forms) do
+        Spark.Dsl.Extension.get_entities(__MODULE__, [:forms])
+      end
+
       def __lavash__(:derived_fields) do
         Spark.Dsl.Extension.get_entities(__MODULE__, [:derives])
         |> Enum.map(&Lavash.LiveView.Compiler.normalize_derived/1)
@@ -42,9 +50,8 @@ defmodule Lavash.Component.Compiler do
         __lavash__(:inputs) |> Enum.filter(&(&1.from == :ephemeral))
       end
 
-      # Empty fields for LiveView-only features (components don't have these)
+      # Components don't have URL fields
       def __lavash__(:url_fields), do: []
-      def __lavash__(:forms), do: []
     end
   end
 end

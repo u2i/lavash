@@ -5,56 +5,127 @@ defmodule Lavash.Component.Runtime do
   Handles:
   - Props from parent
   - Internal socket/ephemeral state
+  - Read/form DSL (like LiveView)
   - Derived state computation
-  - Action execution
+  - Action execution (including submit, notify_parent)
   - Assign projection
   """
 
   alias Lavash.Graph
   alias Lavash.Assigns
+  alias Lavash.State
   alias Lavash.Socket, as: LSocket
 
   def update(module, assigns, socket) do
-    socket =
-      if first_mount?(socket) do
-        # First mount - initialize everything
-        socket
-        |> init_lavash_state(module, assigns)
-        |> hydrate_socket_state(module, assigns)
-        |> hydrate_ephemeral(module)
-        |> store_props(module, assigns)
-        |> preserve_livecomponent_assigns(assigns)
-        |> Graph.recompute_all(module)
-        |> Assigns.project(module)
-      else
-        # Subsequent update - just update props and recompute
-        socket
-        |> store_props(module, assigns)
-        |> preserve_livecomponent_assigns(assigns)
-        |> Graph.recompute_all(module)
-        |> Assigns.project(module)
-      end
+    # Check if this is an async result delivery
+    case Map.get(assigns, :__lavash_async_result__) do
+      {field, result} ->
+        # Handle async result delivery
+        normalized =
+          case result do
+            {:ok, _} -> result
+            {:error, _} -> result
+            value -> {:ok, value}
+          end
 
-    {:ok, socket}
+        socket =
+          socket
+          |> LSocket.put_derived(field, normalized)
+          |> Graph.recompute_dependents(module, field)
+          |> Assigns.project(module)
+
+        {:ok, socket}
+
+      nil ->
+        # Normal update
+        socket =
+          if first_mount?(socket) do
+            # First mount - initialize everything
+            socket
+            |> init_lavash_state(module, assigns)
+            |> hydrate_socket_state(module, assigns)
+            |> hydrate_ephemeral(module)
+            |> State.hydrate_forms(module)
+            |> store_props(module, assigns)
+            |> preserve_livecomponent_assigns(module, assigns)
+            |> Graph.recompute_all(module)
+            |> Assigns.project(module)
+          else
+            # Subsequent update - store props (marks changed props as dirty)
+            socket = store_props(socket, module, assigns)
+            socket = preserve_livecomponent_assigns(socket, module, assigns)
+
+            # Recompute any derived fields affected by dirty props
+            socket =
+              if LSocket.dirty?(socket) do
+                Graph.recompute_dirty(socket, module)
+              else
+                socket
+              end
+
+            Assigns.project(socket, module)
+          end
+
+        {:ok, socket}
+    end
   end
 
   def handle_event(module, event, params, socket) do
+    # First, check for form bindings and update state if params match
+    socket = apply_form_bindings(socket, module, params)
+
     action_name = String.to_existing_atom(event)
     actions = module.__lavash__(:actions)
 
     case Enum.find(actions, &(&1.name == action_name)) do
       nil ->
-        {:noreply, socket}
+        # No matching action - but form bindings may have updated state
+        if LSocket.dirty?(socket) do
+          socket =
+            socket
+            |> Graph.recompute_dirty(module)
+            |> Assigns.project(module)
+
+          {:noreply, socket}
+        else
+          {:noreply, socket}
+        end
 
       action ->
-        socket =
-          socket
-          |> execute_action(module, action, params)
-          |> maybe_sync_socket_state(module)
-          |> Graph.recompute_dirty(module)
-          |> Assigns.project(module)
+        case execute_action(socket, module, action, params) do
+          {:ok, socket, notify_events} ->
+            socket =
+              socket
+              |> maybe_sync_socket_state(module)
+              |> Graph.recompute_dirty(module)
+              |> Assigns.project(module)
+              |> apply_notify_parents(notify_events)
 
-        {:noreply, socket}
+            {:noreply, socket}
+
+          {:error, socket, on_error_action} ->
+            # Action failed with on_error - trigger the error action
+            actions = module.__lavash__(:actions)
+            error_action = Enum.find(actions, &(&1.name == on_error_action))
+
+            socket =
+              if error_action do
+                case execute_action(socket, module, error_action, params) do
+                  {:ok, sock, _notify} -> sock
+                  {:error, sock, _} -> sock
+                end
+              else
+                socket
+              end
+
+            socket =
+              socket
+              |> maybe_sync_socket_state(module)
+              |> Graph.recompute_dirty(module)
+              |> Assigns.project(module)
+
+            {:noreply, socket}
+        end
     end
   end
 
@@ -105,10 +176,12 @@ defmodule Lavash.Component.Runtime do
     LSocket.put(socket, :state, state)
   end
 
-  defp preserve_livecomponent_assigns(socket, assigns) do
-    # Preserve LiveComponent built-in assigns
+  defp preserve_livecomponent_assigns(socket, module, assigns) do
+    # Preserve LiveComponent built-in assigns and store the module for async callbacks
     # Note: :myself is reserved and auto-assigned by LiveView, so we don't set it
-    Phoenix.Component.assign(socket, :id, Map.get(assigns, :id))
+    socket
+    |> Phoenix.Component.assign(:id, Map.get(assigns, :id))
+    |> Phoenix.Component.assign(:__component_module__, module)
   end
 
   defp hydrate_ephemeral(socket, module) do
@@ -128,6 +201,7 @@ defmodule Lavash.Component.Runtime do
 
   defp store_props(socket, module, assigns) do
     props = module.__lavash__(:props)
+    old_props = LSocket.get(socket, :props) || %{}
 
     prop_values =
       Enum.reduce(props, %{}, fn prop, acc ->
@@ -139,6 +213,17 @@ defmodule Lavash.Component.Runtime do
           end
 
         Map.put(acc, prop.name, value)
+      end)
+
+    # Mark changed props as dirty so derived fields get recomputed
+    socket =
+      Enum.reduce(prop_values, socket, fn {name, new_value}, sock ->
+        old_value = Map.get(old_props, name)
+        if old_value != new_value do
+          LSocket.update(sock, :dirty, &MapSet.put(&1, name))
+        else
+          sock
+        end
       end)
 
     # Store props separately and also merge into state for derived field access
@@ -153,20 +238,48 @@ defmodule Lavash.Component.Runtime do
     LSocket.put(socket, :state, state)
   end
 
+  defp apply_form_bindings(socket, module, params) do
+    forms = module.__lavash__(:forms)
+
+    Enum.reduce(forms, socket, fn form, sock ->
+      params_field = :"#{form.name}_params"
+      # Use the form name as the params namespace (e.g., "form" for :form input)
+      param_key = to_string(form.name)
+
+      case Map.get(params, param_key) do
+        nil ->
+          sock
+
+        form_params when is_map(form_params) ->
+          LSocket.put_state(sock, params_field, form_params)
+
+        _ ->
+          sock
+      end
+    end)
+  end
+
   defp execute_action(socket, module, action, event_params) do
     params =
-      Enum.reduce(action.params, %{}, fn param, acc ->
+      Enum.reduce(action.params || [], %{}, fn param, acc ->
         key = to_string(param)
         Map.put(acc, param, Map.get(event_params, key))
       end)
 
     if guards_pass?(socket, module, action.when) do
-      socket
-      |> apply_sets(action.sets || [], params)
-      |> apply_updates(action.updates || [], params)
-      |> apply_effects(action.effects || [], params)
+      socket =
+        socket
+        |> apply_sets(action.sets || [], params)
+        |> apply_updates(action.updates || [], params)
+        |> apply_effects(action.effects || [], params)
+
+      # Collect notify_parent events to execute after state updates
+      notify_events = collect_notify_events(socket, module, action.notify_parents || [])
+
+      # Handle submits - these can fail and trigger on_error
+      apply_submits(socket, module, action.submits || [], notify_events)
     else
-      socket
+      {:ok, socket, []}
     end
   end
 
@@ -201,6 +314,104 @@ defmodule Lavash.Component.Runtime do
     state = LSocket.full_state(socket)
     Enum.each(effects, fn effect -> effect.fun.(state) end)
     socket
+  end
+
+  defp collect_notify_events(socket, _module, notify_parents) do
+    props = LSocket.get(socket, :props) || %{}
+
+    Enum.map(notify_parents, fn notify ->
+      # The event can be a prop name (atom) that references the event name stored in props,
+      # or a literal string event name
+      case notify.event do
+        name when is_binary(name) ->
+          # Literal string event name
+          name
+
+        prop_name when is_atom(prop_name) ->
+          # Reference to a prop that holds the event name
+          Map.get(props, prop_name)
+      end
+    end)
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp apply_notify_parents(socket, []) do
+    socket
+  end
+
+  defp apply_notify_parents(socket, [event | rest]) do
+    # Send event to parent LiveView by sending a message to self()
+    # Since the LiveComponent runs in the same process as the parent LiveView,
+    # this will be handled by the parent's handle_info callback
+    send(self(), {:lavash_component_event, event, %{}})
+
+    apply_notify_parents(socket, rest)
+  end
+
+  defp apply_submits(socket, _module, [], notify_events) do
+    {:ok, socket, notify_events}
+  end
+
+  defp apply_submits(socket, module, [submit | rest], notify_events) do
+    # Recompute derived state to get the latest form
+    socket = Graph.recompute_dirty(socket, module)
+
+    # Get the form from derived state
+    raw_form = LSocket.derived(socket)[submit.field]
+
+    # Handle the form value - it might be wrapped in {:ok, form} from async
+    form =
+      case raw_form do
+        {:ok, f} -> f
+        f -> f
+      end
+
+    # Use Lavash.Form.submit which handles Lavash.Form, Ash.Changeset,
+    # AshPhoenix.Form, and Phoenix.HTML.Form
+    result = Lavash.Form.submit(form)
+
+    case result do
+      {:ok, _result} ->
+        # Success - trigger on_success action if specified, then continue with remaining submits
+        socket =
+          if submit.on_success do
+            actions = module.__lavash__(:actions)
+            success_action = Enum.find(actions, &(&1.name == submit.on_success))
+
+            if success_action do
+              case execute_action(socket, module, success_action, %{}) do
+                {:ok, sock, more_notify} ->
+                  # Accumulate notify events from success action
+                  apply_notify_parents(sock, more_notify)
+                {:error, sock, _err} -> sock
+              end
+            else
+              socket
+            end
+          else
+            socket
+          end
+
+        apply_submits(socket, module, rest, notify_events)
+
+      {:error, :loading} ->
+        # Form is still loading - this shouldn't happen if UI is correct
+        # but handle gracefully by triggering on_error
+        if submit.on_error do
+          {:error, socket, submit.on_error}
+        else
+          {:ok, socket, notify_events}
+        end
+
+      {:error, _form_with_errors} ->
+        # Failure - trigger on_error action if specified
+        if submit.on_error do
+          {:error, socket, submit.on_error}
+        else
+          # No on_error handler, just return ok with current socket
+          {:ok, socket, notify_events}
+        end
+    end
   end
 
   defp maybe_sync_socket_state(socket, module) do

@@ -2,31 +2,53 @@ defmodule Lavash.Component.Dsl do
   @moduledoc """
   The Spark DSL extension for Lavash Components.
 
-  Similar to Lavash.Dsl but for LiveComponents:
+  Components have the same capabilities as LiveViews:
   - `prop` - passed from parent (read-only)
   - `input` - internal state (socket or ephemeral)
-  - `derive` - computed from props and state
-  - `actions` - state transformers
+  - `read` - async load an Ash resource by ID
+  - `form` - create an AshPhoenix.Form from a resource
+  - `derive` - computed from props, inputs, and results
+  - `actions` - state transformers with submit and notify_parent
 
   All declared fields are automatically projected as assigns.
 
   Example:
-      defmodule MyApp.ProductCard do
+      defmodule MyApp.ProductEditModal do
         use Lavash.Component
 
-        prop :product, :map, required: true
-        prop :on_click, :any
+        alias MyApp.Catalog.Product
 
-        input :expanded, :boolean, from: :ephemeral, default: false
+        # Props from parent
+        prop :product_id, :integer
+        prop :on_close, :string, required: true
+        prop :on_saved, :string, required: true
 
-        derive :display_price do
-          argument :product, input(:product)
-          run fn %{product: p}, _ -> format_price(p.price) end
+        # Internal state
+        input :submitting, :boolean, from: :ephemeral, default: false
+
+        # Load the product when product_id is set
+        read :product, Product do
+          id prop(:product_id)
+        end
+
+        # Form for editing
+        form :edit_form, Product do
+          data result(:product)
         end
 
         actions do
-          action :toggle_expand do
-            update :expanded, &(!&1)
+          action :save do
+            set :submitting, true
+            submit :edit_form, on_success: :save_success, on_error: :save_failed
+          end
+
+          action :save_success do
+            set :submitting, false
+            notify_parent :on_saved
+          end
+
+          action :save_failed do
+            set :submitting, false
           end
         end
       end
@@ -106,6 +128,97 @@ defmodule Lavash.Component.Dsl do
     top_level?: true,
     describe: "Internal mutable state (socket or ephemeral).",
     entities: [@input_entity]
+  }
+
+  # ============================================
+  # Read - async resource loading
+  # ============================================
+
+  @read_entity %Spark.Dsl.Entity{
+    name: :read,
+    target: Lavash.Read,
+    args: [:name, :resource],
+    schema: [
+      name: [
+        type: :atom,
+        required: true,
+        doc: "The name of the read result"
+      ],
+      resource: [
+        type: :atom,
+        required: true,
+        doc: "The Ash resource module to load"
+      ],
+      id: [
+        type: :any,
+        required: true,
+        doc: "The ID source: prop(:field), input(:field), or result(:derive)"
+      ],
+      action: [
+        type: :atom,
+        default: :read,
+        doc: "The read action to use"
+      ],
+      async: [
+        type: :boolean,
+        default: true,
+        doc: "Whether to load asynchronously"
+      ]
+    ]
+  }
+
+  @reads_section %Spark.Dsl.Section{
+    name: :reads,
+    top_level?: true,
+    describe: "Async resource loading by ID.",
+    entities: [@read_entity]
+  }
+
+  # ============================================
+  # Form - AshPhoenix.Form creation
+  # ============================================
+
+  @form_entity %Spark.Dsl.Entity{
+    name: :form,
+    target: Lavash.FormStep,
+    args: [:name, :resource],
+    schema: [
+      name: [
+        type: :atom,
+        required: true,
+        doc: "The name of the form"
+      ],
+      resource: [
+        type: :atom,
+        required: true,
+        doc: "The Ash resource module"
+      ],
+      data: [
+        type: :any,
+        doc: "The record source: result(:read_name). If nil, creates a create form."
+      ],
+      params: [
+        type: :any,
+        doc: "The params source: input(:form_params). Defaults to implicit :name_params."
+      ],
+      create: [
+        type: :atom,
+        default: :create,
+        doc: "The create action name"
+      ],
+      update: [
+        type: :atom,
+        default: :update,
+        doc: "The update action name"
+      ]
+    ]
+  }
+
+  @forms_section %Spark.Dsl.Section{
+    name: :forms,
+    top_level?: true,
+    describe: "AshPhoenix.Form creation with auto create/update detection.",
+    entities: [@form_entity]
   }
 
   # ============================================
@@ -215,6 +328,40 @@ defmodule Lavash.Component.Dsl do
     ]
   }
 
+  @submit_entity %Spark.Dsl.Entity{
+    name: :submit,
+    target: Lavash.Actions.Submit,
+    args: [:field],
+    schema: [
+      field: [
+        type: :atom,
+        required: true,
+        doc: "The form field to submit (must be a form)"
+      ],
+      on_success: [
+        type: :atom,
+        doc: "Action to trigger after successful submission"
+      ],
+      on_error: [
+        type: :atom,
+        doc: "Action to trigger on submission error"
+      ]
+    ]
+  }
+
+  @notify_parent_entity %Spark.Dsl.Entity{
+    name: :notify_parent,
+    target: Lavash.Actions.NotifyParent,
+    args: [:event],
+    schema: [
+      event: [
+        type: :any,
+        required: true,
+        doc: "The event to send to parent - can be a string (prop name) or atom (literal event)"
+      ]
+    ]
+  }
+
   @action_entity %Spark.Dsl.Entity{
     name: :action,
     target: Lavash.Actions.Action,
@@ -222,7 +369,9 @@ defmodule Lavash.Component.Dsl do
     entities: [
       sets: [@set_entity],
       updates: [@update_entity],
-      effects: [@effect_entity]
+      effects: [@effect_entity],
+      submits: [@submit_entity],
+      notify_parents: [@notify_parent_entity]
     ],
     schema: [
       name: [
@@ -254,6 +403,6 @@ defmodule Lavash.Component.Dsl do
   # ============================================
 
   use Spark.Dsl.Extension,
-    sections: [@props_section, @inputs_section, @derives_section, @actions_section],
+    sections: [@props_section, @inputs_section, @reads_section, @forms_section, @derives_section, @actions_section],
     imports: [Phoenix.Component, Lavash.DslHelpers]
 end
