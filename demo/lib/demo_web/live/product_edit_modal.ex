@@ -84,8 +84,8 @@ defmodule DemoWeb.ProductEditModal do
           phx-click="noop"
           phx-target={@myself}
         >
-          <%= cond do %>
-            <% @product == :loading -> %>
+          <.async_result :let={form} assign={@edit_form}>
+            <:loading>
               <div class="p-6">
                 <div class="animate-pulse">
                   <div class="h-6 bg-gray-200 rounded w-1/3 mb-4"></div>
@@ -94,132 +94,111 @@ defmodule DemoWeb.ProductEditModal do
                   <div class="h-10 bg-gray-200 rounded"></div>
                 </div>
               </div>
-
-            <% match?({:error, _}, @product) -> %>
-              <div class="p-6 text-center">
-                <p class="text-red-600">Failed to load product</p>
+            </:loading>
+            <div class="p-6">
+              <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xl font-bold">Edit Product</h2>
                 <button
                   phx-click="close"
                   phx-target={@myself}
-                  class="mt-4 text-gray-600 hover:text-gray-800"
+                  class="text-gray-400 hover:text-gray-600"
                 >
-                  Close
+                  &times;
                 </button>
               </div>
 
-            <% is_struct(@edit_form, Phoenix.HTML.Form) -> %>
-              <div class="p-6">
-                <div class="flex items-center justify-between mb-4">
-                  <h2 class="text-xl font-bold">Edit Product</h2>
+              <.form for={form} phx-change="validate" phx-submit="save" phx-target={@myself} class="space-y-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                  <input
+                    type="text"
+                    name={form[:name].name}
+                    value={form[:name].value}
+                    class={[
+                      "w-full px-3 py-2 border rounded-md",
+                      form[:name].errors != [] && "border-red-500"
+                    ]}
+                  />
+                  <.field_error :for={error <- form[:name].errors}>{translate_error(error)}</.field_error>
+                </div>
+
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                  <input
+                    type="text"
+                    name={form[:category].name}
+                    value={form[:category].value}
+                    class={[
+                      "w-full px-3 py-2 border rounded-md",
+                      form[:category].errors != [] && "border-red-500"
+                    ]}
+                  />
+                  <.field_error :for={error <- form[:category].errors}>{translate_error(error)}</.field_error>
+                </div>
+
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Price</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    name={form[:price].name}
+                    value={form[:price].value}
+                    class={[
+                      "w-full px-3 py-2 border rounded-md",
+                      form[:price].errors != [] && "border-red-500"
+                    ]}
+                  />
+                  <.field_error :for={error <- form[:price].errors}>{translate_error(error)}</.field_error>
+                </div>
+
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Rating</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="5"
+                    name={form[:rating].name}
+                    value={form[:rating].value}
+                    class="w-full px-3 py-2 border rounded-md"
+                  />
+                </div>
+
+                <div class="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    name={form[:in_stock].name}
+                    value="true"
+                    checked={form[:in_stock].value == true}
+                    class="rounded border-gray-300"
+                  />
+                  <label class="text-sm font-medium text-gray-700">In Stock</label>
+                </div>
+
+                <div class="flex gap-3 pt-4 border-t">
                   <button
+                    type="submit"
+                    disabled={@submitting}
+                    class={[
+                      "flex-1 px-4 py-2 rounded-md text-white font-medium",
+                      @submitting && "bg-gray-400 cursor-not-allowed",
+                      !@submitting && "bg-indigo-600 hover:bg-indigo-700"
+                    ]}
+                  >
+                    {if @submitting, do: "Saving...", else: "Save Changes"}
+                  </button>
+                  <button
+                    type="button"
                     phx-click="close"
                     phx-target={@myself}
-                    class="text-gray-400 hover:text-gray-600"
+                    class="px-4 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50"
                   >
-                    &times;
+                    Cancel
                   </button>
                 </div>
-
-                <.form for={@edit_form} phx-change="validate" phx-submit="save" phx-target={@myself} class="space-y-4">
-                  <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Name</label>
-                    <input
-                      type="text"
-                      name={@edit_form[:name].name}
-                      value={@edit_form[:name].value}
-                      class={[
-                        "w-full px-3 py-2 border rounded-md",
-                        @edit_form[:name].errors != [] && "border-red-500"
-                      ]}
-                    />
-                    <.field_error :for={error <- @edit_form[:name].errors}>{translate_error(error)}</.field_error>
-                  </div>
-
-                  <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Category</label>
-                    <input
-                      type="text"
-                      name={@edit_form[:category].name}
-                      value={@edit_form[:category].value}
-                      class={[
-                        "w-full px-3 py-2 border rounded-md",
-                        @edit_form[:category].errors != [] && "border-red-500"
-                      ]}
-                    />
-                    <.field_error :for={error <- @edit_form[:category].errors}>{translate_error(error)}</.field_error>
-                  </div>
-
-                  <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Price</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      name={@edit_form[:price].name}
-                      value={@edit_form[:price].value}
-                      class={[
-                        "w-full px-3 py-2 border rounded-md",
-                        @edit_form[:price].errors != [] && "border-red-500"
-                      ]}
-                    />
-                    <.field_error :for={error <- @edit_form[:price].errors}>{translate_error(error)}</.field_error>
-                  </div>
-
-                  <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Rating</label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      max="5"
-                      name={@edit_form[:rating].name}
-                      value={@edit_form[:rating].value}
-                      class="w-full px-3 py-2 border rounded-md"
-                    />
-                  </div>
-
-                  <div class="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      name={@edit_form[:in_stock].name}
-                      value="true"
-                      checked={@edit_form[:in_stock].value == true}
-                      class="rounded border-gray-300"
-                    />
-                    <label class="text-sm font-medium text-gray-700">In Stock</label>
-                  </div>
-
-                  <div class="flex gap-3 pt-4 border-t">
-                    <button
-                      type="submit"
-                      disabled={@submitting}
-                      class={[
-                        "flex-1 px-4 py-2 rounded-md text-white font-medium",
-                        @submitting && "bg-gray-400 cursor-not-allowed",
-                        !@submitting && "bg-indigo-600 hover:bg-indigo-700"
-                      ]}
-                    >
-                      {if @submitting, do: "Saving...", else: "Save Changes"}
-                    </button>
-                    <button
-                      type="button"
-                      phx-click="close"
-                      phx-target={@myself}
-                      class="px-4 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </.form>
-              </div>
-
-            <% true -> %>
-              <div class="p-6">
-                <div class="animate-pulse">
-                  <div class="h-6 bg-gray-200 rounded w-1/3 mb-4"></div>
-                  <div class="h-10 bg-gray-200 rounded mb-4"></div>
-                </div>
-              </div>
-          <% end %>
+              </.form>
+            </div>
+          </.async_result>
         </div>
       </div>
     </div>

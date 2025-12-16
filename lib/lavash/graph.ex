@@ -11,6 +11,7 @@ defmodule Lavash.Graph do
   """
 
   alias Lavash.Socket, as: LSocket
+  alias Phoenix.LiveView.AsyncResult
 
   def recompute_all(socket, module) do
     all_fields = collect_all_fields(module)
@@ -200,29 +201,38 @@ defmodule Lavash.Graph do
         # Propagate the special state without running compute
         LSocket.put_derived(socket, field.name, state)
 
-      :ready ->
+      {:ready, had_async} ->
         # All deps are ready - run the compute function
-        run_compute(socket, field, deps)
+        # had_async tells us if any dep was an AsyncResult (so we should wrap output)
+        run_compute(socket, field, deps, had_async)
     end
   end
 
   defp check_deps_state(deps) do
     # Check for states that should propagate through the chain
-    Enum.reduce_while(deps, :ready, fn {_key, value}, _acc ->
-      cond do
-        value == :loading ->
-          {:halt, {:propagate, :loading}}
+    # Also track if any deps were AsyncResult (even if ok) so we can wrap output
+    Enum.reduce_while(deps, {:ready, false}, fn {_key, value}, {_status, had_async} ->
+      case value do
+        %AsyncResult{loading: loading} when loading != nil ->
+          {:halt, {:propagate, AsyncResult.loading()}}
 
-        match?({:error, _}, value) ->
+        %AsyncResult{failed: failed} when failed != nil ->
           {:halt, {:propagate, value}}
 
-        true ->
-          {:cont, :ready}
+        %AsyncResult{ok?: true} ->
+          # Dep was async but is now ok - track this
+          {:cont, {:ready, true}}
+
+        _ ->
+          {:cont, {:ready, had_async}}
       end
     end)
   end
 
-  defp run_compute(socket, field, deps) do
+  defp run_compute(socket, field, deps, had_async) do
+    # Unwrap Async structs so compute functions receive plain values
+    unwrapped_deps = unwrap_async_for_compute(deps)
+
     if field.async do
       # Start async task
       self_pid = self()
@@ -236,24 +246,34 @@ defmodule Lavash.Graph do
         component_module = socket.assigns[:__component_module__]
 
         Task.start(fn ->
-          result = field.compute.(deps)
+          result = field.compute.(unwrapped_deps)
           # Send update to the component via the LiveView process
           send(self_pid, {:lavash_component_async, component_module, component_id, field.name, result})
         end)
       else
         # For LiveViews, use the standard approach
         Task.start(fn ->
-          result = field.compute.(deps)
+          result = field.compute.(unwrapped_deps)
           send(self_pid, {:lavash_async, field.name, result})
         end)
       end
 
-      LSocket.put_derived(socket, field.name, :loading)
+      LSocket.put_derived(socket, field.name, AsyncResult.loading())
     else
       # Non-async: store result, auto-wrapping changesets
-      result = field.compute.(deps)
+      result = field.compute.(unwrapped_deps)
       wrapped = maybe_wrap_changeset(result)
-      LSocket.put_derived(socket, field.name, wrapped)
+
+      # If any dependency was async, wrap the result in AsyncResult.ok()
+      # so downstream consumers (<.async_result>) can use it
+      final =
+        if had_async do
+          AsyncResult.ok(wrapped)
+        else
+          wrapped
+        end
+
+      LSocket.put_derived(socket, field.name, final)
     end
   end
 
@@ -275,18 +295,28 @@ defmodule Lavash.Graph do
             Map.get(state, dep)
 
           Map.has_key?(derived, dep) ->
-            # Unwrap {:ok, value} from async results
-            # But preserve :loading and {:error, _} for propagation checks
-            case Map.get(derived, dep) do
-              {:ok, v} -> v
-              other -> other
-            end
+            # Pass through Async structs - check_deps_state will handle propagation
+            # and unwrap_async_for_compute will extract the result when ready
+            Map.get(derived, dep)
 
           true ->
             nil
         end
 
       Map.put(acc, dep, value)
+    end)
+  end
+
+  # Unwrap Async structs for compute functions once check_deps_state returns :ready
+  defp unwrap_async_for_compute(deps) do
+    Map.new(deps, fn {key, value} ->
+      unwrapped =
+        case value do
+          %AsyncResult{ok?: true, result: result} -> result
+          other -> other
+        end
+
+      {key, unwrapped}
     end)
   end
 

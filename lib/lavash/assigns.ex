@@ -50,8 +50,8 @@ defmodule Lavash.Assigns do
       action_type =
         case raw_value do
           %Lavash.Form{action_type: type} -> type
-          :loading -> :loading
-          {:error, _} = err -> err
+          %Phoenix.LiveView.AsyncResult{loading: loading} when loading != nil -> :loading
+          %Phoenix.LiveView.AsyncResult{failed: failed} when failed != nil -> {:error, failed}
           _ -> nil
         end
 
@@ -86,7 +86,14 @@ defmodule Lavash.Assigns do
     end
   end
 
-  # Extract the Phoenix form from Lavash.Form for template rendering
+  # Unwrap values for template rendering:
+  # - Lavash.Form -> Phoenix.HTML.Form for form helpers
+  # - AsyncResult with Lavash.Form inside -> AsyncResult with Phoenix.HTML.Form (keep wrapper!)
+  # - All other values passed through as-is (including AsyncResult structs)
   defp unwrap_for_assign(%Lavash.Form{form: form}), do: form
+  defp unwrap_for_assign(%Phoenix.LiveView.AsyncResult{ok?: true, result: %Lavash.Form{form: form}} = async) do
+    # Keep the AsyncResult wrapper so <.async_result> can work with it
+    %{async | result: form}
+  end
   defp unwrap_for_assign(other), do: other
 end

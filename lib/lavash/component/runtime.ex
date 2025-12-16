@@ -27,17 +27,17 @@ defmodule Lavash.Component.Runtime do
         # Check if this is an async result delivery
         case Map.get(assigns, :__lavash_async_result__) do
           {field, result} ->
-            # Handle async result delivery
-            normalized =
+            # Handle async result delivery - convert to AsyncResult struct
+            async =
               case result do
-                {:ok, _} -> result
-                {:error, _} -> result
-                value -> {:ok, value}
+                {:ok, value} -> Phoenix.LiveView.AsyncResult.ok(value)
+                {:error, reason} -> Phoenix.LiveView.AsyncResult.failed(%Phoenix.LiveView.AsyncResult{}, reason)
+                value -> Phoenix.LiveView.AsyncResult.ok(value)
               end
 
             socket =
               socket
-              |> LSocket.put_derived(field, normalized)
+              |> LSocket.put_derived(field, async)
               |> Graph.recompute_dependents(module, field)
               |> Assigns.project(module)
 
@@ -445,10 +445,11 @@ defmodule Lavash.Component.Runtime do
     # Get the form from derived state
     raw_form = LSocket.derived(socket)[submit.field]
 
-    # Handle the form value - it might be wrapped in {:ok, form} from async
+    # Handle the form value - it might be wrapped in AsyncResult from async operations
     form =
       case raw_form do
-        {:ok, f} -> f
+        %Phoenix.LiveView.AsyncResult{ok?: true, result: f} -> f
+        %Phoenix.LiveView.AsyncResult{loading: loading} when loading != nil -> :loading
         f -> f
       end
 
