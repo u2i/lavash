@@ -24,7 +24,9 @@ defmodule Lavash.Socket do
       # Component-specific
       props: Map.get(opts, :props, %{}),
       component_id: Map.get(opts, :component_id),
-      component_states: Map.get(opts, :component_states, %{})
+      component_states: Map.get(opts, :component_states, %{}),
+      # Bindings for emit (component two-way binding)
+      bindings: Map.get(opts, :bindings, %{})
     }
 
     Phoenix.LiveView.put_private(socket, :lavash, lavash)

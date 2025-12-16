@@ -362,6 +362,24 @@ defmodule Lavash.Component.Dsl do
     ]
   }
 
+  @emit_entity %Spark.Dsl.Entity{
+    name: :emit,
+    target: Lavash.Actions.Emit,
+    args: [:prop, :value],
+    schema: [
+      prop: [
+        type: :atom,
+        required: true,
+        doc: "The prop name to emit an update for"
+      ],
+      value: [
+        type: :any,
+        required: true,
+        doc: "The new value to emit (can be a literal or a function)"
+      ]
+    ]
+  }
+
   @action_entity %Spark.Dsl.Entity{
     name: :action,
     target: Lavash.Actions.Action,
@@ -371,7 +389,8 @@ defmodule Lavash.Component.Dsl do
       updates: [@update_entity],
       effects: [@effect_entity],
       submits: [@submit_entity],
-      notify_parents: [@notify_parent_entity]
+      notify_parents: [@notify_parent_entity],
+      emits: [@emit_entity]
     ],
     schema: [
       name: [

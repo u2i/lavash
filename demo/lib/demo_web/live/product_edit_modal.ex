@@ -2,31 +2,36 @@ defmodule DemoWeb.ProductEditModal do
   @moduledoc """
   A Lavash Component for editing a product in a modal.
 
-  The component manages its own state:
+  The component fully owns its state:
+  - product_id: which product to edit (nil = closed)
   - Loads the product when product_id changes
   - Manages the edit form internally
   - Handles form validation and submission
 
-  Props:
-    - product_id: integer | nil - the product ID to edit (nil = closed)
-    - on_close: string - event name to send to parent when closing
-    - on_saved: string - event name to send to parent after successful save
+  Parent invokes actions to control the modal:
+  - invoke "product-edit-modal", :open, module: DemoWeb.ProductEditModal, params: [product_id: 123]
+
+  ## Example usage
+
+      <.lavash_component
+        module={DemoWeb.ProductEditModal}
+        id="product-edit-modal"
+      />
+
+  The modal is opened by the parent invoking the :open action with a product_id.
+  The modal closes itself when the user clicks close or after successful save.
   """
   use Lavash.Component
 
   alias Demo.Catalog.Product
 
-  # Props from parent
-  prop :product_id, :integer
-  prop :on_close, :string, required: true
-  prop :on_saved, :string, required: true
-
-  # Internal state
+  # Component owns its state - no props needed
+  input :product_id, :integer, from: :ephemeral, default: nil
   input :submitting, :boolean, from: :ephemeral, default: false
 
   # Load the product when product_id is set
   read :product, Product do
-    id prop(:product_id)
+    id input(:product_id)
   end
 
   # Form for editing
@@ -38,6 +43,15 @@ defmodule DemoWeb.ProductEditModal do
     action :noop do
     end
 
+    # Invokable by parent to open the modal
+    action :open, [:product_id] do
+      set :product_id, &(&1.params.product_id)
+    end
+
+    action :close do
+      set :product_id, nil
+    end
+
     action :save do
       set :submitting, true
       submit :edit_form, on_success: :save_success, on_error: :save_failed
@@ -45,7 +59,7 @@ defmodule DemoWeb.ProductEditModal do
 
     action :save_success do
       set :submitting, false
-      notify_parent :on_saved
+      set :product_id, nil
     end
 
     action :save_failed do
@@ -60,8 +74,9 @@ defmodule DemoWeb.ProductEditModal do
         :if={@product_id != nil}
         class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
         id="modal-backdrop"
-        phx-click={@on_close}
-        phx-window-keydown={@on_close}
+        phx-click="close"
+        phx-target={@myself}
+        phx-window-keydown="close"
         phx-key="escape"
       >
         <div
@@ -84,7 +99,8 @@ defmodule DemoWeb.ProductEditModal do
               <div class="p-6 text-center">
                 <p class="text-red-600">Failed to load product</p>
                 <button
-                  phx-click={@on_close}
+                  phx-click="close"
+                  phx-target={@myself}
                   class="mt-4 text-gray-600 hover:text-gray-800"
                 >
                   Close
@@ -96,7 +112,8 @@ defmodule DemoWeb.ProductEditModal do
                 <div class="flex items-center justify-between mb-4">
                   <h2 class="text-xl font-bold">Edit Product</h2>
                   <button
-                    phx-click={@on_close}
+                    phx-click="close"
+                    phx-target={@myself}
                     class="text-gray-400 hover:text-gray-600"
                   >
                     &times;
@@ -185,7 +202,8 @@ defmodule DemoWeb.ProductEditModal do
                     </button>
                     <button
                       type="button"
-                      phx-click={@on_close}
+                      phx-click="close"
+                      phx-target={@myself}
                       class="px-4 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50"
                     >
                       Cancel

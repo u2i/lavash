@@ -127,7 +127,8 @@ defmodule Lavash.Graph do
       all_fields = collect_all_fields(module)
 
       # Find all derived fields affected by dirty state, including transitive dependencies
-      affected = find_affected_derived(all_fields, dirty)
+      # include_dirty: true means also include fields that are directly marked dirty
+      affected = find_affected_derived(all_fields, dirty, include_dirty: true)
       sorted = topological_sort(affected)
 
       socket = LSocket.clear_dirty(socket)
@@ -138,12 +139,17 @@ defmodule Lavash.Graph do
     end
   end
 
-  defp find_affected_derived(derived_fields, dirty) do
-    # Start with fields directly affected by dirty state
+  defp find_affected_derived(derived_fields, dirty, opts \\ []) do
+    include_dirty = Keyword.get(opts, :include_dirty, false)
+
+    # Start with fields whose dependencies are dirty
+    # Optionally also include fields that are directly marked dirty
     directly_affected =
       derived_fields
       |> Enum.filter(fn field ->
-        Enum.any?(field.depends_on, &MapSet.member?(dirty, &1))
+        deps_dirty = Enum.any?(field.depends_on, &MapSet.member?(dirty, &1))
+        self_dirty = include_dirty and MapSet.member?(dirty, field.name)
+        deps_dirty or self_dirty
       end)
       |> MapSet.new(& &1.name)
 
@@ -311,5 +317,33 @@ defmodule Lavash.Graph do
         depths -> Enum.max(depths)
       end
     end
+  end
+
+  @doc """
+  Returns field names that depend on reads/forms of a given resource.
+  Used for resource-centric invalidation when a child component mutates a resource.
+  """
+  def fields_for_resource(module, resource) do
+    # Get reads that use this resource
+    read_fields =
+      module.__lavash__(:reads)
+      |> Enum.filter(&(&1.resource == resource))
+      |> Enum.map(& &1.name)
+
+    # Get forms that use this resource
+    form_fields =
+      module.__lavash__(:forms)
+      |> Enum.filter(&(&1.resource == resource))
+      |> Enum.map(& &1.name)
+
+    # Get derived fields that declare this resource in their reads list
+    derived_fields =
+      module.__lavash__(:derived_fields)
+      |> Enum.filter(fn field ->
+        resource in (field.reads || [])
+      end)
+      |> Enum.map(& &1.name)
+
+    read_fields ++ form_fields ++ derived_fields
   end
 end

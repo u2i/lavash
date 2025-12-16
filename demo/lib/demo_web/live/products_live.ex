@@ -3,7 +3,6 @@ defmodule DemoWeb.ProductsLive do
   import Lavash.LiveView.Helpers
 
   alias Demo.Catalog
-  alias Demo.Catalog.Product
 
   # All filter state stored in URL - shareable, bookmarkable, back/forward works
   input :search, :string, from: :url, default: ""
@@ -13,11 +12,9 @@ defmodule DemoWeb.ProductsLive do
   input :max_price, :integer, from: :url, default: nil
   input :min_rating, :integer, from: :url, default: nil
 
-  # Modal state - just the product ID, component handles the rest
-  input :editing_product_id, :integer, from: :ephemeral, default: nil
-
   # Products are derived from filter state
   derive :products do
+    reads [Demo.Catalog.Product]
     argument :search, input(:search)
     argument :category, input(:category)
     argument :in_stock, input(:in_stock)
@@ -98,18 +95,11 @@ defmodule DemoWeb.ProductsLive do
       set :min_rating, nil
     end
 
-    # Modal actions
+    # Modal action - invoke the modal's :open action
     action :open_edit, [:id] do
-      set :editing_product_id, &parse_int(&1.params.id)
-    end
-
-    action :close_modal do
-      set :editing_product_id, nil
-    end
-
-    action :product_saved do
-      set :editing_product_id, nil
-      flash :info, "Product updated successfully!"
+      invoke "product-edit-modal", :open,
+        module: DemoWeb.ProductEditModal,
+        params: [product_id: {:param, :id}]
     end
   end
 
@@ -289,9 +279,6 @@ defmodule DemoWeb.ProductsLive do
       <.lavash_component
         module={DemoWeb.ProductEditModal}
         id="product-edit-modal"
-        product_id={@editing_product_id}
-        on_close="close_modal"
-        on_saved="product_saved"
       />
     </div>
     """

@@ -10,6 +10,8 @@ defmodule Lavash.Derived.Field do
     :async,
     :run,
     arguments: [],
+    # Resource dependencies - for automatic invalidation when these resources are mutated
+    reads: [],
     # Legacy field - computed from arguments for backwards compatibility
     depends_on: [],
     # Legacy field - wrapped version of run

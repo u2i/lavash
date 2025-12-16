@@ -201,8 +201,23 @@ defmodule Lavash.LiveView.Runtime do
 
   def handle_info(module, {:lavash_component_event, event, params}, socket) do
     # Handle events sent from child Lavash components via notify_parent
-    # Treat this as if it were a handle_event call
-    handle_event(module, event, params, socket)
+    # Check for special "update:field" events from bind:
+    case parse_update_event(event) do
+      {:update, field_name} ->
+        # This is from a bind: - directly set the parent's state
+        value = Map.get(params, "value")
+        socket =
+          socket
+          |> LSocket.put_state(field_name, value)
+          |> Graph.recompute_dirty(module)
+          |> Assigns.project(module)
+
+        {:noreply, socket}
+
+      :not_update ->
+        # Regular event - treat as handle_event call
+        handle_event(module, event, params, socket)
+    end
   end
 
   def handle_info(_module, {:lavash_component_async, component_module, component_id, field, result}, socket) do
@@ -216,11 +231,44 @@ defmodule Lavash.LiveView.Runtime do
     {:noreply, socket}
   end
 
+  def handle_info(module, {:lavash_resource_mutated, resource}, socket) do
+    # A child component mutated a resource - invalidate all reads/derives that depend on it
+    # Find all derived fields that read from this resource
+    fields_to_invalidate = Graph.fields_for_resource(module, resource)
+
+    if fields_to_invalidate != [] do
+      # Mark these fields as dirty and recompute
+      socket =
+        socket
+        |> LSocket.update(:dirty, fn dirty ->
+          Enum.reduce(fields_to_invalidate, dirty, &MapSet.put(&2, &1))
+        end)
+        |> Graph.recompute_dirty(module)
+        |> Assigns.project(module)
+
+      {:noreply, socket}
+    else
+      {:noreply, socket}
+    end
+  end
+
   def handle_info(_module, _msg, socket) do
     {:noreply, socket}
   end
 
   # Private
+
+  defp parse_update_event(event) when is_binary(event) do
+    case String.split(event, ":", parts: 2) do
+      ["update", field_str] ->
+        {:update, String.to_existing_atom(field_str)}
+      _ ->
+        :not_update
+    end
+  rescue
+    ArgumentError -> :not_update
+  end
+  defp parse_update_event(_), do: :not_update
 
   defp execute_action(socket, module, action, event_params) do
     # Build params map from event
@@ -237,6 +285,7 @@ defmodule Lavash.LiveView.Runtime do
         |> apply_sets(action.sets || [], params)
         |> apply_updates(action.updates || [], params)
         |> apply_effects(action.effects || [], params)
+        |> apply_invokes(action.invokes || [], params)
 
       # Handle submits - these can fail and trigger on_error
       try do
@@ -282,6 +331,36 @@ defmodule Lavash.LiveView.Runtime do
   defp apply_effects(socket, effects, _params) do
     state = LSocket.full_state(socket)
     Enum.each(effects, fn effect -> effect.fun.(state) end)
+    socket
+  end
+
+  defp apply_invokes(socket, invokes, params) do
+    state = LSocket.state(socket)
+
+    Enum.each(invokes, fn invoke ->
+      # Build invoke params - values can be param(:x) references or literals
+      invoke_params =
+        Enum.reduce(invoke.params || [], %{}, fn {key, value}, acc ->
+          resolved =
+            case value do
+              {:param, param_name} -> Map.get(params, param_name)
+              {:state, field_name} -> Map.get(state, field_name)
+              literal -> literal
+            end
+
+          Map.put(acc, to_string(key), resolved)
+        end)
+
+      component_id = to_string(invoke.target)
+      component_module = invoke.module
+
+      # Send the invoke via send_update
+      Phoenix.LiveView.send_update(component_module, %{
+        id: component_id,
+        __lavash_invoke__: {invoke.action, invoke_params}
+      })
+    end)
+
     socket
   end
 

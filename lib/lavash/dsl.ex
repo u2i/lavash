@@ -243,6 +243,11 @@ defmodule Lavash.Dsl do
         default: false,
         doc: "Whether this computation is async (returns loading/ok/error states)"
       ],
+      reads: [
+        type: {:list, :atom},
+        default: [],
+        doc: "Ash resources this derive reads from. Used for automatic invalidation when these resources are mutated."
+      ],
       run: [
         type: {:fun, 2},
         doc: "Function that computes the value: fn %{arg1: val1, ...}, context -> result end"
@@ -362,6 +367,34 @@ defmodule Lavash.Dsl do
     ]
   }
 
+  @invoke_entity %Spark.Dsl.Entity{
+    name: :invoke,
+    target: Lavash.Actions.Invoke,
+    args: [:target, :action],
+    schema: [
+      target: [
+        type: {:or, [:atom, :string]},
+        required: true,
+        doc: "The component ID to invoke the action on"
+      ],
+      action: [
+        type: :atom,
+        required: true,
+        doc: "The action name to invoke"
+      ],
+      module: [
+        type: :atom,
+        required: true,
+        doc: "The component module"
+      ],
+      params: [
+        type: :keyword_list,
+        default: [],
+        doc: "Parameters to pass to the action"
+      ]
+    ]
+  }
+
   @action_entity %Spark.Dsl.Entity{
     name: :action,
     target: Lavash.Actions.Action,
@@ -372,7 +405,8 @@ defmodule Lavash.Dsl do
       effects: [@effect_entity],
       submits: [@submit_entity],
       navigates: [@navigate_entity],
-      flashes: [@flash_entity]
+      flashes: [@flash_entity],
+      invokes: [@invoke_entity]
     ],
     schema: [
       name: [
