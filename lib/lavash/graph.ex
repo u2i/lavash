@@ -87,6 +87,7 @@ defmodule Lavash.Graph do
       resource = form.resource
       create_action = form.create || :create
       update_action = form.update || :update
+      form_name = to_string(form.name)
 
       %Lavash.Derived.Field{
         name: form.name,
@@ -98,7 +99,8 @@ defmodule Lavash.Graph do
 
           Lavash.Form.for_resource(resource, data, params,
             create: create_action,
-            update: update_action
+            update: update_action,
+            as: form_name
           )
         end
       }

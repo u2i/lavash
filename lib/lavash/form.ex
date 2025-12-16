@@ -11,26 +11,32 @@ defmodule Lavash.Form do
   in templates via the `form` field.
   """
 
-  defstruct [:changeset, :form, :action_type]
+  defstruct [:changeset, :form, :action_type, :name]
 
   @doc """
   Creates a form for an Ash resource.
 
   If record is nil or has no id, creates a form for the create action.
   Otherwise creates a form for the update action.
+
+  Options:
+    - :create - the create action name (default: :create)
+    - :update - the update action name (default: :update)
+    - :as - the form name for params namespacing (default: "form")
   """
   def for_resource(resource, record, params, opts \\ []) do
     create_action = Keyword.get(opts, :create, :create)
     update_action = Keyword.get(opts, :update, :update)
+    form_name = Keyword.get(opts, :as, "form")
 
     if is_nil(record) or is_nil(Map.get(record, :id)) do
       # Create new
       changeset = Ash.Changeset.for_create(resource, create_action, params)
-      wrap(changeset)
+      wrap(changeset, form_name)
     else
       # Update existing
       changeset = Ash.Changeset.for_update(record, update_action, params)
-      wrap(changeset)
+      wrap(changeset, form_name)
     end
   end
 
@@ -38,9 +44,11 @@ defmodule Lavash.Form do
   Wraps an Ash.Changeset, creating both the form for rendering and preserving
   the changeset for submission.
   """
-  def wrap(%Ash.Changeset{} = changeset) do
+  def wrap(changeset, form_name \\ "form")
+
+  def wrap(%Ash.Changeset{} = changeset, form_name) do
     # Create AshPhoenix.Form from the changeset
-    ash_form = build_ash_form(changeset)
+    ash_form = build_ash_form(changeset, form_name)
 
     # Convert to Phoenix.HTML.Form for template rendering
     phoenix_form = Phoenix.Component.to_form(ash_form)
@@ -48,33 +56,37 @@ defmodule Lavash.Form do
     %__MODULE__{
       changeset: changeset,
       form: phoenix_form,
-      action_type: changeset.action_type
+      action_type: changeset.action_type,
+      name: form_name
     }
   end
 
-  def wrap(other), do: other
+  def wrap(other, _form_name), do: other
 
-  defp build_ash_form(%Ash.Changeset{} = changeset) do
+  defp build_ash_form(%Ash.Changeset{} = changeset, form_name) do
     case changeset.action_type do
       :create ->
         AshPhoenix.Form.for_create(
           changeset.resource,
           changeset.action.name,
-          params: changeset.params || %{}
+          params: changeset.params || %{},
+          as: form_name
         )
 
       :update ->
         AshPhoenix.Form.for_update(
           changeset.data,
           changeset.action.name,
-          params: changeset.params || %{}
+          params: changeset.params || %{},
+          as: form_name
         )
 
       :destroy ->
         AshPhoenix.Form.for_destroy(
           changeset.data,
           changeset.action.name,
-          params: changeset.params || %{}
+          params: changeset.params || %{},
+          as: form_name
         )
 
       _ ->
@@ -82,7 +94,8 @@ defmodule Lavash.Form do
         AshPhoenix.Form.for_action(
           changeset.data || changeset.resource,
           changeset.action.name,
-          params: changeset.params || %{}
+          params: changeset.params || %{},
+          as: form_name
         )
     end
   end
@@ -118,4 +131,9 @@ defmodule Lavash.Form do
   def submit(%Phoenix.HTML.Form{source: source}) do
     submit(source)
   end
+
+  # Handle special states that shouldn't be submitted
+  def submit(:loading), do: {:error, :loading}
+  def submit({:error, _} = err), do: err
+  def submit(nil), do: {:error, :no_form}
 end

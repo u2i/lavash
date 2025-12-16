@@ -320,6 +320,10 @@ defmodule Lavash.Dsl do
         required: true,
         doc: "The form field to submit (must be a derived AshPhoenix.Form)"
       ],
+      on_success: [
+        type: :atom,
+        doc: "Action to trigger after successful submission (for post-submit state changes)"
+      ],
       on_error: [
         type: :atom,
         doc: "Action to trigger on submission error"

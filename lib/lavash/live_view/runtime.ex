@@ -121,7 +121,6 @@ defmodule Lavash.LiveView.Runtime do
       action ->
         case execute_action(socket, module, action, params) do
           {:ok, socket} ->
-            # Action succeeded - apply post-success operations
             socket =
               socket
               |> apply_flashes(action.flashes || [])
@@ -223,7 +222,13 @@ defmodule Lavash.LiveView.Runtime do
         |> apply_effects(action.effects || [], params)
 
       # Handle submits - these can fail and trigger on_error
-      apply_submits(socket, module, action.submits || [])
+      try do
+        apply_submits(socket, module, action.submits || [])
+      rescue
+        e ->
+          socket = Phoenix.LiveView.put_flash(socket, :error, "[DEBUG] Exception in submit: #{Exception.message(e)}")
+          {:ok, socket}
+      end
     else
       {:ok, socket}
     end
@@ -274,21 +279,49 @@ defmodule Lavash.LiveView.Runtime do
       |> Graph.recompute_dirty(module)
 
     # Get the form from derived state
-    form = LSocket.derived(socket)[submit.field]
+    raw_form = LSocket.derived(socket)[submit.field]
 
     # Handle the form value - it might be wrapped in {:ok, form} from async
     form =
-      case form do
+      case raw_form do
         {:ok, f} -> f
         f -> f
       end
 
     # Use Lavash.Form.submit which handles Lavash.Form, Ash.Changeset,
     # AshPhoenix.Form, and Phoenix.HTML.Form
-    case Lavash.Form.submit(form) do
+    result = Lavash.Form.submit(form)
+
+    case result do
       {:ok, _result} ->
-        # Success - continue with remaining submits
+        # Success - trigger on_success action if specified, then continue with remaining submits
+        socket =
+          if submit.on_success do
+            actions = module.__lavash__(:actions)
+            success_action = Enum.find(actions, &(&1.name == submit.on_success))
+
+            if success_action do
+              case execute_action(socket, module, success_action, %{}) do
+                {:ok, sock} -> sock
+                {:error, sock, _err} -> sock
+              end
+            else
+              socket
+            end
+          else
+            socket
+          end
+
         apply_submits(socket, module, rest)
+
+      {:error, :loading} ->
+        # Form is still loading - this shouldn't happen if UI is correct
+        # but handle gracefully by triggering on_error
+        if submit.on_error do
+          {:error, socket, submit.on_error}
+        else
+          {:ok, socket}
+        end
 
       {:error, _form_with_errors} ->
         # Failure - trigger on_error action if specified
