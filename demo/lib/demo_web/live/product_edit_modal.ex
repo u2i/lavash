@@ -27,10 +27,7 @@ defmodule DemoWeb.ProductEditModal do
     async_assign :edit_form
   end
 
-  render_loading &__MODULE__.render_loading/1
-  render &__MODULE__.render_content/1
-
-  def render_loading(assigns) do
+  render_loading fn assigns ->
     import Phoenix.Component
 
     ~H"""
@@ -45,7 +42,7 @@ defmodule DemoWeb.ProductEditModal do
     """
   end
 
-  def render_content(assigns) do
+  render fn assigns ->
     import Phoenix.Component
     import Lavash.Modal.Helpers
 
