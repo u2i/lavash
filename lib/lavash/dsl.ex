@@ -116,9 +116,9 @@ defmodule Lavash.Dsl do
   # Read - async resource loading
   # ============================================
 
-  @read_arg_entity %Spark.Dsl.Entity{
-    name: :arg,
-    target: Lavash.Read.Arg,
+  @read_argument_entity %Spark.Dsl.Entity{
+    name: :argument,
+    target: Lavash.Read.Argument,
     args: [:name, {:optional, :source}],
     schema: [
       name: [
@@ -142,7 +142,7 @@ defmodule Lavash.Dsl do
     target: Lavash.Read,
     args: [:name, :resource, {:optional, :action}],
     entities: [
-      args: [@read_arg_entity]
+      arguments: [@read_argument_entity]
     ],
     schema: [
       name: [
@@ -232,7 +232,7 @@ defmodule Lavash.Dsl do
   @argument_entity %Spark.Dsl.Entity{
     name: :argument,
     target: Lavash.Argument,
-    args: [:name, :source],
+    args: [:name, {:optional, :source}],
     schema: [
       name: [
         type: :atom,
@@ -241,8 +241,11 @@ defmodule Lavash.Dsl do
       ],
       source: [
         type: :any,
-        required: true,
-        doc: "The source: state(:field) or result(:derive_name)"
+        doc: "The source: state(:field) or result(:derive_name). Defaults to state(name) if omitted."
+      ],
+      transform: [
+        type: {:fun, 1},
+        doc: "Optional transform function applied to the value before passing to run"
       ]
     ]
   }

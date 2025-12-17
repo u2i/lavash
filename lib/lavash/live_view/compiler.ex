@@ -84,39 +84,32 @@ defmodule Lavash.LiveView.Compiler do
   """
   def normalize_derived(%Lavash.Derived.Field{} = field) do
     # Extract depends_on from arguments
+    # If source is nil, default to state(arg_name)
     depends_on =
       (field.arguments || [])
       |> Enum.map(fn arg ->
-        case arg.source do
-          {:state, name} -> name
-          {:result, name} -> name
-          {:prop, name} -> name
-          name when is_atom(name) -> name
-        end
+        extract_source_field(arg.source, arg.name)
       end)
 
     # Build arg name mapping for the compute wrapper
+    # Each entry is {arg_name, source_field, transform}
     arg_mapping =
       (field.arguments || [])
       |> Enum.map(fn arg ->
-        source_field =
-          case arg.source do
-            {:state, name} -> name
-            {:result, name} -> name
-            {:prop, name} -> name
-            name when is_atom(name) -> name
-          end
-        {arg.name, source_field}
+        source_field = extract_source_field(arg.source, arg.name)
+        {arg.name, source_field, arg.transform}
       end)
 
     # Create compute wrapper that maps state to argument names
     compute =
       if field.run do
         fn deps ->
-          # Map the deps to use argument names
+          # Map the deps to use argument names, applying transforms
           mapped_deps =
-            Enum.reduce(arg_mapping, %{}, fn {arg_name, source_field}, acc ->
-              Map.put(acc, arg_name, Map.get(deps, source_field))
+            Enum.reduce(arg_mapping, %{}, fn {arg_name, source_field, transform}, acc ->
+              value = Map.get(deps, source_field)
+              value = if transform, do: transform.(value), else: value
+              Map.put(acc, arg_name, value)
             end)
 
           # Call run with mapped deps and empty context
@@ -127,5 +120,16 @@ defmodule Lavash.LiveView.Compiler do
       end
 
     %{field | depends_on: depends_on, compute: compute}
+  end
+
+  # Extract the source field name from source tuple, defaulting to state(arg_name) if nil
+  defp extract_source_field(source, arg_name) do
+    case source do
+      {:state, name} -> name
+      {:result, name} -> name
+      {:prop, name} -> name
+      name when is_atom(name) and not is_nil(name) -> name
+      nil -> arg_name  # Default to same-named state field
+    end
   end
 end

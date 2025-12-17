@@ -17,10 +17,10 @@ defmodule Lavash.Read do
 
       # With explicit overrides
       read :products, Product, :list do
-        arg :category, transform: &(if &1 == "", do: nil, else: &1)
+        argument :category, transform: &(if &1 == "", do: nil, else: &1)
       end
 
-  Action arguments are auto-wired to matching state fields. Use `arg` entities
+  Action arguments are auto-wired to matching state fields. Use `argument` entities
   to override the source or apply transforms.
   """
 
@@ -30,12 +30,12 @@ defmodule Lavash.Read do
     :id,
     :action,
     :async,
-    args: [],
+    arguments: [],
     __spark_metadata__: nil
   ]
 end
 
-defmodule Lavash.Read.Arg do
+defmodule Lavash.Read.Argument do
   @moduledoc """
   An argument override for a read action.
 

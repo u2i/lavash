@@ -85,9 +85,9 @@ defmodule Lavash.Graph do
     action_type = if action, do: action.type, else: :read
     action_args = if action, do: action.arguments, else: []
 
-    # Build arg overrides map from DSL entities
+    # Build argument overrides map from DSL entities
     arg_overrides =
-      (read.args || [])
+      (read.arguments || [])
       |> Enum.map(fn arg -> {arg.name, arg} end)
       |> Map.new()
 

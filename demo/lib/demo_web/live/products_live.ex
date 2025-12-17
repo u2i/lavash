@@ -16,7 +16,7 @@ defmodule DemoWeb.ProductsLive do
   # The action's arguments (search, category, in_stock, etc.) match our state field names
   read :products, Product, :list do
     async false
-    arg :category, transform: &(if &1 == "", do: nil, else: &1)
+    argument :category, transform: &(if &1 == "", do: nil, else: &1)
   end
 
   # Categories - simple read with no arguments
