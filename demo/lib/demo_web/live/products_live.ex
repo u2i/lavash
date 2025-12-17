@@ -2,27 +2,28 @@ defmodule DemoWeb.ProductsLive do
   use Lavash.LiveView
   import Lavash.LiveView.Helpers
 
-  alias Demo.Catalog.Product
+  alias Demo.Catalog.{Category, Product}
 
   # All filter state stored in URL - shareable, bookmarkable, back/forward works
   # setter: true auto-generates set_<name> actions
   state :search, :string, from: :url, default: "", setter: true
-  state :category, :string, from: :url, default: "", setter: true
+  state :category_id, {:uuid, "cat"}, from: :url, default: nil, setter: true
   state :in_stock, :boolean, from: :url, default: nil, setter: true
   state :min_price, :integer, from: :url, default: nil, setter: true
   state :max_price, :integer, from: :url, default: nil, setter: true
   state :min_rating, :integer, from: :url, default: nil, setter: true
 
   # Products - auto-maps state fields to :list action arguments
-  # The action's arguments (search, category, in_stock, etc.) match our state field names
+  # The action's arguments (search, category_id, in_stock, etc.) match our state field names
   read :products, Product, :list do
     async false
-    argument :category, transform: &(if &1 == "", do: nil, else: &1)
   end
 
-  # Categories - simple read with no arguments
-  read :categories, Product, :list_categories do
+  # Categories - load all categories for the dropdown
+  # as_options transforms to [{label, value}, ...] format
+  read :category_options, Category do
     async false
+    as_options label: :name, value: :id
   end
 
   # No longer needed - can compute directly in template or use a simple derive
@@ -36,13 +37,13 @@ defmodule DemoWeb.ProductsLive do
 
   derive :has_filters do
     argument :search, state(:search)
-    argument :category, state(:category)
+    argument :category_id, state(:category_id)
     argument :in_stock, state(:in_stock)
     argument :min_price, state(:min_price)
     argument :max_price, state(:max_price)
     argument :min_rating, state(:min_rating)
     run fn f, _ ->
-      f.search != "" or f.category != "" or f.in_stock != nil or
+      f.search != "" or f.category_id != nil or f.in_stock != nil or
       f.min_price != nil or f.max_price != nil or f.min_rating != nil
     end
   end
@@ -52,7 +53,7 @@ defmodule DemoWeb.ProductsLive do
 
     action :clear_filters do
       set :search, ""
-      set :category, ""
+      set :category_id, nil
       set :in_stock, nil
       set :min_price, nil
       set :max_price, nil
@@ -114,11 +115,11 @@ defmodule DemoWeb.ProductsLive do
             <!-- Category -->
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">Category</label>
-              <form phx-change="set_category">
+              <form phx-change="set_category_id">
                 <select name="value" class="w-full px-3 py-2 border rounded-md text-sm">
                   <option value="">All Categories</option>
-                  <option :for={cat <- @categories} value={cat} selected={@category == cat}>
-                    {cat}
+                  <option :for={{name, id} <- @category_options} value={id} selected={@category_id == id}>
+                    {name}
                   </option>
                 </select>
               </form>
@@ -208,7 +209,7 @@ defmodule DemoWeb.ProductsLive do
                   {if product.in_stock, do: "In Stock", else: "Out of Stock"}
                 </span>
               </div>
-              <p class="text-sm text-gray-500 mt-1">{product.category}</p>
+              <p class="text-sm text-gray-500 mt-1">{category_name(@category_options, product.category_id)}</p>
               <div class="flex items-center justify-between mt-3">
                 <span class="text-lg font-bold text-indigo-600">
                   ${Decimal.to_string(product.price)}
@@ -252,7 +253,7 @@ defmodule DemoWeb.ProductsLive do
     params =
       %{}
       |> maybe_add("search", assigns.search, "")
-      |> maybe_add("category", assigns.category, "")
+      |> maybe_add("category_id", assigns.category_id, nil)
       |> maybe_add("in_stock", assigns.in_stock, nil)
       |> maybe_add("min_price", assigns.min_price, nil)
       |> maybe_add("max_price", assigns.max_price, nil)
@@ -267,4 +268,12 @@ defmodule DemoWeb.ProductsLive do
 
   defp maybe_add(params, _key, value, default) when value == default, do: params
   defp maybe_add(params, key, value, _default), do: Map.put(params, key, value)
+
+  # Works with [{name, id}, ...] format from as_options
+  defp category_name(options, category_id) do
+    case Enum.find(options, fn {_name, id} -> id == category_id end) do
+      nil -> "Uncategorized"
+      {name, _id} -> name
+    end
+  end
 end

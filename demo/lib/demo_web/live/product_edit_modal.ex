@@ -22,7 +22,7 @@ defmodule DemoWeb.ProductEditModal do
   alias DemoWeb.CoreComponents
   import Lavash.Modal.Helpers, only: [modal_close_button: 1]
 
-  alias Demo.Catalog.Product
+  alias Demo.Catalog.{Category, Product}
 
   # Configure modal behavior
   modal do
@@ -53,7 +53,7 @@ defmodule DemoWeb.ProductEditModal do
 
       <.form for={@form} phx-change="validate" phx-submit="save" phx-target={@myself}>
         <CoreComponents.input field={@form[:name]} label="Name" />
-        <CoreComponents.input field={@form[:category]} label="Category" />
+        <CoreComponents.input field={@form[:category_id]} type="select" label="Category" options={@category_options} prompt="Select category..." />
         <CoreComponents.input field={@form[:price]} type="number" label="Price" step="0.01" />
         <CoreComponents.input field={@form[:rating]} type="number" label="Rating" step="0.1" min="0" max="5" />
         <CoreComponents.input field={@form[:in_stock]} type="checkbox" label="In Stock" />
@@ -69,6 +69,12 @@ defmodule DemoWeb.ProductEditModal do
       </.form>
     </div>
     """
+  end
+
+  # Load categories for the dropdown
+  read :category_options, Category do
+    async false
+    as_options label: :name, value: :id
   end
 
   # Load the product when product_id is set

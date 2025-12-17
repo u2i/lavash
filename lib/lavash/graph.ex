@@ -79,6 +79,7 @@ defmodule Lavash.Graph do
     resource = read.resource
     action_name = read.action || :read
     is_async = read.async != false
+    as_options = read.as_options
 
     # Get the action from the resource to determine its type
     action = Ash.Resource.Info.action(resource, action_name)
@@ -132,25 +133,38 @@ defmodule Lavash.Graph do
           end)
 
         # Use the appropriate Ash function based on action type
-        case action_type do
-          :read ->
-            # Read action - use Ash.Query.for_read + Ash.read
-            query = Ash.Query.for_read(resource, action_name, args)
-            case Ash.read(query) do
-              {:ok, records} -> records
-              {:error, error} -> raise error
-            end
+        records =
+          case action_type do
+            :read ->
+              # Read action - use Ash.Query.for_read + Ash.read
+              query = Ash.Query.for_read(resource, action_name, args)
+              case Ash.read(query) do
+                {:ok, records} -> records
+                {:error, error} -> raise error
+              end
 
-          :action ->
-            # Generic action - use Ash.ActionInput.for_action + Ash.run_action
-            input = Ash.ActionInput.for_action(resource, action_name, args)
-            case Ash.run_action(input) do
-              {:ok, result} -> result
-              {:error, error} -> raise error
-            end
+            :action ->
+              # Generic action - use Ash.ActionInput.for_action + Ash.run_action
+              input = Ash.ActionInput.for_action(resource, action_name, args)
+              case Ash.run_action(input) do
+                {:ok, result} -> result
+                {:error, error} -> raise error
+              end
 
-          _ ->
-            raise "Unsupported action type #{action_type} for read DSL entity"
+            _ ->
+              raise "Unsupported action type #{action_type} for read DSL entity"
+          end
+
+        # Apply as_options transform if specified
+        if as_options do
+          label_field = Keyword.get(as_options, :label)
+          value_field = Keyword.get(as_options, :value, :id)
+
+          Enum.map(records, fn record ->
+            {Map.get(record, label_field), Map.get(record, value_field)}
+          end)
+        else
+          records
         end
       end
     }

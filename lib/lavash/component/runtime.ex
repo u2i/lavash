@@ -129,10 +129,10 @@ defmodule Lavash.Component.Runtime do
     # First, check for form bindings and update state if params match
     socket = apply_form_bindings(socket, module, params)
 
-    action_name = String.to_existing_atom(event)
+    # Look up by string comparison to avoid atom creation DoS
     actions = module.__lavash__(:actions)
 
-    case Enum.find(actions, &(&1.name == action_name)) do
+    case Enum.find(actions, &(Atom.to_string(&1.name) == event)) do
       nil ->
         # No matching action - but form bindings may have updated state
         if LSocket.dirty?(socket) do

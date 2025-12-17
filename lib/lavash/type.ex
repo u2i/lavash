@@ -12,6 +12,8 @@ defmodule Lavash.Type do
   - `:integer` - `"42"` ↔ `42`
   - `:float` - `"3.14"` ↔ `3.14`
   - `:boolean` - `"true"/"false"` ↔ `true/false`
+  - `:uuid` - UUID stored as full string, URL-encoded as base32 (26 chars)
+  - `{:uuid, "prefix"}` - UUID with TypeID prefix, e.g. `cat_01h455vb4pex5vsknk084sn02q`
   - `:atom` - `"foo"` ↔ `:foo` (uses `String.to_existing_atom/1`)
   - `{:array, type}` - `"a,b,c"` ↔ `["a", "b", "c"]` (with inner type conversion)
 
@@ -105,6 +107,17 @@ defmodule Lavash.Type do
   def parse(:boolean, "0"), do: {:ok, false}
   def parse(:boolean, value), do: {:error, "cannot parse #{inspect(value)} as boolean"}
 
+  # UUID: stored as full UUID string, URL-encoded via TypeID (base32, 26 chars)
+  # Accepts: full UUID, hex-no-dashes, TypeID suffix (26 chars), or prefixed TypeID
+  def parse(:uuid, value) when is_binary(value) do
+    parse_uuid(value, nil)
+  end
+
+  # Prefixed UUID: {uuid, "cat"} parses "cat_01h455vb4pex5vsknk084sn02q"
+  def parse({:uuid, prefix}, value) when is_binary(value) and is_binary(prefix) do
+    parse_uuid(value, prefix)
+  end
+
   def parse(:atom, value) when is_binary(value) do
     {:ok, String.to_existing_atom(value)}
   rescue
@@ -154,6 +167,73 @@ defmodule Lavash.Type do
     end
   end
 
+  # ============================================================================
+  # Private UUID Parsing Helpers
+  # ============================================================================
+
+  defp parse_uuid(value, expected_prefix) do
+    cond do
+      # Full UUID with dashes (36 chars)
+      Regex.match?(~r/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, value) ->
+        {:ok, String.downcase(value)}
+
+      # Hex without dashes (32 chars)
+      Regex.match?(~r/^[0-9a-f]{32}$/i, value) ->
+        <<a::binary-8, b::binary-4, c::binary-4, d::binary-4, e::binary-12>> = String.downcase(value)
+        {:ok, "#{a}-#{b}-#{c}-#{d}-#{e}"}
+
+      # Prefixed hex format: prefix_hexuuidnodashes (e.g., cat_3f94f5f0db174f5488f6400b79b795d5)
+      # This handles the case where the hex UUID was prefixed but not base32 encoded
+      String.contains?(value, "_") ->
+        case String.split(value, "_", parts: 2) do
+          [prefix, hex_suffix] when byte_size(hex_suffix) == 32 ->
+            if Regex.match?(~r/^[0-9a-f]{32}$/i, hex_suffix) do
+              # Validate prefix if expected
+              if expected_prefix && prefix != expected_prefix do
+                {:error, "expected prefix #{expected_prefix}, got #{prefix}"}
+              else
+                <<a::binary-8, b::binary-4, c::binary-4, d::binary-4, e::binary-12>> = String.downcase(hex_suffix)
+                {:ok, "#{a}-#{b}-#{c}-#{d}-#{e}"}
+              end
+            else
+              # Not hex, try TypeID
+              try_typeid_parse(value, expected_prefix)
+            end
+
+          _ ->
+            # Try TypeID format
+            try_typeid_parse(value, expected_prefix)
+        end
+
+      # TypeID format (prefix_base32suffix or bare base32)
+      true ->
+        try_typeid_parse(value, expected_prefix)
+    end
+  end
+
+  defp try_typeid_parse(value, expected_prefix) do
+    case TypeID.from_string(value) do
+      {:ok, tid} ->
+        # Validate prefix if expected
+        if expected_prefix && TypeID.prefix(tid) != expected_prefix do
+          {:error, "expected prefix #{expected_prefix}, got #{TypeID.prefix(tid)}"}
+        else
+          {:ok, TypeID.uuid(tid)}
+        end
+
+      :error ->
+        # Try as bare suffix (no prefix) - 26 char base32
+        if Regex.match?(~r/^[0-9a-hjkmnp-tv-z]{26}$/i, value) do
+          case TypeID.from_string("_#{value}") do
+            {:ok, tid} -> {:ok, TypeID.uuid(tid)}
+            :error -> {:error, "cannot parse #{inspect(value)} as uuid"}
+          end
+        else
+          {:error, "cannot parse #{inspect(value)} as uuid"}
+        end
+    end
+  end
+
   @doc """
   Parses a URL param string into the given type, raising on error.
 
@@ -192,6 +272,18 @@ defmodule Lavash.Type do
   def dump(:float, value) when is_float(value), do: Float.to_string(value)
   def dump(:boolean, true), do: "true"
   def dump(:boolean, false), do: "false"
+  # UUID: encode to TypeID suffix (base32, 26 chars)
+  def dump(:uuid, value) when is_binary(value) do
+    {:ok, tid} = TypeID.from_uuid("", value)
+    TypeID.suffix(tid)
+  end
+
+  # Prefixed UUID: encode to full TypeID with prefix
+  def dump({:uuid, prefix}, value) when is_binary(value) and is_binary(prefix) do
+    {:ok, tid} = TypeID.from_uuid(prefix, value)
+    TypeID.to_string(tid)
+  end
+
   def dump(:atom, value) when is_atom(value), do: Atom.to_string(value)
 
   def dump({:array, inner_type}, values) when is_list(values) do

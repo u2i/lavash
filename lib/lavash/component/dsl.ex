@@ -185,6 +185,14 @@ defmodule Lavash.Component.Dsl do
         type: :boolean,
         default: true,
         doc: "Whether to load asynchronously"
+      ],
+      as_options: [
+        type: :keyword_list,
+        doc: """
+        Transform results into dropdown options format [{label, value}, ...].
+        Specify label: :field_name and value: :field_name (default :id).
+        Example: as_options label: :name, value: :id
+        """
       ]
     ]
   }

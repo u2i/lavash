@@ -1,5 +1,15 @@
-alias Demo.Repo
-alias Demo.Catalog.Product
+alias Demo.Catalog
+alias Demo.Catalog.Category
+
+# Create categories first
+categories =
+  ["Electronics", "Books", "Clothing", "Home & Garden", "Sports"]
+  |> Enum.map(fn name ->
+    slug = name |> String.downcase() |> String.replace(~r/[^a-z0-9]+/, "-")
+    {:ok, cat} = Catalog.create_category(%{name: name, slug: slug})
+    {name, cat}
+  end)
+  |> Map.new()
 
 products = [
   # Electronics
@@ -46,9 +56,14 @@ products = [
 ]
 
 for product_attrs <- products do
-  now = DateTime.utc_now() |> DateTime.truncate(:second)
-  attrs = Map.merge(product_attrs, %{inserted_at: now, updated_at: now})
-  Repo.insert!(struct(Product, attrs))
+  category = Map.fetch!(categories, product_attrs.category)
+
+  attrs =
+    product_attrs
+    |> Map.delete(:category)
+    |> Map.put(:category_id, category.id)
+
+  {:ok, _product} = Catalog.create_product(attrs)
 end
 
-IO.puts("Seeded #{length(products)} products")
+IO.puts("Seeded #{map_size(categories)} categories and #{length(products)} products")
