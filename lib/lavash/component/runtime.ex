@@ -499,9 +499,9 @@ defmodule Lavash.Component.Runtime do
             socket
           end
 
-        # Signal resource mutation to parent AFTER on_success (so modal closes first)
+        # Broadcast resource mutation for cross-process invalidation
         if resource do
-          send(self(), {:lavash_resource_mutated, resource})
+          Lavash.PubSub.broadcast(resource)
         end
 
         apply_submits(socket, module, rest, notify_events)

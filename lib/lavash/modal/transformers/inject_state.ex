@@ -7,6 +7,7 @@ defmodule Lavash.Modal.Transformers.InjectState do
   2. Adds :close action that sets open_field to nil
   3. Adds :noop action for preventing backdrop click propagation
   4. Merges close behavior into any user-defined :close action
+  5. Merges form params clearing into :open action (if exists)
   """
 
   use Spark.Dsl.Transformer
@@ -23,6 +24,7 @@ defmodule Lavash.Modal.Transformers.InjectState do
     |> maybe_add_open_input(open_field)
     |> add_or_merge_close_action(open_field)
     |> add_noop_action()
+    |> merge_form_params_clear_into_open()
     |> then(&{:ok, &1})
   end
 
@@ -106,6 +108,39 @@ defmodule Lavash.Modal.Transformers.InjectState do
       }
 
       Transformer.add_entity(dsl_state, [:actions], noop_action)
+    end
+  end
+
+  # Merge form params clearing into the :open action
+  # This ensures that when opening a modal with a different record,
+  # stale form params from the previous record are cleared
+  defp merge_form_params_clear_into_open(dsl_state) do
+    existing_actions = Transformer.get_entities(dsl_state, [:actions])
+    existing_open = Enum.find(existing_actions, &(&1.name == :open))
+
+    if existing_open do
+      # Get all forms defined in the component
+      forms = Transformer.get_entities(dsl_state, [:forms])
+
+      # Create set operations to clear each form's params
+      clear_params_sets =
+        Enum.map(forms, fn form ->
+          params_field = :"#{form.name}_params"
+          %Lavash.Actions.Set{field: params_field, value: nil}
+        end)
+
+      # Merge our sets into the existing open action (at the beginning)
+      updated_open = %{existing_open | sets: clear_params_sets ++ (existing_open.sets || [])}
+
+      Transformer.replace_entity(
+        dsl_state,
+        [:actions],
+        updated_open,
+        &(&1.name == :open)
+      )
+    else
+      # No :open action defined, nothing to merge
+      dsl_state
     end
   end
 end

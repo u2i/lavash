@@ -64,29 +64,37 @@ defmodule Lavash.Form do
   def wrap(other, _form_name), do: other
 
   defp build_ash_form(%Ash.Changeset{} = changeset, form_name) do
+    # Only pass params if there are actual user-provided params
+    # Empty params would override the record's existing values
+    params_opt =
+      case changeset.params do
+        nil -> []
+        params when params == %{} -> []
+        params -> [params: params]
+      end
+
+    base_opts = [as: form_name] ++ params_opt
+
     case changeset.action_type do
       :create ->
         AshPhoenix.Form.for_create(
           changeset.resource,
           changeset.action.name,
-          params: changeset.params || %{},
-          as: form_name
+          base_opts
         )
 
       :update ->
         AshPhoenix.Form.for_update(
           changeset.data,
           changeset.action.name,
-          params: changeset.params || %{},
-          as: form_name
+          base_opts
         )
 
       :destroy ->
         AshPhoenix.Form.for_destroy(
           changeset.data,
           changeset.action.name,
-          params: changeset.params || %{},
-          as: form_name
+          base_opts
         )
 
       _ ->
@@ -94,8 +102,7 @@ defmodule Lavash.Form do
         AshPhoenix.Form.for_action(
           changeset.data || changeset.resource,
           changeset.action.name,
-          params: changeset.params || %{},
-          as: form_name
+          base_opts
         )
     end
   end

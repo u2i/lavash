@@ -12,6 +12,9 @@ config :demo,
   generators: [timestamp_type: :utc_datetime],
   ash_domains: [Demo.Catalog]
 
+# Configure Lavash PubSub for cross-process resource invalidation
+config :lavash, pubsub: Demo.PubSub
+
 # Configures the endpoint
 config :demo, DemoWeb.Endpoint,
   url: [host: "localhost"],

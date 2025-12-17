@@ -25,6 +25,11 @@ defmodule Lavash.LiveView.Runtime do
         %{}
       end
 
+    # Subscribe to PubSub for resource invalidation (only when connected)
+    if Phoenix.LiveView.connected?(socket) do
+      subscribe_to_resources(module)
+    end
+
     # Extract component states for child Lavash components
     component_states = get_in(connect_params, ["_lavash_state", "_components"]) || %{}
 
@@ -50,6 +55,18 @@ defmodule Lavash.LiveView.Runtime do
       |> State.hydrate_forms(module)
 
     {:ok, socket}
+  end
+
+  defp subscribe_to_resources(module) do
+    # Subscribe to all resources used in reads and forms
+    reads = module.__lavash__(:reads)
+    forms = module.__lavash__(:forms)
+
+    resources =
+      Enum.map(reads, & &1.resource) ++ Enum.map(forms, & &1.resource)
+      |> Enum.uniq()
+
+    Enum.each(resources, &Lavash.PubSub.subscribe/1)
   end
 
   def handle_params(module, params, uri, socket) do
@@ -230,9 +247,17 @@ defmodule Lavash.LiveView.Runtime do
     {:noreply, socket}
   end
 
-  def handle_info(module, {:lavash_resource_mutated, resource}, socket) do
-    # A child component mutated a resource - invalidate all reads/derives that depend on it
-    # Find all derived fields that read from this resource
+  # Handle PubSub broadcast for resource invalidation
+  def handle_info(module, {:lavash_invalidate, resource}, socket) do
+    invalidate_resource(module, resource, socket)
+  end
+
+  def handle_info(_module, _msg, socket) do
+    {:noreply, socket}
+  end
+
+  defp invalidate_resource(module, resource, socket) do
+    # Invalidate all reads/derives that depend on this resource
     fields_to_invalidate = Graph.fields_for_resource(module, resource)
 
     if fields_to_invalidate != [] do
@@ -249,10 +274,6 @@ defmodule Lavash.LiveView.Runtime do
     else
       {:noreply, socket}
     end
-  end
-
-  def handle_info(_module, _msg, socket) do
-    {:noreply, socket}
   end
 
   # Private
@@ -401,6 +422,9 @@ defmodule Lavash.LiveView.Runtime do
         f -> f
       end
 
+    # Extract resource from form for mutation signaling
+    resource = extract_resource(form)
+
     # Use Lavash.Form.submit which handles Lavash.Form, Ash.Changeset,
     # AshPhoenix.Form, and Phoenix.HTML.Form
     result = Lavash.Form.submit(form)
@@ -424,6 +448,11 @@ defmodule Lavash.LiveView.Runtime do
           else
             socket
           end
+
+        # Broadcast resource mutation for cross-process invalidation
+        if resource do
+          Lavash.PubSub.broadcast(resource)
+        end
 
         apply_submits(socket, module, rest)
 
@@ -572,4 +601,11 @@ defmodule Lavash.LiveView.Runtime do
       socket
     end
   end
+
+  # Extract the Ash resource module from various form types
+  defp extract_resource(%Lavash.Form{changeset: %Ash.Changeset{resource: resource}}), do: resource
+  defp extract_resource(%Ash.Changeset{resource: resource}), do: resource
+  defp extract_resource(%AshPhoenix.Form{resource: resource}), do: resource
+  defp extract_resource(%Phoenix.HTML.Form{source: source}), do: extract_resource(source)
+  defp extract_resource(_), do: nil
 end
