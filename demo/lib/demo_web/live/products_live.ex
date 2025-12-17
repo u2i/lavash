@@ -2,7 +2,7 @@ defmodule DemoWeb.ProductsLive do
   use Lavash.LiveView
   import Lavash.LiveView.Helpers
 
-  alias Demo.Catalog
+  alias Demo.Catalog.Product
 
   # All filter state stored in URL - shareable, bookmarkable, back/forward works
   state :search, :string, from: :url, default: ""
@@ -12,34 +12,19 @@ defmodule DemoWeb.ProductsLive do
   state :max_price, :integer, from: :url, default: nil
   state :min_rating, :integer, from: :url, default: nil
 
-  # Products are derived from filter state
-  derive :products do
-    reads [Demo.Catalog.Product]
-    argument :search, state(:search)
-    argument :category, state(:category)
-    argument :in_stock, state(:in_stock)
-    argument :min_price, state(:min_price)
-    argument :max_price, state(:max_price)
-    argument :min_rating, state(:min_rating)
-    run fn filters, _ ->
-      {:ok, products} = Catalog.list_products(
-        filters.search,
-        if(filters.category == "", do: nil, else: filters.category),
-        filters.in_stock,
-        filters.min_price,
-        filters.max_price,
-        filters.min_rating
-      )
-      products
-    end
+  # Products - auto-maps state fields to :list action arguments
+  # The action's arguments (search, category, in_stock, etc.) match our state field names
+  read :products, Product, :list do
+    async false
+    arg :category, transform: &(if &1 == "", do: nil, else: &1)
   end
 
-  derive :categories do
-    run fn _, _ ->
-      {:ok, categories} = Catalog.list_categories()
-      categories
-    end
+  # Categories - simple read with no arguments
+  read :categories, Product, :list_categories do
+    async false
   end
+
+  # No longer needed - can compute directly in template or use a simple derive
 
   derive :result_count do
     argument :products, result(:products)

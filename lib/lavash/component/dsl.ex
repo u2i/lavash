@@ -134,10 +134,34 @@ defmodule Lavash.Component.Dsl do
   # Read - async resource loading
   # ============================================
 
+  @read_arg_entity %Spark.Dsl.Entity{
+    name: :arg,
+    target: Lavash.Read.Arg,
+    args: [:name, {:optional, :source}],
+    schema: [
+      name: [
+        type: :atom,
+        required: true,
+        doc: "The action argument name to override"
+      ],
+      source: [
+        type: :any,
+        doc: "The source: state(:field), prop(:field), or result(:derive). If omitted, uses state(name)."
+      ],
+      transform: [
+        type: {:fun, 1},
+        doc: "Optional transform function applied to the value before passing to action"
+      ]
+    ]
+  }
+
   @read_entity %Spark.Dsl.Entity{
     name: :read,
     target: Lavash.Read,
-    args: [:name, :resource],
+    args: [:name, :resource, {:optional, :action}],
+    entities: [
+      args: [@read_arg_entity]
+    ],
     schema: [
       name: [
         type: :atom,
@@ -149,15 +173,13 @@ defmodule Lavash.Component.Dsl do
         required: true,
         doc: "The Ash resource module to load"
       ],
-      id: [
-        type: :any,
-        required: true,
-        doc: "The ID source: prop(:field), state(:field), or result(:derive)"
-      ],
       action: [
         type: :atom,
-        default: :read,
-        doc: "The read action to use"
+        doc: "The read action to use. Defaults to :read for get-by-id."
+      ],
+      id: [
+        type: :any,
+        doc: "The ID source for get-by-id: prop(:field), state(:field), or result(:derive)"
       ],
       async: [
         type: :boolean,
@@ -170,7 +192,7 @@ defmodule Lavash.Component.Dsl do
   @reads_section %Spark.Dsl.Section{
     name: :reads,
     top_level?: true,
-    describe: "Async resource loading by ID.",
+    describe: "Async Ash resource loading. Auto-maps state fields to action arguments by name.",
     entities: [@read_entity]
   }
 

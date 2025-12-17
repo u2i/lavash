@@ -33,33 +33,127 @@ defmodule Lavash.Graph do
   # Expand read entities into derived-like field structs
   defp expand_reads(module) do
     reads = module.__lavash__(:reads)
+    states = module.__lavash__(:states)
+    state_names = MapSet.new(states, & &1.name)
 
     Enum.map(reads, fn read ->
-      # Extract dependency from id option
-      id_dep = extract_dependency(read.id)
-      resource = read.resource
-      action = read.action || :read
-      is_async = read.async != false
-
-      %Lavash.Derived.Field{
-        name: read.name,
-        depends_on: [id_dep],
-        async: is_async,
-        compute: fn deps ->
-          id = Map.get(deps, id_dep)
-
-          case id do
-            nil -> nil
-            id ->
-              case Ash.get(resource, id, action: action) do
-                {:ok, record} -> record
-                {:error, %Ash.Error.Query.NotFound{}} -> nil
-                {:error, error} -> raise error
-              end
-          end
-        end
-      }
+      if read.id do
+        # Mode 1: Get by ID (single record)
+        expand_read_by_id(read)
+      else
+        # Mode 2: Query with auto-mapped arguments
+        expand_read_query(read, state_names)
+      end
     end)
+  end
+
+  # Get-by-ID mode: load a single record
+  defp expand_read_by_id(read) do
+    id_dep = extract_dependency(read.id)
+    resource = read.resource
+    action = read.action || :read
+    is_async = read.async != false
+
+    %Lavash.Derived.Field{
+      name: read.name,
+      depends_on: [id_dep],
+      async: is_async,
+      compute: fn deps ->
+        id = Map.get(deps, id_dep)
+
+        case id do
+          nil -> nil
+          id ->
+            case Ash.get(resource, id, action: action) do
+              {:ok, record} -> record
+              {:error, %Ash.Error.Query.NotFound{}} -> nil
+              {:error, error} -> raise error
+            end
+        end
+      end
+    }
+  end
+
+  # Query mode: run an action with auto-mapped arguments
+  defp expand_read_query(read, state_names) do
+    resource = read.resource
+    action_name = read.action || :read
+    is_async = read.async != false
+
+    # Get the action from the resource to determine its type
+    action = Ash.Resource.Info.action(resource, action_name)
+    action_type = if action, do: action.type, else: :read
+    action_args = if action, do: action.arguments, else: []
+
+    # Build arg overrides map from DSL entities
+    arg_overrides =
+      (read.args || [])
+      |> Enum.map(fn arg -> {arg.name, arg} end)
+      |> Map.new()
+
+    # Build the dependency list and arg mapping
+    # For each action argument, find the source (state field or override)
+    {depends_on, arg_mapping} =
+      Enum.reduce(action_args, {[], []}, fn action_arg, {deps, mapping} ->
+        arg_name = action_arg.name
+
+        case Map.get(arg_overrides, arg_name) do
+          nil ->
+            # No override - auto-map from state field with same name if it exists
+            if MapSet.member?(state_names, arg_name) do
+              {[arg_name | deps], [{arg_name, arg_name, nil} | mapping]}
+            else
+              # No matching state field - skip this arg (will be nil)
+              {deps, mapping}
+            end
+
+          %{source: source, transform: transform} ->
+            # Explicit override
+            source_field = if source, do: extract_dependency(source), else: arg_name
+            {[source_field | deps], [{arg_name, source_field, transform} | mapping]}
+        end
+      end)
+
+    depends_on = Enum.reverse(depends_on) |> Enum.uniq()
+    arg_mapping = Enum.reverse(arg_mapping)
+
+    %Lavash.Derived.Field{
+      name: read.name,
+      depends_on: depends_on,
+      async: is_async,
+      reads: [resource],
+      compute: fn deps ->
+        # Build the args map
+        args =
+          Enum.reduce(arg_mapping, %{}, fn {arg_name, source_field, transform}, acc ->
+            value = Map.get(deps, source_field)
+            value = if transform, do: transform.(value), else: value
+            Map.put(acc, arg_name, value)
+          end)
+
+        # Use the appropriate Ash function based on action type
+        case action_type do
+          :read ->
+            # Read action - use Ash.Query.for_read + Ash.read
+            query = Ash.Query.for_read(resource, action_name, args)
+            case Ash.read(query) do
+              {:ok, records} -> records
+              {:error, error} -> raise error
+            end
+
+          :action ->
+            # Generic action - use Ash.ActionInput.for_action + Ash.run_action
+            input = Ash.ActionInput.for_action(resource, action_name, args)
+            case Ash.run_action(input) do
+              {:ok, result} -> result
+              {:error, error} -> raise error
+            end
+
+          _ ->
+            raise "Unsupported action type #{action_type} for read DSL entity"
+        end
+      end
+    }
   end
 
   # Expand form entities into derived-like field structs
