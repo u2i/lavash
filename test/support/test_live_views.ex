@@ -4,12 +4,12 @@ defmodule Lavash.TestCounterLive do
   """
   use Lavash.LiveView
 
-  input :count, :integer, from: :url, default: 0
-  input :multiplier, :integer, from: :ephemeral, default: 2
+  state :count, :integer, from: :url, default: 0
+  state :multiplier, :integer, from: :ephemeral, default: 2
 
   derive :doubled do
-    argument :count, input(:count)
-    argument :multiplier, input(:multiplier)
+    argument :count, state(:count)
+    argument :multiplier, state(:multiplier)
     run fn %{count: c, multiplier: m}, _ -> c * m end
   end
 
@@ -51,10 +51,10 @@ defmodule Lavash.TestChainedDerivedLive do
   """
   use Lavash.LiveView
 
-  input :count, :integer, from: :url, default: 1
+  state :count, :integer, from: :url, default: 1
 
   derive :doubled do
-    argument :count, input(:count)
+    argument :count, state(:count)
     run fn %{count: c}, _ -> c * 2 end
   end
 
@@ -99,10 +99,10 @@ defmodule Lavash.TestChainedEphemeralLive do
   """
   use Lavash.LiveView
 
-  input :base, :integer, from: :ephemeral, default: 1
+  state :base, :integer, from: :ephemeral, default: 1
 
   derive :doubled do
-    argument :base, input(:base)
+    argument :base, state(:base)
     run fn %{base: b}, _ -> b * 2 end
   end
 
@@ -142,11 +142,11 @@ defmodule Lavash.TestAsyncChainLive do
   """
   use Lavash.LiveView
 
-  input :count, :integer, from: :url, default: 1
+  state :count, :integer, from: :url, default: 1
 
   derive :doubled do
     async true
-    argument :count, input(:count)
+    argument :count, state(:count)
     run fn %{count: c}, _ ->
       Process.sleep(50)
       c * 2
@@ -198,8 +198,8 @@ defmodule Lavash.TestPathParamLive do
   """
   use Lavash.LiveView
 
-  input :product_id, :integer, from: :url
-  input :tab, :string, from: :url, default: "details"
+  state :product_id, :integer, from: :url
+  state :tab, :string, from: :url, default: "details"
 
   actions do
     action :set_product, [:id] do
@@ -233,10 +233,10 @@ defmodule Lavash.TestTypedLive do
   """
   use Lavash.LiveView
 
-  input :page, :integer, from: :url, default: 1
-  input :active, :boolean, from: :url, default: false
-  input :query, :string, from: :url, default: ""
-  input :tags, {:array, :string}, from: :url, default: []
+  state :page, :integer, from: :url, default: 1
+  state :active, :boolean, from: :url, default: false
+  state :query, :string, from: :url, default: ""
+  state :tags, {:array, :string}, from: :url, default: []
 
   actions do
     action :set_page, [:value] do

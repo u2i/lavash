@@ -5,27 +5,27 @@ defmodule DemoWeb.ProductsLive do
   alias Demo.Catalog
 
   # All filter state stored in URL - shareable, bookmarkable, back/forward works
-  input :search, :string, from: :url, default: ""
-  input :category, :string, from: :url, default: ""
-  input :in_stock, :string, from: :url, default: ""  # "", "true", "false"
-  input :min_price, :integer, from: :url, default: nil
-  input :max_price, :integer, from: :url, default: nil
-  input :min_rating, :integer, from: :url, default: nil
+  state :search, :string, from: :url, default: ""
+  state :category, :string, from: :url, default: ""
+  state :in_stock, :boolean, from: :url, default: nil
+  state :min_price, :integer, from: :url, default: nil
+  state :max_price, :integer, from: :url, default: nil
+  state :min_rating, :integer, from: :url, default: nil
 
   # Products are derived from filter state
   derive :products do
     reads [Demo.Catalog.Product]
-    argument :search, input(:search)
-    argument :category, input(:category)
-    argument :in_stock, input(:in_stock)
-    argument :min_price, input(:min_price)
-    argument :max_price, input(:max_price)
-    argument :min_rating, input(:min_rating)
+    argument :search, state(:search)
+    argument :category, state(:category)
+    argument :in_stock, state(:in_stock)
+    argument :min_price, state(:min_price)
+    argument :max_price, state(:max_price)
+    argument :min_rating, state(:min_rating)
     run fn filters, _ ->
       {:ok, products} = Catalog.list_products(
         filters.search,
         if(filters.category == "", do: nil, else: filters.category),
-        parse_bool(filters.in_stock),
+        filters.in_stock,
         filters.min_price,
         filters.max_price,
         filters.min_rating
@@ -49,14 +49,14 @@ defmodule DemoWeb.ProductsLive do
   end
 
   derive :has_filters do
-    argument :search, input(:search)
-    argument :category, input(:category)
-    argument :in_stock, input(:in_stock)
-    argument :min_price, input(:min_price)
-    argument :max_price, input(:max_price)
-    argument :min_rating, input(:min_rating)
+    argument :search, state(:search)
+    argument :category, state(:category)
+    argument :in_stock, state(:in_stock)
+    argument :min_price, state(:min_price)
+    argument :max_price, state(:max_price)
+    argument :min_rating, state(:min_rating)
     run fn f, _ ->
-      f.search != "" or f.category != "" or f.in_stock != "" or
+      f.search != "" or f.category != "" or f.in_stock != nil or
       f.min_price != nil or f.max_price != nil or f.min_rating != nil
     end
   end
@@ -75,21 +75,21 @@ defmodule DemoWeb.ProductsLive do
     end
 
     action :set_min_price, [:value] do
-      set :min_price, & parse_int(&1.params.value)
+      set :min_price, & &1.params.value
     end
 
     action :set_max_price, [:value] do
-      set :max_price, & parse_int(&1.params.value)
+      set :max_price, & &1.params.value
     end
 
     action :set_min_rating, [:value] do
-      set :min_rating, & parse_int(&1.params.value)
+      set :min_rating, & &1.params.value
     end
 
     action :clear_filters do
       set :search, ""
       set :category, ""
-      set :in_stock, ""
+      set :in_stock, nil
       set :min_price, nil
       set :max_price, nil
       set :min_rating, nil
@@ -165,9 +165,9 @@ defmodule DemoWeb.ProductsLive do
               <label class="block text-sm font-medium text-gray-700 mb-1">Availability</label>
               <form phx-change="set_in_stock">
                 <select name="value" class="w-full px-3 py-2 border rounded-md text-sm">
-                  <option value="" selected={@in_stock == ""}>All</option>
-                  <option value="true" selected={@in_stock == "true"}>In Stock</option>
-                  <option value="false" selected={@in_stock == "false"}>Out of Stock</option>
+                  <option value="" selected={@in_stock == nil}>All</option>
+                  <option value="true" selected={@in_stock == true}>In Stock</option>
+                  <option value="false" selected={@in_stock == false}>Out of Stock</option>
                 </select>
               </form>
             </div>
@@ -289,7 +289,7 @@ defmodule DemoWeb.ProductsLive do
       %{}
       |> maybe_add("search", assigns.search, "")
       |> maybe_add("category", assigns.category, "")
-      |> maybe_add("in_stock", assigns.in_stock, "")
+      |> maybe_add("in_stock", assigns.in_stock, nil)
       |> maybe_add("min_price", assigns.min_price, nil)
       |> maybe_add("max_price", assigns.max_price, nil)
       |> maybe_add("min_rating", assigns.min_rating, nil)
@@ -303,18 +303,4 @@ defmodule DemoWeb.ProductsLive do
 
   defp maybe_add(params, _key, value, default) when value == default, do: params
   defp maybe_add(params, key, value, _default), do: Map.put(params, key, value)
-
-  defp parse_bool("true"), do: true
-  defp parse_bool("false"), do: false
-  defp parse_bool(_), do: nil
-
-  defp parse_int(nil), do: nil
-  defp parse_int(""), do: nil
-  defp parse_int(val) when is_binary(val) do
-    case Integer.parse(val) do
-      {int, _} -> int
-      :error -> nil
-    end
-  end
-  defp parse_int(val) when is_integer(val), do: val
 end

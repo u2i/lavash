@@ -13,21 +13,21 @@ defmodule DemoWeb.ProductsSocketLive do
   alias Demo.Catalog
 
   # All filter state stored in socket - survives reconnects, not in URL
-  input :search, :string, from: :socket, default: ""
-  input :category, :string, from: :socket, default: ""
-  input :in_stock, :string, from: :socket, default: ""  # "", "true", "false"
-  input :min_price, :integer, from: :socket, default: nil
-  input :max_price, :integer, from: :socket, default: nil
-  input :min_rating, :integer, from: :socket, default: nil
+  state :search, :string, from: :socket, default: ""
+  state :category, :string, from: :socket, default: ""
+  state :in_stock, :string, from: :socket, default: ""  # "", "true", "false"
+  state :min_price, :integer, from: :socket, default: nil
+  state :max_price, :integer, from: :socket, default: nil
+  state :min_rating, :integer, from: :socket, default: nil
 
   # Products are derived from filter state
   derive :products do
-    argument :search, input(:search)
-    argument :category, input(:category)
-    argument :in_stock, input(:in_stock)
-    argument :min_price, input(:min_price)
-    argument :max_price, input(:max_price)
-    argument :min_rating, input(:min_rating)
+    argument :search, state(:search)
+    argument :category, state(:category)
+    argument :in_stock, state(:in_stock)
+    argument :min_price, state(:min_price)
+    argument :max_price, state(:max_price)
+    argument :min_rating, state(:min_rating)
     run fn filters, _ ->
       {:ok, products} = Catalog.list_products(
         filters.search,
@@ -56,12 +56,12 @@ defmodule DemoWeb.ProductsSocketLive do
   end
 
   derive :has_filters do
-    argument :search, input(:search)
-    argument :category, input(:category)
-    argument :in_stock, input(:in_stock)
-    argument :min_price, input(:min_price)
-    argument :max_price, input(:max_price)
-    argument :min_rating, input(:min_rating)
+    argument :search, state(:search)
+    argument :category, state(:category)
+    argument :in_stock, state(:in_stock)
+    argument :min_price, state(:min_price)
+    argument :max_price, state(:max_price)
+    argument :min_rating, state(:min_rating)
     run fn f, _ ->
       f.search != "" or f.category != "" or f.in_stock != "" or
       f.min_price != nil or f.max_price != nil or f.min_rating != nil

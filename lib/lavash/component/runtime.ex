@@ -328,7 +328,7 @@ defmodule Lavash.Component.Runtime do
     if guards_pass?(socket, module, action.when) do
       socket =
         socket
-        |> apply_sets(action.sets || [], params)
+        |> apply_sets(action.sets || [], params, module)
         |> apply_updates(action.updates || [], params)
         |> apply_effects(action.effects || [], params)
         |> apply_emits(action.emits || [], params)
@@ -348,7 +348,9 @@ defmodule Lavash.Component.Runtime do
     Enum.all?(guards, fn guard -> Map.get(state, guard) == true end)
   end
 
-  defp apply_sets(socket, sets, params) do
+  defp apply_sets(socket, sets, params, module) do
+    states = module.__lavash__(:states)
+
     Enum.reduce(sets, socket, fn set, sock ->
       value =
         case set.value do
@@ -358,9 +360,24 @@ defmodule Lavash.Component.Runtime do
             value
         end
 
-      LSocket.put_state(sock, set.field, value)
+      # Coerce value to the field's declared type
+      state_field = Enum.find(states, &(&1.name == set.field))
+      coerced = coerce_value(value, state_field)
+
+      LSocket.put_state(sock, set.field, coerced)
     end)
   end
+
+  defp coerce_value(value, nil), do: value
+  defp coerce_value(nil, _state_field), do: nil
+  defp coerce_value("", %{type: type}) when type != :string, do: nil
+  defp coerce_value(value, %{type: type}) when is_binary(value) do
+    case Lavash.Type.parse(type, value) do
+      {:ok, parsed} -> parsed
+      {:error, _} -> value
+    end
+  end
+  defp coerce_value(value, _state_field), do: value
 
   defp apply_updates(socket, updates, _params) do
     Enum.reduce(updates, socket, fn update, sock ->

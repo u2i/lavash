@@ -1,12 +1,12 @@
 defmodule DemoWeb.CounterLive do
   use Lavash.LiveView
 
-  input :count, :integer, from: :url, default: 0
-  input :multiplier, :integer, from: :ephemeral, default: 2
+  state :count, :integer, from: :url, default: 0
+  state :multiplier, :integer, from: :ephemeral, default: 2
 
   derive :doubled do
-    argument :count, input(:count)
-    argument :multiplier, input(:multiplier)
+    argument :count, state(:count)
+    argument :multiplier, state(:multiplier)
     run fn %{count: c, multiplier: m}, _ ->
       c * m
     end
@@ -14,7 +14,7 @@ defmodule DemoWeb.CounterLive do
 
   derive :fact do
     async true
-    argument :count, input(:count)
+    argument :count, state(:count)
     run fn %{count: c}, _ ->
       # Simulate slow computation
       Process.sleep(500)

@@ -12,12 +12,12 @@ defmodule DemoWeb.ProductCard do
 
   prop :product, :map, required: true
 
-  input :expanded, :boolean, from: :socket, default: false
-  input :hovered, :boolean, from: :ephemeral, default: false
+  state :expanded, :boolean, from: :socket, default: false
+  state :hovered, :boolean, from: :ephemeral, default: false
 
   derive :show_details do
-    argument :expanded, input(:expanded)
-    argument :hovered, input(:hovered)
+    argument :expanded, state(:expanded)
+    argument :hovered, state(:hovered)
     run fn %{expanded: e, hovered: h}, _ -> e or h end
   end
 

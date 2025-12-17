@@ -108,10 +108,10 @@ defmodule Lavash.Graph do
     end)
   end
 
-  # Extract the field name from input(:x), result(:x), or prop(:x) tuples
+  # Extract the field name from state(:x), result(:x), or prop(:x) tuples
   defp extract_dependency(source) do
     case source do
-      {:input, name} -> name
+      {:state, name} -> name
       {:result, name} -> name
       {:prop, name} -> name
       name when is_atom(name) -> name

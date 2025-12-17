@@ -32,8 +32,8 @@ defmodule Lavash.Component.Compiler do
         Spark.Dsl.Extension.get_entities(__MODULE__, [:props])
       end
 
-      def __lavash__(:inputs) do
-        Spark.Dsl.Extension.get_entities(__MODULE__, [:inputs])
+      def __lavash__(:states) do
+        Spark.Dsl.Extension.get_entities(__MODULE__, [:states])
       end
 
       def __lavash__(:reads) do
@@ -55,11 +55,11 @@ defmodule Lavash.Component.Compiler do
 
       # Convenience accessors by storage type
       def __lavash__(:socket_fields) do
-        __lavash__(:inputs) |> Enum.filter(&(&1.from == :socket))
+        __lavash__(:states) |> Enum.filter(&(&1.from == :socket))
       end
 
       def __lavash__(:ephemeral_fields) do
-        __lavash__(:inputs) |> Enum.filter(&(&1.from == :ephemeral))
+        __lavash__(:states) |> Enum.filter(&(&1.from == :ephemeral))
       end
 
       # Components don't have URL fields

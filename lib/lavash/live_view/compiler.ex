@@ -43,8 +43,8 @@ defmodule Lavash.LiveView.Compiler do
       end
 
       # Introspection functions - entities from top_level? sections
-      def __lavash__(:inputs) do
-        Spark.Dsl.Extension.get_entities(__MODULE__, [:inputs])
+      def __lavash__(:states) do
+        Spark.Dsl.Extension.get_entities(__MODULE__, [:states])
       end
 
       def __lavash__(:reads) do
@@ -66,15 +66,15 @@ defmodule Lavash.LiveView.Compiler do
 
       # Convenience accessors by storage type
       def __lavash__(:url_fields) do
-        __lavash__(:inputs) |> Enum.filter(&(&1.from == :url))
+        __lavash__(:states) |> Enum.filter(&(&1.from == :url))
       end
 
       def __lavash__(:socket_fields) do
-        __lavash__(:inputs) |> Enum.filter(&(&1.from == :socket))
+        __lavash__(:states) |> Enum.filter(&(&1.from == :socket))
       end
 
       def __lavash__(:ephemeral_fields) do
-        __lavash__(:inputs) |> Enum.filter(&(is_nil(&1.from) || &1.from == :ephemeral))
+        __lavash__(:states) |> Enum.filter(&(is_nil(&1.from) || &1.from == :ephemeral))
       end
     end
   end
@@ -88,7 +88,7 @@ defmodule Lavash.LiveView.Compiler do
       (field.arguments || [])
       |> Enum.map(fn arg ->
         case arg.source do
-          {:input, name} -> name
+          {:state, name} -> name
           {:result, name} -> name
           {:prop, name} -> name
           name when is_atom(name) -> name
@@ -101,7 +101,7 @@ defmodule Lavash.LiveView.Compiler do
       |> Enum.map(fn arg ->
         source_field =
           case arg.source do
-            {:input, name} -> name
+            {:state, name} -> name
             {:result, name} -> name
             {:prop, name} -> name
             name when is_atom(name) -> name

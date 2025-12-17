@@ -11,13 +11,13 @@ defmodule DemoWeb.ProductEditLive do
 
   alias Demo.Catalog.Product
 
-  # Inputs - mutable state from external sources
-  input :product_id, :integer, from: :url
-  input :submitting, :boolean, from: :ephemeral, default: false
+  # State - mutable state from external sources
+  state :product_id, :integer, from: :url
+  state :submitting, :boolean, from: :ephemeral, default: false
 
   # Read - async load the product by ID
   read :product, Product do
-    id input(:product_id)
+    id state(:product_id)
   end
 
   # Form - creates AshPhoenix.Form, auto-detects create vs update

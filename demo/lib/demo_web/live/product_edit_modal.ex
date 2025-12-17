@@ -19,7 +19,8 @@ defmodule DemoWeb.ProductEditModal do
   """
   use Lavash.Component, extensions: [Lavash.Modal.Dsl]
 
-  import DemoWeb.CoreComponents, only: [input: 1, button: 1]
+  alias DemoWeb.CoreComponents
+  import Lavash.Modal.Helpers, only: [modal_close_button: 1]
 
   alias Demo.Catalog.Product
 
@@ -51,19 +52,19 @@ defmodule DemoWeb.ProductEditModal do
       </div>
 
       <.form for={@form} phx-change="validate" phx-submit="save" phx-target={@myself}>
-        <.input field={@form[:name]} label="Name" />
-        <.input field={@form[:category]} label="Category" />
-        <.input field={@form[:price]} type="number" label="Price" step="0.01" />
-        <.input field={@form[:rating]} type="number" label="Rating" step="0.1" min="0" max="5" />
-        <.input field={@form[:in_stock]} type="checkbox" label="In Stock" />
+        <CoreComponents.input field={@form[:name]} label="Name" />
+        <CoreComponents.input field={@form[:category]} label="Category" />
+        <CoreComponents.input field={@form[:price]} type="number" label="Price" step="0.01" />
+        <CoreComponents.input field={@form[:rating]} type="number" label="Rating" step="0.1" min="0" max="5" />
+        <CoreComponents.input field={@form[:in_stock]} type="checkbox" label="In Stock" />
 
         <div class="flex gap-3 pt-4 border-t">
-          <.button type="submit" phx-disable-with="Saving..." class="flex-1 btn-primary">
+          <CoreComponents.button type="submit" phx-disable-with="Saving..." class="flex-1 btn-primary">
             Save Changes
-          </.button>
-          <.button type="button" phx-click="close" phx-target={@myself} class="btn-outline">
+          </CoreComponents.button>
+          <CoreComponents.button type="button" phx-click="close" phx-target={@myself} class="btn-outline">
             Cancel
-          </.button>
+          </CoreComponents.button>
         </div>
       </.form>
     </div>
@@ -72,7 +73,7 @@ defmodule DemoWeb.ProductEditModal do
 
   # Load the product when product_id is set
   read :product, Product do
-    id input(:product_id)
+    id state(:product_id)
   end
 
   # Form for editing

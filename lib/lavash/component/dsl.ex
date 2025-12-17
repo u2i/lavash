@@ -4,10 +4,10 @@ defmodule Lavash.Component.Dsl do
 
   Components have the same capabilities as LiveViews:
   - `prop` - passed from parent (read-only)
-  - `input` - internal state (socket or ephemeral)
+  - `state` - internal state (socket or ephemeral)
   - `read` - async load an Ash resource by ID
   - `form` - create an AshPhoenix.Form from a resource
-  - `derive` - computed from props, inputs, and results
+  - `derive` - computed from props, state, and results
   - `actions` - state transformers with submit and notify_parent
 
   All declared fields are automatically projected as assigns.
@@ -24,7 +24,7 @@ defmodule Lavash.Component.Dsl do
         prop :on_saved, :string, required: true
 
         # Internal state
-        input :submitting, :boolean, from: :ephemeral, default: false
+        state :submitting, :boolean, from: :ephemeral, default: false
 
         # Load the product when product_id is set
         read :product, Product do
@@ -93,18 +93,18 @@ defmodule Lavash.Component.Dsl do
   }
 
   # ============================================
-  # Input - internal mutable state
+  # State - internal mutable state
   # ============================================
 
-  @input_entity %Spark.Dsl.Entity{
-    name: :input,
-    target: Lavash.Input,
+  @state_entity %Spark.Dsl.Entity{
+    name: :state,
+    target: Lavash.StateField,
     args: [:name, :type],
     schema: [
       name: [
         type: :atom,
         required: true,
-        doc: "The name of the input field"
+        doc: "The name of the state field"
       ],
       type: [
         type: :any,
@@ -123,11 +123,11 @@ defmodule Lavash.Component.Dsl do
     ]
   }
 
-  @inputs_section %Spark.Dsl.Section{
-    name: :inputs,
+  @states_section %Spark.Dsl.Section{
+    name: :states,
     top_level?: true,
     describe: "Internal mutable state (socket or ephemeral).",
-    entities: [@input_entity]
+    entities: [@state_entity]
   }
 
   # ============================================
@@ -152,7 +152,7 @@ defmodule Lavash.Component.Dsl do
       id: [
         type: :any,
         required: true,
-        doc: "The ID source: prop(:field), input(:field), or result(:derive)"
+        doc: "The ID source: prop(:field), state(:field), or result(:derive)"
       ],
       action: [
         type: :atom,
@@ -199,7 +199,7 @@ defmodule Lavash.Component.Dsl do
       ],
       params: [
         type: :any,
-        doc: "The params source: input(:form_params). Defaults to implicit :name_params."
+        doc: "The params source: state(:form_params). Defaults to implicit :name_params."
       ],
       create: [
         type: :atom,
@@ -238,7 +238,7 @@ defmodule Lavash.Component.Dsl do
       source: [
         type: :any,
         required: true,
-        doc: "The source: input(:field) or result(:derive_name)"
+        doc: "The source: state(:field) or result(:derive_name)"
       ]
     ]
   }
@@ -422,6 +422,6 @@ defmodule Lavash.Component.Dsl do
   # ============================================
 
   use Spark.Dsl.Extension,
-    sections: [@props_section, @inputs_section, @reads_section, @forms_section, @derives_section, @actions_section],
+    sections: [@props_section, @states_section, @reads_section, @forms_section, @derives_section, @actions_section],
     imports: [Phoenix.Component, Lavash.DslHelpers]
 end

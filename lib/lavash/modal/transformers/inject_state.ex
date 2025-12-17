@@ -3,7 +3,7 @@ defmodule Lavash.Modal.Transformers.InjectState do
   Transformer that injects modal state and actions into a Lavash Component.
 
   This transformer:
-  1. Adds the open_field as an ephemeral input (if not already defined)
+  1. Adds the open_field as an ephemeral state field (if not already defined)
   2. Adds :close action that sets open_field to nil
   3. Adds :noop action for preventing backdrop click propagation
   4. Merges close behavior into any user-defined :close action
@@ -26,22 +26,22 @@ defmodule Lavash.Modal.Transformers.InjectState do
     |> then(&{:ok, &1})
   end
 
-  # Add the open_field as an ephemeral input if not already defined
+  # Add the open_field as an ephemeral state field if not already defined
   defp maybe_add_open_input(dsl_state, open_field) do
-    existing_inputs = Transformer.get_entities(dsl_state, [:inputs])
+    existing_states = Transformer.get_entities(dsl_state, [:states])
 
-    if Enum.any?(existing_inputs, &(&1.name == open_field)) do
-      # User already defined this input, don't override
+    if Enum.any?(existing_states, &(&1.name == open_field)) do
+      # User already defined this state field, don't override
       dsl_state
     else
-      input = %Lavash.Input{
+      state_field = %Lavash.StateField{
         name: open_field,
         type: :any,
         from: :ephemeral,
         default: nil
       }
 
-      Transformer.add_entity(dsl_state, [:inputs], input)
+      Transformer.add_entity(dsl_state, [:states], state_field)
     end
   end
 
