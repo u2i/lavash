@@ -21,6 +21,7 @@ defmodule Lavash.StateField do
     :required,
     :encode,
     :decode,
+    :setter,
     __spark_metadata__: nil
   ]
 end

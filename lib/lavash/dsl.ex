@@ -101,6 +101,11 @@ defmodule Lavash.Dsl do
       decode: [
         type: {:fun, 1},
         doc: "Custom decoder function from URL params"
+      ],
+      setter: [
+        type: :boolean,
+        default: false,
+        doc: "Auto-generate a set_<name> action that sets this field from params.value"
       ]
     ]
   }

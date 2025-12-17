@@ -61,7 +61,9 @@ defmodule Lavash.LiveView.Compiler do
       end
 
       def __lavash__(:actions) do
-        Spark.Dsl.Extension.get_entities(__MODULE__, [:actions])
+        declared_actions = Spark.Dsl.Extension.get_entities(__MODULE__, [:actions])
+        setter_actions = Lavash.LiveView.Compiler.generate_setter_actions(__MODULE__)
+        declared_actions ++ setter_actions
       end
 
       # Convenience accessors by storage type
@@ -77,6 +79,33 @@ defmodule Lavash.LiveView.Compiler do
         __lavash__(:states) |> Enum.filter(&(is_nil(&1.from) || &1.from == :ephemeral))
       end
     end
+  end
+
+  @doc """
+  Generate synthetic setter actions for state fields with setter: true.
+  """
+  def generate_setter_actions(module) do
+    module.__lavash__(:states)
+    |> Enum.filter(& &1.setter)
+    |> Enum.map(fn state ->
+      %Lavash.Actions.Action{
+        name: :"set_#{state.name}",
+        params: [:value],
+        when: [],
+        sets: [
+          %Lavash.Actions.Set{
+            field: state.name,
+            value: & &1.params.value
+          }
+        ],
+        updates: [],
+        effects: [],
+        submits: [],
+        navigates: [],
+        flashes: [],
+        invokes: []
+      }
+    end)
   end
 
   @doc """
