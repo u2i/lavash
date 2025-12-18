@@ -219,9 +219,9 @@ defmodule Lavash.PubSub do
     else
       # Build combination topic
       filter_str =
-        active_filters
-        |> Enum.map(fn {attr, value} -> "#{attr}=#{encode_value(value)}" end)
-        |> Enum.join("&")
+        Enum.map_join(active_filters, "&", fn {attr, value} ->
+          "#{attr}=#{encode_value(value)}"
+        end)
 
       "lavash:#{resource}:#{filter_str}"
     end

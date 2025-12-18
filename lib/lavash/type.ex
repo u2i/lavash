@@ -291,9 +291,7 @@ defmodule Lavash.Type do
   def dump(:atom, value) when is_atom(value), do: Atom.to_string(value)
 
   def dump({:array, inner_type}, values) when is_list(values) do
-    values
-    |> Enum.map(&dump(inner_type, &1))
-    |> Enum.join(",")
+    Enum.map_join(values, ",", &dump(inner_type, &1))
   end
 
   # Custom type module

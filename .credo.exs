@@ -21,8 +21,9 @@
           {Credo.Check.Consistency.SpaceInParentheses, []},
           {Credo.Check.Consistency.TabsOrSpaces, []},
 
-          # Design
-          {Credo.Check.Design.AliasUsage, [if_nested_deeper_than: 2, if_called_more_often_than: 1]},
+          # Design - relaxed for DSL/macro code where aliases in quotes don't work
+          {Credo.Check.Design.AliasUsage,
+           [if_nested_deeper_than: 3, if_called_more_often_than: 2]},
 
           # Readability
           {Credo.Check.Readability.AliasOrder, []},
@@ -46,13 +47,15 @@
 
           # Refactor
           {Credo.Check.Refactor.CondStatements, []},
-          {Credo.Check.Refactor.CyclomaticComplexity, [max_complexity: 15]},
+          # Higher limit for DSL/macro code
+          {Credo.Check.Refactor.CyclomaticComplexity, [max_complexity: 20]},
           {Credo.Check.Refactor.FunctionArity, [max_arity: 8]},
           {Credo.Check.Refactor.MapJoin, []},
           {Credo.Check.Refactor.MatchInCondition, []},
           {Credo.Check.Refactor.NegatedConditionsInUnless, []},
           {Credo.Check.Refactor.NegatedConditionsWithElse, []},
-          {Credo.Check.Refactor.Nesting, [max_nesting: 4]},
+          # Higher limit for DSL/macro code
+          {Credo.Check.Refactor.Nesting, [max_nesting: 5]},
           {Credo.Check.Refactor.UnlessWithElse, []},
           {Credo.Check.Refactor.WithClauses, []},
 
