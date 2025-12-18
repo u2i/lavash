@@ -31,7 +31,9 @@ defmodule DemoWeb.CategoryEditModal do
     ~H"""
     <div class="p-6">
       <div class="flex items-center justify-between mb-4">
-        <h2 class="text-xl font-bold">{if @form_action == :create, do: "New Category", else: "Edit Category"}</h2>
+        <h2 class="text-xl font-bold">
+          {if @form_action == :create, do: "New Category", else: "Edit Category"}
+        </h2>
         <.modal_close_button myself={@myself} />
       </div>
 
@@ -43,7 +45,12 @@ defmodule DemoWeb.CategoryEditModal do
           <CoreComponents.button type="submit" phx-disable-with="Saving..." class="flex-1 btn-primary">
             Save
           </CoreComponents.button>
-          <CoreComponents.button type="button" phx-click="close" phx-target={@myself} class="btn-outline">
+          <CoreComponents.button
+            type="button"
+            phx-click="close"
+            phx-target={@myself}
+            class="btn-outline"
+          >
             Cancel
           </CoreComponents.button>
         </div>
@@ -64,7 +71,7 @@ defmodule DemoWeb.CategoryEditModal do
 
   actions do
     action :open, [:category_id] do
-      set :category_id, &(&1.params.category_id)
+      set :category_id, & &1.params.category_id
     end
 
     action :save do

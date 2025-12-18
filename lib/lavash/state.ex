@@ -107,8 +107,11 @@ defmodule Lavash.State do
 
   defp decode_type(value, type) do
     case Type.parse(type, value) do
-      {:ok, parsed} -> parsed
-      {:error, reason} -> raise ArgumentError, "Failed to parse #{inspect(value)} as #{inspect(type)}: #{reason}"
+      {:ok, parsed} ->
+        parsed
+
+      {:error, reason} ->
+        raise ArgumentError, "Failed to parse #{inspect(value)} as #{inspect(type)}: #{reason}"
     end
   end
 end

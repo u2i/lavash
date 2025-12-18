@@ -146,7 +146,8 @@ defmodule Lavash.Component.Dsl do
       ],
       source: [
         type: :any,
-        doc: "The source: state(:field), prop(:field), or result(:derive). If omitted, uses state(name)."
+        doc:
+          "The source: state(:field), prop(:field), or result(:derive). If omitted, uses state(name)."
       ],
       transform: [
         type: {:fun, 1},
@@ -278,7 +279,8 @@ defmodule Lavash.Component.Dsl do
       ],
       source: [
         type: :any,
-        doc: "The source: state(:field), prop(:field), or result(:derive_name). Defaults to state(name) if omitted."
+        doc:
+          "The source: state(:field), prop(:field), or result(:derive_name). Defaults to state(name) if omitted."
       ],
       transform: [
         type: {:fun, 1},
@@ -466,6 +468,13 @@ defmodule Lavash.Component.Dsl do
   # ============================================
 
   use Spark.Dsl.Extension,
-    sections: [@props_section, @states_section, @reads_section, @forms_section, @derives_section, @actions_section],
+    sections: [
+      @props_section,
+      @states_section,
+      @reads_section,
+      @forms_section,
+      @derives_section,
+      @actions_section
+    ],
     imports: [Phoenix.Component, Lavash.DslHelpers]
 end

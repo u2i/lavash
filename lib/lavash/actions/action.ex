@@ -11,5 +11,19 @@ defmodule Lavash.Actions.Action do
   - `flash` - Show a flash message on success
   - `invoke` - Invoke an action on a child component
   """
-  defstruct [:name, :params, :when, :sets, :updates, :effects, :submits, :navigates, :flashes, :notify_parents, :emits, :invokes, __spark_metadata__: nil]
+  defstruct [
+    :name,
+    :params,
+    :when,
+    :sets,
+    :updates,
+    :effects,
+    :submits,
+    :navigates,
+    :flashes,
+    :notify_parents,
+    :emits,
+    :invokes,
+    __spark_metadata__: nil
+  ]
 end

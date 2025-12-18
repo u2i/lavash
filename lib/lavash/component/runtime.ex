@@ -37,9 +37,14 @@ defmodule Lavash.Component.Runtime do
                 # Handle async result delivery - convert to AsyncResult struct
                 async =
                   case result do
-                    {:ok, value} -> Phoenix.LiveView.AsyncResult.ok(value)
-                    {:error, reason} -> Phoenix.LiveView.AsyncResult.failed(%Phoenix.LiveView.AsyncResult{}, reason)
-                    value -> Phoenix.LiveView.AsyncResult.ok(value)
+                    {:ok, value} ->
+                      Phoenix.LiveView.AsyncResult.ok(value)
+
+                    {:error, reason} ->
+                      Phoenix.LiveView.AsyncResult.failed(%Phoenix.LiveView.AsyncResult{}, reason)
+
+                    value ->
+                      Phoenix.LiveView.AsyncResult.ok(value)
                   end
 
                 socket =
@@ -54,38 +59,38 @@ defmodule Lavash.Component.Runtime do
                 # Normal update
                 socket =
                   if first_mount?(socket) do
-                # First mount - initialize everything
-                # Register with parent for invalidation forwarding
-                register_with_parent(module, assigns)
+                    # First mount - initialize everything
+                    # Register with parent for invalidation forwarding
+                    register_with_parent(module, assigns)
 
-                socket
-                |> init_lavash_state(module, assigns)
-                |> hydrate_socket_state(module, assigns)
-                |> hydrate_ephemeral(module)
-                |> State.hydrate_forms(module)
-                |> store_props(module, assigns)
-                |> preserve_livecomponent_assigns(module, assigns)
-                |> Graph.recompute_all(module)
-                |> Assigns.project(module)
-              else
-                # Subsequent update - store props (marks changed props as dirty)
-                socket = store_props(socket, module, assigns)
-                socket = preserve_livecomponent_assigns(socket, module, assigns)
-
-                # Recompute any derived fields affected by dirty props
-                socket =
-                  if LSocket.dirty?(socket) do
-                    Graph.recompute_dirty(socket, module)
-                  else
                     socket
+                    |> init_lavash_state(module, assigns)
+                    |> hydrate_socket_state(module, assigns)
+                    |> hydrate_ephemeral(module)
+                    |> State.hydrate_forms(module)
+                    |> store_props(module, assigns)
+                    |> preserve_livecomponent_assigns(module, assigns)
+                    |> Graph.recompute_all(module)
+                    |> Assigns.project(module)
+                  else
+                    # Subsequent update - store props (marks changed props as dirty)
+                    socket = store_props(socket, module, assigns)
+                    socket = preserve_livecomponent_assigns(socket, module, assigns)
+
+                    # Recompute any derived fields affected by dirty props
+                    socket =
+                      if LSocket.dirty?(socket) do
+                        Graph.recompute_dirty(socket, module)
+                      else
+                        socket
+                      end
+
+                    Assigns.project(socket, module)
                   end
 
-                Assigns.project(socket, module)
-              end
-
-            {:ok, socket}
+                {:ok, socket}
+            end
         end
-      end
     end
   end
 
@@ -225,7 +230,7 @@ defmodule Lavash.Component.Runtime do
     forms = module.__lavash__(:forms)
 
     resources =
-      Enum.map(reads, & &1.resource) ++ Enum.map(forms, & &1.resource)
+      (Enum.map(reads, & &1.resource) ++ Enum.map(forms, & &1.resource))
       |> Enum.uniq()
 
     # Only register if we have resources to watch
@@ -324,6 +329,7 @@ defmodule Lavash.Component.Runtime do
     socket =
       Enum.reduce(prop_values, socket, fn {name, new_value}, sock ->
         old_value = Map.get(old_props, name)
+
         if old_value != new_value do
           LSocket.update(sock, :dirty, &MapSet.put(&1, name))
         else
@@ -402,6 +408,7 @@ defmodule Lavash.Component.Runtime do
         case set.value do
           fun when is_function(fun, 1) ->
             fun.(%{params: params, state: LSocket.state(sock)})
+
           value ->
             value
         end
@@ -417,12 +424,14 @@ defmodule Lavash.Component.Runtime do
   defp coerce_value(value, nil), do: value
   defp coerce_value(nil, _state_field), do: nil
   defp coerce_value("", %{type: type}) when type != :string, do: nil
+
   defp coerce_value(value, %{type: type}) when is_binary(value) do
     case Lavash.Type.parse(type, value) do
       {:ok, parsed} -> parsed
       {:error, _} -> value
     end
   end
+
   defp coerce_value(value, _state_field), do: value
 
   defp apply_updates(socket, updates, _params) do
@@ -453,6 +462,7 @@ defmodule Lavash.Component.Runtime do
           case emit.value do
             fun when is_function(fun, 1) ->
               fun.(%{params: params, state: state})
+
             value ->
               value
           end
@@ -536,7 +546,9 @@ defmodule Lavash.Component.Runtime do
                 {:ok, sock, more_notify} ->
                   # Accumulate notify events from success action
                   apply_notify_parents(sock, more_notify)
-                {:error, sock, _err} -> sock
+
+                {:error, sock, _err} ->
+                  sock
               end
             else
               socket

@@ -179,7 +179,9 @@ defmodule Lavash.Type do
 
       # Hex without dashes (32 chars)
       Regex.match?(~r/^[0-9a-f]{32}$/i, value) ->
-        <<a::binary-8, b::binary-4, c::binary-4, d::binary-4, e::binary-12>> = String.downcase(value)
+        <<a::binary-8, b::binary-4, c::binary-4, d::binary-4, e::binary-12>> =
+          String.downcase(value)
+
         {:ok, "#{a}-#{b}-#{c}-#{d}-#{e}"}
 
       # Prefixed hex format: prefix_hexuuidnodashes (e.g., cat_3f94f5f0db174f5488f6400b79b795d5)
@@ -192,7 +194,9 @@ defmodule Lavash.Type do
               if expected_prefix && prefix != expected_prefix do
                 {:error, "expected prefix #{expected_prefix}, got #{prefix}"}
               else
-                <<a::binary-8, b::binary-4, c::binary-4, d::binary-4, e::binary-12>> = String.downcase(hex_suffix)
+                <<a::binary-8, b::binary-4, c::binary-4, d::binary-4, e::binary-12>> =
+                  String.downcase(hex_suffix)
+
                 {:ok, "#{a}-#{b}-#{c}-#{d}-#{e}"}
               end
             else

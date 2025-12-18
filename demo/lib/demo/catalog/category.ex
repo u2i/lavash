@@ -5,7 +5,7 @@ defmodule Demo.Catalog.Category do
 
   sqlite do
     table "categories"
-    repo Demo.Repo
+    repo(Demo.Repo)
   end
 
   attributes do

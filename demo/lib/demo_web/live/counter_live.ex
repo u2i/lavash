@@ -7,6 +7,7 @@ defmodule DemoWeb.CounterLive do
   derive :doubled do
     argument :count, state(:count)
     argument :multiplier, state(:multiplier)
+
     run fn %{count: c, multiplier: m}, _ ->
       c * m
     end
@@ -15,6 +16,7 @@ defmodule DemoWeb.CounterLive do
   derive :fact do
     async true
     argument :count, state(:count)
+
     run fn %{count: c}, _ ->
       # Simulate slow computation
       Process.sleep(500)
@@ -32,11 +34,11 @@ defmodule DemoWeb.CounterLive do
     end
 
     action :set_count, [:amount] do
-      set :count, & String.to_integer(&1.params.amount)
+      set :count, &String.to_integer(&1.params.amount)
     end
 
     action :set_multiplier, [:value] do
-      set :multiplier, & String.to_integer(&1.params.value)
+      set :multiplier, &String.to_integer(&1.params.value)
     end
 
     action :reset do
@@ -127,7 +129,10 @@ defmodule DemoWeb.CounterLive do
       </div>
 
       <div class="mt-6 text-xs text-gray-400 text-center">
-        <p>Current URL: <code class="bg-gray-100 px-1 rounded">{@count != 0 && "?count=#{@count}" || "/"}</code></p>
+        <p>
+          Current URL:
+          <code class="bg-gray-100 px-1 rounded">{(@count != 0 && "?count=#{@count}") || "/"}</code>
+        </p>
       </div>
 
       <div class="mt-6 text-center">

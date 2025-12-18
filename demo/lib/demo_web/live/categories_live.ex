@@ -51,8 +51,8 @@ defmodule DemoWeb.CategoriesLive do
           </a>
         </div>
       </div>
-
-      <!-- Categories List -->
+      
+    <!-- Categories List -->
       <div class="bg-white rounded-lg shadow">
         <table class="min-w-full divide-y divide-gray-200">
           <thead class="bg-gray-50">

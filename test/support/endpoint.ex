@@ -8,16 +8,18 @@ defmodule Lavash.TestEndpoint do
     same_site: "Lax"
   ]
 
-  socket "/live", Phoenix.LiveView.Socket,
+  socket("/live", Phoenix.LiveView.Socket,
     websocket: [connect_info: [session: @session_options]],
     longpoll: false
+  )
 
-  plug Plug.Session, @session_options
+  plug(Plug.Session, @session_options)
 
-  plug Plug.Parsers,
+  plug(Plug.Parsers,
     parsers: [:urlencoded, :multipart, :json],
     pass: ["*/*"],
     json_decoder: Jason
+  )
 
-  plug Lavash.TestRouter
+  plug(Lavash.TestRouter)
 end

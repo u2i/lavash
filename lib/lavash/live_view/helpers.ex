@@ -53,10 +53,15 @@ defmodule Lavash.LiveView.Helpers do
         product={product}
       />
   """
-  attr :module, :atom, required: true, doc: "The Lavash component module"
-  attr :id, :string, required: true, doc: "The component ID (used for state namespacing)"
-  attr :bind, :map, default: %{}, doc: "Two-way bindings: %{component_prop: {:parent_field, value}}"
-  attr :rest, :global, doc: "Additional assigns passed to the component"
+  attr(:module, :atom, required: true, doc: "The Lavash component module")
+  attr(:id, :string, required: true, doc: "The component ID (used for state namespacing)")
+
+  attr(:bind, :map,
+    default: %{},
+    doc: "Two-way bindings: %{component_prop: {:parent_field, value}}"
+  )
+
+  attr(:rest, :global, doc: "Additional assigns passed to the component")
 
   def lavash_component(assigns) do
     # Get component states from process dictionary (set by parent during render)
@@ -69,13 +74,15 @@ defmodule Lavash.LiveView.Helpers do
     # Build the assigns for live_component
     assigns =
       assigns
-      |> assign(:__component_assigns__,
-          assigns.rest
-          |> Map.merge(bound_props)
-          |> Map.put(:module, assigns.module)
-          |> Map.put(:id, assigns.id)
-          |> Map.put(:__lavash_initial_state__, initial_state)
-          |> Map.put(:__lavash_bindings__, bindings))
+      |> assign(
+        :__component_assigns__,
+        assigns.rest
+        |> Map.merge(bound_props)
+        |> Map.put(:module, assigns.module)
+        |> Map.put(:id, assigns.id)
+        |> Map.put(:__lavash_initial_state__, initial_state)
+        |> Map.put(:__lavash_bindings__, bindings)
+      )
 
     ~H"""
     <.live_component {@__component_assigns__} />
@@ -96,5 +103,4 @@ defmodule Lavash.LiveView.Helpers do
       }
     end)
   end
-
 end

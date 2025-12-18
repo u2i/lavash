@@ -147,6 +147,7 @@ defmodule Lavash.TestAsyncChainLive do
   derive :doubled do
     async true
     argument :count, state(:count)
+
     run fn %{count: c}, _ ->
       Process.sleep(50)
       c * 2
@@ -155,6 +156,7 @@ defmodule Lavash.TestAsyncChainLive do
 
   derive :quadrupled do
     argument :doubled, result(:doubled)
+
     run fn %{doubled: d}, _ ->
       # d will be the raw value (unwrapped from {:ok, value})
       d * 2

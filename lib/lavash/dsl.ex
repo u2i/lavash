@@ -83,7 +83,8 @@ defmodule Lavash.Dsl do
       from: [
         type: {:in, [:url, :socket, :ephemeral]},
         default: :ephemeral,
-        doc: "Storage location: :url (synced with URL), :socket (survives reconnects), :ephemeral (default)"
+        doc:
+          "Storage location: :url (synced with URL), :socket (survives reconnects), :ephemeral (default)"
       ],
       default: [
         type: :any,
@@ -264,7 +265,8 @@ defmodule Lavash.Dsl do
       ],
       source: [
         type: :any,
-        doc: "The source: state(:field) or result(:derive_name). Defaults to state(name) if omitted."
+        doc:
+          "The source: state(:field) or result(:derive_name). Defaults to state(name) if omitted."
       ],
       transform: [
         type: {:fun, 1},
@@ -294,7 +296,8 @@ defmodule Lavash.Dsl do
       reads: [
         type: {:list, :atom},
         default: [],
-        doc: "Ash resources this derive reads from. Used for automatic invalidation when these resources are mutated."
+        doc:
+          "Ash resources this derive reads from. Used for automatic invalidation when these resources are mutated."
       ],
       run: [
         type: {:fun, 2},
@@ -486,6 +489,12 @@ defmodule Lavash.Dsl do
   # ============================================
 
   use Spark.Dsl.Extension,
-    sections: [@states_section, @reads_section, @forms_section, @derives_section, @actions_section],
+    sections: [
+      @states_section,
+      @reads_section,
+      @forms_section,
+      @derives_section,
+      @actions_section
+    ],
     imports: [Phoenix.Component, Lavash.DslHelpers]
 end

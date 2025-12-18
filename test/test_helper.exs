@@ -9,9 +9,13 @@ Application.put_env(:lavash, Lavash.TestEndpoint,
 
 Application.put_env(:phoenix, :json_library, Jason)
 
-{:ok, _} = Supervisor.start_link([
-  {Phoenix.PubSub, name: Lavash.PubSub},
-  Lavash.TestEndpoint
-], strategy: :one_for_one)
+{:ok, _} =
+  Supervisor.start_link(
+    [
+      {Phoenix.PubSub, name: Lavash.PubSub},
+      Lavash.TestEndpoint
+    ],
+    strategy: :one_for_one
+  )
 
 ExUnit.start()

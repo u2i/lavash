@@ -32,6 +32,7 @@ defmodule DemoWeb.ProductsLive do
 
   derive :result_count do
     argument :products, result(:products)
+
     run fn %{products: products}, _ ->
       length(products)
     end
@@ -44,9 +45,10 @@ defmodule DemoWeb.ProductsLive do
     argument :min_price, state(:min_price)
     argument :max_price, state(:max_price)
     argument :min_rating, state(:min_rating)
+
     run fn f, _ ->
       f.search != "" or f.category_id != nil or f.in_stock != nil or
-      f.min_price != nil or f.max_price != nil or f.min_rating != nil
+        f.min_price != nil or f.max_price != nil or f.min_rating != nil
     end
   end
 
@@ -79,7 +81,9 @@ defmodule DemoWeb.ProductsLive do
           <p class="text-gray-500 mt-1">Filter state stored in URL - try bookmarking or sharing</p>
         </div>
         <div class="flex gap-4">
-          <a href="/products-socket" class="text-indigo-600 hover:text-indigo-800">Socket State Version</a>
+          <a href="/products-socket" class="text-indigo-600 hover:text-indigo-800">
+            Socket State Version
+          </a>
           <a href="/" class="text-indigo-600 hover:text-indigo-800">&larr; Back to Counter</a>
         </div>
       </div>
@@ -113,21 +117,25 @@ defmodule DemoWeb.ProductsLive do
                 />
               </form>
             </div>
-
-            <!-- Category -->
+            
+    <!-- Category -->
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">Category</label>
               <form phx-change="set_category_id">
                 <select name="value" class="w-full px-3 py-2 border rounded-md text-sm">
                   <option value="">All Categories</option>
-                  <option :for={{name, id} <- @category_options} value={id} selected={@category_id == id}>
+                  <option
+                    :for={{name, id} <- @category_options}
+                    value={id}
+                    selected={@category_id == id}
+                  >
                     {name}
                   </option>
                 </select>
               </form>
             </div>
-
-            <!-- In Stock -->
+            
+    <!-- In Stock -->
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">Availability</label>
               <form phx-change="set_in_stock">
@@ -138,8 +146,8 @@ defmodule DemoWeb.ProductsLive do
                 </select>
               </form>
             </div>
-
-            <!-- Price Range -->
+            
+    <!-- Price Range -->
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">Price Range</label>
               <div class="flex gap-2">
@@ -164,8 +172,8 @@ defmodule DemoWeb.ProductsLive do
                 </form>
               </div>
             </div>
-
-            <!-- Min Rating -->
+            
+    <!-- Min Rating -->
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">Minimum Rating</label>
               <form phx-change="set_min_rating">
@@ -178,8 +186,8 @@ defmodule DemoWeb.ProductsLive do
               </form>
             </div>
           </div>
-
-          <!-- Current URL display -->
+          
+    <!-- Current URL display -->
           <div class="mt-6 pt-4 border-t">
             <p class="text-xs text-gray-400 mb-1">Current filter URL:</p>
             <code class="text-xs bg-gray-100 p-2 rounded block break-all">
@@ -187,8 +195,8 @@ defmodule DemoWeb.ProductsLive do
             </code>
           </div>
         </div>
-
-        <!-- Products Grid -->
+        
+    <!-- Products Grid -->
         <div class="col-span-3">
           <div class="flex items-center justify-between mb-4">
             <p class="text-gray-600">
@@ -211,7 +219,9 @@ defmodule DemoWeb.ProductsLive do
                   {if product.in_stock, do: "In Stock", else: "Out of Stock"}
                 </span>
               </div>
-              <p class="text-sm text-gray-500 mt-1">{category_name(@category_options, product.category_id)}</p>
+              <p class="text-sm text-gray-500 mt-1">
+                {category_name(@category_options, product.category_id)}
+              </p>
               <div class="flex items-center justify-between mt-3">
                 <span class="text-lg font-bold text-indigo-600">
                   ${Decimal.to_string(product.price)}

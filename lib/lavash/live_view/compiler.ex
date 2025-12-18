@@ -158,7 +158,8 @@ defmodule Lavash.LiveView.Compiler do
       {:result, name} -> name
       {:prop, name} -> name
       name when is_atom(name) and not is_nil(name) -> name
-      nil -> arg_name  # Default to same-named state field
+      # Default to same-named state field
+      nil -> arg_name
     end
   end
 end

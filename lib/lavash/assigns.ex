@@ -74,7 +74,9 @@ defmodule Lavash.Assigns do
     # Component-specific fields
     prop_fields = safe_get(module, :props) |> Enum.map(& &1.name)
 
-    url_fields ++ ephemeral_fields ++ socket_fields ++ derived_fields ++ read_fields ++ form_fields ++ prop_fields
+    url_fields ++
+      ephemeral_fields ++
+      socket_fields ++ derived_fields ++ read_fields ++ form_fields ++ prop_fields
   end
 
   # Safely get entities, returning empty list if not defined
@@ -91,9 +93,13 @@ defmodule Lavash.Assigns do
   # - AsyncResult with Lavash.Form inside -> AsyncResult with Phoenix.HTML.Form (keep wrapper!)
   # - All other values passed through as-is (including AsyncResult structs)
   defp unwrap_for_assign(%Lavash.Form{form: form}), do: form
-  defp unwrap_for_assign(%Phoenix.LiveView.AsyncResult{ok?: true, result: %Lavash.Form{form: form}} = async) do
+
+  defp unwrap_for_assign(
+         %Phoenix.LiveView.AsyncResult{ok?: true, result: %Lavash.Form{form: form}} = async
+       ) do
     # Keep the AsyncResult wrapper so <.async_result> can work with it
     %{async | result: form}
   end
+
   defp unwrap_for_assign(other), do: other
 end

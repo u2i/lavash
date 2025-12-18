@@ -62,7 +62,9 @@ defmodule Lavash.Graph do
         id = Map.get(deps, id_dep)
 
         case id do
-          nil -> nil
+          nil ->
+            nil
+
           id ->
             case Ash.get(resource, id, action: action) do
               {:ok, record} -> record
@@ -138,6 +140,7 @@ defmodule Lavash.Graph do
             :read ->
               # Read action - use Ash.Query.for_read + Ash.read
               query = Ash.Query.for_read(resource, action_name, args)
+
               case Ash.read(query) do
                 {:ok, records} -> records
                 {:error, error} -> raise error
@@ -146,6 +149,7 @@ defmodule Lavash.Graph do
             :action ->
               # Generic action - use Ash.ActionInput.for_action + Ash.run_action
               input = Ash.ActionInput.for_action(resource, action_name, args)
+
               case Ash.run_action(input) do
                 {:ok, result} -> result
                 {:error, error} -> raise error
@@ -356,7 +360,10 @@ defmodule Lavash.Graph do
         Task.start(fn ->
           result = field.compute.(unwrapped_deps)
           # Send update to the component via the LiveView process
-          send(self_pid, {:lavash_component_async, component_module, component_id, field.name, result})
+          send(
+            self_pid,
+            {:lavash_component_async, component_module, component_id, field.name, result}
+          )
         end)
       else
         # For LiveViews, use the standard approach

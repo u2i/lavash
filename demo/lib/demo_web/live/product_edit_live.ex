@@ -46,7 +46,9 @@ defmodule DemoWeb.ProductEditLive do
     <div class="max-w-2xl mx-auto p-6">
       <div class="flex items-center justify-between mb-6">
         <div>
-          <h1 class="text-3xl font-bold">{if @form_action == :create, do: "New Product", else: "Edit Product"}</h1>
+          <h1 class="text-3xl font-bold">
+            {if @form_action == :create, do: "New Product", else: "Edit Product"}
+          </h1>
           <p class="text-gray-500 mt-1">Form handling with Lavash + Ash changesets</p>
         </div>
         <a href="/products" class="text-indigo-600 hover:text-indigo-800">&larr; Back to Products</a>
@@ -165,8 +167,8 @@ defmodule DemoWeb.ProductEditLive do
             </div>
           </.form>
         </div>
-
-        <!-- Debug info -->
+        
+    <!-- Debug info -->
         <div class="mt-6 bg-gray-100 rounded-lg p-4">
           <h3 class="font-medium mb-2">State Debug</h3>
           <dl class="text-sm space-y-1">

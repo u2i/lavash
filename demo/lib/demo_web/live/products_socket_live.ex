@@ -15,7 +15,8 @@ defmodule DemoWeb.ProductsSocketLive do
   # All filter state stored in socket - survives reconnects, not in URL
   state :search, :string, from: :socket, default: ""
   state :category, :string, from: :socket, default: ""
-  state :in_stock, :string, from: :socket, default: ""  # "", "true", "false"
+  # "", "true", "false"
+  state :in_stock, :string, from: :socket, default: ""
   state :min_price, :integer, from: :socket, default: nil
   state :max_price, :integer, from: :socket, default: nil
   state :min_rating, :integer, from: :socket, default: nil
@@ -28,15 +29,18 @@ defmodule DemoWeb.ProductsSocketLive do
     argument :min_price, state(:min_price)
     argument :max_price, state(:max_price)
     argument :min_rating, state(:min_rating)
+
     run fn filters, _ ->
-      {:ok, products} = Catalog.list_products(
-        filters.search,
-        if(filters.category == "", do: nil, else: filters.category),
-        parse_bool(filters.in_stock),
-        filters.min_price,
-        filters.max_price,
-        filters.min_rating
-      )
+      {:ok, products} =
+        Catalog.list_products(
+          filters.search,
+          if(filters.category == "", do: nil, else: filters.category),
+          parse_bool(filters.in_stock),
+          filters.min_price,
+          filters.max_price,
+          filters.min_rating
+        )
+
       products
     end
   end
@@ -50,6 +54,7 @@ defmodule DemoWeb.ProductsSocketLive do
 
   derive :result_count do
     argument :products, result(:products)
+
     run fn %{products: products}, _ ->
       length(products)
     end
@@ -62,9 +67,10 @@ defmodule DemoWeb.ProductsSocketLive do
     argument :min_price, state(:min_price)
     argument :max_price, state(:max_price)
     argument :min_rating, state(:min_rating)
+
     run fn f, _ ->
       f.search != "" or f.category != "" or f.in_stock != "" or
-      f.min_price != nil or f.max_price != nil or f.min_rating != nil
+        f.min_price != nil or f.max_price != nil or f.min_rating != nil
     end
   end
 
@@ -82,15 +88,15 @@ defmodule DemoWeb.ProductsSocketLive do
     end
 
     action :set_min_price, [:value] do
-      set :min_price, & parse_int(&1.params.value)
+      set :min_price, &parse_int(&1.params.value)
     end
 
     action :set_max_price, [:value] do
-      set :max_price, & parse_int(&1.params.value)
+      set :max_price, &parse_int(&1.params.value)
     end
 
     action :set_min_rating, [:value] do
-      set :min_rating, & parse_int(&1.params.value)
+      set :min_rating, &parse_int(&1.params.value)
     end
 
     action :clear_filters do
@@ -116,13 +122,15 @@ defmodule DemoWeb.ProductsSocketLive do
           <a href="/" class="text-indigo-600 hover:text-indigo-800">&larr; Back to Counter</a>
         </div>
       </div>
-
-      <!-- Info banner -->
+      
+    <!-- Info banner -->
       <div class="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
         <p class="text-amber-800 text-sm">
-          <strong>Socket State Demo:</strong> Try applying filters, then simulate a reconnect by
+          <strong>Socket State Demo:</strong>
+          Try applying filters, then simulate a reconnect by
           disabling/enabling your network. Filters will persist. But if you refresh the page (F5),
-          filters will reset. Compare with the <a href="/products" class="underline">URL State version</a>
+          filters will reset. Compare with the
+          <a href="/products" class="underline">URL State version</a>
           where filters persist in the URL.
         </p>
       </div>
@@ -156,8 +164,8 @@ defmodule DemoWeb.ProductsSocketLive do
                 />
               </form>
             </div>
-
-            <!-- Category -->
+            
+    <!-- Category -->
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">Category</label>
               <form phx-change="set_category">
@@ -169,8 +177,8 @@ defmodule DemoWeb.ProductsSocketLive do
                 </select>
               </form>
             </div>
-
-            <!-- In Stock -->
+            
+    <!-- In Stock -->
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">Availability</label>
               <form phx-change="set_in_stock">
@@ -181,8 +189,8 @@ defmodule DemoWeb.ProductsSocketLive do
                 </select>
               </form>
             </div>
-
-            <!-- Price Range -->
+            
+    <!-- Price Range -->
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">Price Range</label>
               <div class="flex gap-2">
@@ -207,8 +215,8 @@ defmodule DemoWeb.ProductsSocketLive do
                 </form>
               </div>
             </div>
-
-            <!-- Min Rating -->
+            
+    <!-- Min Rating -->
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">Minimum Rating</label>
               <form phx-change="set_min_rating">
@@ -221,8 +229,8 @@ defmodule DemoWeb.ProductsSocketLive do
               </form>
             </div>
           </div>
-
-          <!-- State indicator -->
+          
+    <!-- State indicator -->
           <div class="mt-6 pt-4 border-t">
             <p class="text-xs text-gray-400 mb-1">State storage:</p>
             <code class="text-xs bg-amber-100 text-amber-800 p-2 rounded block">
@@ -233,8 +241,8 @@ defmodule DemoWeb.ProductsSocketLive do
             </p>
           </div>
         </div>
-
-        <!-- Products Grid -->
+        
+    <!-- Products Grid -->
         <div class="col-span-3">
           <div class="flex items-center justify-between mb-4">
             <p class="text-gray-600">
@@ -291,11 +299,13 @@ defmodule DemoWeb.ProductsSocketLive do
 
   defp parse_int(nil), do: nil
   defp parse_int(""), do: nil
+
   defp parse_int(val) when is_binary(val) do
     case Integer.parse(val) do
       {int, _} -> int
       :error -> nil
     end
   end
+
   defp parse_int(val) when is_integer(val), do: val
 end

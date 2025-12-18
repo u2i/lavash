@@ -70,7 +70,10 @@ defmodule Lavash.Component.Compiler do
   defp generate_modal_render(module) do
     open_field = Spark.Dsl.Extension.get_persisted(module, :modal_open_field) || :open
     close_on_escape = Spark.Dsl.Extension.get_persisted(module, :modal_close_on_escape) || true
-    close_on_backdrop = Spark.Dsl.Extension.get_persisted(module, :modal_close_on_backdrop) || true
+
+    close_on_backdrop =
+      Spark.Dsl.Extension.get_persisted(module, :modal_close_on_backdrop) || true
+
     max_width = Spark.Dsl.Extension.get_persisted(module, :modal_max_width) || :md
     async_assign = Spark.Dsl.Extension.get_persisted(module, :modal_async_assign)
 

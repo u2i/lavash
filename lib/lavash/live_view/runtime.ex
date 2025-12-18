@@ -64,7 +64,7 @@ defmodule Lavash.LiveView.Runtime do
     forms = module.__lavash__(:forms)
 
     resources =
-      Enum.map(reads, & &1.resource) ++ Enum.map(forms, & &1.resource)
+      (Enum.map(reads, & &1.resource) ++ Enum.map(forms, & &1.resource))
       |> Enum.uniq()
 
     Enum.each(resources, &Lavash.PubSub.subscribe/1)
@@ -89,7 +89,9 @@ defmodule Lavash.LiveView.Runtime do
         notify_attrs = Lavash.Resource.notify_on(resource)
 
         case notify_attrs do
-          [] -> :ok
+          [] ->
+            :ok
+
           attrs ->
             # Build filter values maps for old and new state
             old_filter_values = Map.take(old_state, attrs)
@@ -101,6 +103,7 @@ defmodule Lavash.LiveView.Runtime do
               if old_state != %{} do
                 Lavash.PubSub.unsubscribe_combination(resource, attrs, old_filter_values)
               end
+
               # Subscribe to new combination topic
               Lavash.PubSub.subscribe_combination(resource, attrs, new_filter_values)
             end
@@ -257,9 +260,14 @@ defmodule Lavash.LiveView.Runtime do
     # Convert result to AsyncResult struct
     async =
       case result do
-        {:ok, value} -> Phoenix.LiveView.AsyncResult.ok(value)
-        {:error, reason} -> Phoenix.LiveView.AsyncResult.failed(%Phoenix.LiveView.AsyncResult{}, reason)
-        value -> Phoenix.LiveView.AsyncResult.ok(value)
+        {:ok, value} ->
+          Phoenix.LiveView.AsyncResult.ok(value)
+
+        {:error, reason} ->
+          Phoenix.LiveView.AsyncResult.failed(%Phoenix.LiveView.AsyncResult{}, reason)
+
+        value ->
+          Phoenix.LiveView.AsyncResult.ok(value)
       end
 
     socket =
@@ -278,6 +286,7 @@ defmodule Lavash.LiveView.Runtime do
       {:update, field_name} ->
         # This is from a bind: - directly set the parent's state
         value = Map.get(params, "value")
+
         socket =
           socket
           |> LSocket.put_state(field_name, value)
@@ -292,7 +301,11 @@ defmodule Lavash.LiveView.Runtime do
     end
   end
 
-  def handle_info(_module, {:lavash_component_async, component_module, component_id, field, result}, socket) do
+  def handle_info(
+        _module,
+        {:lavash_component_async, component_module, component_id, field, result},
+        socket
+      ) do
     # Handle async results for Lavash components
     # Use send_update to deliver the result to the component
     Phoenix.LiveView.send_update(self(), component_module, %{
@@ -364,12 +377,14 @@ defmodule Lavash.LiveView.Runtime do
     case String.split(event, ":", parts: 2) do
       ["update", field_str] ->
         {:update, String.to_existing_atom(field_str)}
+
       _ ->
         :not_update
     end
   rescue
     ArgumentError -> :not_update
   end
+
   defp parse_update_event(_), do: :not_update
 
   defp execute_action(socket, module, action, event_params) do
@@ -394,7 +409,13 @@ defmodule Lavash.LiveView.Runtime do
         apply_submits(socket, module, action.submits || [])
       rescue
         e ->
-          socket = Phoenix.LiveView.put_flash(socket, :error, "[DEBUG] Exception in submit: #{Exception.message(e)}")
+          socket =
+            Phoenix.LiveView.put_flash(
+              socket,
+              :error,
+              "[DEBUG] Exception in submit: #{Exception.message(e)}"
+            )
+
           {:ok, socket}
       end
     else
@@ -431,12 +452,14 @@ defmodule Lavash.LiveView.Runtime do
   defp coerce_value(value, nil), do: value
   defp coerce_value(nil, _state_field), do: nil
   defp coerce_value("", %{type: type}) when type != :string, do: nil
+
   defp coerce_value(value, %{type: type}) when is_binary(value) do
     case Type.parse(type, value) do
       {:ok, parsed} -> parsed
       {:error, _} -> value
     end
   end
+
   defp coerce_value(value, _state_field), do: value
 
   defp apply_updates(socket, updates, _params) do
@@ -613,6 +636,7 @@ defmodule Lavash.LiveView.Runtime do
       # (e.g., product_id in /products/:product_id/counter when using a counter LiveView)
       # These values were stored from the route info during handle_params
       path_param_values = LSocket.get(socket, :path_param_values) || %{}
+
       path =
         Enum.reduce(path_param_names, path, fn param_name, pattern ->
           if MapSet.member?(url_field_names, param_name) do
@@ -621,6 +645,7 @@ defmodule Lavash.LiveView.Runtime do
           else
             # Get from stored path param values
             value = Map.get(path_param_values, param_name)
+
             if value do
               String.replace(pattern, ":#{param_name}", to_string(value))
             else

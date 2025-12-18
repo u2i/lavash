@@ -65,14 +65,16 @@ defmodule Lavash.Modal.Dsl do
       async_assign: [
         type: :atom,
         required: false,
-        doc: "The async assign to wrap with async_result. The unwrapped data is available as @form."
+        doc:
+          "The async assign to wrap with async_result. The unwrapped data is available as @form."
       ]
     ]
   }
 
   @render_entity %Spark.Dsl.Entity{
     name: :render,
-    describe: "The modal content template. Receives assigns with @form set to the unwrapped async data.",
+    describe:
+      "The modal content template. Receives assigns with @form set to the unwrapped async data.",
     target: Lavash.Modal.Render,
     args: [:template],
     schema: [
@@ -107,5 +109,8 @@ defmodule Lavash.Modal.Dsl do
 
   use Spark.Dsl.Extension,
     sections: [@modal_section, @renders_section],
-    transformers: [Lavash.Modal.Transformers.InjectState, Lavash.Modal.Transformers.GenerateRender]
+    transformers: [
+      Lavash.Modal.Transformers.InjectState,
+      Lavash.Modal.Transformers.GenerateRender
+    ]
 end

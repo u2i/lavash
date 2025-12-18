@@ -70,9 +70,15 @@ defmodule Lavash.PubSub do
   """
   def broadcast(resource) when is_atom(resource) do
     case pubsub() do
-      nil -> :ok
+      nil ->
+        :ok
+
       pubsub_mod ->
-        Phoenix.PubSub.broadcast(pubsub_mod, resource_topic(resource), {:lavash_invalidate, resource})
+        Phoenix.PubSub.broadcast(
+          pubsub_mod,
+          resource_topic(resource),
+          {:lavash_invalidate, resource}
+        )
     end
   end
 
@@ -110,7 +116,9 @@ defmodule Lavash.PubSub do
   def subscribe_combination(resource, watched_attrs, filter_values)
       when is_atom(resource) and is_list(watched_attrs) and is_map(filter_values) do
     case pubsub() do
-      nil -> :ok
+      nil ->
+        :ok
+
       pubsub_mod ->
         topic = combination_topic(resource, watched_attrs, filter_values)
         Phoenix.PubSub.subscribe(pubsub_mod, topic)
@@ -123,7 +131,9 @@ defmodule Lavash.PubSub do
   def unsubscribe_combination(resource, watched_attrs, filter_values)
       when is_atom(resource) and is_list(watched_attrs) and is_map(filter_values) do
     case pubsub() do
-      nil -> :ok
+      nil ->
+        :ok
+
       pubsub_mod ->
         topic = combination_topic(resource, watched_attrs, filter_values)
         Phoenix.PubSub.unsubscribe(pubsub_mod, topic)
@@ -246,6 +256,7 @@ defmodule Lavash.PubSub do
 
   # Generate power set (all subsets) of a list
   defp power_set([]), do: [[]]
+
   defp power_set([h | t]) do
     rest = power_set(t)
     rest ++ Enum.map(rest, &[h | &1])

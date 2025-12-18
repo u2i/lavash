@@ -27,7 +27,7 @@ defmodule DemoWeb.ProductCard do
     end
 
     action :set_hover, [:value] do
-      set :hovered, & &1.params.value == "true"
+      set :hovered, &(&1.params.value == "true")
     end
   end
 
@@ -67,8 +67,8 @@ defmodule DemoWeb.ProductCard do
           {"★" |> String.duplicate(round(Decimal.to_float(@product.rating)))}
         </span>
       </div>
-
-      <!-- Expanded details - shown when expanded OR hovered -->
+      
+    <!-- Expanded details - shown when expanded OR hovered -->
       <div :if={@show_details} class="mt-4 pt-4 border-t border-gray-100">
         <div class="text-xs text-gray-500 space-y-1">
           <p><strong>Rating:</strong> {Decimal.to_string(@product.rating)}/5</p>
@@ -78,8 +78,8 @@ defmodule DemoWeb.ProductCard do
           </p>
         </div>
       </div>
-
-      <!-- State indicator -->
+      
+    <!-- State indicator -->
       <div class="mt-2 text-xs text-gray-400">
         <span :if={@expanded} class="text-indigo-500">expanded (survives reconnect)</span>
         <span :if={@hovered and not @expanded} class="text-gray-400">hovered (ephemeral)</span>

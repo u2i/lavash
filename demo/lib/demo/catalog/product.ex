@@ -10,7 +10,7 @@ defmodule Demo.Catalog.Product do
 
   sqlite do
     table "products"
-    repo Demo.Repo
+    repo(Demo.Repo)
   end
 
   attributes do
@@ -63,13 +63,13 @@ defmodule Demo.Catalog.Product do
       end
 
       filter expr(
-        (is_nil(^arg(:search)) or contains(name, ^arg(:search))) and
-        (is_nil(^arg(:category_id)) or category_id == ^arg(:category_id)) and
-        (is_nil(^arg(:in_stock)) or in_stock == ^arg(:in_stock)) and
-        (is_nil(^arg(:min_price)) or price >= ^arg(:min_price)) and
-        (is_nil(^arg(:max_price)) or price <= ^arg(:max_price)) and
-        (is_nil(^arg(:min_rating)) or rating >= ^arg(:min_rating))
-      )
+               (is_nil(^arg(:search)) or contains(name, ^arg(:search))) and
+                 (is_nil(^arg(:category_id)) or category_id == ^arg(:category_id)) and
+                 (is_nil(^arg(:in_stock)) or in_stock == ^arg(:in_stock)) and
+                 (is_nil(^arg(:min_price)) or price >= ^arg(:min_price)) and
+                 (is_nil(^arg(:max_price)) or price <= ^arg(:max_price)) and
+                 (is_nil(^arg(:min_rating)) or rating >= ^arg(:min_rating))
+             )
     end
   end
 end

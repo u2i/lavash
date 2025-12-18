@@ -36,12 +36,12 @@ defmodule Lavash.Modal.Helpers do
         <.form ...>...</.form>
       </.modal_chrome>
   """
-  attr :open, :any, required: true, doc: "Controls visibility (truthy = open)"
-  attr :myself, :any, required: true, doc: "The component's @myself"
-  attr :close_on_escape, :boolean, default: true
-  attr :close_on_backdrop, :boolean, default: true
-  attr :max_width, :atom, default: :md
-  slot :inner_block, required: true
+  attr(:open, :any, required: true, doc: "Controls visibility (truthy = open)")
+  attr(:myself, :any, required: true, doc: "The component's @myself")
+  attr(:close_on_escape, :boolean, default: true)
+  attr(:close_on_backdrop, :boolean, default: true)
+  attr(:max_width, :atom, default: :md)
+  slot(:inner_block, required: true)
 
   def modal_chrome(assigns) do
     max_width_class = Map.get(@max_width_classes, assigns.max_width, "max-w-md")
@@ -79,8 +79,8 @@ defmodule Lavash.Modal.Helpers do
         <.modal_close_button myself={@myself} />
       </div>
   """
-  attr :myself, :any, required: true
-  attr :class, :string, default: "text-gray-400 hover:text-gray-600 text-2xl leading-none"
+  attr(:myself, :any, required: true)
+  attr(:class, :string, default: "text-gray-400 hover:text-gray-600 text-2xl leading-none")
 
   def modal_close_button(assigns) do
     ~H"""
@@ -121,10 +121,15 @@ defmodule Lavash.Modal.Helpers do
   - Shows loading template while the form data loads
   - Passes the unwrapped form to the render function
   """
-  attr :assigns, :map, required: true, doc: "The full assigns map"
-  attr :async_assign, :atom, required: true, doc: "The async assign to wrap with async_result (or nil)"
-  attr :render, :any, required: true, doc: "Function (assigns) -> HEEx"
-  attr :loading, :any, required: true, doc: "Function (assigns) -> HEEx for loading state"
+  attr(:assigns, :map, required: true, doc: "The full assigns map")
+
+  attr(:async_assign, :atom,
+    required: true,
+    doc: "The async assign to wrap with async_result (or nil)"
+  )
+
+  attr(:render, :any, required: true, doc: "Function (assigns) -> HEEx")
+  attr(:loading, :any, required: true, doc: "Function (assigns) -> HEEx for loading state")
 
   def modal_content(assigns) do
     if assigns.async_assign do

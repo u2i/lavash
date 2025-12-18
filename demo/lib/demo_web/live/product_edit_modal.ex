@@ -53,16 +53,34 @@ defmodule DemoWeb.ProductEditModal do
 
       <.form for={@form} phx-change="validate" phx-submit="save" phx-target={@myself}>
         <CoreComponents.input field={@form[:name]} label="Name" />
-        <CoreComponents.input field={@form[:category_id]} type="select" label="Category" options={@category_options} prompt="Select category..." />
+        <CoreComponents.input
+          field={@form[:category_id]}
+          type="select"
+          label="Category"
+          options={@category_options}
+          prompt="Select category..."
+        />
         <CoreComponents.input field={@form[:price]} type="number" label="Price" step="0.01" />
-        <CoreComponents.input field={@form[:rating]} type="number" label="Rating" step="0.1" min="0" max="5" />
+        <CoreComponents.input
+          field={@form[:rating]}
+          type="number"
+          label="Rating"
+          step="0.1"
+          min="0"
+          max="5"
+        />
         <CoreComponents.input field={@form[:in_stock]} type="checkbox" label="In Stock" />
 
         <div class="flex gap-3 pt-4 border-t">
           <CoreComponents.button type="submit" phx-disable-with="Saving..." class="flex-1 btn-primary">
             Save Changes
           </CoreComponents.button>
-          <CoreComponents.button type="button" phx-click="close" phx-target={@myself} class="btn-outline">
+          <CoreComponents.button
+            type="button"
+            phx-click="close"
+            phx-target={@myself}
+            class="btn-outline"
+          >
             Cancel
           </CoreComponents.button>
         </div>
@@ -89,12 +107,11 @@ defmodule DemoWeb.ProductEditModal do
 
   actions do
     action :open, [:product_id] do
-      set :product_id, &(&1.params.product_id)
+      set :product_id, & &1.params.product_id
     end
 
     action :save do
       submit :edit_form, on_success: :close
     end
   end
-
 end
