@@ -73,35 +73,38 @@ defmodule Lavash.LiveView.Runtime do
   @doc """
   Update combination-based subscriptions based on current filter values.
 
-  For reads with `invalidate_on`, subscribes to a single combination topic based on
-  which filters are currently active (non-nil). Unsubscribes from old topic when
-  filter values change.
+  For reads with `invalidate: :pubsub`, subscribes to a single combination topic
+  based on which filters are currently active (non-nil). Uses the resource's
+  `notify_on` configuration to determine which attributes to track.
+  Unsubscribes from old topic when filter values change.
   """
   def update_combination_subscriptions(socket, module, old_state) do
     reads = module.__lavash__(:reads)
     state = LSocket.state(socket)
 
-    # For each read with invalidate_on, manage subscriptions
+    # For each read with pubsub invalidation enabled
     Enum.each(reads, fn read ->
-      case read.invalidate_on do
-        nil -> :ok
-        [] -> :ok
-        attrs when is_list(attrs) ->
-          resource = read.resource
+      if read.invalidate == :pubsub do
+        resource = read.resource
+        notify_attrs = Lavash.Resource.notify_on(resource)
 
-          # Build filter values maps for old and new state
-          old_filter_values = Map.take(old_state, attrs)
-          new_filter_values = Map.take(state, attrs)
+        case notify_attrs do
+          [] -> :ok
+          attrs ->
+            # Build filter values maps for old and new state
+            old_filter_values = Map.take(old_state, attrs)
+            new_filter_values = Map.take(state, attrs)
 
-          # Only update if filter values changed
-          if old_filter_values != new_filter_values do
-            # Unsubscribe from old combination topic
-            if old_state != %{} do
-              Lavash.PubSub.unsubscribe_combination(resource, attrs, old_filter_values)
+            # Only update if filter values changed
+            if old_filter_values != new_filter_values do
+              # Unsubscribe from old combination topic
+              if old_state != %{} do
+                Lavash.PubSub.unsubscribe_combination(resource, attrs, old_filter_values)
+              end
+              # Subscribe to new combination topic
+              Lavash.PubSub.subscribe_combination(resource, attrs, new_filter_values)
             end
-            # Subscribe to new combination topic
-            Lavash.PubSub.subscribe_combination(resource, attrs, new_filter_values)
-          end
+        end
       end
     end)
 

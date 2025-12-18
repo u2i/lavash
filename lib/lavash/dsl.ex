@@ -181,15 +181,14 @@ defmodule Lavash.Dsl do
         Example: as_options label: :name, value: :id
         """
       ],
-      invalidate_on: [
-        type: {:list, :atom},
+      invalidate: [
+        type: {:in, [:pubsub]},
         doc: """
-        List of resource attributes to watch for fine-grained invalidation.
-        When a record's attribute changes, this read will refresh if filtering
-        by that attribute. Broadcasts to both old and new values to handle
-        both additions and removals.
+        Enable fine-grained PubSub invalidation for this read.
+        When set to :pubsub, uses the resource's `notify_on` configuration
+        to subscribe to combination topics based on current filter values.
 
-        Example: invalidate_on [:category_id, :in_stock]
+        Example: invalidate :pubsub
         """
       ]
     ]
