@@ -175,15 +175,15 @@ defmodule Lavash.TestAsyncChainLive do
       <span id="count">{@count}</span>
       <span id="doubled">
         <%= case @doubled do %>
-          <% :loading -> %>loading
-          <% {:ok, val} -> %>{val}
+          <% %Phoenix.LiveView.AsyncResult{loading: true} -> %>loading
+          <% %Phoenix.LiveView.AsyncResult{ok?: true, result: val} -> %>{val}
           <% val -> %>{val}
         <% end %>
       </span>
       <span id="quadrupled">
         <%= case @quadrupled do %>
-          <% :loading -> %>loading
-          <% {:ok, val} -> %>{val}
+          <% %Phoenix.LiveView.AsyncResult{loading: true} -> %>loading
+          <% %Phoenix.LiveView.AsyncResult{ok?: true, result: val} -> %>{val}
           <% val -> %>{val}
         <% end %>
       </span>
