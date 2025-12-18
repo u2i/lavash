@@ -255,4 +255,130 @@ defmodule Lavash.TypeTest do
       end
     end
   end
+
+  describe "parse/2 with :uuid" do
+    test "parses full UUID with dashes" do
+      uuid = "550e8400-e29b-41d4-a716-446655440000"
+      assert {:ok, ^uuid} = Type.parse(:uuid, uuid)
+    end
+
+    test "parses UUID with uppercase" do
+      uuid = "550E8400-E29B-41D4-A716-446655440000"
+      assert {:ok, "550e8400-e29b-41d4-a716-446655440000"} = Type.parse(:uuid, uuid)
+    end
+
+    test "parses hex without dashes" do
+      hex = "550e8400e29b41d4a716446655440000"
+      assert {:ok, "550e8400-e29b-41d4-a716-446655440000"} = Type.parse(:uuid, hex)
+    end
+
+    test "handles nil" do
+      assert {:ok, nil} = Type.parse(:uuid, nil)
+    end
+  end
+
+  describe "parse/2 with {:uuid, prefix}" do
+    test "parses prefixed TypeID" do
+      # Create a TypeID with known UUID
+      uuid = "550e8400-e29b-41d4-a716-446655440000"
+      {:ok, tid} = TypeID.from_uuid("cat", uuid)
+      typeid_str = TypeID.to_string(tid)
+
+      assert {:ok, ^uuid} = Type.parse({:uuid, "cat"}, typeid_str)
+    end
+
+    test "returns error for wrong prefix" do
+      uuid = "550e8400-e29b-41d4-a716-446655440000"
+      {:ok, tid} = TypeID.from_uuid("dog", uuid)
+      typeid_str = TypeID.to_string(tid)
+
+      assert {:error, _} = Type.parse({:uuid, "cat"}, typeid_str)
+    end
+  end
+
+  describe "dump/2 with :uuid" do
+    test "encodes UUID to TypeID suffix" do
+      uuid = "550e8400-e29b-41d4-a716-446655440000"
+      result = Type.dump(:uuid, uuid)
+      # Should be 26-char base32 suffix
+      assert String.length(result) == 26
+    end
+
+    test "handles nil" do
+      assert nil == Type.dump(:uuid, nil)
+    end
+  end
+
+  describe "dump/2 with {:uuid, prefix}" do
+    test "encodes UUID to full TypeID with prefix" do
+      uuid = "550e8400-e29b-41d4-a716-446655440000"
+      result = Type.dump({:uuid, "cat"}, uuid)
+      assert String.starts_with?(result, "cat_")
+    end
+  end
+
+  describe "UUID roundtrip" do
+    test "plain UUID roundtrip" do
+      uuid = "550e8400-e29b-41d4-a716-446655440000"
+      dumped = Type.dump(:uuid, uuid)
+      {:ok, result} = Type.parse(:uuid, dumped)
+      assert result == uuid
+    end
+
+    test "prefixed UUID roundtrip" do
+      uuid = "550e8400-e29b-41d4-a716-446655440000"
+      dumped = Type.dump({:uuid, "cat"}, uuid)
+      {:ok, result} = Type.parse({:uuid, "cat"}, dumped)
+      assert result == uuid
+    end
+  end
+
+  describe "dump/2 with unknown type" do
+    test "uses to_string fallback" do
+      # Unknown type should fall back to to_string
+      assert "42" = Type.dump(:unknown_type, 42)
+    end
+  end
+
+  describe "parse/2 with unknown type" do
+    test "returns error for unknown type" do
+      assert {:error, _} = Type.parse(:unknown_type, "value")
+    end
+  end
+
+  describe "custom type module" do
+    defmodule CustomDate do
+      use Lavash.Type
+
+      @impl true
+      def parse(value) when is_binary(value) do
+        case Date.from_iso8601(value) do
+          {:ok, date} -> {:ok, date}
+          {:error, _} -> {:error, "invalid date format"}
+        end
+      end
+
+      @impl true
+      def dump(%Date{} = date), do: Date.to_iso8601(date)
+    end
+
+    test "parses with custom type" do
+      assert {:ok, ~D[2024-01-15]} = Type.parse(CustomDate, "2024-01-15")
+    end
+
+    test "dumps with custom type" do
+      assert "2024-01-15" = Type.dump(CustomDate, ~D[2024-01-15])
+    end
+
+    test "returns error for invalid custom type value" do
+      assert {:error, "invalid date format"} = Type.parse(CustomDate, "not-a-date")
+    end
+
+    test "roundtrip with custom type" do
+      original = ~D[2024-01-15]
+      dumped = Type.dump(CustomDate, original)
+      {:ok, result} = Type.parse(CustomDate, dumped)
+      assert result == original
+    end
+  end
 end

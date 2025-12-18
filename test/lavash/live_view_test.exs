@@ -299,4 +299,84 @@ defmodule Lavash.LiveViewTest do
       assert_patch(view, "/typed?page=6")
     end
   end
+
+  describe "guarded actions" do
+    test "guarded action does not execute when guard is false", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/guarded")
+
+      # Initially enabled is false, count is 0
+      assert has_element?(view, "#enabled", "false")
+      assert has_element?(view, "#count", "0")
+
+      # Try to increment - should do nothing because enabled is false
+      view |> element("#guarded-inc") |> render_click()
+
+      # Count should still be 0
+      assert has_element?(view, "#count", "0")
+    end
+
+    test "guarded action executes when guard is true", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/guarded")
+
+      # Enable first
+      view |> element("#enable") |> render_click()
+      assert has_element?(view, "#enabled", "true")
+
+      # Now increment - should work because enabled is true
+      view |> element("#guarded-inc") |> render_click()
+
+      assert has_element?(view, "#count", "1")
+
+      # Increment again
+      view |> element("#guarded-inc") |> render_click()
+
+      assert has_element?(view, "#count", "2")
+    end
+
+    test "guarded action stops working when guard becomes false", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/guarded")
+
+      # Enable and increment
+      view |> element("#enable") |> render_click()
+      view |> element("#guarded-inc") |> render_click()
+      assert has_element?(view, "#count", "1")
+
+      # Disable
+      view |> element("#disable") |> render_click()
+      assert has_element?(view, "#enabled", "false")
+
+      # Try to increment - should fail
+      view |> element("#guarded-inc") |> render_click()
+
+      # Count should still be 1
+      assert has_element?(view, "#count", "1")
+    end
+  end
+
+  describe "action effects" do
+    test "effect runs after state update", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/guarded")
+
+      # Click the button that has an effect
+      view |> element("#inc-with-effect") |> render_click()
+
+      # Count should be 1
+      assert has_element?(view, "#count", "1")
+
+      # The effect should have sent a message (we can't easily test this in LiveView tests
+      # without special infrastructure, but we verify the action ran)
+    end
+  end
+
+  describe "unknown events" do
+    test "unknown event is handled gracefully", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/counter")
+
+      # Send an unknown event - should not crash
+      render_click(view, "unknown_event", %{})
+
+      # View should still work
+      assert has_element?(view, "#count", "0")
+    end
+  end
 end

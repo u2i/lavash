@@ -267,3 +267,51 @@ defmodule Lavash.TestTypedLive do
     """
   end
 end
+
+defmodule Lavash.TestGuardedActionsLive do
+  @moduledoc """
+  Test fixture: LiveView with guarded actions (when clause).
+  """
+  use Lavash.LiveView
+
+  state :enabled, :boolean, from: :ephemeral, default: false
+  state :count, :integer, from: :ephemeral, default: 0
+  state :effect_log, :string, from: :ephemeral, default: ""
+
+  actions do
+    action :enable do
+      set :enabled, true
+    end
+
+    action :disable do
+      set :enabled, false
+    end
+
+    # Third argument is the guard list
+    action :guarded_increment, [], [:enabled] do
+      update :count, &(&1 + 1)
+    end
+
+    action :increment_with_effect do
+      update :count, &(&1 + 1)
+
+      effect fn state ->
+        send(self(), {:effect_ran, state.count})
+      end
+    end
+  end
+
+  def render(assigns) do
+    ~H"""
+    <div>
+      <span id="enabled">{@enabled}</span>
+      <span id="count">{@count}</span>
+      <span id="effect-log">{@effect_log}</span>
+      <button id="enable" phx-click="enable">Enable</button>
+      <button id="disable" phx-click="disable">Disable</button>
+      <button id="guarded-inc" phx-click="guarded_increment">Guarded Inc</button>
+      <button id="inc-with-effect" phx-click="increment_with_effect">Inc with Effect</button>
+    </div>
+    """
+  end
+end
