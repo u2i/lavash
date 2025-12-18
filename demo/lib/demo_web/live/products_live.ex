@@ -15,8 +15,10 @@ defmodule DemoWeb.ProductsLive do
 
   # Products - auto-maps state fields to :list action arguments
   # The action's arguments (search, category_id, in_stock, etc.) match our state field names
+  # invalidate_on enables fine-grained invalidation - only refresh when relevant attributes change
   read :products, Product, :list do
     async false
+    invalidate_on [:category_id, :in_stock]
   end
 
   # Categories - load all categories for the dropdown

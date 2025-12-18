@@ -1,7 +1,12 @@
 defmodule Demo.Catalog.Product do
   use Ash.Resource,
     domain: Demo.Catalog,
-    data_layer: AshSqlite.DataLayer
+    data_layer: AshSqlite.DataLayer,
+    extensions: [Lavash.Resource]
+
+  lavash do
+    notify_on [:category_id, :in_stock]
+  end
 
   sqlite do
     table "products"

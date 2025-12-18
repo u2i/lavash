@@ -501,7 +501,8 @@ defmodule Lavash.Component.Runtime do
 
         # Broadcast resource mutation for cross-process invalidation
         if resource do
-          Lavash.PubSub.broadcast(resource)
+          # Broadcast to all relevant combination topics based on changed attributes
+          broadcast_mutation(form)
         end
 
         apply_submits(socket, module, rest, notify_events)
@@ -565,4 +566,58 @@ defmodule Lavash.Component.Runtime do
   defp extract_resource(%AshPhoenix.Form{resource: resource}), do: resource
   defp extract_resource(%Phoenix.HTML.Form{source: source}), do: extract_resource(source)
   defp extract_resource(_), do: nil
+
+  # Broadcast mutation to all relevant combination topics
+  # Uses the resource's notify_on configuration from Lavash.Resource extension
+  defp broadcast_mutation(form) do
+    changeset = extract_changeset(form)
+
+    if changeset do
+      resource = changeset.resource
+      old_record = changeset.data
+      changed_attrs = changeset.attributes || %{}
+
+      # Get notify_on attributes from the resource's Lavash extension
+      notify_attrs = Lavash.Resource.notify_on(resource)
+
+      if notify_attrs != [] do
+        # Build changes map: %{attr => {old_value, new_value}}
+        changes =
+          notify_attrs
+          |> Enum.filter(&Map.has_key?(changed_attrs, &1))
+          |> Enum.map(fn attr ->
+            old_value = if old_record, do: Map.get(old_record, attr), else: nil
+            new_value = Map.get(changed_attrs, attr)
+            {attr, {old_value, new_value}}
+          end)
+          |> Map.new()
+
+        # Build unchanged map: %{attr => value} for notify attrs that didn't change
+        unchanged =
+          notify_attrs
+          |> Enum.reject(&Map.has_key?(changed_attrs, &1))
+          |> Enum.map(fn attr ->
+            value = if old_record, do: Map.get(old_record, attr), else: nil
+            {attr, value}
+          end)
+          |> Map.new()
+
+        # Broadcast to all relevant combination topics
+        Lavash.PubSub.broadcast_mutation(resource, notify_attrs, changes, unchanged)
+      else
+        # No fine-grained invalidation configured, just broadcast resource-level
+        Lavash.PubSub.broadcast(resource)
+      end
+    else
+      # Couldn't extract changeset, broadcast resource-level
+      resource = extract_resource(form)
+      if resource, do: Lavash.PubSub.broadcast(resource)
+    end
+  end
+
+  defp extract_changeset(%Lavash.Form{changeset: changeset}), do: changeset
+  defp extract_changeset(%Phoenix.HTML.Form{source: source}), do: extract_changeset(source)
+  defp extract_changeset(%AshPhoenix.Form{source: %Ash.Changeset{} = cs}), do: cs
+  defp extract_changeset(%Ash.Changeset{} = cs), do: cs
+  defp extract_changeset(_), do: nil
 end

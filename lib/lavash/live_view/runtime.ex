@@ -58,7 +58,8 @@ defmodule Lavash.LiveView.Runtime do
   end
 
   defp subscribe_to_resources(module) do
-    # Subscribe to all resources used in reads and forms
+    # Subscribe to resource-level topics for all resources used in reads and forms
+    # Attribute-level subscriptions are managed dynamically in update_attribute_subscriptions/3
     reads = module.__lavash__(:reads)
     forms = module.__lavash__(:forms)
 
@@ -67,6 +68,44 @@ defmodule Lavash.LiveView.Runtime do
       |> Enum.uniq()
 
     Enum.each(resources, &Lavash.PubSub.subscribe/1)
+  end
+
+  @doc """
+  Update combination-based subscriptions based on current filter values.
+
+  For reads with `invalidate_on`, subscribes to a single combination topic based on
+  which filters are currently active (non-nil). Unsubscribes from old topic when
+  filter values change.
+  """
+  def update_combination_subscriptions(socket, module, old_state) do
+    reads = module.__lavash__(:reads)
+    state = LSocket.state(socket)
+
+    # For each read with invalidate_on, manage subscriptions
+    Enum.each(reads, fn read ->
+      case read.invalidate_on do
+        nil -> :ok
+        [] -> :ok
+        attrs when is_list(attrs) ->
+          resource = read.resource
+
+          # Build filter values maps for old and new state
+          old_filter_values = Map.take(old_state, attrs)
+          new_filter_values = Map.take(state, attrs)
+
+          # Only update if filter values changed
+          if old_filter_values != new_filter_values do
+            # Unsubscribe from old combination topic
+            if old_state != %{} do
+              Lavash.PubSub.unsubscribe_combination(resource, attrs, old_filter_values)
+            end
+            # Subscribe to new combination topic
+            Lavash.PubSub.subscribe_combination(resource, attrs, new_filter_values)
+          end
+      end
+    end)
+
+    socket
   end
 
   def handle_params(module, params, uri, socket) do
@@ -88,6 +127,9 @@ defmodule Lavash.LiveView.Runtime do
           {path, MapSet.new(), %{}}
       end
 
+    # Capture old state for subscription updates
+    old_state = LSocket.state(socket)
+
     socket =
       socket
       |> LSocket.put(:path, path)
@@ -97,6 +139,11 @@ defmodule Lavash.LiveView.Runtime do
       |> State.hydrate_url(module, params)
       |> Graph.recompute_all(module)
       |> Assigns.project(module)
+
+    # Update combination-based subscriptions based on new filter values
+    if Phoenix.LiveView.connected?(socket) do
+      update_combination_subscriptions(socket, module, old_state)
+    end
 
     {:noreply, socket}
   end
@@ -114,6 +161,9 @@ defmodule Lavash.LiveView.Runtime do
   end
 
   def handle_event(module, event, params, socket) do
+    # Capture old state for subscription updates
+    old_state = LSocket.state(socket)
+
     # First, check for form bindings and update state if params match
     socket = apply_form_bindings(socket, module, params)
 
@@ -130,6 +180,7 @@ defmodule Lavash.LiveView.Runtime do
             |> Graph.recompute_dirty(module)
             |> Assigns.project(module)
 
+          update_combination_subscriptions(socket, module, old_state)
           {:noreply, socket}
         else
           {:noreply, socket}
@@ -147,6 +198,7 @@ defmodule Lavash.LiveView.Runtime do
               |> Graph.recompute_dirty(module)
               |> Assigns.project(module)
 
+            update_combination_subscriptions(socket, module, old_state)
             {:noreply, socket}
 
           {:error, socket, on_error_action} ->
@@ -171,6 +223,7 @@ defmodule Lavash.LiveView.Runtime do
               |> Graph.recompute_dirty(module)
               |> Assigns.project(module)
 
+            update_combination_subscriptions(socket, module, old_state)
             {:noreply, socket}
         end
     end
@@ -248,6 +301,7 @@ defmodule Lavash.LiveView.Runtime do
   end
 
   # Handle PubSub broadcast for resource invalidation
+  # This is sent to both resource-level topics and combination topics
   def handle_info(module, {:lavash_invalidate, resource}, socket) do
     invalidate_resource(module, resource, socket)
   end
@@ -451,7 +505,8 @@ defmodule Lavash.LiveView.Runtime do
 
         # Broadcast resource mutation for cross-process invalidation
         if resource do
-          Lavash.PubSub.broadcast(resource)
+          # Broadcast to all relevant combination topics
+          broadcast_mutation(module, form)
         end
 
         apply_submits(socket, module, rest)
@@ -608,4 +663,58 @@ defmodule Lavash.LiveView.Runtime do
   defp extract_resource(%AshPhoenix.Form{resource: resource}), do: resource
   defp extract_resource(%Phoenix.HTML.Form{source: source}), do: extract_resource(source)
   defp extract_resource(_), do: nil
+
+  # Broadcast mutation to all relevant combination topics
+  # This enables fine-grained invalidation based on filter combinations
+  defp broadcast_mutation(_module, form) do
+    changeset = extract_changeset(form)
+
+    if changeset do
+      resource = changeset.resource
+      old_record = changeset.data
+      changed_attrs = changeset.attributes || %{}
+
+      # Get notify_on attributes from the resource's Lavash extension
+      notify_attrs = Lavash.Resource.notify_on(resource)
+
+      if notify_attrs != [] do
+        # Build changes map: %{attr => {old_value, new_value}}
+        changes =
+          notify_attrs
+          |> Enum.filter(&Map.has_key?(changed_attrs, &1))
+          |> Enum.map(fn attr ->
+            old_value = if old_record, do: Map.get(old_record, attr), else: nil
+            new_value = Map.get(changed_attrs, attr)
+            {attr, {old_value, new_value}}
+          end)
+          |> Map.new()
+
+        # Build unchanged map: %{attr => value} for notify attrs that didn't change
+        unchanged =
+          notify_attrs
+          |> Enum.reject(&Map.has_key?(changed_attrs, &1))
+          |> Enum.map(fn attr ->
+            value = if old_record, do: Map.get(old_record, attr), else: nil
+            {attr, value}
+          end)
+          |> Map.new()
+
+        # Broadcast to all relevant combination topics
+        Lavash.PubSub.broadcast_mutation(resource, notify_attrs, changes, unchanged)
+      else
+        # No fine-grained invalidation configured, just broadcast resource-level
+        Lavash.PubSub.broadcast(resource)
+      end
+    else
+      # Couldn't extract changeset, broadcast resource-level
+      resource = extract_resource(form)
+      if resource, do: Lavash.PubSub.broadcast(resource)
+    end
+  end
+
+  defp extract_changeset(%Lavash.Form{changeset: changeset}), do: changeset
+  defp extract_changeset(%Phoenix.HTML.Form{source: source}), do: extract_changeset(source)
+  defp extract_changeset(%AshPhoenix.Form{source: %Ash.Changeset{} = cs}), do: cs
+  defp extract_changeset(%Ash.Changeset{} = cs), do: cs
+  defp extract_changeset(_), do: nil
 end

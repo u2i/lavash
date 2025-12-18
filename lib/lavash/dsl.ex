@@ -180,6 +180,17 @@ defmodule Lavash.Dsl do
         Specify label: :field_name and value: :field_name (default :id).
         Example: as_options label: :name, value: :id
         """
+      ],
+      invalidate_on: [
+        type: {:list, :atom},
+        doc: """
+        List of resource attributes to watch for fine-grained invalidation.
+        When a record's attribute changes, this read will refresh if filtering
+        by that attribute. Broadcasts to both old and new values to handle
+        both additions and removals.
+
+        Example: invalidate_on [:category_id, :in_stock]
+        """
       ]
     ]
   }

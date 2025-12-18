@@ -31,6 +31,7 @@ defmodule Lavash.Read do
     :action,
     :async,
     :as_options,
+    :invalidate_on,
     arguments: [],
     __spark_metadata__: nil
   ]
