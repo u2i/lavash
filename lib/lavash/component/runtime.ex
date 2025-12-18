@@ -24,30 +24,40 @@ defmodule Lavash.Component.Runtime do
         handle_invoke(module, action_name, params, socket)
 
       nil ->
-        # Check if this is an async result delivery
-        case Map.get(assigns, :__lavash_async_result__) do
-          {field, result} ->
-            # Handle async result delivery - convert to AsyncResult struct
-            async =
-              case result do
-                {:ok, value} -> Phoenix.LiveView.AsyncResult.ok(value)
-                {:error, reason} -> Phoenix.LiveView.AsyncResult.failed(%Phoenix.LiveView.AsyncResult{}, reason)
-                value -> Phoenix.LiveView.AsyncResult.ok(value)
-              end
-
-            socket =
-              socket
-              |> LSocket.put_derived(field, async)
-              |> Graph.recompute_dependents(module, field)
-              |> Assigns.project(module)
-
-            {:ok, socket}
+        # Check if this is an invalidation from parent LiveView
+        case Map.get(assigns, :__lavash_invalidate__) do
+          resource when is_atom(resource) and not is_nil(resource) ->
+            # Handle resource invalidation - same logic as LiveView
+            handle_invalidate(module, resource, socket)
 
           nil ->
-            # Normal update
-            socket =
-              if first_mount?(socket) do
+            # Check if this is an async result delivery
+            case Map.get(assigns, :__lavash_async_result__) do
+              {field, result} ->
+                # Handle async result delivery - convert to AsyncResult struct
+                async =
+                  case result do
+                    {:ok, value} -> Phoenix.LiveView.AsyncResult.ok(value)
+                    {:error, reason} -> Phoenix.LiveView.AsyncResult.failed(%Phoenix.LiveView.AsyncResult{}, reason)
+                    value -> Phoenix.LiveView.AsyncResult.ok(value)
+                  end
+
+                socket =
+                  socket
+                  |> LSocket.put_derived(field, async)
+                  |> Graph.recompute_dependents(module, field)
+                  |> Assigns.project(module)
+
+                {:ok, socket}
+
+              nil ->
+                # Normal update
+                socket =
+                  if first_mount?(socket) do
                 # First mount - initialize everything
+                # Register with parent for invalidation forwarding
+                register_with_parent(module, assigns)
+
                 socket
                 |> init_lavash_state(module, assigns)
                 |> hydrate_socket_state(module, assigns)
@@ -75,6 +85,25 @@ defmodule Lavash.Component.Runtime do
 
             {:ok, socket}
         end
+      end
+    end
+  end
+
+  defp handle_invalidate(module, resource, socket) do
+    # Invalidate all reads/derives that depend on this resource
+    fields_to_invalidate = Graph.fields_for_resource(module, resource)
+
+    if fields_to_invalidate != [] do
+      # Mark these fields as dirty and recompute
+      socket =
+        socket
+        |> LSocket.mark_dirty(fields_to_invalidate)
+        |> Graph.recompute_dirty(module)
+        |> Assigns.project(module)
+
+      {:ok, socket}
+    else
+      {:ok, socket}
     end
   end
 
@@ -188,6 +217,23 @@ defmodule Lavash.Component.Runtime do
 
   defp first_mount?(socket) do
     socket.private[:lavash] == nil
+  end
+
+  defp register_with_parent(module, assigns) do
+    # Collect resources this component uses (from reads and forms)
+    reads = module.__lavash__(:reads)
+    forms = module.__lavash__(:forms)
+
+    resources =
+      Enum.map(reads, & &1.resource) ++ Enum.map(forms, & &1.resource)
+      |> Enum.uniq()
+
+    # Only register if we have resources to watch
+    if resources != [] do
+      component_id = Map.get(assigns, :id, "unknown")
+      # Send registration message to parent LiveView
+      send(self(), {:lavash_register_component, component_id, module, resources})
+    end
   end
 
   defp init_lavash_state(socket, module, assigns) do

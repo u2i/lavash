@@ -303,6 +303,15 @@ defmodule Lavash.LiveView.Runtime do
     {:noreply, socket}
   end
 
+  # Handle component registration for invalidation forwarding
+  def handle_info(_module, {:lavash_register_component, id, component_module, resources}, socket) do
+    # Subscribe to any new resources we're not already subscribed to
+    Enum.each(resources, &Lavash.PubSub.subscribe/1)
+
+    socket = LSocket.register_component(socket, id, component_module, resources)
+    {:noreply, socket}
+  end
+
   # Handle PubSub broadcast for resource invalidation
   # This is sent to both resource-level topics and combination topics
   def handle_info(module, {:lavash_invalidate, resource}, socket) do
@@ -317,20 +326,36 @@ defmodule Lavash.LiveView.Runtime do
     # Invalidate all reads/derives that depend on this resource
     fields_to_invalidate = Graph.fields_for_resource(module, resource)
 
-    if fields_to_invalidate != [] do
-      # Mark these fields as dirty and recompute
-      socket =
+    socket =
+      if fields_to_invalidate != [] do
+        # Mark these fields as dirty and recompute
         socket
         |> LSocket.update(:dirty, fn dirty ->
           Enum.reduce(fields_to_invalidate, dirty, &MapSet.put(&2, &1))
         end)
         |> Graph.recompute_dirty(module)
         |> Assigns.project(module)
+      else
+        socket
+      end
 
-      {:noreply, socket}
-    else
-      {:noreply, socket}
-    end
+    # Forward invalidation to registered child components that care about this resource
+    forward_invalidation_to_components(socket, resource)
+
+    {:noreply, socket}
+  end
+
+  defp forward_invalidation_to_components(socket, resource) do
+    registered = LSocket.registered_components(socket)
+
+    Enum.each(registered, fn {id, {component_module, resources}} ->
+      if resource in resources do
+        Phoenix.LiveView.send_update(component_module, %{
+          id: id,
+          __lavash_invalidate__: resource
+        })
+      end
+    end)
   end
 
   # Private

@@ -26,7 +26,9 @@ defmodule Lavash.Socket do
       component_id: Map.get(opts, :component_id),
       component_states: Map.get(opts, :component_states, %{}),
       # Bindings for emit (component two-way binding)
-      bindings: Map.get(opts, :bindings, %{})
+      bindings: Map.get(opts, :bindings, %{}),
+      # Registered child components: %{id => {module, resources}}
+      registered_components: Map.get(opts, :registered_components, %{})
     }
 
     Phoenix.LiveView.put_private(socket, :lavash, lavash)
@@ -154,5 +156,30 @@ defmodule Lavash.Socket do
   """
   def clear_socket_changed(socket) do
     put(socket, :socket_changed, false)
+  end
+
+  @doc """
+  Marks fields as dirty.
+  """
+  def mark_dirty(socket, fields) when is_list(fields) do
+    update(socket, :dirty, fn dirty ->
+      Enum.reduce(fields, dirty, &MapSet.put(&2, &1))
+    end)
+  end
+
+  @doc """
+  Registers a child component for invalidation forwarding.
+  """
+  def register_component(socket, id, module, resources) do
+    update(socket, :registered_components, fn components ->
+      Map.put(components || %{}, id, {module, resources})
+    end)
+  end
+
+  @doc """
+  Gets all registered components.
+  """
+  def registered_components(socket) do
+    get(socket, :registered_components) || %{}
   end
 end
