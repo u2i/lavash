@@ -17,7 +17,7 @@ defmodule Lavash.Modal.Helpers do
   }
 
   @doc """
-  Renders modal chrome around content.
+  Renders modal chrome around content using DaisyUI modal classes.
 
   The modal is only rendered when `open` is truthy.
 
@@ -49,28 +49,32 @@ defmodule Lavash.Modal.Helpers do
 
     ~H"""
     <div class="contents">
-      <div
+      <dialog
         :if={@open != nil}
-        class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-        phx-click={@close_on_backdrop && "close"}
-        phx-target={@myself}
+        class="modal modal-open"
         phx-window-keydown={@close_on_escape && "close"}
         phx-key={@close_on_escape && "escape"}
+        phx-target={@myself}
       >
-        <div
-          class={"bg-white rounded-lg shadow-xl w-full mx-4 #{@max_width_class}"}
-          phx-click="noop"
-          phx-target={@myself}
-        >
+        <div class={"modal-box #{@max_width_class}"} phx-click="noop" phx-target={@myself}>
           {render_slot(@inner_block)}
         </div>
-      </div>
+        <form
+          :if={@close_on_backdrop}
+          method="dialog"
+          class="modal-backdrop"
+          phx-click="close"
+          phx-target={@myself}
+        >
+          <button type="button">close</button>
+        </form>
+      </dialog>
     </div>
     """
   end
 
   @doc """
-  A simple close button for modal headers.
+  A close button for modal headers using DaisyUI button classes.
 
   ## Example
 
@@ -80,7 +84,7 @@ defmodule Lavash.Modal.Helpers do
       </div>
   """
   attr(:myself, :any, required: true)
-  attr(:class, :string, default: "text-gray-400 hover:text-gray-600 text-2xl leading-none")
+  attr(:class, :string, default: "btn btn-sm btn-circle btn-ghost absolute right-2 top-2")
 
   def modal_close_button(assigns) do
     ~H"""
@@ -91,7 +95,7 @@ defmodule Lavash.Modal.Helpers do
       class={@class}
       aria-label="Close"
     >
-      &times;
+      ✕
     </button>
     """
   end
@@ -99,16 +103,14 @@ defmodule Lavash.Modal.Helpers do
   @doc """
   Default loading template for modals.
 
-  Shows an animated pulse skeleton while content loads.
+  Shows a DaisyUI skeleton loader while content loads.
   """
   def default_loading(assigns) do
     ~H"""
-    <div class="p-6">
-      <div class="animate-pulse">
-        <div class="h-6 bg-gray-200 rounded w-1/3 mb-4"></div>
-        <div class="h-10 bg-gray-200 rounded mb-4"></div>
-        <div class="h-10 bg-gray-200 rounded"></div>
-      </div>
+    <div class="p-6 space-y-4">
+      <div class="skeleton h-6 w-1/3"></div>
+      <div class="skeleton h-10 w-full"></div>
+      <div class="skeleton h-10 w-full"></div>
     </div>
     """
   end
