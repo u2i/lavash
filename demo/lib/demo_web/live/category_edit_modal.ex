@@ -34,7 +34,7 @@ defmodule DemoWeb.CategoryEditModal do
         <h2 class="text-xl font-bold">
           {if @form_action == :create, do: "New Category", else: "Edit Category"}
         </h2>
-        <.modal_close_button myself={@myself} />
+        <.modal_close_button id={@__modal_id__} myself={@myself} />
       </div>
 
       <.form for={@form} phx-change="validate" phx-submit="save" phx-target={@myself}>
@@ -47,8 +47,7 @@ defmodule DemoWeb.CategoryEditModal do
           </CoreComponents.button>
           <CoreComponents.button
             type="button"
-            phx-click="close"
-            phx-target={@myself}
+            phx-click={@on_close}
             class="btn-outline"
           >
             Cancel

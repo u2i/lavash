@@ -93,8 +93,18 @@ defmodule Lavash.Component.Compiler do
         # Default loading function
         default_loading_fn = &Lavash.Modal.Helpers.default_loading/1
 
+        # Build modal ID from component ID
+        modal_id = "#{Map.get(var!(assigns), :id, "modal")}-modal"
+
+        # Build the on_close JS command for use in render functions
+        on_close =
+          Phoenix.LiveView.JS.dispatch("close-panel", to: "##{modal_id}")
+          |> Phoenix.LiveView.JS.push("close", target: var!(assigns).myself)
+
         var!(assigns) =
           var!(assigns)
+          |> Phoenix.Component.assign(:__modal_id__, modal_id)
+          |> Phoenix.Component.assign(:on_close, on_close)
           |> Phoenix.Component.assign(:__modal_open__, open_value)
           |> Phoenix.Component.assign(:__modal_close_on_escape__, unquote(close_on_escape))
           |> Phoenix.Component.assign(:__modal_close_on_backdrop__, unquote(close_on_backdrop))
@@ -106,6 +116,7 @@ defmodule Lavash.Component.Compiler do
         ~H"""
         <div class="contents">
           <.modal_chrome
+            id={@__modal_id__}
             open={@__modal_open__}
             myself={@myself}
             close_on_escape={@__modal_close_on_escape__}

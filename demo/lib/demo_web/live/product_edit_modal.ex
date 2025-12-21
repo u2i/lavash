@@ -48,7 +48,7 @@ defmodule DemoWeb.ProductEditModal do
     <div class="p-6">
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-xl font-bold">Edit Product</h2>
-        <.modal_close_button myself={@myself} />
+        <.modal_close_button id={@__modal_id__} myself={@myself} />
       </div>
 
       <.form for={@form} phx-change="validate" phx-submit="save" phx-target={@myself}>
@@ -77,8 +77,7 @@ defmodule DemoWeb.ProductEditModal do
           </CoreComponents.button>
           <CoreComponents.button
             type="button"
-            phx-click="close"
-            phx-target={@myself}
+            phx-click={Phoenix.LiveView.JS.dispatch("close-panel", to: "#product-edit-modal-modal") |> Phoenix.LiveView.JS.push("close", target: @myself)}
             class="btn-outline"
           >
             Cancel

@@ -23,6 +23,13 @@ import "phoenix_html"
 import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 import topbar from "../vendor/topbar"
+// Colocated hooks from Lavash library
+import {hooks as lavashHooks} from "phoenix-colocated/lavash"
+// Colocated hooks from this app (if any)
+import {hooks as demoHooks} from "phoenix-colocated/demo"
+
+// Merge hooks from app and dependencies
+const colocatedHooks = {...lavashHooks, ...demoHooks}
 
 // Lavash state - survives reconnects, lost on page refresh
 let lavashState = {
@@ -45,9 +52,11 @@ window.addEventListener("phx:_lavash_component_sync", (e) => {
 })
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
+
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
-  params: () => ({ _csrf_token: csrfToken, _lavash_state: lavashState })
+  params: () => ({ _csrf_token: csrfToken, _lavash_state: lavashState }),
+  hooks: colocatedHooks
 })
 
 // Show progress bar on live navigation and form submits
