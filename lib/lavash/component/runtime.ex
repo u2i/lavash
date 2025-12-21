@@ -250,13 +250,9 @@ defmodule Lavash.Component.Runtime do
     # Component ID for namespacing socket state
     component_id = Map.get(assigns, :id, "unknown")
 
-    # Get bindings from parent (bind:prop_name -> "update:parent_field")
-    bindings = Map.get(assigns, :__lavash_bindings__, %{})
-
     LSocket.init(socket, %{
       socket_fields: socket_field_names,
-      component_id: component_id,
-      bindings: bindings
+      component_id: component_id
     })
   end
 
@@ -383,7 +379,6 @@ defmodule Lavash.Component.Runtime do
         |> apply_sets(action.sets || [], params, module)
         |> apply_updates(action.updates || [], params)
         |> apply_effects(action.effects || [], params)
-        |> apply_emits(action.emits || [], params)
 
       # Collect notify_parent events to execute after state updates
       notify_events = collect_notify_events(socket, module, action.notify_parents || [])
@@ -445,33 +440,6 @@ defmodule Lavash.Component.Runtime do
   defp apply_effects(socket, effects, _params) do
     state = LSocket.full_state(socket)
     Enum.each(effects, fn effect -> effect.fun.(state) end)
-    socket
-  end
-
-  defp apply_emits(socket, emits, params) do
-    bindings = LSocket.get(socket, :bindings) || %{}
-    state = LSocket.state(socket)
-
-    Enum.each(emits, fn emit ->
-      # Get the event name from bindings (e.g., :product_id -> "update:editing_product_id")
-      event_name = Map.get(bindings, emit.prop)
-
-      if event_name do
-        # Compute the value
-        value =
-          case emit.value do
-            fun when is_function(fun, 1) ->
-              fun.(%{params: params, state: state})
-
-            value ->
-              value
-          end
-
-        # Send the update event to parent with the value
-        send(self(), {:lavash_component_event, event_name, %{"value" => value}})
-      end
-    end)
-
     socket
   end
 

@@ -281,24 +281,7 @@ defmodule Lavash.LiveView.Runtime do
 
   def handle_info(module, {:lavash_component_event, event, params}, socket) do
     # Handle events sent from child Lavash components via notify_parent
-    # Check for special "update:field" events from bind:
-    case parse_update_event(event) do
-      {:update, field_name} ->
-        # This is from a bind: - directly set the parent's state
-        value = Map.get(params, "value")
-
-        socket =
-          socket
-          |> LSocket.put_state(field_name, value)
-          |> Graph.recompute_dirty(module)
-          |> Assigns.project(module)
-
-        {:noreply, socket}
-
-      :not_update ->
-        # Regular event - treat as handle_event call
-        handle_event(module, event, params, socket)
-    end
+    handle_event(module, event, params, socket)
   end
 
   def handle_info(
@@ -372,20 +355,6 @@ defmodule Lavash.LiveView.Runtime do
   end
 
   # Private
-
-  defp parse_update_event(event) when is_binary(event) do
-    case String.split(event, ":", parts: 2) do
-      ["update", field_str] ->
-        {:update, String.to_existing_atom(field_str)}
-
-      _ ->
-        :not_update
-    end
-  rescue
-    ArgumentError -> :not_update
-  end
-
-  defp parse_update_event(_), do: :not_update
 
   defp execute_action(socket, module, action, event_params) do
     # Build params map from event

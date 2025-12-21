@@ -25,8 +25,6 @@ defmodule Lavash.Socket do
       props: Map.get(opts, :props, %{}),
       component_id: Map.get(opts, :component_id),
       component_states: Map.get(opts, :component_states, %{}),
-      # Bindings for emit (component two-way binding)
-      bindings: Map.get(opts, :bindings, %{}),
       # Registered child components: %{id => {module, resources}}
       registered_components: Map.get(opts, :registered_components, %{})
     }

@@ -22,7 +22,6 @@ defmodule Lavash.Actions.Action do
     :navigates,
     :flashes,
     :notify_parents,
-    :emits,
     :invokes,
     __spark_metadata__: nil
   ]

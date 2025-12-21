@@ -22,5 +22,6 @@ defmodule Lavash.TestRouter do
     live("/products/:product_id", TestPathParamLive)
     live("/component-host", TestComponentHostLive)
     live("/guarded", TestGuardedActionsLive)
+    live("/modal-host", TestModalHostLive)
   end
 end

@@ -28,7 +28,8 @@ defmodule Lavash.Modal.Transformers.InjectState do
     |> then(&{:ok, &1})
   end
 
-  # Add the open_field as an ephemeral state field if not already defined
+  # Add the open_field as ephemeral state if not already defined
+  # Modal owns its own open/closed state; parent opens via invoke
   defp maybe_add_open_input(dsl_state, open_field) do
     existing_states = Transformer.get_entities(dsl_state, [:states])
 
@@ -48,6 +49,7 @@ defmodule Lavash.Modal.Transformers.InjectState do
   end
 
   # Add :close action or merge into existing one
+  # Close sets the open_field to nil (modal owns its state)
   defp add_or_merge_close_action(dsl_state, open_field) do
     existing_actions = Transformer.get_entities(dsl_state, [:actions])
     existing_close = Enum.find(existing_actions, &(&1.name == :close))
@@ -77,8 +79,7 @@ defmodule Lavash.Modal.Transformers.InjectState do
         navigates: [],
         flashes: [],
         invokes: [],
-        notify_parents: [],
-        emits: []
+        notify_parents: []
       }
 
       Transformer.add_entity(dsl_state, [:actions], close_action)
@@ -103,8 +104,7 @@ defmodule Lavash.Modal.Transformers.InjectState do
         navigates: [],
         flashes: [],
         invokes: [],
-        notify_parents: [],
-        emits: []
+        notify_parents: []
       }
 
       Transformer.add_entity(dsl_state, [:actions], noop_action)

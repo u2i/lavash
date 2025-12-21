@@ -106,3 +106,65 @@ defmodule Lavash.TestComponentHostLive do
     """
   end
 end
+
+defmodule Lavash.TestModalComponent do
+  @moduledoc """
+  Test fixture: Modal component that tracks render calls.
+
+  Uses a named process to track whether the render function was called,
+  allowing tests to verify render is not called when modal is closed.
+  """
+  use Lavash.Component, extensions: [Lavash.Modal.Dsl]
+
+  modal do
+    open_field :item_id
+  end
+
+  actions do
+    action :open, [:id] do
+      set :item_id, &(&1.params.id)
+    end
+  end
+
+  render fn assigns ->
+    # Send a message to the test process to track that render was called
+    # Uses a registered name so it works across processes
+    if test_pid = Process.whereis(:modal_test_pid) do
+      send(test_pid, {:modal_rendered, assigns.item_id})
+    end
+
+    ~H"""
+    <div id="modal-content">
+      <h2>Editing item {@item_id}</h2>
+      <button phx-click="close" phx-target={@myself}>Close</button>
+    </div>
+    """
+  end
+end
+
+defmodule Lavash.TestModalHostLive do
+  @moduledoc """
+  Test fixture: LiveView that hosts the test modal component.
+  """
+  use Lavash.LiveView
+
+  actions do
+    action :open_modal, [:id] do
+      invoke "test-modal", :open,
+        module: Lavash.TestModalComponent,
+        params: [id: {:param, :id}]
+    end
+  end
+
+  def render(assigns) do
+    ~H"""
+    <div>
+      <button id="open-modal" phx-click="open_modal" phx-value-id="123">Open Modal</button>
+      <.live_component
+        module={Lavash.TestModalComponent}
+        id="test-modal"
+      />
+    </div>
+    """
+  end
+end

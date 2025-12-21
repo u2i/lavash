@@ -3,39 +3,45 @@ defmodule Lavash.Modal.Dsl do
   Spark DSL extension for modal behavior.
 
   Adds modal-specific state and actions to a Lavash Component:
-  - Open/close state management
+  - Open/close state management (modal owns its state)
   - Escape key handling
   - Backdrop click handling
-  - Standard :open, :close, :noop actions
+  - Auto-injected :close and :noop actions
 
   ## Usage
 
       defmodule MyApp.EditModal do
-        use Lavash.Component
-        use Lavash.Modal
+        use Lavash.Component, extensions: [Lavash.Modal.Dsl]
 
         modal do
-          # All options have sensible defaults
           open_field :product_id  # nil = closed, non-nil = open with this ID
           close_on_escape true
           close_on_backdrop true
         end
 
-        # The open action is auto-generated, but you can extend it:
-        action :open, [:product_id] do
-          set :product_id, &(&1.params.product_id)
+        # Define an :open action for the parent to invoke
+        actions do
+          action :open, [:product_id] do
+            set :product_id, &(&1.params.product_id)
+          end
         end
 
-        # Define your content
-        def render_content(assigns) do
+        render fn assigns ->
           ~H"..."
         end
       end
 
+  Parent opens the modal via invoke:
+
+      invoke "my-modal", :open,
+        module: MyApp.EditModal,
+        params: [product_id: 123]
+
   The plugin will:
-  1. Inject the open_field as an ephemeral input (if not already defined)
-  2. Inject :open, :close, :noop actions (merged with user-defined if present)
-  3. Wrap render/1 to call render_content/1 inside modal chrome
+  1. Inject the open_field as ephemeral state (if not already defined)
+  2. Inject :close action that sets open_field to nil
+  3. Inject :noop action for backdrop click handling
+  4. Generate render/1 with modal chrome wrapping your content
   """
 
   @modal_section %Spark.Dsl.Section{
