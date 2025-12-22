@@ -73,6 +73,50 @@ liveSocket.connect()
 // >> liveSocket.disableLatencySim()
 window.liveSocket = liveSocket
 
+// Latency simulation toggle (dev tool)
+const LATENCY_OPTIONS = [0, 100, 500]
+const setupLatencyToggle = () => {
+  const btn = document.getElementById("latency-toggle")
+  const label = document.getElementById("latency-label")
+  if (!btn || !label) return
+
+  const updateUI = (ms) => {
+    btn.classList.toggle("bg-yellow-600", ms > 0)
+    btn.classList.toggle("bg-gray-800", ms === 0)
+    label.textContent = ms > 0 ? `Lag: ${ms}ms` : "Lag: off"
+  }
+
+  const applyLatency = (ms) => {
+    if (ms > 0) {
+      liveSocket.enableLatencySim(ms)
+    } else {
+      liveSocket.disableLatencySim()
+    }
+  }
+
+  // Apply saved state
+  const savedMs = parseInt(localStorage.getItem("phx:latency") || "0", 10)
+  applyLatency(savedMs)
+  updateUI(savedMs)
+
+  // Handle toggle clicks - cycle through options
+  btn.addEventListener("click", () => {
+    const currentMs = parseInt(localStorage.getItem("phx:latency") || "0", 10)
+    const currentIndex = LATENCY_OPTIONS.indexOf(currentMs)
+    const nextIndex = (currentIndex + 1) % LATENCY_OPTIONS.length
+    const nextMs = LATENCY_OPTIONS[nextIndex]
+
+    if (nextMs > 0) {
+      localStorage.setItem("phx:latency", nextMs.toString())
+    } else {
+      localStorage.removeItem("phx:latency")
+    }
+    applyLatency(nextMs)
+    updateUI(nextMs)
+  })
+}
+setupLatencyToggle()
+
 // The lines below enable quality of life phoenix_live_reload
 // development features:
 //

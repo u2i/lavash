@@ -29,5 +29,15 @@
   </head>
   <body>
     {@inner_content}
+    <div id="dev-tools" phx-update="ignore">
+      <button
+        id="latency-toggle"
+        class="fixed bottom-4 right-4 px-3 py-2 text-xs font-medium bg-gray-800 text-white rounded shadow-lg hover:bg-gray-700"
+        style="z-index: 99999;"
+        title="Toggle 500ms latency simulation"
+      >
+        <span id="latency-label">Lag</span>
+      </button>
+    </div>
   </body>
 </html>
