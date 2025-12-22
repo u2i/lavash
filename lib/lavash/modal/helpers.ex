@@ -126,9 +126,10 @@ defmodule Lavash.Modal.Helpers do
 
     ~H"""
     <%!-- Wrapper for hook - always present, hook controls visibility --%>
+    <%!-- pointer-events-none when closed ensures clicks pass through even if display state is stale --%>
     <div
       id={@id}
-      class="fixed inset-0 z-50 flex items-center justify-center"
+      class={"fixed inset-0 z-50 flex items-center justify-center #{!@is_open && "pointer-events-none"}"}
       style={!@is_open && "display: none"}
       phx-hook=".LavashModal"
       data-duration={@duration}
@@ -158,7 +159,7 @@ defmodule Lavash.Modal.Helpers do
         <div
           :if={@loading != []}
           id={"#{@id}-loading_content"}
-          class="row-start-1 col-start-1 p-6 hidden opacity-0"
+          class="row-start-1 col-start-1 hidden opacity-0 pointer-events-none"
         >
           {render_slot(@loading)}
         </div>
@@ -166,7 +167,7 @@ defmodule Lavash.Modal.Helpers do
         <div
           id={"#{@id}-main_content"}
           data-active-if-open={to_string(@is_open)}
-          class="row-start-1 col-start-1 p-6"
+          class="row-start-1 col-start-1"
         >
           <div :if={@is_open} id={"#{@id}-main_content_inner"}>
             {render_slot(@inner_block)}
@@ -207,6 +208,7 @@ defmodule Lavash.Modal.Helpers do
           this.modal.ghostElement = null;
 
           this.modal.el.style.display = "none";
+          this.modal.el.classList.add("pointer-events-none");
         }
         onRequestOpen() {
           this.modal.transitionTo(this.modal.states.opening);
@@ -220,6 +222,7 @@ defmodule Lavash.Modal.Helpers do
         onEnter() {
           this.modal.closeInitiator = null;
           this.modal.el.style.display = "flex";
+          this.modal.el.classList.remove("pointer-events-none");
           console.log(`LavashModal OpeningState.onEnter: el.style.display = ${this.modal.el.style.display}`);
           console.log(`LavashModal OpeningState.onEnter: showLoading = ${this.modal.el.dataset.showLoading}`);
           console.log(`LavashModal OpeningState.onEnter: showModal = ${this.modal.el.dataset.showModal}`);
@@ -350,6 +353,9 @@ defmodule Lavash.Modal.Helpers do
 
       class ClosingState extends ModalState {
         onEnter() {
+          // Immediately disable pointer events so clicks pass through during close animation
+          this.modal.el.classList.add("pointer-events-none");
+
           if (this.modal.panelContent && this.modal.onOpenTransitionEndEvent) {
             this.modal.panelContent.removeEventListener(
               "transitionend",
