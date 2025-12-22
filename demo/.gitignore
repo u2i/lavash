@@ -35,6 +35,9 @@ demo-*.tar
 npm-debug.log
 /assets/node_modules/
 
+# Generated colocated hooks (from phoenix_live_view)
+/assets/vendor/phoenix-colocated/
+
 *.db
 *.db-shm
 *.db-wal
