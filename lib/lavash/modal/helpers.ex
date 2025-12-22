@@ -128,10 +128,15 @@ defmodule Lavash.Modal.Helpers do
         phx-window-keydown={@close_on_escape && @on_close}
         phx-key={@close_on_escape && "Escape"}
       >
-        <%!-- Content container - always present so ghost can be appended --%>
-        <div id={"#{@id}-content"} data-open={to_string(@is_open)}>
-          <%!-- Loading content - shown during optimistic open before server responds --%>
-          <div :if={@loading != []} id={"#{@id}-loading"} style="display: none;">
+        <%!-- Content container - uses relative positioning for stacked children --%>
+        <div id={"#{@id}-content"} data-open={to_string(@is_open)} class="relative">
+          <%!-- Loading content - absolutely positioned with background to cover content --%>
+          <div
+            :if={@loading != []}
+            id={"#{@id}-loading"}
+            class="absolute inset-0 bg-base-100 rounded-lg z-10"
+            style="display: none;"
+          >
             {render_slot(@loading)}
           </div>
           <%!-- Inner content - conditionally rendered, ghost clones this --%>
@@ -187,6 +192,14 @@ defmodule Lavash.Modal.Helpers do
 
         beforeUpdate() {
           this.wasServerOpen = this.el.dataset.open === "true";
+
+          // Capture panel dimensions for FLIP animation when in opening state
+          // We check the state, not loading visibility, because loading is shown by JS
+          if (this.state === "opening" && this.panelContent) {
+            this._flipPreRect = this.panelContent.getBoundingClientRect();
+          } else {
+            this._flipPreRect = null;
+          }
         },
 
         updated() {
@@ -238,10 +251,13 @@ defmodule Lavash.Modal.Helpers do
           // Show modal immediately with loading state
           this.el.style.display = "flex";
 
-          // Show loading element if present
+          // Show loading element if present, reset any leftover styles
           const loading = this.getLoadingElement();
           if (loading) {
             loading.style.display = "block";
+            loading.style.opacity = "1";
+            loading.style.transform = "";
+            loading.style.transition = "";
           }
 
           // Run show animation
@@ -254,9 +270,73 @@ defmodule Lavash.Modal.Helpers do
         _enterOpen(fromState) {
           this.el.style.display = "flex";
 
-          // Hide loading element
           const loading = this.getLoadingElement();
-          if (loading) {
+
+          // Crossfade from loading to content with FLIP animation for smooth resize
+          if (fromState === "opening" && loading) {
+            // Restore loading visibility (DOM patch may have reset it)
+            loading.style.display = "block";
+
+            // Run FLIP animation if we have pre-rect
+            if (this._flipPreRect && this.panelContent) {
+              const firstRect = this._flipPreRect;
+              const lastRect = this.panelContent.getBoundingClientRect();
+              this._flipPreRect = null;
+
+              // Calculate scale factors
+              const scaleX = lastRect.width === 0 ? 1 : firstRect.width / lastRect.width;
+              const scaleY = lastRect.height === 0 ? 1 : firstRect.height / lastRect.height;
+
+              // Only animate if there's a significant size difference
+              if (Math.abs(firstRect.width - lastRect.width) > 1 || Math.abs(firstRect.height - lastRect.height) > 1) {
+                // Scale loading to compensate for panel resize
+                loading.style.transform = `scale(${1/scaleX}, ${1/scaleY})`;
+                loading.style.transformOrigin = "top left";
+
+                // Start panel at old size, animate to new size
+                this.panelContent.style.transform = `scale(${scaleX}, ${scaleY})`;
+                this.panelContent.style.transformOrigin = "center";
+                this.panelContent.offsetHeight; // Force reflow
+
+                // Animate panel to natural size while fading loading
+                this.panelContent.style.transition = `transform ${this.duration}ms ease-out`;
+                loading.style.transition = `opacity ${this.duration}ms ease-out, transform ${this.duration}ms ease-out`;
+
+                this.panelContent.style.transform = "";
+                loading.style.opacity = "0";
+                loading.style.transform = "";
+
+                // Cleanup after animation
+                setTimeout(() => {
+                  loading.style.display = "none";
+                  loading.style.opacity = "";
+                  loading.style.transition = "";
+                  loading.style.transformOrigin = "";
+                  this.panelContent.style.transition = "";
+                  this.panelContent.style.transformOrigin = "";
+                }, this.duration);
+              } else {
+                // No significant size change, just fade loading
+                loading.style.transition = `opacity ${this.duration}ms ease-out`;
+                loading.style.opacity = "0";
+                setTimeout(() => {
+                  loading.style.display = "none";
+                  loading.style.opacity = "";
+                  loading.style.transition = "";
+                }, this.duration);
+              }
+            } else {
+              // No pre-rect, just fade loading
+              loading.style.transition = `opacity ${this.duration}ms ease-out`;
+              loading.style.opacity = "0";
+              setTimeout(() => {
+                loading.style.display = "none";
+                loading.style.opacity = "";
+                loading.style.transition = "";
+              }, this.duration);
+            }
+          } else if (loading) {
+            // Non-optimistic open or loading wasn't visible, just hide it
             loading.style.display = "none";
           }
 
