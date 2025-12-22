@@ -52,16 +52,51 @@ defmodule Lavash.Modal.Helpers do
 
   def modal_chrome(assigns) do
     max_width_class = Map.get(@max_width_classes, assigns.max_width, "max-w-md")
+    duration = assigns.duration
 
     # Build the close command: dispatch close-panel (triggers animation) + push close event
     on_close =
       JS.dispatch("close-panel", to: "##{assigns.id}")
       |> JS.push("close", target: assigns.myself)
 
+    # Show animation - applied when modal opens
+    show_modal_js =
+      JS.transition(
+        {"transition-all duration-#{duration} ease-out", "opacity-0 scale-95",
+         "opacity-100 scale-100"},
+        time: duration,
+        to: "##{assigns.id}-panel",
+        blocking: false
+      )
+      |> JS.transition(
+        {"transition-opacity duration-#{duration} ease-out", "opacity-0", "opacity-50"},
+        time: duration,
+        to: "##{assigns.id}-overlay",
+        blocking: false
+      )
+
+    # Hide animation - targets elements by ID, called via execJS from hook
+    hide_modal_js =
+      JS.transition(
+        {"transition-all duration-#{duration} ease-out", "opacity-100 scale-100",
+         "opacity-0 scale-95"},
+        time: duration,
+        to: "##{assigns.id}-panel",
+        blocking: false
+      )
+      |> JS.transition(
+        {"transition-opacity duration-#{duration} ease-out", "opacity-50", "opacity-0"},
+        time: duration,
+        to: "##{assigns.id}-overlay",
+        blocking: false
+      )
+
     assigns =
       assigns
       |> assign(:max_width_class, max_width_class)
       |> assign(:on_close, on_close)
+      |> assign(:show_modal_js, show_modal_js)
+      |> assign(:hide_modal_js, hide_modal_js)
       |> assign(:is_open, assigns.open != nil)
 
     ~H"""
@@ -72,19 +107,21 @@ defmodule Lavash.Modal.Helpers do
       style={!@is_open && "display: none"}
       phx-hook=".LavashModal"
       data-duration={@duration}
-      data-open={@is_open}
+      data-open={to_string(@is_open)}
+      data-show-modal={@show_modal_js}
+      data-hide-modal={@hide_modal_js}
     >
-      <%!-- Backdrop overlay --%>
+      <%!-- Backdrop overlay - starts invisible, hook animates in --%>
       <div
         id={"#{@id}-overlay"}
-        class="absolute inset-0 bg-black/50"
+        class="absolute inset-0 bg-black/50 opacity-0"
         phx-click={@close_on_backdrop && @on_close}
       />
 
-      <%!-- Panel --%>
+      <%!-- Panel - starts invisible, hook animates in --%>
       <div
         id={"#{@id}-panel"}
-        class={"relative z-10 bg-base-100 rounded-lg shadow-xl #{@max_width_class} w-full"}
+        class={"relative z-10 bg-base-100 rounded-lg shadow-xl #{@max_width_class} w-full opacity-0 scale-95"}
         phx-click="noop"
         phx-target={@myself}
         phx-window-keydown={@close_on_escape && @on_close}
@@ -117,11 +154,16 @@ defmodule Lavash.Modal.Helpers do
           this.isClosing = false;
           this.ghostElement = null;
 
+          // If already open on mount, run the show animation
+          if (this.isOpen) {
+            this.wrapper.style.display = "flex";
+            this._runShowAnimation();
+          }
+
           // Listen for close-panel event dispatched by user actions
-          console.log("LavashModal: mounted, listening for close-panel on", this.wrapper.id);
+          // This fires BEFORE the server push, so we can start animation immediately
           this.wrapper.addEventListener("close-panel", (e) => {
-            console.log("LavashModal: close-panel received!");
-            this._handleCloseRequest();
+            this._startCloseAnimation();
           });
         },
 
@@ -131,98 +173,90 @@ defmodule Lavash.Modal.Helpers do
 
         updated() {
           const wasOpen = this.wasOpen;
-          this.isOpen = this.wrapper.dataset.open === "true";
+          this.isOpen = this.el.dataset.open === "true";
 
           if (this.isClosing) {
+            // Keep modal visible while closing animation runs
             this.wrapper.style.display = "flex";
             return;
           }
 
-          if (wasOpen && !this.isOpen) {
-            this._handleCloseRequest();
+          // Opening: show wrapper and animate in
+          if (!wasOpen && this.isOpen) {
+            this.wrapper.style.display = "flex";
+            this._runShowAnimation();
+          }
+
+          // Closing without animation (shouldn't happen normally, but handle it)
+          if (wasOpen && !this.isOpen && !this.isClosing) {
+            this._startCloseAnimation();
           }
         },
 
-        _handleCloseRequest() {
-          if (!this.isOpen || this.isClosing) return;
+        _runShowAnimation() {
+          const showModalCmd = this.wrapper.dataset.showModal;
+          if (showModalCmd && this.liveSocket) {
+            this.liveSocket.execJS(this.wrapper, showModalCmd);
+          }
+        },
+
+        _startCloseAnimation() {
+          // Skip if already animating
+          if (this.isClosing) return;
 
           this.isClosing = true;
+          const duration = Number(this.wrapper.dataset.duration) || 200;
+
+          // Keep wrapper visible during animation
           this.wrapper.style.display = "flex";
 
+          // Capture panel dimensions before content changes
+          const panelRect = this.panelContent.getBoundingClientRect();
+
+          // Clone content for ghost animation and remove original
           const originalContent = this.getMainContentInner();
           if (originalContent) {
             this.ghostElement = originalContent.cloneNode(true);
             this.ghostElement.removeAttribute("phx-remove");
             this.ghostElement.id = `${this.wrapper.id}-ghost`;
-
             Object.assign(this.ghostElement.style, {
               pointerEvents: "none",
-              zIndex: "100",
+              zIndex: "61"
             });
 
             const container = this.getMainContentContainer();
             if (container) {
+              // Remove original to prevent flicker - ghost takes its place
+              originalContent.remove();
               container.appendChild(this.ghostElement);
             }
           }
 
-          this._animateClose();
-        },
+          // Lock panel dimensions to prevent reflow when LiveView removes content
+          this.panelContent.style.width = `${panelRect.width}px`;
+          this.panelContent.style.height = `${panelRect.height}px`;
 
-        _animateClose() {
-          const duration = Number(this.wrapper.dataset.duration) || 200;
-
-          if (this.ghostElement) {
-            this.ghostElement.style.transition = `opacity ${duration}ms ease-out, transform ${duration}ms ease-out`;
-            this.ghostElement.style.opacity = "1";
-            this.ghostElement.style.transform = "scale(1)";
-
+          // Use LiveView's JS.transition via execJS - targets elements by ID
+          const hideModalCmd = this.wrapper.dataset.hideModal;
+          if (hideModalCmd && this.liveSocket) {
             requestAnimationFrame(() => {
-              if (this.ghostElement) {
-                this.ghostElement.style.opacity = "0";
-                this.ghostElement.style.transform = "scale(0.95)";
-              }
+              this.liveSocket.execJS(this.wrapper, hideModalCmd);
             });
           }
 
-          if (this.overlay) {
-            this.overlay.style.transition = `opacity ${duration}ms ease-out`;
-            requestAnimationFrame(() => {
-              if (this.overlay) {
-                this.overlay.style.opacity = "0";
-              }
-            });
-          }
-
-          if (this.panelContent) {
-            this.panelContent.style.transition = `opacity ${duration}ms ease-out, transform ${duration}ms ease-out`;
-            requestAnimationFrame(() => {
-              if (this.panelContent) {
-                this.panelContent.style.opacity = "0";
-                this.panelContent.style.transform = "scale(0.95)";
-              }
-            });
-          }
-
+          // Clean up after animation completes
           setTimeout(() => {
             if (this.ghostElement && this.ghostElement.parentNode) {
               this.ghostElement.remove();
             }
             this.ghostElement = null;
             this.isClosing = false;
-
             this.wrapper.style.display = "none";
 
-            if (this.overlay) {
-              this.overlay.style.transition = "";
-              this.overlay.style.opacity = "";
-            }
-            if (this.panelContent) {
-              this.panelContent.style.transition = "";
-              this.panelContent.style.opacity = "";
-              this.panelContent.style.transform = "";
-            }
-          }, duration);
+            // Reset panel dimensions for next open
+            this.panelContent.style.width = "";
+            this.panelContent.style.height = "";
+          }, duration + 50);
         },
 
         destroyed() {
