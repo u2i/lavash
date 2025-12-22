@@ -66,7 +66,7 @@ defmodule Lavash.Modal.Helpers do
         {"transition-all duration-#{duration} ease-out", "opacity-0 scale-95",
          "opacity-100 scale-100"},
         time: duration,
-        to: "##{assigns.id}-panel",
+        to: "##{assigns.id}-panel_content",
         blocking: false
       )
       |> JS.transition(
@@ -82,7 +82,7 @@ defmodule Lavash.Modal.Helpers do
         {"transition-all duration-#{duration} ease-out", "opacity-100 scale-100",
          "opacity-0 scale-95"},
         time: duration,
-        to: "##{assigns.id}-panel",
+        to: "##{assigns.id}-panel_content",
         blocking: false
       )
       |> JS.transition(
@@ -92,12 +92,25 @@ defmodule Lavash.Modal.Helpers do
         blocking: false
       )
 
+    # Show loading animation
+    show_loading_js =
+      JS.show(to: "##{assigns.id}-loading_content", transition: {"", "opacity-0", "opacity-100"})
+
+    # Hide loading animation
+    hide_loading_js =
+      JS.hide(
+        to: "##{assigns.id}-loading_content",
+        transition: {"transition-opacity duration-#{duration} ease-out", "opacity-100", "opacity-0"}
+      )
+
     assigns =
       assigns
       |> assign(:max_width_class, max_width_class)
       |> assign(:on_close, on_close)
       |> assign(:show_modal_js, show_modal_js)
       |> assign(:hide_modal_js, hide_modal_js)
+      |> assign(:show_loading_js, show_loading_js)
+      |> assign(:hide_loading_js, hide_loading_js)
       |> assign(:is_open, assigns.open != nil)
 
     ~H"""
@@ -111,6 +124,8 @@ defmodule Lavash.Modal.Helpers do
       data-open={to_string(@is_open)}
       data-show-modal={@show_modal_js}
       data-hide-modal={@hide_modal_js}
+      data-show-loading={@show_loading_js}
+      data-hide-loading={@hide_loading_js}
     >
       <%!-- Backdrop overlay - starts invisible, hook animates in --%>
       <div
@@ -121,7 +136,7 @@ defmodule Lavash.Modal.Helpers do
 
       <%!-- Panel - starts invisible, hook animates in --%>
       <div
-        id={"#{@id}-panel"}
+        id={"#{@id}-panel_content"}
         class={"relative z-10 bg-base-100 rounded-lg shadow-xl #{@max_width_class} w-full opacity-0 scale-95"}
         phx-click="noop"
         phx-target={@myself}
@@ -129,73 +144,302 @@ defmodule Lavash.Modal.Helpers do
         phx-key={@close_on_escape && "Escape"}
       >
         <%!-- Content container - uses relative positioning for stacked children --%>
-        <div id={"#{@id}-content"} data-open={to_string(@is_open)} class="relative">
+        <div id={"#{@id}-main_content"} data-active-if-open={to_string(@is_open)} class="relative">
           <%!-- Loading content - absolutely positioned with background to cover content --%>
           <div
             :if={@loading != []}
-            id={"#{@id}-loading"}
+            id={"#{@id}-loading_content"}
             class="absolute inset-0 bg-base-100 rounded-lg z-10"
             style="display: none;"
           >
             {render_slot(@loading)}
           </div>
           <%!-- Inner content - conditionally rendered, ghost clones this --%>
-          <div :if={@is_open} id={"#{@id}-content-inner"}>
+          <div :if={@is_open} id={"#{@id}-main_content_inner"}>
             {render_slot(@inner_block)}
           </div>
         </div>
       </div>
       <script :type={Phoenix.LiveView.ColocatedHook} name=".LavashModal">
-      // State machine states:
-      // - closed: Modal hidden, waiting for open request
-      // - opening: Animating in, showing loading, waiting for server
-      // - open: Fully open with content
-      // - closing: Animating out with ghost, waiting for server confirmation
+      // --- Base State Class ---
+      class ModalState {
+        constructor(modal) {
+          this.modal = modal;
+        }
 
+        get name() {
+          return this.constructor.name
+            .substring(0, this.constructor.name.length - "State".length)
+            .toLowerCase();
+        }
+
+        onRequestOpen() {}
+        onRequestClose() {}
+        onServerRequestsOpen() {}
+        onServerRequestsClose() {}
+        onPanelOpenTransitionEnd() {}
+        onEnter() {}
+        onExit() {}
+        onUpdate() {}
+      }
+
+      // --- Concrete State Implementations ---
+      class ClosedState extends ModalState {
+        onEnter() {
+          this.modal.closeInitiator = null;
+
+          if (this.modal.ghostElement?.parentNode) {
+            this.modal.ghostElement.remove();
+          }
+          this.modal.ghostElement = null;
+
+          this.modal.el.style.display = "none";
+        }
+        onRequestOpen() {
+          this.modal.transitionTo(this.modal.states.opening);
+        }
+        onServerRequestsOpen() {
+          this.modal.transitionTo(this.modal.states.open, true);
+        }
+      }
+
+      class OpeningState extends ModalState {
+        onEnter() {
+          this.modal.closeInitiator = null;
+          this.modal.el.style.display = "flex";
+          console.log(`LavashModal OpeningState.onEnter: el.style.display = ${this.modal.el.style.display}`);
+          console.log(`LavashModal OpeningState.onEnter: showLoading = ${this.modal.el.dataset.showLoading}`);
+          console.log(`LavashModal OpeningState.onEnter: showModal = ${this.modal.el.dataset.showModal}`);
+          console.log(`LavashModal OpeningState.onEnter: panelContent = ${this.modal.panelContent}`);
+
+          this.modal.liveSocket.execJS(
+            this.modal.el,
+            this.modal.el.dataset.showLoading,
+          );
+          this.modal.liveSocket.execJS(
+            this.modal.el,
+            this.modal.el.dataset.showModal,
+          );
+
+          if (this.modal.panelContent && this.modal.onOpenTransitionEndEvent) {
+            this.modal.panelContent.addEventListener(
+              "transitionend",
+              this.modal.onOpenTransitionEndEvent,
+              { once: true },
+            );
+          }
+        }
+        onExit() {
+          if (this.modal.panelContent && this.modal.onOpenTransitionEndEvent) {
+            this.modal.panelContent.removeEventListener(
+              "transitionend",
+              this.modal.onOpenTransitionEndEvent,
+            );
+          }
+        }
+        onPanelOpenTransitionEnd() {
+          this.modal.transitionTo(this.modal.states.open);
+        }
+        onRequestClose() {
+          this.modal.closeInitiator = "user";
+          this.modal.transitionTo(this.modal.states.closing);
+        }
+        onServerRequestsClose() {
+          this.modal.closeInitiator = "server";
+          this.modal.transitionTo(this.modal.states.closing);
+        }
+        onServerRequestsOpen() {
+          this.modal.transitionTo(this.modal.states.openingServerArrived);
+        }
+      }
+
+      class OpeningServerArrivedState extends ModalState {
+        onEnter() {
+          // Re-attach transition end listener (it was { once: true })
+          if (this.modal.panelContent && this.modal.onOpenTransitionEndEvent) {
+            this.modal.panelContent.addEventListener(
+              "transitionend",
+              this.modal.onOpenTransitionEndEvent,
+              { once: true },
+            );
+          }
+        }
+        onExit() {
+          if (this.modal.panelContent && this.modal.onOpenTransitionEndEvent) {
+            this.modal.panelContent.removeEventListener(
+              "transitionend",
+              this.modal.onOpenTransitionEndEvent,
+            );
+          }
+        }
+        onPanelOpenTransitionEnd() {
+          this.modal.transitionTo(this.modal.states.open);
+        }
+        onRequestClose() {
+          this.modal.closeInitiator = "user";
+          this.modal.transitionTo(this.modal.states.closing);
+        }
+        onServerRequestsClose() {
+          this.modal.closeInitiator = "server";
+          this.modal.transitionTo(this.modal.states.closing);
+        }
+        onUpdate() {
+          this.modal.runFlipAnimation(
+            this.modal.getMainContentInner ? this.modal.getMainContentInner() : null,
+            this.modal.getLoadingContent ? this.modal.getLoadingContent() : null,
+          );
+        }
+      }
+
+      class OpenState extends ModalState {
+        onEnter(isNonOptimistic = false) {
+          this.modal.closeInitiator = null;
+          this.modal.el.style.display = "flex";
+
+          if (isNonOptimistic) {
+            this.modal.liveSocket.execJS(
+              this.modal.el,
+              this.modal.el.dataset.showModal,
+            );
+          }
+        }
+        onRequestClose() {
+          this.modal.closeInitiator = "user";
+          this.modal.transitionTo(this.modal.states.closing);
+        }
+        onServerRequestsClose() {
+          this.modal.closeInitiator = "server";
+          this.modal.transitionTo(this.modal.states.closed);
+        }
+      }
+
+      class ClosingState extends ModalState {
+        onEnter() {
+          if (this.modal.panelContent && this.modal.onOpenTransitionEndEvent) {
+            this.modal.panelContent.removeEventListener(
+              "transitionend",
+              this.modal.onOpenTransitionEndEvent,
+            );
+          }
+
+          this.modal._setupGhostElementAnimation();
+          this.modal.transitionTo(this.modal.states.closingWaitingForServer);
+        }
+      }
+
+      class ClosingWaitingForServerState extends ModalState {
+        onRequestOpen() {
+          this.modal.transitionTo(this.modal.states.closingWaitingThenOpen);
+        }
+        onServerRequestsClose() {
+          this.modal.closeInitiator = "server";
+          this.modal.transitionTo(this.modal.states.closed);
+        }
+      }
+
+      class ClosingWaitingThenOpenState extends ModalState {
+        onServerRequestsClose() {
+          this.modal.closeInitiator = "server";
+          this.modal.transitionTo(this.modal.states.opening);
+        }
+        onServerRequestsOpen() {
+          this.modal._cleanupCloseAnimation();
+          this.modal.transitionTo(this.modal.states.open);
+        }
+      }
+
+      // --- LavashModal Hook ---
       export default {
         mounted() {
           const id = this.el.id;
+          console.log(`LavashModal mounted: #${id}`);
           if (!id) {
             console.error("LavashModal: Hook element requires an ID.");
             return;
           }
 
-          this.panelContent = this.el.querySelector(`#${id}-panel`);
+          this.panelIdForLog = `#${id}`;
+          this.panelContent = this.el.querySelector(`#${id}-panel_content`);
           this.overlay = this.el.querySelector(`#${id}-overlay`);
-          this.getContentContainer = () => this.el.querySelector(`#${id}-content`);
-          this.getContentInner = () => this.el.querySelector(`#${id}-content-inner`);
-          this.getLoadingElement = () => this.el.querySelector(`#${id}-loading`);
+          this.getMainContentContainer = () => this.el.querySelector(`#${id}-main_content`);
+          this.getMainContentInner = () => this.el.querySelector(`#${id}-main_content_inner`);
+          this.getLoadingContent = () => this.el.querySelector(`#${id}-loading_content`);
 
-          this.state = "closed";
           this.ghostElement = null;
+          this.closeInitiator = null;
           this.duration = Number(this.el.dataset.duration) || 200;
 
-          // Check if already open on mount (e.g., page refresh with open modal)
-          if (this.el.dataset.open === "true") {
-            this._transitionTo("open");
-          }
+          this.onOpenTransitionEndEvent = () => {
+            this.processPanelEvent("PANEL_OPEN_TRANSITION_END");
+          };
 
-          // Listen for open-panel event (optimistic open before server responds)
+          this.states = {
+            closed: new ClosedState(this),
+            opening: new OpeningState(this),
+            openingServerArrived: new OpeningServerArrivedState(this),
+            open: new OpenState(this),
+            closing: new ClosingState(this),
+            closingWaitingForServer: new ClosingWaitingForServerState(this),
+            closingWaitingThenOpen: new ClosingWaitingThenOpenState(this),
+          };
+          this.currentState = null;
+          this.transitionTo(this.states.closed);
+
           this.el.addEventListener("open-panel", () => {
-            if (this.state === "closed") {
-              this._transitionTo("opening");
-            }
+            console.log(`LavashModal ${this.panelIdForLog}: open-panel event received`);
+            this.processPanelEvent("REQUEST_OPEN");
           });
-
-          // Listen for close-panel event (optimistic close before server responds)
           this.el.addEventListener("close-panel", () => {
-            if (this.state === "open" || this.state === "opening") {
-              this._transitionTo("closing");
-            }
+            console.log(`LavashModal ${this.panelIdForLog}: close-panel event received`);
+            this.processPanelEvent("REQUEST_CLOSE");
           });
         },
 
-        beforeUpdate() {
-          this.wasServerOpen = this.el.dataset.open === "true";
+        transitionTo(newState, ...entryArgs) {
+          const oldStateName = this.currentState ? this.currentState.name : "initial";
+          const panelId = this.panelIdForLog || "UNKNOWN";
+          console.log(`LavashModal ${panelId}: ${oldStateName} -> ${newState.name}`);
+          if (this.currentState) {
+            this.currentState.onExit();
+          }
+          this.currentState = newState;
+          if (this.currentState) {
+            this.currentState.onEnter(...entryArgs);
+          }
+        },
 
-          // Capture panel dimensions for FLIP animation when in opening state
-          // We check the state, not loading visibility, because loading is shown by JS
-          if (this.state === "opening" && this.panelContent) {
+        processPanelEvent(eventName) {
+          const camelCaseEventName = eventName
+            .toLowerCase()
+            .split("_")
+            .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+            .join("");
+          const handlerMethodName = `on${camelCaseEventName}`;
+          if (this.currentState[handlerMethodName]) {
+            this.currentState[handlerMethodName]();
+          }
+        },
+
+        getImpliedServerEvent() {
+          const newMainState = this.getMainContentContainer().dataset.activeIfOpen === "true";
+
+          if (!this.previousMainState && newMainState) {
+            return "SERVER_REQUESTS_OPEN";
+          } else if (this.previousMainState && !newMainState) {
+            return "SERVER_REQUESTS_CLOSE";
+          }
+          return null;
+        },
+
+        beforeUpdate() {
+          this.previousMainState = this.getMainContentContainer().dataset.activeIfOpen === "true";
+
+          if (
+            this.currentState &&
+            (this.currentState.name === "open" || this.currentState.name === "opening") &&
+            this.getLoadingContent() &&
+            this.panelContent
+          ) {
             this._flipPreRect = this.panelContent.getBoundingClientRect();
           } else {
             this._flipPreRect = null;
@@ -203,212 +447,117 @@ defmodule Lavash.Modal.Helpers do
         },
 
         updated() {
-          const serverOpen = this.el.dataset.open === "true";
-
-          // Server confirmed open
-          if (!this.wasServerOpen && serverOpen) {
-            if (this.state === "opening") {
-              // Already opening optimistically, just transition to open
-              this._transitionTo("open");
-            } else if (this.state === "closed") {
-              // Non-optimistic open (server initiated)
-              this._transitionTo("open");
-            }
+          const eventToHandle = this.getImpliedServerEvent();
+          if (eventToHandle) {
+            this.processPanelEvent(eventToHandle);
           }
 
-          // Server confirmed close
-          if (this.wasServerOpen && !serverOpen) {
-            if (this.state === "closing") {
-              // Already closing, animation handles cleanup
-            } else if (this.state === "open" || this.state === "opening") {
-              // Server closed without user action
-              this._transitionTo("closing");
-            }
-          }
+          this.currentState.onUpdate();
         },
 
-        _transitionTo(newState) {
-          const oldState = this.state;
-          this.state = newState;
-
-          switch (newState) {
-            case "opening":
-              this._enterOpening();
-              break;
-            case "open":
-              this._enterOpen(oldState);
-              break;
-            case "closing":
-              this._enterClosing();
-              break;
-            case "closed":
-              this._enterClosed();
-              break;
-          }
-        },
-
-        _enterOpening() {
-          // Show modal immediately with loading state
-          this.el.style.display = "flex";
-
-          // Show loading element if present, reset any leftover styles
-          const loading = this.getLoadingElement();
-          if (loading) {
-            loading.style.display = "block";
-            loading.style.opacity = "1";
-            loading.style.transform = "";
-            loading.style.transition = "";
+        _setupGhostElementAnimation() {
+          const originalMainContentInner = this.getMainContentInner();
+          if (!originalMainContentInner) {
+            return;
           }
 
-          // Run show animation
-          const showCmd = this.el.dataset.showModal;
-          if (showCmd && this.liveSocket) {
-            this.liveSocket.execJS(this.el, showCmd);
-          }
-        },
+          this.ghostElement = originalMainContentInner.cloneNode(true);
+          this.ghostElement.removeAttribute("phx-remove");
+          Object.assign(this.ghostElement.style, {
+            pointerEvents: "none",
+            zIndex: "61",
+          });
+          this.ghostElement.className = originalMainContentInner.className;
 
-        _enterOpen(fromState) {
-          this.el.style.display = "flex";
-
-          const loading = this.getLoadingElement();
-
-          // Crossfade from loading to content with FLIP animation for smooth resize
-          if (fromState === "opening" && loading) {
-            // Restore loading visibility (DOM patch may have reset it)
-            loading.style.display = "block";
-
-            // Run FLIP animation if we have pre-rect
-            if (this._flipPreRect && this.panelContent) {
-              const firstRect = this._flipPreRect;
-              const lastRect = this.panelContent.getBoundingClientRect();
-              this._flipPreRect = null;
-
-              // Calculate scale factors
-              const scaleX = lastRect.width === 0 ? 1 : firstRect.width / lastRect.width;
-              const scaleY = lastRect.height === 0 ? 1 : firstRect.height / lastRect.height;
-
-              // Only animate if there's a significant size difference
-              if (Math.abs(firstRect.width - lastRect.width) > 1 || Math.abs(firstRect.height - lastRect.height) > 1) {
-                // Scale loading to compensate for panel resize
-                loading.style.transform = `scale(${1/scaleX}, ${1/scaleY})`;
-                loading.style.transformOrigin = "top left";
-
-                // Start panel at old size, animate to new size
-                this.panelContent.style.transform = `scale(${scaleX}, ${scaleY})`;
-                this.panelContent.style.transformOrigin = "center";
-                this.panelContent.offsetHeight; // Force reflow
-
-                // Animate panel to natural size while fading loading
-                this.panelContent.style.transition = `transform ${this.duration}ms ease-out`;
-                loading.style.transition = `opacity ${this.duration}ms ease-out, transform ${this.duration}ms ease-out`;
-
-                this.panelContent.style.transform = "";
-                loading.style.opacity = "0";
-                loading.style.transform = "";
-
-                // Cleanup after animation
-                setTimeout(() => {
-                  loading.style.display = "none";
-                  loading.style.opacity = "";
-                  loading.style.transition = "";
-                  loading.style.transformOrigin = "";
-                  this.panelContent.style.transition = "";
-                  this.panelContent.style.transformOrigin = "";
-                }, this.duration);
-              } else {
-                // No significant size change, just fade loading
-                loading.style.transition = `opacity ${this.duration}ms ease-out`;
-                loading.style.opacity = "0";
-                setTimeout(() => {
-                  loading.style.display = "none";
-                  loading.style.opacity = "";
-                  loading.style.transition = "";
-                }, this.duration);
-              }
-            } else {
-              // No pre-rect, just fade loading
-              loading.style.transition = `opacity ${this.duration}ms ease-out`;
-              loading.style.opacity = "0";
-              setTimeout(() => {
-                loading.style.display = "none";
-                loading.style.opacity = "";
-                loading.style.transition = "";
-              }, this.duration);
-            }
-          } else if (loading) {
-            // Non-optimistic open or loading wasn't visible, just hide it
-            loading.style.display = "none";
-          }
-
-          // If coming from closed (non-optimistic), run show animation
-          if (fromState === "closed") {
-            const showCmd = this.el.dataset.showModal;
-            if (showCmd && this.liveSocket) {
-              this.liveSocket.execJS(this.el, showCmd);
-            }
-          }
-          // If coming from opening, animation already running
-        },
-
-        _enterClosing() {
-          // Keep visible during animation
-          this.el.style.display = "flex";
-
-          // Capture panel dimensions
-          const panelRect = this.panelContent.getBoundingClientRect();
-
-          // Create ghost from current content
-          const content = this.getContentInner();
-          if (content) {
-            this.ghostElement = content.cloneNode(true);
-            this.ghostElement.removeAttribute("phx-remove");
-            this.ghostElement.id = `${this.el.id}-ghost`;
-            this.ghostElement.style.pointerEvents = "none";
-            this.ghostElement.style.zIndex = "61";
-
-            const container = this.getContentContainer();
-            if (container) {
-              content.remove();
-              container.appendChild(this.ghostElement);
+          const mainContentContainer = this.getMainContentContainer();
+          if (mainContentContainer) {
+            originalMainContentInner.remove();
+            mainContentContainer.appendChild(this.ghostElement);
+          } else {
+            if (this.panelContent) this.panelContent.appendChild(this.ghostElement);
+            else {
+              this.ghostElement = null;
+              return;
             }
           }
 
-          // Lock panel dimensions
-          this.panelContent.style.width = `${panelRect.width}px`;
-          this.panelContent.style.height = `${panelRect.height}px`;
-
-          // Run hide animation
-          const hideCmd = this.el.dataset.hideModal;
-          if (hideCmd && this.liveSocket) {
+          if (this.el.dataset.hideModal && this.liveSocket) {
             requestAnimationFrame(() => {
-              this.liveSocket.execJS(this.el, hideCmd);
+              this.liveSocket.execJS(this.ghostElement, this.el.dataset.hideModal);
             });
           }
-
-          // Cleanup after animation
-          setTimeout(() => {
-            this._transitionTo("closed");
-          }, this.duration + 50);
         },
 
-        _enterClosed() {
-          // Cleanup ghost
+        _cleanupCloseAnimation() {
           if (this.ghostElement?.parentNode) {
             this.ghostElement.remove();
           }
           this.ghostElement = null;
+        },
 
-          // Hide and reset
-          this.el.style.display = "none";
-          this.panelContent.style.width = "";
-          this.panelContent.style.height = "";
+        runFlipAnimation(mainInnerEl, loadEl) {
+          if (!this.currentState || !this._flipPreRect || !this.panelContent || !loadEl) {
+            this._flipPreRect = null;
+            return;
+          }
+          this.liveSocket.execJS(this.el, this.el.dataset.hideLoading);
+
+          const firstRect = this._flipPreRect;
+          const lastRect = this.panelContent.getBoundingClientRect();
+          this._flipPreRect = null;
+
+          if (
+            Math.abs(firstRect.width - lastRect.width) < 1 &&
+            Math.abs(firstRect.height - lastRect.height) < 1
+          )
+            return;
+
+          const sX = lastRect.width === 0 ? 1 : firstRect.width / lastRect.width;
+          const sY = lastRect.height === 0 ? 1 : firstRect.height / lastRect.height;
+          const dX = firstRect.left - lastRect.left + (firstRect.width - lastRect.width) / 2;
+          const dY = firstRect.top - lastRect.top + (firstRect.height - lastRect.height) / 2;
+
+          loadEl.style.transition = "none";
+          loadEl.style.transform = `scale(${1 / sX},${1 / sY})`;
+          loadEl.style.transformOrigin = "top left";
+
+          this.panelContent.style.setProperty("--flip-translate-x", `${dX}px`);
+          this.panelContent.style.setProperty("--flip-translate-y", `${dY}px`);
+          this.panelContent.style.setProperty("--flip-scale-x", sX);
+          this.panelContent.style.setProperty("--flip-scale-y", sY);
+          this.panelContent.style.setProperty("--flip-duration", `${this.duration}ms`);
+
+          this.panelContent.classList.add("transition-none", "origin-center");
+          this.panelContent.style.transform = `translate(var(--flip-translate-x), var(--flip-translate-y)) scale(var(--flip-scale-x), var(--flip-scale-y))`;
+
+          this.panelContent.offsetHeight;
+          requestAnimationFrame(() => {
+            this.panelContent.classList.remove("transition-none");
+            this.panelContent.classList.add("transition-all", "ease-in-out");
+            this.panelContent.style.transitionDuration = "var(--flip-duration)";
+            this.panelContent.style.transform = "";
+
+            this.panelContent.addEventListener(
+              "transitionend",
+              () => {
+                this.panelContent.classList.remove("transition-all", "ease-in-out", "origin-center");
+                this.panelContent.style.removeProperty("transition-duration");
+                this.panelContent.style.removeProperty("--flip-translate-x");
+                this.panelContent.style.removeProperty("--flip-translate-y");
+                this.panelContent.style.removeProperty("--flip-scale-x");
+                this.panelContent.style.removeProperty("--flip-scale-y");
+                this.panelContent.style.removeProperty("--flip-duration");
+              },
+              { once: true },
+            );
+          });
         },
 
         destroyed() {
           if (this.ghostElement?.parentNode) {
             this.ghostElement.remove();
           }
-        }
+        },
       };
       </script>
     </div>

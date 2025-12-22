@@ -50,12 +50,17 @@ config :demo, DemoWeb.Endpoint,
 # different ports.
 
 # Watch static and templates for browser reloading.
+# Also watch the lavash path dependency for development
 config :demo, DemoWeb.Endpoint,
+  reloadable_compilers: [:elixir, :app, :phoenix_colocated],
+  reloadable_apps: [:demo, :lavash],
   live_reload: [
     web_console_logger: true,
     patterns: [
       ~r"priv/static/(?!uploads/).*(js|css|png|jpeg|jpg|gif|svg)$",
-      ~r"lib/demo_web/(controllers|live|components)/.*(ex|heex)$"
+      ~r"lib/demo_web/(controllers|live|components)/.*(ex|heex)$",
+      # Watch lavash dependency for development
+      ~r"../lib/lavash/.*(ex|heex)$"
     ]
   ]
 

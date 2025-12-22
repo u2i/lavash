@@ -3,6 +3,11 @@ defmodule Lavash.Component.Compiler do
   Compiles the Lavash Component DSL into LiveComponent callbacks.
   """
 
+  # Track helpers.ex as an external resource so changes trigger recompilation
+  # of all modules that use the modal DSL. Path.expand with __DIR__ gives us
+  # the absolute path at compile time of this module (in lavash's lib dir).
+  @helpers_path Path.expand("../modal/helpers.ex", __DIR__)
+
   defmacro __before_compile__(env) do
     modal_render = Spark.Dsl.Extension.get_persisted(env.module, :modal_render_template)
 
@@ -76,8 +81,11 @@ defmodule Lavash.Component.Compiler do
 
     max_width = Spark.Dsl.Extension.get_persisted(module, :modal_max_width) || :md
     async_assign = Spark.Dsl.Extension.get_persisted(module, :modal_async_assign)
+    helpers_path = @helpers_path
 
     quote do
+      # Track helpers.ex so changes trigger recompilation of this module
+      @external_resource unquote(helpers_path)
       @impl Phoenix.LiveComponent
       def render(var!(assigns)) do
         import Lavash.Modal.Helpers
