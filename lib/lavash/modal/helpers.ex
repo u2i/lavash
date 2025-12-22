@@ -49,6 +49,7 @@ defmodule Lavash.Modal.Helpers do
   attr(:max_width, :atom, default: :md)
   attr(:duration, :integer, default: 200)
   slot(:inner_block, required: true)
+  slot(:loading, doc: "Loading content shown during optimistic open")
 
   def modal_chrome(assigns) do
     max_width_class = Map.get(@max_width_classes, assigns.max_width, "max-w-md")
@@ -129,6 +130,10 @@ defmodule Lavash.Modal.Helpers do
       >
         <%!-- Content container - always present so ghost can be appended --%>
         <div id={"#{@id}-content"} data-open={to_string(@is_open)}>
+          <%!-- Loading content - shown during optimistic open before server responds --%>
+          <div :if={@loading != []} id={"#{@id}-loading"} style="display: none;">
+            {render_slot(@loading)}
+          </div>
           <%!-- Inner content - conditionally rendered, ghost clones this --%>
           <div :if={@is_open} id={"#{@id}-content-inner"}>
             {render_slot(@inner_block)}
@@ -136,131 +141,191 @@ defmodule Lavash.Modal.Helpers do
         </div>
       </div>
       <script :type={Phoenix.LiveView.ColocatedHook} name=".LavashModal">
+      // State machine states:
+      // - closed: Modal hidden, waiting for open request
+      // - opening: Animating in, showing loading, waiting for server
+      // - open: Fully open with content
+      // - closing: Animating out with ghost, waiting for server confirmation
+
       export default {
         mounted() {
-          this.wrapper = this.el;
-          const id = this.wrapper.id;
+          const id = this.el.id;
           if (!id) {
             console.error("LavashModal: Hook element requires an ID.");
             return;
           }
 
-          this.panelContent = this.wrapper.querySelector(`#${id}-panel`);
-          this.overlay = this.wrapper.querySelector(`#${id}-overlay`);
-          this.getMainContentInner = () => this.wrapper.querySelector(`#${id}-content-inner`);
-          this.getMainContentContainer = () => this.wrapper.querySelector(`#${id}-content`);
+          this.panelContent = this.el.querySelector(`#${id}-panel`);
+          this.overlay = this.el.querySelector(`#${id}-overlay`);
+          this.getContentContainer = () => this.el.querySelector(`#${id}-content`);
+          this.getContentInner = () => this.el.querySelector(`#${id}-content-inner`);
+          this.getLoadingElement = () => this.el.querySelector(`#${id}-loading`);
 
-          this.isOpen = this.wrapper.dataset.open === "true";
-          this.isClosing = false;
+          this.state = "closed";
           this.ghostElement = null;
+          this.duration = Number(this.el.dataset.duration) || 200;
 
-          // If already open on mount, run the show animation
-          if (this.isOpen) {
-            this.wrapper.style.display = "flex";
-            this._runShowAnimation();
+          // Check if already open on mount (e.g., page refresh with open modal)
+          if (this.el.dataset.open === "true") {
+            this._transitionTo("open");
           }
 
-          // Listen for close-panel event dispatched by user actions
-          // This fires BEFORE the server push, so we can start animation immediately
-          this.wrapper.addEventListener("close-panel", (e) => {
-            this._startCloseAnimation();
+          // Listen for open-panel event (optimistic open before server responds)
+          this.el.addEventListener("open-panel", () => {
+            if (this.state === "closed") {
+              this._transitionTo("opening");
+            }
+          });
+
+          // Listen for close-panel event (optimistic close before server responds)
+          this.el.addEventListener("close-panel", () => {
+            if (this.state === "open" || this.state === "opening") {
+              this._transitionTo("closing");
+            }
           });
         },
 
         beforeUpdate() {
-          this.wasOpen = this.isOpen;
+          this.wasServerOpen = this.el.dataset.open === "true";
         },
 
         updated() {
-          const wasOpen = this.wasOpen;
-          this.isOpen = this.el.dataset.open === "true";
+          const serverOpen = this.el.dataset.open === "true";
 
-          if (this.isClosing) {
-            // Keep modal visible while closing animation runs
-            this.wrapper.style.display = "flex";
-            return;
+          // Server confirmed open
+          if (!this.wasServerOpen && serverOpen) {
+            if (this.state === "opening") {
+              // Already opening optimistically, just transition to open
+              this._transitionTo("open");
+            } else if (this.state === "closed") {
+              // Non-optimistic open (server initiated)
+              this._transitionTo("open");
+            }
           }
 
-          // Opening: show wrapper and animate in
-          if (!wasOpen && this.isOpen) {
-            this.wrapper.style.display = "flex";
-            this._runShowAnimation();
-          }
-
-          // Closing without animation (shouldn't happen normally, but handle it)
-          if (wasOpen && !this.isOpen && !this.isClosing) {
-            this._startCloseAnimation();
-          }
-        },
-
-        _runShowAnimation() {
-          const showModalCmd = this.wrapper.dataset.showModal;
-          if (showModalCmd && this.liveSocket) {
-            this.liveSocket.execJS(this.wrapper, showModalCmd);
+          // Server confirmed close
+          if (this.wasServerOpen && !serverOpen) {
+            if (this.state === "closing") {
+              // Already closing, animation handles cleanup
+            } else if (this.state === "open" || this.state === "opening") {
+              // Server closed without user action
+              this._transitionTo("closing");
+            }
           }
         },
 
-        _startCloseAnimation() {
-          // Skip if already animating
-          if (this.isClosing) return;
+        _transitionTo(newState) {
+          const oldState = this.state;
+          this.state = newState;
 
-          this.isClosing = true;
-          const duration = Number(this.wrapper.dataset.duration) || 200;
+          switch (newState) {
+            case "opening":
+              this._enterOpening();
+              break;
+            case "open":
+              this._enterOpen(oldState);
+              break;
+            case "closing":
+              this._enterClosing();
+              break;
+            case "closed":
+              this._enterClosed();
+              break;
+          }
+        },
 
-          // Keep wrapper visible during animation
-          this.wrapper.style.display = "flex";
+        _enterOpening() {
+          // Show modal immediately with loading state
+          this.el.style.display = "flex";
 
-          // Capture panel dimensions before content changes
+          // Show loading element if present
+          const loading = this.getLoadingElement();
+          if (loading) {
+            loading.style.display = "block";
+          }
+
+          // Run show animation
+          const showCmd = this.el.dataset.showModal;
+          if (showCmd && this.liveSocket) {
+            this.liveSocket.execJS(this.el, showCmd);
+          }
+        },
+
+        _enterOpen(fromState) {
+          this.el.style.display = "flex";
+
+          // Hide loading element
+          const loading = this.getLoadingElement();
+          if (loading) {
+            loading.style.display = "none";
+          }
+
+          // If coming from closed (non-optimistic), run show animation
+          if (fromState === "closed") {
+            const showCmd = this.el.dataset.showModal;
+            if (showCmd && this.liveSocket) {
+              this.liveSocket.execJS(this.el, showCmd);
+            }
+          }
+          // If coming from opening, animation already running
+        },
+
+        _enterClosing() {
+          // Keep visible during animation
+          this.el.style.display = "flex";
+
+          // Capture panel dimensions
           const panelRect = this.panelContent.getBoundingClientRect();
 
-          // Clone content for ghost animation and remove original
-          const originalContent = this.getMainContentInner();
-          if (originalContent) {
-            this.ghostElement = originalContent.cloneNode(true);
+          // Create ghost from current content
+          const content = this.getContentInner();
+          if (content) {
+            this.ghostElement = content.cloneNode(true);
             this.ghostElement.removeAttribute("phx-remove");
-            this.ghostElement.id = `${this.wrapper.id}-ghost`;
-            Object.assign(this.ghostElement.style, {
-              pointerEvents: "none",
-              zIndex: "61"
-            });
+            this.ghostElement.id = `${this.el.id}-ghost`;
+            this.ghostElement.style.pointerEvents = "none";
+            this.ghostElement.style.zIndex = "61";
 
-            const container = this.getMainContentContainer();
+            const container = this.getContentContainer();
             if (container) {
-              // Remove original to prevent flicker - ghost takes its place
-              originalContent.remove();
+              content.remove();
               container.appendChild(this.ghostElement);
             }
           }
 
-          // Lock panel dimensions to prevent reflow when LiveView removes content
+          // Lock panel dimensions
           this.panelContent.style.width = `${panelRect.width}px`;
           this.panelContent.style.height = `${panelRect.height}px`;
 
-          // Use LiveView's JS.transition via execJS - targets elements by ID
-          const hideModalCmd = this.wrapper.dataset.hideModal;
-          if (hideModalCmd && this.liveSocket) {
+          // Run hide animation
+          const hideCmd = this.el.dataset.hideModal;
+          if (hideCmd && this.liveSocket) {
             requestAnimationFrame(() => {
-              this.liveSocket.execJS(this.wrapper, hideModalCmd);
+              this.liveSocket.execJS(this.el, hideCmd);
             });
           }
 
-          // Clean up after animation completes
+          // Cleanup after animation
           setTimeout(() => {
-            if (this.ghostElement && this.ghostElement.parentNode) {
-              this.ghostElement.remove();
-            }
-            this.ghostElement = null;
-            this.isClosing = false;
-            this.wrapper.style.display = "none";
+            this._transitionTo("closed");
+          }, this.duration + 50);
+        },
 
-            // Reset panel dimensions for next open
-            this.panelContent.style.width = "";
-            this.panelContent.style.height = "";
-          }, duration + 50);
+        _enterClosed() {
+          // Cleanup ghost
+          if (this.ghostElement?.parentNode) {
+            this.ghostElement.remove();
+          }
+          this.ghostElement = null;
+
+          // Hide and reset
+          this.el.style.display = "none";
+          this.panelContent.style.width = "";
+          this.panelContent.style.height = "";
         },
 
         destroyed() {
-          if (this.ghostElement && this.ghostElement.parentNode) {
+          if (this.ghostElement?.parentNode) {
             this.ghostElement.remove();
           }
         }

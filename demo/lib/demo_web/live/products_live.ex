@@ -232,8 +232,10 @@ defmodule DemoWeb.ProductsLive do
                 </span>
               </div>
               <button
-                phx-click="open_edit"
-                phx-value-id={product.id}
+                phx-click={
+                  Phoenix.LiveView.JS.dispatch("open-panel", to: "#product-edit-modal-modal")
+                  |> Phoenix.LiveView.JS.push("open_edit", value: %{id: product.id})
+                }
                 class="mt-3 block w-full text-center text-sm text-indigo-600 hover:text-indigo-800 border-t pt-3"
               >
                 Edit

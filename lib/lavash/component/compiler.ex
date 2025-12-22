@@ -123,6 +123,9 @@ defmodule Lavash.Component.Compiler do
             close_on_backdrop={@__modal_close_on_backdrop__}
             max_width={@__modal_max_width__}
           >
+            <:loading>
+              {@__modal_loading__.(assigns)}
+            </:loading>
             <Lavash.Modal.Helpers.modal_content
               assigns={assigns}
               async_assign={@__modal_async_assign__}
