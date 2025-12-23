@@ -125,13 +125,12 @@ defmodule Lavash.Modal.Helpers do
       |> assign(:is_open, assigns.open != nil)
 
     ~H"""
-    <%!-- Wrapper for hook - always present, hook controls visibility --%>
-    <%!-- pointer-events-none when closed ensures clicks pass through even if display state is stale --%>
+    <%!-- Wrapper for hook - always present, client controls visibility via class --%>
     <div
       id={@id}
-      class={"fixed inset-0 z-50 flex items-center justify-center #{!@is_open && "pointer-events-none"}"}
-      style={!@is_open && "display: none"}
+      class="fixed inset-0 z-50 flex items-center justify-center pointer-events-none invisible"
       phx-hook=".LavashModal"
+      phx-mounted={JS.ignore_attributes("class")}
       data-duration={@duration}
       data-open={to_string(@is_open)}
       data-show-modal={@show_modal_js}
@@ -139,26 +138,29 @@ defmodule Lavash.Modal.Helpers do
       data-show-loading={@show_loading_js}
       data-hide-loading={@hide_loading_js}
     >
-      <%!-- Backdrop overlay - starts at opacity-0, JS.transition animates to opacity-50 --%>
+      <%!-- Backdrop overlay - client controls opacity --%>
       <div
         id={"#{@id}-overlay"}
+        phx-mounted={JS.ignore_attributes("class")}
         class="absolute inset-0 bg-black opacity-0"
         phx-click={@close_on_backdrop && @on_close}
       />
 
-      <%!-- Panel - uses inline-grid for stacking loading/main content --%>
+      <%!-- Panel - client controls opacity/scale via JS commands --%>
       <div
         id={"#{@id}-panel_content"}
-        class={"inline-grid z-10 bg-base-100 rounded-lg shadow-xl overflow-hidden #{@max_width_class} w-full opacity-0"}
+        phx-mounted={JS.ignore_attributes("class")}
+        class={"inline-grid z-10 bg-base-100 rounded-lg shadow-xl overflow-hidden #{@max_width_class} w-full opacity-0 scale-95"}
         phx-click="noop"
         phx-target={@myself}
         phx-window-keydown={@close_on_escape && @on_close}
         phx-key={@close_on_escape && "Escape"}
       >
-        <%!-- Loading content - stacked via grid, hidden via class --%>
+        <%!-- Loading content - client controls hidden/opacity --%>
         <div
           :if={@loading != []}
           id={"#{@id}-loading_content"}
+          phx-mounted={JS.ignore_attributes("class")}
           class="row-start-1 col-start-1 hidden opacity-0 pointer-events-none"
         >
           {render_slot(@loading)}
@@ -200,64 +202,42 @@ defmodule Lavash.Modal.Helpers do
       // --- Concrete State Implementations ---
       class ClosedState extends ModalState {
         onEnter() {
-          this.modal.closeInitiator = null;
-
-          if (this.modal.ghostElement?.parentNode) {
-            this.modal.ghostElement.remove();
-          }
-          this.modal.ghostElement = null;
-
-          this.modal.el.style.display = "none";
-          this.modal.el.classList.add("pointer-events-none");
+          this.modal._resetDOM();
         }
         onRequestOpen() {
           this.modal.transitionTo(this.modal.states.opening);
         }
         onServerRequestsOpen() {
-          this.modal.transitionTo(this.modal.states.open, true);
+          // Server requested open while closed - go through opening state to show loading
+          this.modal.transitionTo(this.modal.states.opening);
         }
       }
 
       class OpeningState extends ModalState {
         onEnter() {
           this.modal.closeInitiator = null;
-          this.modal.el.style.display = "flex";
-          this.modal.el.classList.remove("pointer-events-none");
-          console.log(`LavashModal OpeningState.onEnter: el.style.display = ${this.modal.el.style.display}`);
-          console.log(`LavashModal OpeningState.onEnter: showLoading = ${this.modal.el.dataset.showLoading}`);
-          console.log(`LavashModal OpeningState.onEnter: showModal = ${this.modal.el.dataset.showModal}`);
-          console.log(`LavashModal OpeningState.onEnter: panelContent = ${this.modal.panelContent}`);
-          console.log(`LavashModal OpeningState.onEnter: panelContent classes before execJS = ${this.modal.panelContent?.className}`);
+          this.modal.el.classList.remove("invisible", "pointer-events-none");
 
-          this.modal.liveSocket.execJS(
-            this.modal.el,
-            this.modal.el.dataset.showLoading,
-          );
-          this.modal.liveSocket.execJS(
-            this.modal.el,
-            this.modal.el.dataset.showModal,
-          );
-
-          console.log(`LavashModal OpeningState.onEnter: panelContent classes after execJS = ${this.modal.panelContent?.className}`);
+          // Show loading and animate panel open
+          this.modal.liveSocket.execJS(this.modal.el, this.modal.el.dataset.showLoading);
+          this.modal.liveSocket.execJS(this.modal.el, this.modal.el.dataset.showModal);
 
           if (this.modal.panelContent && this.modal.onOpenTransitionEndEvent) {
-            this.modal.panelContent.addEventListener(
-              "transitionend",
-              (e) => {
-                console.log(`LavashModal OpeningState: transitionend event, propertyName = ${e.propertyName}, target = ${e.target.id}`);
-                console.log(`LavashModal OpeningState: panelContent classes AFTER transition = ${this.modal.panelContent?.className}`);
-                console.log(`LavashModal OpeningState: panelContent computed opacity = ${getComputedStyle(this.modal.panelContent).opacity}`);
-                this.modal.onOpenTransitionEndEvent();
-              },
-              { once: true },
-            );
+            this._transitionHandler = (e) => {
+              // Only respond to panel_content transitions, not children
+              if (e.target !== this.modal.panelContent) return;
+              this.modal.panelContent.removeEventListener("transitionend", this._transitionHandler);
+              this.modal.onOpenTransitionEndEvent();
+            };
+            this.modal.panelContent.addEventListener("transitionend", this._transitionHandler);
           }
         }
         onExit() {
-          // Listener is { once: true } so no need to remove
+          if (this.modal.panelContent && this._transitionHandler) {
+            this.modal.panelContent.removeEventListener("transitionend", this._transitionHandler);
+          }
         }
         onPanelOpenTransitionEnd() {
-          console.log(`LavashModal OpeningState.onPanelOpenTransitionEnd: transitioning to open`);
           this.modal.transitionTo(this.modal.states.open);
         }
         onRequestClose() {
@@ -275,24 +255,29 @@ defmodule Lavash.Modal.Helpers do
 
       class OpeningServerArrivedState extends ModalState {
         onEnter() {
-          // Re-attach transition end listener (it was { once: true })
+          this._panelTransitionComplete = false;
+          // Re-attach transition end listener
           if (this.modal.panelContent && this.modal.onOpenTransitionEndEvent) {
-            this.modal.panelContent.addEventListener(
-              "transitionend",
-              this.modal.onOpenTransitionEndEvent,
-              { once: true },
-            );
+            this._transitionHandler = (e) => {
+              if (e.target !== this.modal.panelContent) return;
+              this.modal.panelContent.removeEventListener("transitionend", this._transitionHandler);
+              this.modal.onOpenTransitionEndEvent();
+            };
+            this.modal.panelContent.addEventListener("transitionend", this._transitionHandler);
           }
         }
         onExit() {
-          if (this.modal.panelContent && this.modal.onOpenTransitionEndEvent) {
-            this.modal.panelContent.removeEventListener(
-              "transitionend",
-              this.modal.onOpenTransitionEndEvent,
-            );
+          if (this.modal.panelContent && this._transitionHandler) {
+            this.modal.panelContent.removeEventListener("transitionend", this._transitionHandler);
           }
         }
         onPanelOpenTransitionEnd() {
+          this._panelTransitionComplete = true;
+          // Panel is now visible, run flip animation to transition from loading to content
+          this.modal.runFlipAnimation(
+            this.modal.getMainContentInner ? this.modal.getMainContentInner() : null,
+            this.modal.getLoadingContent ? this.modal.getLoadingContent() : null,
+          );
           this.modal.transitionTo(this.modal.states.open);
         }
         onRequestClose() {
@@ -304,17 +289,20 @@ defmodule Lavash.Modal.Helpers do
           this.modal.transitionTo(this.modal.states.closing);
         }
         onUpdate() {
-          this.modal.runFlipAnimation(
-            this.modal.getMainContentInner ? this.modal.getMainContentInner() : null,
-            this.modal.getLoadingContent ? this.modal.getLoadingContent() : null,
-          );
+          // Only run flip if panel transition already completed
+          if (this._panelTransitionComplete) {
+            this.modal.runFlipAnimation(
+              this.modal.getMainContentInner ? this.modal.getMainContentInner() : null,
+              this.modal.getLoadingContent ? this.modal.getLoadingContent() : null,
+            );
+          }
         }
       }
 
       class OpenState extends ModalState {
         onEnter(isNonOptimistic = false) {
           this.modal.closeInitiator = null;
-          this.modal.el.style.display = "flex";
+          this.modal.el.classList.remove("invisible");
 
           if (isNonOptimistic) {
             this.modal.liveSocket.execJS(
@@ -380,12 +368,14 @@ defmodule Lavash.Modal.Helpers do
 
       class ClosingWaitingThenOpenState extends ModalState {
         onServerRequestsClose() {
-          this.modal.closeInitiator = "server";
+          // Server confirmed close, now re-open fresh
+          this.modal._resetDOM();
           this.modal.transitionTo(this.modal.states.opening);
         }
         onServerRequestsOpen() {
-          this.modal._cleanupCloseAnimation();
-          this.modal.transitionTo(this.modal.states.open);
+          // Server already has the new open state - reset and open
+          this.modal._resetDOM();
+          this.modal.transitionTo(this.modal.states.opening);
         }
       }
 
@@ -536,6 +526,34 @@ defmodule Lavash.Modal.Helpers do
             this.ghostElement.remove();
           }
           this.ghostElement = null;
+        },
+
+        _resetDOM() {
+          // Reset all client-owned DOM state to closed/invisible
+          this.closeInitiator = null;
+          this._cleanupCloseAnimation();
+
+          // Wrapper - use invisible class (ignore_attributes prevents server patches)
+          this.el.classList.add("invisible", "pointer-events-none");
+
+          // Panel - reset to initial closed state
+          if (this.panelContent) {
+            this.panelContent.classList.remove("opacity-100", "scale-100");
+            this.panelContent.classList.add("opacity-0", "scale-95");
+          }
+
+          // Overlay
+          if (this.overlay) {
+            this.overlay.classList.remove("opacity-50");
+            this.overlay.classList.add("opacity-0");
+          }
+
+          // Loading
+          const loadingContent = this.getLoadingContent();
+          if (loadingContent) {
+            loadingContent.classList.add("hidden", "opacity-0");
+            loadingContent.classList.remove("opacity-100");
+          }
         },
 
         runFlipAnimation(mainInnerEl, loadEl) {
