@@ -663,6 +663,14 @@ defmodule Lavash.Modal.Helpers do
             this.ghostElement.style.transform = "scale(0.95)";
           });
 
+          // Also animate the panel (white background) out
+          if (this.panelContent) {
+            this.panelContent.classList.add("transition-all", "duration-200", "ease-out");
+            this.panelContent.offsetHeight;
+            this.panelContent.classList.remove("opacity-100", "scale-100");
+            this.panelContent.classList.add("opacity-0", "scale-95");
+          }
+
           // Also animate the overlay if present
           if (this.overlay) {
             this.overlay.classList.add("transition-opacity", "duration-200", "ease-out");
