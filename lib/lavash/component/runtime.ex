@@ -190,7 +190,8 @@ defmodule Lavash.Component.Runtime do
               |> Assigns.project(module)
               |> apply_notify_parents(notify_events)
 
-            {:noreply, socket}
+            # Return reply so pushEventTo callbacks are triggered
+            {:reply, %{}, socket}
 
           {:error, socket, on_error_action} ->
             # Action failed with on_error - trigger the error action
@@ -213,7 +214,8 @@ defmodule Lavash.Component.Runtime do
               |> Graph.recompute_dirty(module)
               |> Assigns.project(module)
 
-            {:noreply, socket}
+            # Return reply so pushEventTo callbacks are triggered
+            {:reply, %{}, socket}
         end
     end
   end

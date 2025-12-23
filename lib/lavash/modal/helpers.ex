@@ -54,10 +54,9 @@ defmodule Lavash.Modal.Helpers do
   def modal_chrome(assigns) do
     max_width_class = Map.get(@max_width_classes, assigns.max_width, "max-w-md")
 
-    # Build the close command: dispatch close-panel (triggers animation) + push close event
-    on_close =
-      JS.dispatch("close-panel", to: "##{assigns.id}")
-      |> JS.push("close", target: assigns.myself)
+    # Build the close command: just dispatch close-panel event
+    # The hook will use pushEvent with cycle tracking to send the close to the server
+    on_close = JS.dispatch("close-panel", to: "##{assigns.id}")
 
     # All modal chrome animations are now handled by the hook via direct classList manipulation
     # since all chrome elements have JS.ignore_attributes(["class", "style"])
@@ -75,6 +74,7 @@ defmodule Lavash.Modal.Helpers do
       class="fixed inset-0 z-50 flex items-center justify-center pointer-events-none invisible"
       phx-hook=".LavashModal"
       phx-mounted={JS.ignore_attributes(["class", "style"])}
+      phx-target={@myself}
       data-duration={@duration}
       data-open={to_string(@is_open)}
     >
@@ -156,6 +156,7 @@ defmodule Lavash.Modal.Helpers do
 
       class OpeningState extends ModalState {
         onEnter() {
+          console.log(`LavashModal ${this.modal.panelIdForLog}: OpeningState.onEnter`);
           // Reset DOM state before opening to clear any leftovers from previous close
           this.modal._resetDOM();
 
@@ -164,9 +165,11 @@ defmodule Lavash.Modal.Helpers do
 
           // Show loading content (direct classList manipulation)
           const loadingContent = this.modal.getLoadingContent();
+          console.log(`LavashModal ${this.modal.panelIdForLog}: OpeningState showing loading, loadingContent=`, loadingContent);
           if (loadingContent) {
             loadingContent.classList.remove("hidden", "opacity-0");
             loadingContent.classList.add("opacity-100");
+            console.log(`LavashModal ${this.modal.panelIdForLog}: OpeningState loading classes after show:`, loadingContent.className);
           }
 
           // Animate panel open (classList with Tailwind transition classes)
@@ -193,6 +196,7 @@ defmodule Lavash.Modal.Helpers do
             this._transitionHandler = (e) => {
               // Only respond to panel_content transitions, not children
               if (e.target !== this.modal.panelContent) return;
+              console.log(`LavashModal ${this.modal.panelIdForLog}: OpeningState transitionend fired`);
               this.modal.panelContent.removeEventListener("transitionend", this._transitionHandler);
               this.modal.onOpenTransitionEndEvent();
             };
@@ -200,22 +204,27 @@ defmodule Lavash.Modal.Helpers do
           }
         }
         onExit() {
+          console.log(`LavashModal ${this.modal.panelIdForLog}: OpeningState.onExit`);
           if (this.modal.panelContent && this._transitionHandler) {
             this.modal.panelContent.removeEventListener("transitionend", this._transitionHandler);
           }
         }
         onPanelOpenTransitionEnd() {
+          console.log(`LavashModal ${this.modal.panelIdForLog}: OpeningState.onPanelOpenTransitionEnd`);
           this.modal.transitionTo(this.modal.states.open);
         }
         onRequestClose() {
+          console.log(`LavashModal ${this.modal.panelIdForLog}: OpeningState.onRequestClose`);
           this.modal.closeInitiator = "user";
           this.modal.transitionTo(this.modal.states.closing);
         }
         onServerRequestsClose() {
+          console.log(`LavashModal ${this.modal.panelIdForLog}: OpeningState.onServerRequestsClose - STALE? This might be from a previous close cycle`);
           this.modal.closeInitiator = "server";
           this.modal.transitionTo(this.modal.states.closing);
         }
         onServerRequestsOpen() {
+          console.log(`LavashModal ${this.modal.panelIdForLog}: OpeningState.onServerRequestsOpen`);
           this.modal.transitionTo(this.modal.states.openingServerArrived);
         }
       }
@@ -268,6 +277,7 @@ defmodule Lavash.Modal.Helpers do
 
       class OpenState extends ModalState {
         onEnter(isNonOptimistic = false) {
+          console.log(`LavashModal ${this.modal.panelIdForLog}: OpenState.onEnter, isNonOptimistic=${isNonOptimistic}`);
           this.modal.closeInitiator = null;
           this.modal.el.classList.remove("invisible");
 
@@ -289,17 +299,19 @@ defmodule Lavash.Modal.Helpers do
           }
         }
         onRequestClose() {
+          console.log(`LavashModal ${this.modal.panelIdForLog}: OpenState.onRequestClose`);
           this.modal.closeInitiator = "user";
           this.modal.transitionTo(this.modal.states.closing);
         }
         onServerRequestsClose() {
+          console.log(`LavashModal ${this.modal.panelIdForLog}: OpenState.onServerRequestsClose - could be stale from previous close cycle`);
           // Server requested close - animate out
           this.modal.closeInitiator = "server";
           this.modal.transitionTo(this.modal.states.closing);
         }
         onServerRequestsOpen() {
           // Server data arrived while already in open state - run the flip animation
-          console.log(`LavashModal OpenState.onServerRequestsOpen: running flip animation`);
+          console.log(`LavashModal ${this.modal.panelIdForLog}: OpenState.onServerRequestsOpen: running flip animation`);
           this.modal.runFlipAnimation(
             this.modal.getMainContentInner ? this.modal.getMainContentInner() : null,
             this.modal.getLoadingContent ? this.modal.getLoadingContent() : null,
@@ -307,11 +319,14 @@ defmodule Lavash.Modal.Helpers do
         }
         onUpdate() {
           // Also check on any update in case content changed
-          if (this.modal.getLoadingContent() && !this.modal.getLoadingContent().classList.contains("hidden")) {
-            console.log(`LavashModal OpenState.onUpdate: loading still visible, running flip animation`);
+          const loadingContent = this.modal.getLoadingContent();
+          const loadingVisible = loadingContent && !loadingContent.classList.contains("hidden");
+          console.log(`LavashModal ${this.modal.panelIdForLog}: OpenState.onUpdate, loadingVisible=${loadingVisible}`);
+          if (loadingVisible) {
+            console.log(`LavashModal ${this.modal.panelIdForLog}: OpenState.onUpdate: loading still visible, running flip animation`);
             this.modal.runFlipAnimation(
               this.modal.getMainContentInner ? this.modal.getMainContentInner() : null,
-              this.modal.getLoadingContent ? this.modal.getLoadingContent() : null,
+              loadingContent,
             );
           }
         }
@@ -395,6 +410,11 @@ defmodule Lavash.Modal.Helpers do
           this.closeInitiator = null;
           this.duration = Number(this.el.dataset.duration) || 200;
 
+          // Cycle counter for tracking stale server responses
+          this.cycle = 0;
+          // Track the last cycle for which we received a server confirmation
+          this.confirmedCycle = 0;
+
           // IDs we watch for in the global onBeforeElUpdated callback
           this._mainContentId = `${id}-main_content`;
           this._mainContentInnerId = `${id}-main_content_inner`;
@@ -422,13 +442,51 @@ defmodule Lavash.Modal.Helpers do
           this.currentState = null;
           this.transitionTo(this.states.closed);
 
-          this.el.addEventListener("open-panel", () => {
+          this.el.addEventListener("open-panel", (e) => {
             console.log(`LavashModal ${this.panelIdForLog}: open-panel event received`);
+            // Increment cycle for new open request
+            this.cycle++;
+            const openCycle = this.cycle;
+            console.log(`LavashModal ${this.panelIdForLog}: starting open cycle ${openCycle}`);
+
+            // Start optimistic open immediately
             this.processPanelEvent("REQUEST_OPEN");
+
+            // Push event to server with cycle tracking
+            // The event params may be passed via the custom event detail
+            const params = e.detail || {};
+            this.pushEventTo(this.el, "open", { ...params, _cycle: openCycle }, (reply) => {
+              console.log(`LavashModal ${this.panelIdForLog}: open reply received, cycle=${openCycle}, current=${this.cycle}, reply=`, reply);
+              if (openCycle !== this.cycle) {
+                console.log(`LavashModal ${this.panelIdForLog}: ignoring stale open reply (cycle ${openCycle} vs current ${this.cycle})`);
+                return;
+              }
+              // Server confirmed open - mark this cycle as confirmed
+              this.confirmedCycle = openCycle;
+              this.processPanelEvent("SERVER_REQUESTS_OPEN");
+            });
           });
           this.el.addEventListener("close-panel", () => {
             console.log(`LavashModal ${this.panelIdForLog}: close-panel event received`);
+            // Increment cycle for new close request
+            this.cycle++;
+            const closeCycle = this.cycle;
+            console.log(`LavashModal ${this.panelIdForLog}: starting close cycle ${closeCycle}`);
+
+            // Start optimistic close immediately
             this.processPanelEvent("REQUEST_CLOSE");
+
+            // Push event to server with cycle tracking
+            this.pushEventTo(this.el, "close", { _cycle: closeCycle }, (reply) => {
+              console.log(`LavashModal ${this.panelIdForLog}: close reply received, cycle=${closeCycle}, current=${this.cycle}, reply=`, reply);
+              if (closeCycle !== this.cycle) {
+                console.log(`LavashModal ${this.panelIdForLog}: ignoring stale close reply (cycle ${closeCycle} vs current ${this.cycle})`);
+                return;
+              }
+              // Server confirmed close - mark this cycle as confirmed
+              this.confirmedCycle = closeCycle;
+              this.processPanelEvent("SERVER_REQUESTS_CLOSE");
+            });
           });
         },
 
@@ -544,23 +602,9 @@ defmodule Lavash.Modal.Helpers do
           }
         },
 
-        getImpliedServerEvent() {
-          const newMainState = this.getMainContentContainer().dataset.activeIfOpen === "true";
-
-          if (!this.previousMainState && newMainState) {
-            return "SERVER_REQUESTS_OPEN";
-          } else if (this.previousMainState && !newMainState) {
-            return "SERVER_REQUESTS_CLOSE";
-          }
-          return null;
-        },
-
         beforeUpdate() {
-          console.log(`LavashModal ${this.panelIdForLog}: beforeUpdate called`);
-          this.previousMainState = this.getMainContentContainer().dataset.activeIfOpen === "true";
-
-          // Ghost insertion is now handled by onBeforeElUpdated callback
-          // which fires with both fromEl and toEl, allowing precise detection
+          // Track previous state to detect server-initiated closes (e.g., from form save)
+          this._previousMainState = this.getMainContentContainer().dataset.activeIfOpen === "true";
 
           // Capture panel rect for FLIP animation when transitioning from loading to content
           // Only capture, never clear here - clearing happens in _resetDOM() and runFlipAnimation()
@@ -575,15 +619,21 @@ defmodule Lavash.Modal.Helpers do
         },
 
         updated() {
-          console.log(`LavashModal ${this.panelIdForLog}: updated called - currentState = ${this.currentState?.name}, previousMainState = ${this.previousMainState}`);
-          const eventToHandle = this.getImpliedServerEvent();
-          console.log(`LavashModal ${this.panelIdForLog}: updated - eventToHandle = ${eventToHandle}`);
+          console.log(`LavashModal ${this.panelIdForLog}: updated called - currentState = ${this.currentState?.name}, cycle=${this.cycle}, confirmedCycle=${this.confirmedCycle}`);
 
-          // Ghost cleanup is not needed here since onBeforeElUpdated only creates
-          // ghosts when content is actually being removed (fromHasInner && !toHasInner)
-
-          if (eventToHandle) {
-            this.processPanelEvent(eventToHandle);
+          // Detect server-initiated close (e.g., from form save) that wasn't triggered by us
+          // Only process if:
+          // 1. We're in open state (not already closing from a user action)
+          // 2. The current cycle is confirmed (we've received server response for it)
+          //    This prevents stale DOM updates from triggering close
+          const newMainState = this.getMainContentContainer().dataset.activeIfOpen === "true";
+          if (this._previousMainState && !newMainState && this.currentState?.name === "open") {
+            if (this.confirmedCycle === this.cycle) {
+              console.log(`LavashModal ${this.panelIdForLog}: detected server-initiated close (e.g., form save)`);
+              this.processPanelEvent("SERVER_REQUESTS_CLOSE");
+            } else {
+              console.log(`LavashModal ${this.panelIdForLog}: ignoring DOM close change - cycle ${this.cycle} not yet confirmed (confirmed=${this.confirmedCycle})`);
+            }
           }
 
           this.currentState.onUpdate();
