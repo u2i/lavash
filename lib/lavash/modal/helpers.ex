@@ -99,7 +99,7 @@ defmodule Lavash.Modal.Helpers do
       |> JS.remove_class("opacity-0", to: "##{assigns.id}-loading_content")
       |> JS.add_class("opacity-100", to: "##{assigns.id}-loading_content")
 
-    # Hide loading animation
+    # Hide loading animation - transition out then add hidden class
     hide_loading_js =
       JS.transition(
         {"transition-opacity duration-#{duration}", "opacity-100", "opacity-0"},
@@ -107,6 +107,7 @@ defmodule Lavash.Modal.Helpers do
         to: "##{assigns.id}-loading_content",
         blocking: false
       )
+      |> JS.add_class("hidden", to: "##{assigns.id}-loading_content")
       |> JS.transition(
         {"transition-opacity duration-#{duration}", "opacity-0", "opacity-100"},
         time: duration,
@@ -316,8 +317,9 @@ defmodule Lavash.Modal.Helpers do
           this.modal.transitionTo(this.modal.states.closing);
         }
         onServerRequestsClose() {
+          // Server requested close - animate out
           this.modal.closeInitiator = "server";
-          this.modal.transitionTo(this.modal.states.closed);
+          this.modal.transitionTo(this.modal.states.closing);
         }
         onServerRequestsOpen() {
           // Server data arrived while already in open state - run the flip animation
@@ -465,6 +467,16 @@ defmodule Lavash.Modal.Helpers do
         beforeUpdate() {
           this.previousMainState = this.getMainContentContainer().dataset.activeIfOpen === "true";
 
+          // Capture content for potential close animation BEFORE LiveView patches DOM
+          const mainContentInner = this.getMainContentInner();
+          if (this.currentState?.name === "open" && mainContentInner) {
+            this._preUpdateContentClone = mainContentInner.cloneNode(true);
+          } else {
+            this._preUpdateContentClone = null;
+          }
+
+          // Capture panel rect for FLIP animation when transitioning from loading to content
+          // Only capture, never clear here - clearing happens in _resetDOM() and runFlipAnimation()
           if (
             this.currentState &&
             (this.currentState.name === "open" || this.currentState.name === "opening") &&
@@ -472,8 +484,6 @@ defmodule Lavash.Modal.Helpers do
             this.panelContent
           ) {
             this._flipPreRect = this.panelContent.getBoundingClientRect();
-          } else {
-            this._flipPreRect = null;
           }
         },
 
@@ -490,28 +500,35 @@ defmodule Lavash.Modal.Helpers do
 
         _setupGhostElementAnimation() {
           const originalMainContentInner = this.getMainContentInner();
-          if (!originalMainContentInner) {
+
+          // Use pre-captured clone if live content is gone (server already patched DOM)
+          if (!originalMainContentInner && !this._preUpdateContentClone) {
             return;
           }
 
-          this.ghostElement = originalMainContentInner.cloneNode(true);
+          if (originalMainContentInner) {
+            this.ghostElement = originalMainContentInner.cloneNode(true);
+            originalMainContentInner.remove();
+          } else {
+            // Use the clone we captured before the update
+            this.ghostElement = this._preUpdateContentClone;
+            this._preUpdateContentClone = null;
+          }
+
           this.ghostElement.removeAttribute("phx-remove");
           Object.assign(this.ghostElement.style, {
             pointerEvents: "none",
             zIndex: "61",
           });
-          this.ghostElement.className = originalMainContentInner.className;
 
           const mainContentContainer = this.getMainContentContainer();
           if (mainContentContainer) {
-            originalMainContentInner.remove();
             mainContentContainer.appendChild(this.ghostElement);
+          } else if (this.panelContent) {
+            this.panelContent.appendChild(this.ghostElement);
           } else {
-            if (this.panelContent) this.panelContent.appendChild(this.ghostElement);
-            else {
-              this.ghostElement = null;
-              return;
-            }
+            this.ghostElement = null;
+            return;
           }
 
           if (this.el.dataset.hideModal && this.liveSocket) {
@@ -532,14 +549,22 @@ defmodule Lavash.Modal.Helpers do
           // Reset all client-owned DOM state to closed/invisible
           this.closeInitiator = null;
           this._cleanupCloseAnimation();
+          this._flipPreRect = null;
 
           // Wrapper - use invisible class (ignore_attributes prevents server patches)
           this.el.classList.add("invisible", "pointer-events-none");
 
-          // Panel - reset to initial closed state
+          // Panel - reset to initial closed state and clear FLIP animation leftovers
           if (this.panelContent) {
-            this.panelContent.classList.remove("opacity-100", "scale-100");
+            this.panelContent.classList.remove("opacity-100", "scale-100", "transition-all", "ease-in-out", "origin-center", "transition-none");
             this.panelContent.classList.add("opacity-0", "scale-95");
+            this.panelContent.style.removeProperty("transform");
+            this.panelContent.style.removeProperty("transition-duration");
+            this.panelContent.style.removeProperty("--flip-translate-x");
+            this.panelContent.style.removeProperty("--flip-translate-y");
+            this.panelContent.style.removeProperty("--flip-scale-x");
+            this.panelContent.style.removeProperty("--flip-scale-y");
+            this.panelContent.style.removeProperty("--flip-duration");
           }
 
           // Overlay
@@ -548,11 +573,14 @@ defmodule Lavash.Modal.Helpers do
             this.overlay.classList.add("opacity-0");
           }
 
-          // Loading
+          // Loading - clear FLIP animation leftovers
           const loadingContent = this.getLoadingContent();
           if (loadingContent) {
             loadingContent.classList.add("hidden", "opacity-0");
             loadingContent.classList.remove("opacity-100");
+            loadingContent.style.removeProperty("transform");
+            loadingContent.style.removeProperty("transition");
+            loadingContent.style.removeProperty("transform-origin");
           }
         },
 
