@@ -53,76 +53,19 @@ defmodule Lavash.Modal.Helpers do
 
   def modal_chrome(assigns) do
     max_width_class = Map.get(@max_width_classes, assigns.max_width, "max-w-md")
-    duration = assigns.duration
 
     # Build the close command: dispatch close-panel (triggers animation) + push close event
     on_close =
       JS.dispatch("close-panel", to: "##{assigns.id}")
       |> JS.push("close", target: assigns.myself)
 
-    # Show animation - applied when modal opens
-    # Elements start at opacity-0, transition TO visible state
-    show_modal_js =
-      JS.transition(
-        {"transition-all duration-#{duration} ease-out", "opacity-0 scale-95",
-         "opacity-100 scale-100"},
-        time: duration,
-        to: "##{assigns.id}-panel_content",
-        blocking: false
-      )
-      |> JS.transition(
-        {"transition-opacity duration-#{duration} ease-out", "opacity-0", "opacity-50"},
-        time: duration,
-        to: "##{assigns.id}-overlay",
-        blocking: false
-      )
-
-    # Hide animation - targets elements by ID, called via execJS from hook
-    hide_modal_js =
-      JS.transition(
-        {"transition-all duration-#{duration} ease-out", "opacity-100 scale-100",
-         "opacity-0 scale-95"},
-        time: duration,
-        to: "##{assigns.id}-panel_content",
-        blocking: false
-      )
-      |> JS.transition(
-        {"transition-opacity duration-#{duration} ease-out", "opacity-50", "opacity-0"},
-        time: duration,
-        to: "##{assigns.id}-overlay",
-        blocking: false
-      )
-
-    # Show loading animation - use direct class manipulation like OptimisticPanel
-    show_loading_js =
-      JS.remove_class("hidden", to: "##{assigns.id}-loading_content")
-      |> JS.remove_class("opacity-0", to: "##{assigns.id}-loading_content")
-      |> JS.add_class("opacity-100", to: "##{assigns.id}-loading_content")
-
-    # Hide loading animation - transition out then add hidden class
-    hide_loading_js =
-      JS.transition(
-        {"transition-opacity duration-#{duration}", "opacity-100", "opacity-0"},
-        time: duration,
-        to: "##{assigns.id}-loading_content",
-        blocking: false
-      )
-      |> JS.add_class("hidden", to: "##{assigns.id}-loading_content")
-      |> JS.transition(
-        {"transition-opacity duration-#{duration}", "opacity-0", "opacity-100"},
-        time: duration,
-        to: "##{assigns.id}-main_content",
-        blocking: false
-      )
+    # All modal chrome animations are now handled by the hook via direct classList manipulation
+    # since all chrome elements have JS.ignore_attributes(["class", "style"])
 
     assigns =
       assigns
       |> assign(:max_width_class, max_width_class)
       |> assign(:on_close, on_close)
-      |> assign(:show_modal_js, show_modal_js)
-      |> assign(:hide_modal_js, hide_modal_js)
-      |> assign(:show_loading_js, show_loading_js)
-      |> assign(:hide_loading_js, hide_loading_js)
       |> assign(:is_open, assigns.open != nil)
 
     ~H"""
@@ -131,44 +74,41 @@ defmodule Lavash.Modal.Helpers do
       id={@id}
       class="fixed inset-0 z-50 flex items-center justify-center pointer-events-none invisible"
       phx-hook=".LavashModal"
-      phx-mounted={JS.ignore_attributes("class")}
+      phx-mounted={JS.ignore_attributes(["class", "style"])}
       data-duration={@duration}
       data-open={to_string(@is_open)}
-      data-show-modal={@show_modal_js}
-      data-hide-modal={@hide_modal_js}
-      data-show-loading={@show_loading_js}
-      data-hide-loading={@hide_loading_js}
     >
-      <%!-- Backdrop overlay - client controls opacity --%>
+      <%!-- Backdrop overlay - client controls opacity and visibility --%>
       <div
         id={"#{@id}-overlay"}
-        phx-mounted={JS.ignore_attributes("class")}
+        phx-mounted={JS.ignore_attributes(["class", "style"])}
         class="absolute inset-0 bg-black opacity-0"
         phx-click={@close_on_backdrop && @on_close}
       />
 
-      <%!-- Panel - client controls opacity/scale via JS commands --%>
+      <%!-- Panel - client controls opacity/scale/transform via JS commands --%>
       <div
         id={"#{@id}-panel_content"}
-        phx-mounted={JS.ignore_attributes("class")}
+        phx-mounted={JS.ignore_attributes(["class", "style"])}
         class={"inline-grid z-10 bg-base-100 rounded-lg shadow-xl overflow-hidden #{@max_width_class} w-full opacity-0 scale-95"}
         phx-click="noop"
         phx-target={@myself}
         phx-window-keydown={@close_on_escape && @on_close}
         phx-key={@close_on_escape && "Escape"}
       >
-        <%!-- Loading content - client controls hidden/opacity --%>
+        <%!-- Loading content - client controls visibility via class/style --%>
         <div
           :if={@loading != []}
           id={"#{@id}-loading_content"}
-          phx-mounted={JS.ignore_attributes("class")}
+          phx-mounted={JS.ignore_attributes(["class", "style"])}
           class="row-start-1 col-start-1 hidden opacity-0 pointer-events-none"
         >
           {render_slot(@loading)}
         </div>
-        <%!-- Main content - stacked via grid --%>
+        <%!-- Main content - client controls opacity via class/style --%>
         <div
           id={"#{@id}-main_content"}
+          phx-mounted={JS.ignore_attributes(["class", "style"])}
           data-active-if-open={to_string(@is_open)}
           class="row-start-1 col-start-1"
         >
@@ -216,12 +156,38 @@ defmodule Lavash.Modal.Helpers do
 
       class OpeningState extends ModalState {
         onEnter() {
+          // Reset DOM state before opening to clear any leftovers from previous close
+          this.modal._resetDOM();
+
           this.modal.closeInitiator = null;
           this.modal.el.classList.remove("invisible", "pointer-events-none");
 
-          // Show loading and animate panel open
-          this.modal.liveSocket.execJS(this.modal.el, this.modal.el.dataset.showLoading);
-          this.modal.liveSocket.execJS(this.modal.el, this.modal.el.dataset.showModal);
+          // Show loading content (direct classList manipulation)
+          const loadingContent = this.modal.getLoadingContent();
+          if (loadingContent) {
+            loadingContent.classList.remove("hidden", "opacity-0");
+            loadingContent.classList.add("opacity-100");
+          }
+
+          // Animate panel open (classList with Tailwind transition classes)
+          if (this.modal.panelContent) {
+            this.modal.panelContent.classList.add("transition-all", "duration-200", "ease-out");
+            // Force reflow
+            this.modal.panelContent.offsetHeight;
+            // Animate to visible state
+            this.modal.panelContent.classList.remove("opacity-0", "scale-95");
+            this.modal.panelContent.classList.add("opacity-100", "scale-100");
+          }
+
+          // Animate overlay open (classList with Tailwind transition classes)
+          if (this.modal.overlay) {
+            this.modal.overlay.classList.add("transition-opacity", "duration-200", "ease-out");
+            // Force reflow
+            this.modal.overlay.offsetHeight;
+            // Animate to visible state
+            this.modal.overlay.classList.remove("opacity-0");
+            this.modal.overlay.classList.add("opacity-50");
+          }
 
           if (this.modal.panelContent && this.modal.onOpenTransitionEndEvent) {
             this._transitionHandler = (e) => {
@@ -306,10 +272,20 @@ defmodule Lavash.Modal.Helpers do
           this.modal.el.classList.remove("invisible");
 
           if (isNonOptimistic) {
-            this.modal.liveSocket.execJS(
-              this.modal.el,
-              this.modal.el.dataset.showModal,
-            );
+            // Animate panel open (classList with Tailwind transition classes)
+            if (this.modal.panelContent) {
+              this.modal.panelContent.classList.add("transition-all", "duration-200", "ease-out");
+              this.modal.panelContent.offsetHeight;
+              this.modal.panelContent.classList.remove("opacity-0", "scale-95");
+              this.modal.panelContent.classList.add("opacity-100", "scale-100");
+            }
+            // Animate overlay open
+            if (this.modal.overlay) {
+              this.modal.overlay.classList.add("transition-opacity", "duration-200", "ease-out");
+              this.modal.overlay.offsetHeight;
+              this.modal.overlay.classList.remove("opacity-0");
+              this.modal.overlay.classList.add("opacity-50");
+            }
           }
         }
         onRequestClose() {
@@ -359,6 +335,23 @@ defmodule Lavash.Modal.Helpers do
       }
 
       class ClosingWaitingForServerState extends ModalState {
+        onEnter() {
+          // Transition to closed after animation completes
+          // This handles the case where server close event isn't detected
+          // (e.g., when multiple updates happen quickly)
+          this._closeTimeout = setTimeout(() => {
+            if (this.modal.currentState === this) {
+              console.log(`LavashModal ${this.modal.panelIdForLog}: ClosingWaitingForServer timeout -> closed`);
+              this.modal.transitionTo(this.modal.states.closed);
+            }
+          }, this.modal.duration + 50); // animation duration + buffer
+        }
+        onExit() {
+          if (this._closeTimeout) {
+            clearTimeout(this._closeTimeout);
+            this._closeTimeout = null;
+          }
+        }
         onRequestOpen() {
           this.modal.transitionTo(this.modal.states.closingWaitingThenOpen);
         }
@@ -402,6 +395,17 @@ defmodule Lavash.Modal.Helpers do
           this.closeInitiator = null;
           this.duration = Number(this.el.dataset.duration) || 200;
 
+          // IDs we watch for in the global onBeforeElUpdated callback
+          this._mainContentId = `${id}-main_content`;
+          this._mainContentInnerId = `${id}-main_content_inner`;
+
+          // Register ourselves in a global registry so the callback can find us
+          window.__lavashModalInstances = window.__lavashModalInstances || {};
+          window.__lavashModalInstances[this._mainContentId] = this;
+
+          // Wrap the global onBeforeElUpdated callback to detect content removal
+          this._installDomCallback();
+
           this.onOpenTransitionEndEvent = () => {
             this.processPanelEvent("PANEL_OPEN_TRANSITION_END");
           };
@@ -426,6 +430,93 @@ defmodule Lavash.Modal.Helpers do
             console.log(`LavashModal ${this.panelIdForLog}: close-panel event received`);
             this.processPanelEvent("REQUEST_CLOSE");
           });
+        },
+
+        _installDomCallback() {
+          // Only install once globally
+          if (window.__lavashModalDomCallbackInstalled) return;
+          window.__lavashModalDomCallbackInstalled = true;
+
+          const original = this.liveSocket.domCallbacks.onBeforeElUpdated;
+          this.liveSocket.domCallbacks.onBeforeElUpdated = (fromEl, toEl) => {
+            // Check if any registered modal cares about this element
+            const instances = window.__lavashModalInstances || {};
+            const modal = instances[fromEl.id];
+
+            if (modal && modal.currentState?.name === "open") {
+              const innerId = modal._mainContentInnerId;
+              const fromHasInner = fromEl.querySelector(`#${innerId}`);
+              const toHasInner = toEl.querySelector(`#${innerId}`);
+
+              if (fromHasInner && !toHasInner) {
+                // Content is being removed! Create ghost NOW before morphdom patches
+                console.log(`LavashModal ${modal.panelIdForLog}: onBeforeElUpdated detected content removal`);
+                modal._createGhostBeforePatch(fromHasInner);
+              }
+            }
+
+            // Call original callback
+            original(fromEl, toEl);
+          };
+        },
+
+        _createGhostBeforePatch(originalElement) {
+          // Clone the content that's about to be removed
+          this._preUpdateContentClone = originalElement.cloneNode(true);
+          this._preUpdateContentClone.id = `${originalElement.id}_ghost`;
+
+          // Get the original's position for fixed positioning on body
+          const rect = originalElement.getBoundingClientRect();
+
+          // Get the panel's computed background to apply to ghost
+          const panelBg = this.panelContent
+            ? getComputedStyle(this.panelContent).backgroundColor
+            : "white";
+
+          Object.assign(this._preUpdateContentClone.style, {
+            position: "fixed",
+            top: `${rect.top}px`,
+            left: `${rect.left}px`,
+            width: `${rect.width}px`,
+            margin: "0",
+            pointerEvents: "none",
+            zIndex: "9999",
+            backgroundColor: panelBg,
+            borderRadius: this.panelContent
+              ? getComputedStyle(this.panelContent).borderRadius
+              : "0.5rem",
+          });
+
+          // Insert ghost on document.body - completely outside morphdom's reach
+          document.body.appendChild(this._preUpdateContentClone);
+
+          // Also create a ghost overlay on body so it fades out smoothly
+          console.log(`LavashModal ${this.panelIdForLog}: overlay =`, this.overlay);
+          if (this.overlay) {
+            const overlayOpacity = getComputedStyle(this.overlay).opacity;
+            console.log(`LavashModal ${this.panelIdForLog}: creating ghost overlay with opacity ${overlayOpacity}`);
+            this._ghostOverlay = document.createElement("div");
+            Object.assign(this._ghostOverlay.style, {
+              position: "fixed",
+              inset: "0",
+              backgroundColor: "black",
+              opacity: overlayOpacity,
+              pointerEvents: "none",
+              zIndex: "9998",
+            });
+            document.body.appendChild(this._ghostOverlay);
+          }
+
+          // Hide the original so when morphdom removes it, there's no flash
+          originalElement.style.visibility = "hidden";
+
+          // Hide the original overlay - now safe because we ignore style attribute
+          if (this.overlay) {
+            this.overlay.style.visibility = "hidden";
+          }
+
+          this._ghostInsertedInBeforeUpdate = true;
+          console.log(`LavashModal ${this.panelIdForLog}: Ghost inserted via onBeforeElUpdated on body`);
         },
 
         transitionTo(newState, ...entryArgs) {
@@ -465,15 +556,11 @@ defmodule Lavash.Modal.Helpers do
         },
 
         beforeUpdate() {
+          console.log(`LavashModal ${this.panelIdForLog}: beforeUpdate called`);
           this.previousMainState = this.getMainContentContainer().dataset.activeIfOpen === "true";
 
-          // Capture content for potential close animation BEFORE LiveView patches DOM
-          const mainContentInner = this.getMainContentInner();
-          if (this.currentState?.name === "open" && mainContentInner) {
-            this._preUpdateContentClone = mainContentInner.cloneNode(true);
-          } else {
-            this._preUpdateContentClone = null;
-          }
+          // Ghost insertion is now handled by onBeforeElUpdated callback
+          // which fires with both fromEl and toEl, allowing precise detection
 
           // Capture panel rect for FLIP animation when transitioning from loading to content
           // Only capture, never clear here - clearing happens in _resetDOM() and runFlipAnimation()
@@ -488,9 +575,13 @@ defmodule Lavash.Modal.Helpers do
         },
 
         updated() {
-          console.log(`LavashModal updated(): currentState = ${this.currentState?.name}, previousMainState = ${this.previousMainState}`);
+          console.log(`LavashModal ${this.panelIdForLog}: updated called - currentState = ${this.currentState?.name}, previousMainState = ${this.previousMainState}`);
           const eventToHandle = this.getImpliedServerEvent();
-          console.log(`LavashModal updated(): eventToHandle = ${eventToHandle}`);
+          console.log(`LavashModal ${this.panelIdForLog}: updated - eventToHandle = ${eventToHandle}`);
+
+          // Ghost cleanup is not needed here since onBeforeElUpdated only creates
+          // ghosts when content is actually being removed (fromHasInner && !toHasInner)
+
           if (eventToHandle) {
             this.processPanelEvent(eventToHandle);
           }
@@ -499,9 +590,42 @@ defmodule Lavash.Modal.Helpers do
         },
 
         _setupGhostElementAnimation() {
+          // Check if ghost was already inserted via onBeforeElUpdated (server-initiated close)
+          if (this._ghostInsertedInBeforeUpdate && this._preUpdateContentClone) {
+            console.log(`LavashModal ${this.panelIdForLog}: Using ghost from onBeforeElUpdated`);
+            // Ghost is already in DOM (on document.body) - animate it directly
+            this.ghostElement = this._preUpdateContentClone;
+            this._preUpdateContentClone = null;
+            this._ghostInsertedInBeforeUpdate = false;
+
+            // Animate the ghost overlay (also on body) - use Tailwind classes
+            if (this._ghostOverlay) {
+              this._ghostOverlay.classList.add("transition-opacity", "duration-200", "ease-out");
+              // Force reflow
+              this._ghostOverlay.offsetHeight;
+              this._ghostOverlay.style.opacity = "0";
+            }
+
+            // Animate the ghost directly with Tailwind transition classes
+            // The ghost is on body with fixed positioning, so animate opacity and scale
+            requestAnimationFrame(() => {
+              this.ghostElement.classList.add("transition-all", "duration-200", "ease-out", "origin-center");
+
+              // Force reflow
+              this.ghostElement.offsetHeight;
+
+              // Animate out
+              requestAnimationFrame(() => {
+                this.ghostElement.style.opacity = "0";
+                this.ghostElement.style.transform = "scale(0.95)";
+              });
+            });
+            return;
+          }
+
+          // Fallback: ghost not inserted via callback (e.g., user-initiated close via button)
           const originalMainContentInner = this.getMainContentInner();
 
-          // Use pre-captured clone if live content is gone (server already patched DOM)
           if (!originalMainContentInner && !this._preUpdateContentClone) {
             return;
           }
@@ -531,10 +655,20 @@ defmodule Lavash.Modal.Helpers do
             return;
           }
 
-          if (this.el.dataset.hideModal && this.liveSocket) {
-            requestAnimationFrame(() => {
-              this.liveSocket.execJS(this.ghostElement, this.el.dataset.hideModal);
-            });
+          // Animate the ghost element out with Tailwind transition classes
+          requestAnimationFrame(() => {
+            this.ghostElement.classList.add("transition-all", "duration-200", "ease-out", "origin-center");
+            this.ghostElement.offsetHeight;
+            this.ghostElement.style.opacity = "0";
+            this.ghostElement.style.transform = "scale(0.95)";
+          });
+
+          // Also animate the overlay if present
+          if (this.overlay) {
+            this.overlay.classList.add("transition-opacity", "duration-200", "ease-out");
+            this.overlay.offsetHeight;
+            this.overlay.classList.remove("opacity-50");
+            this.overlay.classList.add("opacity-0");
           }
         },
 
@@ -543,20 +677,37 @@ defmodule Lavash.Modal.Helpers do
             this.ghostElement.remove();
           }
           this.ghostElement = null;
+
+          if (this._ghostOverlay?.parentNode) {
+            this._ghostOverlay.remove();
+          }
+          this._ghostOverlay = null;
         },
 
         _resetDOM() {
+          console.log(`LavashModal ${this.panelIdForLog}: _resetDOM called`);
           // Reset all client-owned DOM state to closed/invisible
           this.closeInitiator = null;
           this._cleanupCloseAnimation();
           this._flipPreRect = null;
+          this._ghostInsertedInBeforeUpdate = false;
+          this._preUpdateContentClone = null;
 
           // Wrapper - use invisible class (ignore_attributes prevents server patches)
           this.el.classList.add("invisible", "pointer-events-none");
 
-          // Panel - reset to initial closed state and clear FLIP animation leftovers
+          // Panel - reset to initial closed state, clear transition and FLIP animation leftovers
           if (this.panelContent) {
-            this.panelContent.classList.remove("opacity-100", "scale-100", "transition-all", "ease-in-out", "origin-center", "transition-none");
+            // Remove all transition-related classes (including dynamic duration classes)
+            this.panelContent.classList.remove(
+              "opacity-100", "scale-100",
+              "transition-all", "transition-opacity", "transition-none",
+              "ease-out", "ease-in-out", "origin-center"
+            );
+            // Also remove any duration-* classes
+            [...this.panelContent.classList].filter(c => c.startsWith("duration-")).forEach(c => {
+              this.panelContent.classList.remove(c);
+            });
             this.panelContent.classList.add("opacity-0", "scale-95");
             this.panelContent.style.removeProperty("transform");
             this.panelContent.style.removeProperty("transition-duration");
@@ -567,20 +718,29 @@ defmodule Lavash.Modal.Helpers do
             this.panelContent.style.removeProperty("--flip-duration");
           }
 
-          // Overlay
+          // Overlay - reset visibility, opacity, and transition classes
           if (this.overlay) {
-            this.overlay.classList.remove("opacity-50");
+            this.overlay.style.visibility = "";
+            this.overlay.classList.remove("opacity-50", "transition-opacity", "ease-out");
+            [...this.overlay.classList].filter(c => c.startsWith("duration-")).forEach(c => {
+              this.overlay.classList.remove(c);
+            });
             this.overlay.classList.add("opacity-0");
           }
 
           // Loading - clear FLIP animation leftovers
           const loadingContent = this.getLoadingContent();
+          console.log(`LavashModal ${this.panelIdForLog}: _resetDOM loadingContent=`, loadingContent, `classes before:`, loadingContent?.className);
           if (loadingContent) {
             loadingContent.classList.add("hidden", "opacity-0");
-            loadingContent.classList.remove("opacity-100");
+            loadingContent.classList.remove("opacity-100", "transition-opacity", "ease-out");
+            [...loadingContent.classList].filter(c => c.startsWith("duration-")).forEach(c => {
+              loadingContent.classList.remove(c);
+            });
             loadingContent.style.removeProperty("transform");
             loadingContent.style.removeProperty("transition");
             loadingContent.style.removeProperty("transform-origin");
+            console.log(`LavashModal ${this.panelIdForLog}: _resetDOM loadingContent classes after:`, loadingContent.className);
           }
         },
 
@@ -590,7 +750,24 @@ defmodule Lavash.Modal.Helpers do
           // Always hide loading if loadEl exists, even without flip animation
           if (loadEl && !loadEl.classList.contains("hidden")) {
             console.log(`LavashModal runFlipAnimation: hiding loading`);
-            this.liveSocket.execJS(this.el, this.el.dataset.hideLoading);
+            // Hide loading with transition (classList with Tailwind classes)
+            loadEl.classList.add("transition-opacity", "duration-200");
+            loadEl.offsetHeight;
+            loadEl.classList.remove("opacity-100");
+            loadEl.classList.add("opacity-0");
+            // Add hidden class after transition
+            setTimeout(() => {
+              loadEl.classList.add("hidden");
+              loadEl.classList.remove("transition-opacity", "duration-200");
+            }, 200);
+            // Also show main content
+            const mainContent = this.getMainContentContainer();
+            if (mainContent) {
+              mainContent.classList.add("transition-opacity", "duration-200");
+              mainContent.offsetHeight;
+              mainContent.classList.remove("opacity-0");
+              mainContent.classList.add("opacity-100");
+            }
           }
 
           if (!this.currentState || !this._flipPreRect || !this.panelContent || !loadEl) {
@@ -650,8 +827,14 @@ defmodule Lavash.Modal.Helpers do
         },
 
         destroyed() {
+          // Clean up ghost if present
           if (this.ghostElement?.parentNode) {
             this.ghostElement.remove();
+          }
+
+          // Remove from global registry
+          if (window.__lavashModalInstances && this._mainContentId) {
+            delete window.__lavashModalInstances[this._mainContentId];
           }
         },
       };

@@ -374,6 +374,10 @@ defmodule Lavash.Component.Runtime do
       end)
 
     if guards_pass?(socket, module, action.when) do
+      # Check if this is a modal close action - push event BEFORE changing state
+      # so the JS hook can capture DOM state for animation
+      socket = maybe_push_modal_closing_event(socket, module, action)
+
       socket =
         socket
         |> apply_sets(action.sets || [], params, module)
@@ -646,4 +650,37 @@ defmodule Lavash.Component.Runtime do
   defp extract_changeset(%AshPhoenix.Form{source: %Ash.Changeset{} = cs}), do: cs
   defp extract_changeset(%Ash.Changeset{} = cs), do: cs
   defp extract_changeset(_), do: nil
+
+  # Push a modal-closing event if this is a close action on a modal component.
+  # This event is sent BEFORE state changes, allowing the JS hook to capture
+  # DOM state for smooth close animations.
+  defp maybe_push_modal_closing_event(socket, module, action) do
+    require Logger
+    is_modal = uses_modal_dsl?(module)
+    Logger.info("maybe_push_modal_closing_event: action=#{action.name}, module=#{module}, is_modal=#{is_modal}")
+
+    # Only push for :close action on modules using Modal DSL
+    if action.name == :close and is_modal do
+      component_id = LSocket.get(socket, :component_id)
+      # The modal wrapper ID is component_id + "-modal" (see modal_chrome in helpers.ex)
+      modal_id = "#{component_id}-modal"
+
+      Logger.info("Pushing modal-closing event for #{modal_id}")
+      Phoenix.LiveView.push_event(socket, "modal-closing", %{id: modal_id})
+    else
+      socket
+    end
+  end
+
+  defp uses_modal_dsl?(module) do
+    # Check if the module uses Modal DSL by checking for modal-specific persisted data
+    # that's added by the GenerateRender transformer
+    case Spark.Dsl.Extension.get_persisted(module, :modal_open_field) do
+      nil -> false
+      _ -> true
+    end
+  rescue
+    # If Spark isn't available or module doesn't use Spark, assume no modal
+    _ -> false
+  end
 end

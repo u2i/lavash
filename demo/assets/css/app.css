@@ -6,6 +6,7 @@
 @source "../js";
 @source "../../lib/demo_web";
 @source "../../../lib";
+@source "../vendor/phoenix-colocated";
 
 /* A Tailwind plugin that makes "hero-#{ICON}" classes available.
    The heroicons installation itself is managed by your mix.exs */
