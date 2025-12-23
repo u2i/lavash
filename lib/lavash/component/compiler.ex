@@ -55,7 +55,9 @@ defmodule Lavash.Component.Compiler do
       end
 
       def __lavash__(:actions) do
-        Spark.Dsl.Extension.get_entities(__MODULE__, [:actions])
+        declared_actions = Spark.Dsl.Extension.get_entities(__MODULE__, [:actions])
+        setter_actions = Lavash.LiveView.Compiler.generate_setter_actions(__MODULE__)
+        declared_actions ++ setter_actions
       end
 
       # Convenience accessors by storage type
@@ -118,6 +120,7 @@ defmodule Lavash.Component.Compiler do
           |> Phoenix.Component.assign(:__modal_id__, modal_id)
           |> Phoenix.Component.assign(:on_close, on_close)
           |> Phoenix.Component.assign(:__modal_open__, open_value)
+          |> Phoenix.Component.assign(:__modal_open_field__, unquote(open_field))
           |> Phoenix.Component.assign(:__modal_close_on_escape__, unquote(close_on_escape))
           |> Phoenix.Component.assign(:__modal_close_on_backdrop__, unquote(close_on_backdrop))
           |> Phoenix.Component.assign(:__modal_max_width__, unquote(max_width))
@@ -130,6 +133,7 @@ defmodule Lavash.Component.Compiler do
           <.modal_chrome
             id={@__modal_id__}
             open={@__modal_open__}
+            open_field={@__modal_open_field__}
             myself={@myself}
             close_on_escape={@__modal_close_on_escape__}
             close_on_backdrop={@__modal_close_on_backdrop__}

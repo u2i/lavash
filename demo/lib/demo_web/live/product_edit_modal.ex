@@ -4,11 +4,11 @@ defmodule DemoWeb.ProductEditModal do
 
   Uses the Lavash.Modal plugin for modal behavior:
   - product_id controls open state (nil = closed)
-  - :close and :noop actions are auto-injected
+  - set_product_id action is auto-generated (optimistic: true implies setter: true)
   - modal chrome, wrapper, and async_result are auto-generated
 
-  Parent invokes actions to control the modal:
-  - invoke "product-edit-modal", :open, module: DemoWeb.ProductEditModal, params: [product_id: 123]
+  Opening the modal from client-side:
+  - JS.dispatch("open-panel", to: "#product-edit-modal-modal", detail: %{product_id: 123})
 
   ## Example usage
 
@@ -77,7 +77,7 @@ defmodule DemoWeb.ProductEditModal do
           </CoreComponents.button>
           <CoreComponents.button
             type="button"
-            phx-click={Phoenix.LiveView.JS.dispatch("close-panel", to: "#product-edit-modal-modal") |> Phoenix.LiveView.JS.push("close", target: @myself)}
+            phx-click={Phoenix.LiveView.JS.dispatch("close-panel", to: "#product-edit-modal-modal")}
             class="btn-outline"
           >
             Cancel
@@ -105,9 +105,8 @@ defmodule DemoWeb.ProductEditModal do
   end
 
   actions do
-    action :open, [:product_id] do
-      set :product_id, & &1.params.product_id
-    end
+    # set_product_id is auto-generated because the modal's open_field (product_id)
+    # has optimistic: true, which implies setter: true
 
     action :save do
       submit :edit_form, on_success: :close

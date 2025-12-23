@@ -86,11 +86,12 @@ defmodule Lavash.LiveView.Compiler do
   end
 
   @doc """
-  Generate synthetic setter actions for state fields with setter: true.
+  Generate synthetic setter actions for state fields with setter: true or optimistic: true.
+  Optimistic fields automatically get setters to enable client-side optimistic updates.
   """
   def generate_setter_actions(module) do
     module.__lavash__(:states)
-    |> Enum.filter(& &1.setter)
+    |> Enum.filter(&(&1.setter || &1.optimistic))
     |> Enum.map(fn state ->
       %Lavash.Actions.Action{
         name: :"set_#{state.name}",

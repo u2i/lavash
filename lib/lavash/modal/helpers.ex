@@ -43,6 +43,7 @@ defmodule Lavash.Modal.Helpers do
   """
   attr(:id, :string, required: true, doc: "Unique ID for the modal")
   attr(:open, :any, required: true, doc: "Controls visibility (truthy = open)")
+  attr(:open_field, :atom, default: :open, doc: "The name of the open state field")
   attr(:myself, :any, required: true, doc: "The component's @myself")
   attr(:close_on_escape, :boolean, default: true)
   attr(:close_on_backdrop, :boolean, default: true)
@@ -77,6 +78,8 @@ defmodule Lavash.Modal.Helpers do
       phx-target={@myself}
       data-duration={@duration}
       data-open={to_string(@is_open)}
+      data-open-field={@open_field}
+      data-open-value={Jason.encode!(@open)}
     >
       <%!-- Backdrop overlay - client controls opacity and visibility --%>
       <div
@@ -461,10 +464,23 @@ defmodule Lavash.Modal.Helpers do
           this.closeInitiator = null;
           this.duration = Number(this.el.dataset.duration) || 200;
 
-          // SyncedVar for open state - handles version tracking automatically
-          this.openState = new SyncedVar(false, (newValue, oldValue, source) => {
+          // Get the open field name and derive the setter action name
+          // e.g., open_field="product_id" -> setterAction="set_product_id"
+          this.openField = this.el.dataset.openField || "open";
+          this.setterAction = `set_${this.openField}`;
+          console.log(`LavashModal ${this.panelIdForLog}: openField=${this.openField}, setterAction=${this.setterAction}`);
+
+          // Parse the initial server-side value (null, or the open value like a product_id)
+          const initialValue = JSON.parse(this.el.dataset.openValue || "null");
+
+          // SyncedVar for open state - tracks the actual value (not boolean)
+          // Value is null when closed, or the open_field value (e.g., product_id) when open
+          this.openState = new SyncedVar(initialValue, (newValue, oldValue, source) => {
             console.log(`LavashModal ${this.panelIdForLog}: openState changed: ${oldValue} -> ${newValue} (${source})`);
-            if (newValue && !oldValue) {
+            const wasOpen = oldValue != null;
+            const isOpen = newValue != null;
+
+            if (isOpen && !wasOpen) {
               // Opening
               if (source === 'optimistic') {
                 this.processPanelEvent("REQUEST_OPEN");
@@ -474,7 +490,7 @@ defmodule Lavash.Modal.Helpers do
                 // Server-initiated open (rare case)
                 this.processPanelEvent("REQUEST_OPEN");
               }
-            } else if (!newValue && oldValue) {
+            } else if (!isOpen && wasOpen) {
               // Closing
               if (source === 'optimistic') {
                 this.processPanelEvent("REQUEST_CLOSE");
@@ -512,15 +528,25 @@ defmodule Lavash.Modal.Helpers do
           this.currentState = null;
           this.transitionTo(this.states.closed);
 
+          // Listen for open-panel event - set the value from event detail
           this.el.addEventListener("open-panel", (e) => {
-            console.log(`LavashModal ${this.panelIdForLog}: open-panel event received`);
-            const params = e.detail || {};
-            this.openState.set(true, (p, cb) => this.pushEventTo(this.el, "open", p, cb), params);
+            console.log(`LavashModal ${this.panelIdForLog}: open-panel event received`, e.detail);
+            // Extract the open field value from event detail
+            // e.g., for open_field="product_id", look for detail.product_id
+            const openValue = e.detail?.[this.openField] ?? e.detail?.value ?? true;
+            this.openState.set(openValue, (p, cb) => {
+              // Push to set_<open_field> with {value: <openValue>}
+              this.pushEventTo(this.el, this.setterAction, { ...p, value: openValue }, cb);
+            });
           });
 
+          // Listen for close-panel event - set the value to null
           this.el.addEventListener("close-panel", () => {
             console.log(`LavashModal ${this.panelIdForLog}: close-panel event received`);
-            this.openState.set(false, (p, cb) => this.pushEventTo(this.el, "close", p, cb));
+            this.openState.set(null, (p, cb) => {
+              // Push to set_<open_field> with {value: null}
+              this.pushEventTo(this.el, this.setterAction, { ...p, value: null }, cb);
+            });
           });
         },
 
@@ -637,8 +663,8 @@ defmodule Lavash.Modal.Helpers do
         },
 
         beforeUpdate() {
-          // Track previous state to detect server-initiated closes (e.g., from form save)
-          this._previousMainState = this.getMainContentContainer().dataset.activeIfOpen === "true";
+          // Track previous server value to detect server-initiated changes (e.g., from form save)
+          this._previousServerValue = JSON.parse(this.el.dataset.openValue || "null");
 
           // Capture panel rect for FLIP animation when transitioning from loading to content
           // Only capture, never clear here - clearing happens in _resetDOM() and runFlipAnimation()
@@ -653,13 +679,21 @@ defmodule Lavash.Modal.Helpers do
         },
 
         updated() {
-          console.log(`LavashModal ${this.panelIdForLog}: updated called - currentState = ${this.currentState?.name}, openState.value=${this.openState.value}, isPending=${this.openState.isPending}`);
+          // Parse the new server value from the data attribute
+          const newServerValue = JSON.parse(this.el.dataset.openValue || "null");
+          console.log(`LavashModal ${this.panelIdForLog}: updated called - currentState = ${this.currentState?.name}, openState.value=${this.openState.value}, newServerValue=${newServerValue}, isPending=${this.openState.isPending}`);
 
-          // Detect server-initiated close (e.g., from form save)
+          // Detect server-initiated state change (e.g., from form save closing the modal)
           // SyncedVar.serverSet() will only accept if no pending operations
-          const newMainState = this.getMainContentContainer().dataset.activeIfOpen === "true";
-          if (this._previousMainState && !newMainState && this.currentState?.name === "open") {
-            this.openState.serverSet(false);
+          const prevWasOpen = this._previousServerValue != null;
+          const nowIsOpen = newServerValue != null;
+
+          if (prevWasOpen && !nowIsOpen && this.currentState?.name === "open") {
+            // Server closed the modal - use serverSet to update if no pending ops
+            this.openState.serverSet(null);
+          } else if (!prevWasOpen && nowIsOpen && this.currentState?.name === "closed") {
+            // Server opened the modal (rare) - use serverSet to update
+            this.openState.serverSet(newServerValue);
           }
 
           this.currentState.onUpdate();

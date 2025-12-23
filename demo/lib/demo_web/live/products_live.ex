@@ -63,13 +63,6 @@ defmodule DemoWeb.ProductsLive do
       set :max_price, nil
       set :min_rating, nil
     end
-
-    # Modal action - invoke the modal's :open action
-    action :open_edit, [:id] do
-      invoke "product-edit-modal", :open,
-        module: DemoWeb.ProductEditModal,
-        params: [product_id: {:param, :id}]
-    end
   end
 
   def render(assigns) do
@@ -233,8 +226,10 @@ defmodule DemoWeb.ProductsLive do
               </div>
               <button
                 phx-click={
-                  Phoenix.LiveView.JS.dispatch("open-panel", to: "#product-edit-modal-modal")
-                  |> Phoenix.LiveView.JS.push("open_edit", value: %{id: product.id})
+                  Phoenix.LiveView.JS.dispatch("open-panel",
+                    to: "#product-edit-modal-modal",
+                    detail: %{product_id: product.id}
+                  )
                 }
                 class="mt-3 block w-full text-center text-sm text-indigo-600 hover:text-indigo-800 border-t pt-3"
               >
