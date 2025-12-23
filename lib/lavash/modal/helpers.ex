@@ -352,11 +352,8 @@ defmodule Lavash.Modal.Helpers do
       class ClosingWaitingForServerState extends ModalState {
         onEnter() {
           // Transition to closed after animation completes
-          // This handles the case where server close event isn't detected
-          // (e.g., when multiple updates happen quickly)
           this._closeTimeout = setTimeout(() => {
             if (this.modal.currentState === this) {
-              console.log(`LavashModal ${this.modal.panelIdForLog}: ClosingWaitingForServer timeout -> closed`);
               this.modal.transitionTo(this.modal.states.closed);
             }
           }, this.modal.duration + 50); // animation duration + buffer
@@ -368,22 +365,8 @@ defmodule Lavash.Modal.Helpers do
           }
         }
         onRequestOpen() {
-          this.modal.transitionTo(this.modal.states.closingWaitingThenOpen);
-        }
-        onServerRequestsClose() {
-          this.modal.closeInitiator = "server";
-          this.modal.transitionTo(this.modal.states.closed);
-        }
-      }
-
-      class ClosingWaitingThenOpenState extends ModalState {
-        onServerRequestsClose() {
-          // Server confirmed close, now re-open fresh
-          this.modal._resetDOM();
-          this.modal.transitionTo(this.modal.states.opening);
-        }
-        onServerRequestsOpen() {
-          // Server already has the new open state - reset and open
+          // User wants to reopen during close animation - reset and start opening
+          // Cycle tracking ensures the stale close response is ignored
           this.modal._resetDOM();
           this.modal.transitionTo(this.modal.states.opening);
         }
@@ -437,7 +420,6 @@ defmodule Lavash.Modal.Helpers do
             open: new OpenState(this),
             closing: new ClosingState(this),
             closingWaitingForServer: new ClosingWaitingForServerState(this),
-            closingWaitingThenOpen: new ClosingWaitingThenOpenState(this),
           };
           this.currentState = null;
           this.transitionTo(this.states.closed);
@@ -476,17 +458,9 @@ defmodule Lavash.Modal.Helpers do
             // Start optimistic close immediately
             this.processPanelEvent("REQUEST_CLOSE");
 
-            // Push event to server with cycle tracking
-            this.pushEventTo(this.el, "close", { _cycle: closeCycle }, (reply) => {
-              console.log(`LavashModal ${this.panelIdForLog}: close reply received, cycle=${closeCycle}, current=${this.cycle}, reply=`, reply);
-              if (closeCycle !== this.cycle) {
-                console.log(`LavashModal ${this.panelIdForLog}: ignoring stale close reply (cycle ${closeCycle} vs current ${this.cycle})`);
-                return;
-              }
-              // Server confirmed close - mark this cycle as confirmed
-              this.confirmedCycle = closeCycle;
-              this.processPanelEvent("SERVER_REQUESTS_CLOSE");
-            });
+            // Push event to server - cycle tracking ensures stale responses don't matter
+            // The timeout in ClosingWaitingForServerState handles the transition to closed
+            this.pushEventTo(this.el, "close", { _cycle: closeCycle });
           });
         },
 
