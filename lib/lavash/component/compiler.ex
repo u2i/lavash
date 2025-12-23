@@ -67,6 +67,10 @@ defmodule Lavash.Component.Compiler do
         __lavash__(:states) |> Enum.filter(&(&1.from == :ephemeral))
       end
 
+      def __lavash__(:optimistic_fields) do
+        __lavash__(:states) |> Enum.filter(&(&1.optimistic == true))
+      end
+
       # Components don't have URL fields
       def __lavash__(:url_fields), do: []
     end

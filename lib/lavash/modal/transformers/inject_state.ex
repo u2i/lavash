@@ -30,6 +30,7 @@ defmodule Lavash.Modal.Transformers.InjectState do
 
   # Add the open_field as ephemeral state if not already defined
   # Modal owns its own open/closed state; parent opens via invoke
+  # Marked as optimistic: true for client-side version tracking
   defp maybe_add_open_input(dsl_state, open_field) do
     existing_states = Transformer.get_entities(dsl_state, [:states])
 
@@ -41,7 +42,8 @@ defmodule Lavash.Modal.Transformers.InjectState do
         name: open_field,
         type: :any,
         from: :ephemeral,
-        default: nil
+        default: nil,
+        optimistic: true
       }
 
       Transformer.add_entity(dsl_state, [:states], state_field)

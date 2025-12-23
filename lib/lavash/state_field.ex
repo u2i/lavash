@@ -22,6 +22,7 @@ defmodule Lavash.StateField do
     :encode,
     :decode,
     :setter,
+    :optimistic,
     __spark_metadata__: nil
   ]
 end

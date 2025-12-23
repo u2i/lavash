@@ -78,6 +78,10 @@ defmodule Lavash.LiveView.Compiler do
       def __lavash__(:ephemeral_fields) do
         __lavash__(:states) |> Enum.filter(&(is_nil(&1.from) || &1.from == :ephemeral))
       end
+
+      def __lavash__(:optimistic_fields) do
+        __lavash__(:states) |> Enum.filter(&(&1.optimistic == true))
+      end
     end
   end
 

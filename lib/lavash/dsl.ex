@@ -107,6 +107,16 @@ defmodule Lavash.Dsl do
         type: :boolean,
         default: false,
         doc: "Auto-generate a set_<name> action that sets this field from params.value"
+      ],
+      optimistic: [
+        type: :boolean,
+        default: false,
+        doc: """
+        Enable optimistic updates with version tracking (socket fields only).
+        When true, client-side state changes are applied immediately while the
+        server request is in flight. Stale responses are automatically ignored.
+        Useful for UI state like modal open/close that needs to feel instant.
+        """
       ]
     ]
   }
