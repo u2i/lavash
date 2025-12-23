@@ -118,6 +118,63 @@ defmodule Lavash.Modal.Helpers do
         </div>
       </div>
       <script :type={Phoenix.LiveView.ColocatedHook} name=".LavashModal">
+      // --- SyncedVar: Client-server state synchronization ---
+      // Models an eventually consistent variable with optimistic updates
+      class SyncedVar {
+        constructor(initialValue, onChange) {
+          this.value = initialValue;           // optimistic client value
+          this.confirmedValue = initialValue;  // last server-confirmed value
+          this.version = 0;
+          this.confirmedVersion = 0;
+          this.onChange = onChange;            // callback: (newValue, oldValue, source) => void
+        }
+
+        // Optimistically set value and push to server
+        // pushFn: (params, replyCallback) => void
+        set(newValue, pushFn, extraParams = {}) {
+          const oldValue = this.value;
+          if (newValue === oldValue) return;
+
+          this.version++;
+          const v = this.version;
+          this.value = newValue;
+
+          // Notify of optimistic change
+          this.onChange?.(newValue, oldValue, 'optimistic');
+
+          // Push to server with version tracking
+          pushFn?.({ ...extraParams, _version: v }, (reply) => {
+            if (v !== this.version) {
+              // Stale response - a newer operation has started
+              return;
+            }
+            this.confirmedVersion = v;
+            this.confirmedValue = newValue;
+            this.onChange?.(newValue, oldValue, 'confirmed');
+          });
+        }
+
+        // Server-initiated change (e.g., from form save)
+        // Only accepts if client has no pending operations
+        serverSet(newValue) {
+          if (this.confirmedVersion !== this.version) {
+            // Client has pending operations - ignore server change
+            return false;
+          }
+          const oldValue = this.value;
+          if (newValue === oldValue) return false;
+
+          this.value = newValue;
+          this.confirmedValue = newValue;
+          this.onChange?.(newValue, oldValue, 'server');
+          return true;
+        }
+
+        get isPending() {
+          return this.version !== this.confirmedVersion;
+        }
+      }
+
       // --- Base State Class ---
       class ModalState {
         constructor(modal) {
@@ -393,10 +450,30 @@ defmodule Lavash.Modal.Helpers do
           this.closeInitiator = null;
           this.duration = Number(this.el.dataset.duration) || 200;
 
-          // Cycle counter for tracking stale server responses
-          this.cycle = 0;
-          // Track the last cycle for which we received a server confirmation
-          this.confirmedCycle = 0;
+          // SyncedVar for open state - handles version tracking automatically
+          this.openState = new SyncedVar(false, (newValue, oldValue, source) => {
+            console.log(`LavashModal ${this.panelIdForLog}: openState changed: ${oldValue} -> ${newValue} (${source})`);
+            if (newValue && !oldValue) {
+              // Opening
+              if (source === 'optimistic') {
+                this.processPanelEvent("REQUEST_OPEN");
+              } else if (source === 'confirmed') {
+                this.processPanelEvent("SERVER_REQUESTS_OPEN");
+              } else if (source === 'server') {
+                // Server-initiated open (rare case)
+                this.processPanelEvent("REQUEST_OPEN");
+              }
+            } else if (!newValue && oldValue) {
+              // Closing
+              if (source === 'optimistic') {
+                this.processPanelEvent("REQUEST_CLOSE");
+              } else if (source === 'server') {
+                // Server-initiated close (e.g., form save)
+                this.processPanelEvent("SERVER_REQUESTS_CLOSE");
+              }
+              // 'confirmed' close doesn't need special handling - timeout handles transition
+            }
+          });
 
           // IDs we watch for in the global onBeforeElUpdated callback
           this._mainContentId = `${id}-main_content`;
@@ -426,41 +503,13 @@ defmodule Lavash.Modal.Helpers do
 
           this.el.addEventListener("open-panel", (e) => {
             console.log(`LavashModal ${this.panelIdForLog}: open-panel event received`);
-            // Increment cycle for new open request
-            this.cycle++;
-            const openCycle = this.cycle;
-            console.log(`LavashModal ${this.panelIdForLog}: starting open cycle ${openCycle}`);
-
-            // Start optimistic open immediately
-            this.processPanelEvent("REQUEST_OPEN");
-
-            // Push event to server with cycle tracking
-            // The event params may be passed via the custom event detail
             const params = e.detail || {};
-            this.pushEventTo(this.el, "open", { ...params, _cycle: openCycle }, (reply) => {
-              console.log(`LavashModal ${this.panelIdForLog}: open reply received, cycle=${openCycle}, current=${this.cycle}, reply=`, reply);
-              if (openCycle !== this.cycle) {
-                console.log(`LavashModal ${this.panelIdForLog}: ignoring stale open reply (cycle ${openCycle} vs current ${this.cycle})`);
-                return;
-              }
-              // Server confirmed open - mark this cycle as confirmed
-              this.confirmedCycle = openCycle;
-              this.processPanelEvent("SERVER_REQUESTS_OPEN");
-            });
+            this.openState.set(true, (p, cb) => this.pushEventTo(this.el, "open", p, cb), params);
           });
+
           this.el.addEventListener("close-panel", () => {
             console.log(`LavashModal ${this.panelIdForLog}: close-panel event received`);
-            // Increment cycle for new close request
-            this.cycle++;
-            const closeCycle = this.cycle;
-            console.log(`LavashModal ${this.panelIdForLog}: starting close cycle ${closeCycle}`);
-
-            // Start optimistic close immediately
-            this.processPanelEvent("REQUEST_CLOSE");
-
-            // Push event to server - cycle tracking ensures stale responses don't matter
-            // The timeout in ClosingWaitingForServerState handles the transition to closed
-            this.pushEventTo(this.el, "close", { _cycle: closeCycle });
+            this.openState.set(false, (p, cb) => this.pushEventTo(this.el, "close", p, cb));
           });
         },
 
@@ -593,21 +642,13 @@ defmodule Lavash.Modal.Helpers do
         },
 
         updated() {
-          console.log(`LavashModal ${this.panelIdForLog}: updated called - currentState = ${this.currentState?.name}, cycle=${this.cycle}, confirmedCycle=${this.confirmedCycle}`);
+          console.log(`LavashModal ${this.panelIdForLog}: updated called - currentState = ${this.currentState?.name}, openState.value=${this.openState.value}, isPending=${this.openState.isPending}`);
 
-          // Detect server-initiated close (e.g., from form save) that wasn't triggered by us
-          // Only process if:
-          // 1. We're in open state (not already closing from a user action)
-          // 2. The current cycle is confirmed (we've received server response for it)
-          //    This prevents stale DOM updates from triggering close
+          // Detect server-initiated close (e.g., from form save)
+          // SyncedVar.serverSet() will only accept if no pending operations
           const newMainState = this.getMainContentContainer().dataset.activeIfOpen === "true";
           if (this._previousMainState && !newMainState && this.currentState?.name === "open") {
-            if (this.confirmedCycle === this.cycle) {
-              console.log(`LavashModal ${this.panelIdForLog}: detected server-initiated close (e.g., form save)`);
-              this.processPanelEvent("SERVER_REQUESTS_CLOSE");
-            } else {
-              console.log(`LavashModal ${this.panelIdForLog}: ignoring DOM close change - cycle ${this.cycle} not yet confirmed (confirmed=${this.confirmedCycle})`);
-            }
+            this.openState.serverSet(false);
           }
 
           this.currentState.onUpdate();
@@ -893,9 +934,8 @@ defmodule Lavash.Modal.Helpers do
   attr(:class, :string, default: "btn btn-sm btn-circle btn-ghost absolute right-2 top-2")
 
   def modal_close_button(assigns) do
-    on_close =
-      JS.dispatch("close-panel", to: "##{assigns.id}")
-      |> JS.push("close", target: assigns.myself)
+    # Only dispatch close-panel event - the hook handles the server push via SyncedVar
+    on_close = JS.dispatch("close-panel", to: "##{assigns.id}")
 
     assigns = assign(assigns, :on_close, on_close)
 
