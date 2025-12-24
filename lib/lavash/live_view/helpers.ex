@@ -21,6 +21,63 @@ defmodule Lavash.LiveView.Helpers do
   end
 
   @doc """
+  Builds the optimistic state map from assigns based on DSL metadata.
+
+  Collects all state fields and derives marked with `optimistic: true` and
+  extracts their current values from assigns. For async derives, unwraps the
+  `{:ok, value}` tuple to get the raw value.
+
+  ## Example
+
+      # In your LiveView module
+      state :count, :integer, from: :url, default: 0, optimistic: true
+      state :multiplier, :integer, from: :ephemeral, default: 2, optimistic: true
+
+      derive :doubled, optimistic: true do
+        # ...
+      end
+
+      # In render/1
+      def render(assigns) do
+        assigns = assign(assigns, :optimistic_state, optimistic_state(__MODULE__, assigns))
+        # ...
+      end
+  """
+  def optimistic_state(module, assigns) do
+    # Get optimistic state fields
+    state_fields = module.__lavash__(:optimistic_fields)
+
+    # Get optimistic derives
+    derives = module.__lavash__(:optimistic_derives)
+
+    # Build the state map
+    state_map =
+      Enum.reduce(state_fields, %{}, fn field, acc ->
+        value = Map.get(assigns, field.name)
+        Map.put(acc, field.name, value)
+      end)
+
+    # Add derives, unwrapping async values
+    Enum.reduce(derives, state_map, fn derive, acc ->
+      value = Map.get(assigns, derive.name)
+
+      # Unwrap async values - handle both AsyncResult structs and plain tuples
+      value =
+        case value do
+          %Phoenix.LiveView.AsyncResult{ok?: true, result: v} -> v
+          %Phoenix.LiveView.AsyncResult{loading: loading} when loading != nil -> nil
+          %Phoenix.LiveView.AsyncResult{} -> nil
+          {:ok, v} -> v
+          :loading -> nil
+          {:error, _} -> nil
+          v -> v
+        end
+
+      Map.put(acc, derive.name, value)
+    end)
+  end
+
+  @doc """
   Renders a Lavash component with automatic state hydration.
 
   This function component wraps `Phoenix.Component.live_component/1` and automatically

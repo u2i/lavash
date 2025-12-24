@@ -10,11 +10,58 @@ defmodule Lavash.LiveView.Runtime do
   - Assign projection
   """
 
+  require Phoenix.Component
+
   alias Lavash.State
   alias Lavash.Graph
   alias Lavash.Assigns
   alias Lavash.Type
   alias Lavash.Socket, as: LSocket
+
+  @doc """
+  Wraps the user's render output with optimistic state tracking if needed.
+
+  If the module has any optimistic fields (state or derives with `optimistic: true`),
+  wraps the rendered content in a div with the LavashOptimistic hook and state data.
+  """
+  def wrap_render(module, assigns, inner_content) do
+    optimistic_fields = module.__lavash__(:optimistic_fields)
+    optimistic_derives = module.__lavash__(:optimistic_derives)
+
+    if optimistic_fields == [] and optimistic_derives == [] do
+      # No optimistic fields, just return the content directly
+      inner_content
+    else
+      # Build optimistic state
+      optimistic_state = Lavash.LiveView.Helpers.optimistic_state(module, assigns)
+      module_name = inspect(module)
+      optimistic_json = Jason.encode!(optimistic_state)
+
+      # Escape for HTML attribute
+      escaped_module = Phoenix.HTML.Safe.to_iodata(module_name)
+      escaped_json = Phoenix.HTML.Safe.to_iodata(optimistic_json)
+
+      # Build wrapper as a Rendered struct so LiveView can diff it properly
+      # The static parts are the wrapper div, dynamic parts include the inner content
+      %Phoenix.LiveView.Rendered{
+        static: [
+          ~s(<div id="lavash-optimistic-root" phx-hook="LavashOptimistic" data-lavash-module="),
+          ~s(" data-lavash-state="),
+          ~s(">),
+          ~s(</div>)
+        ],
+        dynamic: fn _ ->
+          [
+            escaped_module,
+            escaped_json,
+            inner_content
+          ]
+        end,
+        fingerprint: :erlang.phash2({module_name, optimistic_json}),
+        root: true
+      }
+    end
+  end
 
   def mount(module, _params, _session, socket) do
     # Get connect params if available (contains client-synced socket state)

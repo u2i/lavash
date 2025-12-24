@@ -1,10 +1,11 @@
 defmodule DemoWeb.CounterLive do
   use Lavash.LiveView
 
-  state :count, :integer, from: :url, default: 0
-  state :multiplier, :integer, from: :ephemeral, default: 2
+  state :count, :integer, from: :url, default: 0, optimistic: true
+  state :multiplier, :integer, from: :ephemeral, default: 2, optimistic: true
 
   derive :doubled do
+    optimistic true
     argument :count, state(:count)
     argument :multiplier, state(:multiplier)
 
@@ -14,6 +15,7 @@ defmodule DemoWeb.CounterLive do
   end
 
   derive :fact do
+    optimistic true
     async true
     argument :count, state(:count)
 
@@ -48,30 +50,8 @@ defmodule DemoWeb.CounterLive do
   end
 
   def render(assigns) do
-    # Extract fact value from async result for optimistic state
-    fact_value = case assigns.fact do
-      {:ok, value} -> value
-      _ -> nil
-    end
-
-    # Build optimistic state for the hook
-    optimistic_state = %{
-      count: assigns.count,
-      multiplier: assigns.multiplier,
-      doubled: assigns.doubled,
-      fact: fact_value
-    }
-
-    assigns = assign(assigns, :optimistic_state, optimistic_state)
-
     ~H"""
-    <div
-      id="counter"
-      class="max-w-md mx-auto mt-10 p-6 bg-white rounded-lg shadow-lg"
-      phx-hook="LavashOptimistic"
-      data-lavash-module="DemoWeb.CounterLive"
-      data-lavash-state={Jason.encode!(@optimistic_state)}
-    >
+    <div id="counter" class="max-w-md mx-auto mt-10 p-6 bg-white rounded-lg shadow-lg">
       <h1 class="text-2xl font-bold text-center mb-6">Lavash Counter Demo</h1>
 
       <div class="text-center mb-6">
@@ -123,12 +103,12 @@ defmodule DemoWeb.CounterLive do
         </div>
 
         <div class="flex items-center justify-between">
-          <span class="text-gray-600">{@count}! =</span>
+          <span class="text-gray-600"><span id="fact-count-display">{@count}</span>! =</span>
           <span id="fact-display" class="font-mono font-bold text-lg">
             <%= case @fact do %>
-              <% :loading -> %>
+              <% %Phoenix.LiveView.AsyncResult{loading: loading} when loading != nil -> %>
                 <span class="text-gray-400 animate-pulse">computing...</span>
-              <% {:ok, value} -> %>
+              <% %Phoenix.LiveView.AsyncResult{ok?: true, result: value} -> %>
                 {value}
               <% _ -> %>
                 ?

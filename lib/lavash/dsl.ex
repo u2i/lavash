@@ -312,6 +312,15 @@ defmodule Lavash.Dsl do
       run: [
         type: {:fun, 2},
         doc: "Function that computes the value: fn %{arg1: val1, ...}, context -> result end"
+      ],
+      optimistic: [
+        type: :boolean,
+        default: false,
+        doc: """
+        Include this derive in optimistic state for client-side computation.
+        When true, this field will be included in the optimistic state passed to the
+        client hook, allowing client-side JavaScript to recompute the value immediately.
+        """
       ]
     ]
   }

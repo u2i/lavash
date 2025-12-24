@@ -5,6 +5,7 @@ defmodule Lavash.LiveView.Compiler do
 
   defmacro __before_compile__(env) do
     has_on_mount = Module.defines?(env.module, {:on_mount, 1})
+    has_render = Module.defines?(env.module, {:render, 1})
 
     mount_callback =
       if has_on_mount do
@@ -24,8 +25,28 @@ defmodule Lavash.LiveView.Compiler do
         end
       end
 
+    # If user defined render/1 and has optimistic fields, wrap it
+    render_wrapper =
+      if has_render do
+        quote do
+          # Override render to wrap with optimistic state
+          defoverridable render: 1
+
+          @impl Phoenix.LiveView
+          def render(assigns) do
+            # Use super/1 to call the original user-defined render
+            inner_content = super(assigns)
+            Lavash.LiveView.Runtime.wrap_render(__MODULE__, assigns, inner_content)
+          end
+        end
+      else
+        quote do
+        end
+      end
+
     quote do
       unquote(mount_callback)
+      unquote(render_wrapper)
 
       @impl Phoenix.LiveView
       def handle_params(params, uri, socket) do
@@ -81,6 +102,11 @@ defmodule Lavash.LiveView.Compiler do
 
       def __lavash__(:optimistic_fields) do
         __lavash__(:states) |> Enum.filter(&(&1.optimistic == true))
+      end
+
+      def __lavash__(:optimistic_derives) do
+        Spark.Dsl.Extension.get_entities(__MODULE__, [:derives])
+        |> Enum.filter(&(Map.get(&1, :optimistic, false) == true))
       end
     end
   end

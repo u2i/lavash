@@ -126,6 +126,12 @@ const LavashOptimistic = {
       countEl.textContent = this.state.count;
     }
 
+    // Update count in factorial label
+    const factCountEl = document.getElementById("fact-count-display");
+    if (factCountEl && this.state.count !== undefined) {
+      factCountEl.textContent = this.state.count;
+    }
+
     // Update multiplier display
     const multiplierEl = document.getElementById("multiplier-display");
     if (multiplierEl && this.state.multiplier !== undefined) {
