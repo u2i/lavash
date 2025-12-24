@@ -17,16 +17,19 @@ defmodule DemoWeb.Layouts do
       <div class="flex-1">
         <a href="/" class="flex-1 flex items-center gap-2">
           <img src={~p"/images/logo.svg"} width="36" />
-          <span class="text-sm font-semibold">Lavash Demo</span>
+          <span class="text-sm font-semibold">Lavash Store</span>
         </a>
       </div>
       <div class="flex-none">
         <ul class="flex flex-column px-1 space-x-4 items-center">
           <li>
-            <a href={~p"/products"} class="btn btn-ghost">Products</a>
+            <a href={~p"/products"} class="btn btn-ghost">Shop</a>
           </li>
           <li>
-            <a href={~p"/categories"} class="btn btn-ghost">Categories</a>
+            <a href={~p"/account"} class="btn btn-ghost">Account</a>
+          </li>
+          <li>
+            <a href={~p"/admin"} class="btn btn-ghost btn-sm">Admin</a>
           </li>
           <li>
             <.theme_toggle />
@@ -48,7 +51,7 @@ defmodule DemoWeb.Layouts do
     </header>
 
     <main class="px-4 py-20 sm:px-6 lg:px-8">
-      <div class="mx-auto max-w-2xl space-y-4">
+      <div class="mx-auto max-w-4xl space-y-4">
         {render_slot(@inner_block)}
       </div>
     </main>

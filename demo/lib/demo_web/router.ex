@@ -26,20 +26,41 @@ defmodule DemoWeb.Router do
     reset_route auth_routes_prefix: "/auth"
   end
 
+  # Storefront (public)
   scope "/", DemoWeb do
     pipe_through :browser
 
-    live "/", CounterLive
-    live "/products", ProductsLive
-    live "/products/new", ProductEditLive
-    live "/products-socket", ProductsSocketLive
-    live "/products/:product_id/edit", ProductEditLive
-    live "/categories", CategoriesLive
-    live "/components", ComponentsDemoLive
+    live "/", StorefrontLive
+    live "/products", Storefront.ProductsLive
+    live "/products/:product_id", Storefront.ProductLive
   end
 
-  # Other scopes may use custom stacks.
-  # scope "/api", DemoWeb do
-  #   pipe_through :api
-  # end
+  # Customer account (requires login)
+  scope "/account", DemoWeb do
+    pipe_through :browser
+
+    live "/", Account.DashboardLive
+    live "/orders", Account.OrdersLive
+    live "/settings", Account.SettingsLive
+  end
+
+  # Admin section
+  scope "/admin", DemoWeb.Admin do
+    pipe_through :browser
+
+    live "/", DashboardLive
+    live "/products", ProductsLive
+    live "/products/new", ProductEditLive
+    live "/products/:product_id/edit", ProductEditLive
+    live "/categories", CategoriesLive
+  end
+
+  # Demo/playground routes
+  scope "/demos", DemoWeb do
+    pipe_through :browser
+
+    live "/counter", CounterLive
+    live "/products-socket", ProductsSocketLive
+    live "/components", ComponentsDemoLive
+  end
 end
