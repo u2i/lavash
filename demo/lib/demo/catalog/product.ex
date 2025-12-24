@@ -20,8 +20,28 @@ defmodule Demo.Catalog.Product do
       allow_nil? false
     end
 
+    attribute :description, :string
+
     attribute :price, :decimal do
       allow_nil? false
+    end
+
+    attribute :weight_oz, :integer do
+      default 12
+      description "Weight in ounces"
+    end
+
+    attribute :origin, :string do
+      description "Country or region of origin"
+    end
+
+    attribute :roast_level, :atom do
+      constraints one_of: [:light, :medium, :medium_dark, :dark]
+      default :medium
+    end
+
+    attribute :tasting_notes, :string do
+      description "Flavor profile and tasting notes"
     end
 
     attribute :in_stock, :boolean do
@@ -43,11 +63,11 @@ defmodule Demo.Catalog.Product do
     defaults [:read, :destroy]
 
     create :create do
-      accept [:name, :price, :in_stock, :rating, :category_id]
+      accept [:name, :description, :price, :weight_oz, :origin, :roast_level, :tasting_notes, :in_stock, :rating, :category_id]
     end
 
     update :update do
-      accept [:name, :price, :in_stock, :rating, :category_id]
+      accept [:name, :description, :price, :weight_oz, :origin, :roast_level, :tasting_notes, :in_stock, :rating, :category_id]
     end
 
     read :list do

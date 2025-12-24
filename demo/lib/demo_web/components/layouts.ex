@@ -16,8 +16,8 @@ defmodule DemoWeb.Layouts do
     <header class="navbar px-4 sm:px-6 lg:px-8">
       <div class="flex-1">
         <a href="/" class="flex-1 flex items-center gap-2">
-          <img src={~p"/images/logo.svg"} width="36" />
-          <span class="text-sm font-semibold">Lavash Store</span>
+          <span class="text-2xl">☕</span>
+          <span class="font-semibold">Lavash Coffee</span>
         </a>
       </div>
       <div class="flex-none">
@@ -111,18 +111,20 @@ defmodule DemoWeb.Layouts do
   def theme_toggle(assigns) do
     ~H"""
     <div class="card relative flex flex-row items-center border-2 border-base-300 bg-base-300 rounded-full">
-      <div class="absolute w-1/3 h-full rounded-full border-1 border-base-200 bg-base-100 brightness-200 left-0 [[data-theme=light]_&]:left-1/3 [[data-theme=dark]_&]:left-2/3 transition-[left]" />
+      <div class="absolute w-1/3 h-full rounded-full border-1 border-base-200 bg-base-100 brightness-200 left-0 [[data-theme=latte]_&]:left-1/3 [[data-theme=dark]_&]:left-2/3 transition-[left]" />
 
       <button
-        phx-click={JS.dispatch("phx:set-theme", detail: %{theme: "system"})}
+        phx-click={JS.dispatch("phx:set-theme", detail: %{theme: "coffee"})}
         class="flex p-2 cursor-pointer w-1/3"
+        title="Coffee"
       >
-        <.icon name="hero-computer-desktop-micro" class="size-4 opacity-75 hover:opacity-100" />
+        <.icon name="hero-fire-micro" class="size-4 opacity-75 hover:opacity-100" />
       </button>
 
       <button
-        phx-click={JS.dispatch("phx:set-theme", detail: %{theme: "light"})}
+        phx-click={JS.dispatch("phx:set-theme", detail: %{theme: "latte"})}
         class="flex p-2 cursor-pointer w-1/3"
+        title="Latte"
       >
         <.icon name="hero-sun-micro" class="size-4 opacity-75 hover:opacity-100" />
       </button>
@@ -130,6 +132,7 @@ defmodule DemoWeb.Layouts do
       <button
         phx-click={JS.dispatch("phx:set-theme", detail: %{theme: "dark"})}
         class="flex p-2 cursor-pointer w-1/3"
+        title="Dark"
       >
         <.icon name="hero-moon-micro" class="size-4 opacity-75 hover:opacity-100" />
       </button>
