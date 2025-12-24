@@ -25,11 +25,25 @@ import {LiveSocket} from "phoenix_live_view"
 import topbar from "../vendor/topbar"
 // Colocated hooks from Lavash library
 import {hooks as lavashHooks} from "phoenix-colocated/lavash"
-// Colocated hooks from this app (if any)
-import {hooks as demoHooks} from "phoenix-colocated/demo"
+// Colocated JS (non-hook exports) from this app
+import demoJS from "phoenix-colocated/demo"
+// Lavash optimistic hook
+import {LavashOptimistic} from "./lavash_optimistic"
 
-// Merge hooks from app and dependencies
-const colocatedHooks = {...lavashHooks, ...demoHooks}
+// Register optimistic functions from colocated JS
+// The counter's optimistic functions are exported under demoJS.optimistic
+// (name="optimistic" from the ColocatedJS script tag)
+window.Lavash = window.Lavash || {};
+window.Lavash.optimistic = window.Lavash.optimistic || {};
+if (demoJS?.optimistic) {
+  window.Lavash.optimistic["DemoWeb.CounterLive"] = demoJS.optimistic;
+}
+
+// Merge hooks from Lavash library and app-specific hooks
+const colocatedHooks = {
+  ...lavashHooks,
+  LavashOptimistic
+}
 
 // Lavash state - survives reconnects, lost on page refresh
 let lavashState = {

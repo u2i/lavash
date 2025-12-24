@@ -48,12 +48,34 @@ defmodule DemoWeb.CounterLive do
   end
 
   def render(assigns) do
+    # Extract fact value from async result for optimistic state
+    fact_value = case assigns.fact do
+      {:ok, value} -> value
+      _ -> nil
+    end
+
+    # Build optimistic state for the hook
+    optimistic_state = %{
+      count: assigns.count,
+      multiplier: assigns.multiplier,
+      doubled: assigns.doubled,
+      fact: fact_value
+    }
+
+    assigns = assign(assigns, :optimistic_state, optimistic_state)
+
     ~H"""
-    <div class="max-w-md mx-auto mt-10 p-6 bg-white rounded-lg shadow-lg">
+    <div
+      id="counter"
+      class="max-w-md mx-auto mt-10 p-6 bg-white rounded-lg shadow-lg"
+      phx-hook="LavashOptimistic"
+      data-lavash-module="DemoWeb.CounterLive"
+      data-lavash-state={Jason.encode!(@optimistic_state)}
+    >
       <h1 class="text-2xl font-bold text-center mb-6">Lavash Counter Demo</h1>
 
       <div class="text-center mb-6">
-        <div class="text-6xl font-mono font-bold text-indigo-600 mb-2">
+        <div id="count-display" class="text-6xl font-mono font-bold text-indigo-600 mb-2">
           {@count}
         </div>
         <p class="text-gray-500">
@@ -64,12 +86,14 @@ defmodule DemoWeb.CounterLive do
       <div class="flex justify-center gap-4 mb-6">
         <button
           phx-click="decrement"
+          data-optimistic="decrement"
           class="px-6 py-3 bg-red-500 text-white rounded-lg hover:bg-red-600 text-xl font-bold"
         >
           -
         </button>
         <button
           phx-click="increment"
+          data-optimistic="increment"
           class="px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 text-xl font-bold"
         >
           +
@@ -86,20 +110,21 @@ defmodule DemoWeb.CounterLive do
               min="1"
               max="10"
               value={@multiplier}
+              data-optimistic-field="multiplier"
               class="w-32"
             />
           </form>
-          <span class="font-mono w-8 text-right">{@multiplier}</span>
+          <span id="multiplier-display" class="font-mono w-8 text-right">{@multiplier}</span>
         </div>
 
         <div class="flex items-center justify-between">
           <span class="text-gray-600">Count x {@multiplier} =</span>
-          <span class="font-mono font-bold text-lg">{@doubled}</span>
+          <span id="doubled-display" class="font-mono font-bold text-lg">{@doubled}</span>
         </div>
 
         <div class="flex items-center justify-between">
           <span class="text-gray-600">{@count}! =</span>
-          <span class="font-mono font-bold text-lg">
+          <span id="fact-display" class="font-mono font-bold text-lg">
             <%= case @fact do %>
               <% :loading -> %>
                 <span class="text-gray-400 animate-pulse">computing...</span>
@@ -122,6 +147,8 @@ defmodule DemoWeb.CounterLive do
         <button
           phx-click="set_count"
           phx-value-amount="100"
+          data-optimistic="set_count"
+          data-optimistic-value="100"
           class="px-4 py-2 bg-indigo-100 text-indigo-700 rounded hover:bg-indigo-200"
         >
           Set to 100
@@ -140,6 +167,46 @@ defmodule DemoWeb.CounterLive do
           View Products Demo &rarr;
         </a>
       </div>
+
+      <script :type={Phoenix.LiveView.ColocatedJS} name="optimistic">
+        // Client-side functions for optimistic updates
+        // These mirror the server-side action/derive logic
+
+        function factorial(n) {
+          if (n < 0) return null;
+          if (n > 170) return Infinity; // Prevent browser hang
+          let result = 1;
+          for (let i = 2; i <= n; i++) result *= i;
+          return result;
+        }
+
+        export default {
+          // Action: increment - returns state delta
+          increment(state) {
+            return { count: state.count + 1 };
+          },
+
+          // Action: decrement - returns state delta
+          decrement(state) {
+            return { count: state.count - 1 };
+          },
+
+          // Action: set_count - takes a value argument
+          set_count(state, value) {
+            return { count: Number(value) };
+          },
+
+          // Derive: doubled - computes from state
+          doubled(state) {
+            return state.count * state.multiplier;
+          },
+
+          // Derive: fact - factorial of count
+          fact(state) {
+            return factorial(Math.max(state.count, 0));
+          }
+        };
+      </script>
     </div>
     """
   end
