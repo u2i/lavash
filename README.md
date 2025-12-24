@@ -23,6 +23,7 @@ Declarative state management for Phoenix LiveView, built for Ash Framework.
 - **Declarative Actions** - Event handlers with set, update, submit, navigate, flash
 - **PubSub Invalidation** - Fine-grained cross-process cache invalidation
 - **Type System** - Automatic URL serialization with custom type support
+- **Optimistic Updates** - Instant client-side state changes with automatic server reconciliation
 - **Modal Plugin** - Ready-to-use modal behavior for components
 
 ## Installation
@@ -401,6 +402,157 @@ defmodule MyAppWeb.ProductModal do
   end
 end
 ```
+
+## Optimistic Updates
+
+Make UI feel instant by applying state changes client-side before server confirmation. Lavash automatically generates JavaScript functions from your DSL declarations.
+
+### Basic Setup
+
+1. Mark state fields and derives with `optimistic: true`:
+
+```elixir
+defmodule MyAppWeb.CounterLive do
+  use Lavash.LiveView
+
+  state :count, :integer, from: :url, default: 0, optimistic: true
+  state :multiplier, :integer, from: :ephemeral, default: 2, optimistic: true
+
+  derive :doubled do
+    optimistic true
+    argument :count, state(:count)
+    argument :multiplier, state(:multiplier)
+    run fn %{count: c, multiplier: m}, _ -> c * m end
+  end
+
+  actions do
+    action :increment do
+      update :count, &(&1 + 1)
+    end
+
+    action :decrement do
+      update :count, &(&1 - 1)
+    end
+  end
+end
+```
+
+2. Add `data-optimistic` to trigger elements and `data-optimistic-display` to display elements:
+
+```elixir
+def render(assigns) do
+  ~H"""
+  <div>
+    <div data-optimistic-display="count">{@count}</div>
+    <div data-optimistic-display="doubled">{@doubled}</div>
+
+    <button phx-click="increment" data-optimistic="increment">+</button>
+    <button phx-click="decrement" data-optimistic="decrement">-</button>
+  </div>
+  """
+end
+```
+
+3. Register the hook in your `app.js`:
+
+```javascript
+import { LavashOptimistic } from "./lavash_optimistic";
+
+let liveSocket = new LiveSocket("/live", Socket, {
+  hooks: { LavashOptimistic, ...otherHooks }
+});
+```
+
+### How It Works
+
+When a user clicks a button with `data-optimistic="increment"`:
+
+1. **Client-side**: The hook immediately runs the generated JavaScript function to update state
+2. **Server-side**: The normal `phx-click` event is sent to the server
+3. **Reconciliation**: When the server responds, stale values are ignored using per-field tracking
+
+Actions are automatically converted to JavaScript if they only contain `set` and `update` operations:
+
+| Elixir DSL | Generated JavaScript |
+|------------|---------------------|
+| `update :count, &(&1 + 1)` | `count: state.count + 1` |
+| `update :count, &(&1 - 1)` | `count: state.count - 1` |
+| `set :count, 0` | `count: 0` |
+| `set :count, &String.to_integer(&1.params.value)` | `count: Number(value)` |
+
+### Custom Derive Functions
+
+For complex derived values, provide JavaScript implementations via ColocatedJS:
+
+```elixir
+<script :type={Phoenix.LiveView.ColocatedJS} name="optimistic">
+  function factorial(n) {
+    if (n < 0) return null;
+    if (n > 170) return Infinity;
+    let result = 1;
+    for (let i = 2; i <= n; i++) result *= i;
+    return result;
+  }
+
+  export default {
+    // Derive functions receive state and return the computed value
+    doubled(state) {
+      return state.count * state.multiplier;
+    },
+
+    fact(state) {
+      return factorial(Math.max(state.count, 0));
+    }
+  };
+</script>
+```
+
+Register custom functions in `app.js`:
+
+```javascript
+import optimistic from "phoenix-colocated/demo/DemoWeb.CounterLive/optimistic";
+window.Lavash = window.Lavash || {};
+window.Lavash.optimistic = window.Lavash.optimistic || {};
+window.Lavash.optimistic["DemoWeb.CounterLive"] = optimistic;
+```
+
+### Input Fields
+
+For range sliders and other inputs, use `data-optimistic-field`:
+
+```elixir
+<input
+  type="range"
+  name="value"
+  value={@multiplier}
+  phx-change="set_multiplier"
+  data-optimistic-field="multiplier"
+/>
+```
+
+### Actions with Parameters
+
+For actions that take values (like "Set to 100"), use `data-optimistic-value`:
+
+```elixir
+<button
+  phx-click="set_count"
+  phx-value-amount="100"
+  data-optimistic="set_count"
+  data-optimistic-value="100"
+>
+  Set to 100
+</button>
+```
+
+### Limitations
+
+Optimistic updates work best for:
+- Simple numeric operations (increment, decrement, set)
+- Pure computed values (derives)
+- UI state that doesn't require server validation
+
+Actions with side effects (`submit`, `navigate`, `effect`, `invoke`) are not generated as optimistic functions.
 
 ## PubSub Invalidation
 

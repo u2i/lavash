@@ -5,41 +5,62 @@ defmodule Lavash.Optimistic do
   This module provides infrastructure for running actions and derives on the client
   before server confirmation, giving instant UI feedback.
 
+  ## How It Works
+
+  When you mark state fields and derives with `optimistic: true`, Lavash automatically:
+
+  1. **Generates JavaScript** from your DSL action declarations (see `Lavash.Optimistic.JsGenerator`)
+  2. **Injects state** into the page as a data attribute for the hook to read
+  3. **Wraps your render** to include the optimistic hook infrastructure
+
   ## Usage
 
-  1. Add the hook to your LiveView's root element:
+  1. Mark state and derives with `optimistic: true`:
 
-      <div id="counter" phx-hook="Lavash.Optimistic" data-lavash-optimistic={Jason.encode!(optimistic_config())}>
-        ...
-      </div>
+      ```elixir
+      state :count, :integer, from: :url, default: 0, optimistic: true
 
-  2. Define client-side functions using ColocatedJS:
-
-      <script :type={Phoenix.LiveView.ColocatedJS} name="optimistic">
-        export const increment = (state) => ({ ...state, count: state.count + 1 });
-        export const doubled = ({count, multiplier}) => count * multiplier;
-      </script>
-
-  3. Register the functions in app.js:
-
-      import optimistic from "phoenix-colocated/demo/DemoWeb.CounterLive/optimistic";
-      window.Lavash = window.Lavash || {};
-      window.Lavash.optimistic = window.Lavash.optimistic || {};
-      window.Lavash.optimistic["DemoWeb.CounterLive"] = optimistic;
-
-  4. Configure actions with `client:` option:
-
-      action :increment, optimistic: true do
-        update :count, &(&1 + 1)
-        client :increment
+      derive :doubled do
+        optimistic true
+        argument :count, state(:count)
+        run fn %{count: c}, _ -> c * 2 end
       end
+      ```
 
-  The hook will:
-  - Intercept the event before sending to server
-  - Run the client-side function to compute new state
-  - Update the DOM immediately
-  - Push to server for confirmation
-  - Ignore stale responses using version tracking
+  2. Add data attributes to your template:
+
+      ```elixir
+      # Trigger optimistic action on click
+      <button phx-click="increment" data-optimistic="increment">+</button>
+
+      # Display optimistic state
+      <div data-optimistic-display="count">{@count}</div>
+
+      # Optimistic input binding
+      <input data-optimistic-field="multiplier" phx-change="set_multiplier" />
+      ```
+
+  3. Register the hook in your `app.js`:
+
+      ```javascript
+      import { LavashOptimistic } from "./lavash_optimistic";
+      let liveSocket = new LiveSocket("/live", Socket, {
+        hooks: { LavashOptimistic }
+      });
+      ```
+
+  ## Auto-Generated vs Custom Functions
+
+  Simple actions (containing only `set` and `update` operations) are automatically
+  converted to JavaScript. For complex derives, provide JavaScript implementations
+  via ColocatedJS and register them:
+
+      ```javascript
+      import optimistic from "phoenix-colocated/demo/DemoWeb.CounterLive/optimistic";
+      window.Lavash.optimistic["DemoWeb.CounterLive"] = optimistic;
+      ```
+
+  See `Lavash.Optimistic.JsGenerator` for details on what gets auto-generated.
   """
 
   use Phoenix.Component
