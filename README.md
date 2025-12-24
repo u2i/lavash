@@ -437,20 +437,34 @@ defmodule MyAppWeb.CounterLive do
 end
 ```
 
-2. Add `data-optimistic` to trigger elements and `data-optimistic-display` to display elements:
+2. Add `data-optimistic` to trigger elements and use the `<.o>` helper for display elements:
 
 ```elixir
+import Lavash.LiveView.Helpers
+
 def render(assigns) do
   ~H"""
   <div>
-    <div data-optimistic-display="count">{@count}</div>
-    <div data-optimistic-display="doubled">{@doubled}</div>
+    <.o field={:count} value={@count} tag="div" />
+    <.o field={:doubled} value={@doubled} />
 
     <button phx-click="increment" data-optimistic="increment">+</button>
     <button phx-click="decrement" data-optimistic="decrement">-</button>
   </div>
   """
 end
+```
+
+The `<.o>` component eliminates duplication by generating both the display and the `data-optimistic-display` attribute. It supports:
+- `field` - the state/derive field name (required)
+- `value` - the current value from assigns (required)
+- `tag` - HTML tag to use (default: "span")
+- Additional HTML attributes like `class`
+
+Alternatively, you can use the raw data attribute:
+
+```elixir
+<div data-optimistic-display="count">{@count}</div>
 ```
 
 3. Register the hook in your `app.js`:

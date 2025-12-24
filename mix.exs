@@ -1,10 +1,13 @@
 defmodule Lavash.MixProject do
   use Mix.Project
 
+  @version "0.1.0"
+  @source_url "https://github.com/u2i/lavash"
+
   def project do
     [
       app: :lavash,
-      version: "0.1.0",
+      version: @version,
       elixir: "~> 1.18",
       elixirc_paths: elixirc_paths(Mix.env()),
       compilers: [:phoenix_live_view] ++ Mix.compilers(),
@@ -20,7 +23,15 @@ defmodule Lavash.MixProject do
       ],
       dialyzer: [
         plt_add_apps: [:mix, :ex_unit]
-      ]
+      ],
+
+      # Hex
+      name: "Lavash",
+      description: "Declarative state management for Phoenix LiveView, built for Ash Framework",
+      package: package(),
+      docs: docs(),
+      source_url: @source_url,
+      homepage_url: @source_url
     ]
   end
 
@@ -51,7 +62,58 @@ defmodule Lavash.MixProject do
       {:excoveralls, "~> 0.18", only: :test},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
-      {:sourceror, "~> 1.0", only: [:dev, :test], runtime: false}
+      {:sourceror, "~> 1.0", only: [:dev, :test], runtime: false},
+      # Docs
+      {:ex_doc, "~> 0.34", only: :dev, runtime: false}
+    ]
+  end
+
+  defp package do
+    [
+      maintainers: ["Tom Marrs"],
+      licenses: ["MIT"],
+      links: %{
+        "GitHub" => @source_url
+      },
+      files: ~w(lib .formatter.exs mix.exs README.md LICENSE)
+    ]
+  end
+
+  defp docs do
+    [
+      main: "readme",
+      source_ref: "v#{@version}",
+      source_url: @source_url,
+      extras: ["README.md"],
+      groups_for_modules: [
+        "Core": [
+          Lavash.LiveView,
+          Lavash.Component,
+          Lavash.Dsl
+        ],
+        "State Management": [
+          Lavash.Socket,
+          Lavash.State,
+          Lavash.Graph,
+          Lavash.Assigns
+        ],
+        "Optimistic Updates": [
+          Lavash.Optimistic,
+          Lavash.Optimistic.JsGenerator
+        ],
+        "Modal Plugin": [
+          Lavash.Modal,
+          Lavash.Modal.Dsl,
+          Lavash.Modal.Helpers
+        ],
+        "PubSub": [
+          Lavash.PubSub,
+          Lavash.Resource
+        ],
+        "Types": [
+          Lavash.Type
+        ]
+      ]
     ]
   end
 end

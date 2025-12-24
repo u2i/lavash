@@ -27,13 +27,18 @@ defmodule Lavash.Optimistic do
       end
       ```
 
-  2. Add data attributes to your template:
+  2. Add data attributes to your template. Use the `<.o>` helper for display elements:
 
       ```elixir
+      import Lavash.LiveView.Helpers
+
       # Trigger optimistic action on click
       <button phx-click="increment" data-optimistic="increment">+</button>
 
-      # Display optimistic state
+      # Display optimistic state (use <.o> to avoid field/value duplication)
+      <.o field={:count} value={@count} />
+
+      # Or use raw data attribute
       <div data-optimistic-display="count">{@count}</div>
 
       # Optimistic input binding

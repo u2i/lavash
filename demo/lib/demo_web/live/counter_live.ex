@@ -1,5 +1,6 @@
 defmodule DemoWeb.CounterLive do
   use Lavash.LiveView
+  import Lavash.LiveView.Helpers
 
   state :count, :integer, from: :url, default: 0, optimistic: true
   state :multiplier, :integer, from: :ephemeral, default: 2, optimistic: true
@@ -55,9 +56,7 @@ defmodule DemoWeb.CounterLive do
       <h1 class="text-2xl font-bold text-center mb-6">Lavash Counter Demo</h1>
 
       <div class="text-center mb-6">
-        <div data-optimistic-display="count" class="text-6xl font-mono font-bold text-indigo-600 mb-2">
-          {@count}
-        </div>
+        <.o field={:count} value={@count} tag="div" class="text-6xl font-mono font-bold text-indigo-600 mb-2" />
         <p class="text-gray-500">
           Count is stored in URL - try refreshing or using back/forward
         </p>
@@ -94,16 +93,16 @@ defmodule DemoWeb.CounterLive do
               class="w-32"
             />
           </form>
-          <span data-optimistic-display="multiplier" class="font-mono w-8 text-right">{@multiplier}</span>
+          <.o field={:multiplier} value={@multiplier} class="font-mono w-8 text-right" />
         </div>
 
         <div class="flex items-center justify-between">
-          <span class="text-gray-600">Count x <span data-optimistic-display="multiplier">{@multiplier}</span> =</span>
-          <span data-optimistic-display="doubled" class="font-mono font-bold text-lg">{@doubled}</span>
+          <span class="text-gray-600">Count x <.o field={:multiplier} value={@multiplier} /> =</span>
+          <.o field={:doubled} value={@doubled} class="font-mono font-bold text-lg" />
         </div>
 
         <div class="flex items-center justify-between">
-          <span class="text-gray-600"><span data-optimistic-display="count">{@count}</span>! =</span>
+          <span class="text-gray-600"><.o field={:count} value={@count} />! =</span>
           <span data-optimistic-display="fact" class="font-mono font-bold text-lg">
             <%= case @fact do %>
               <% %Phoenix.LiveView.AsyncResult{loading: loading} when loading != nil -> %>
