@@ -3,19 +3,21 @@
  *
  * Provides client-side optimistic updates for Lavash LiveViews.
  *
+ * This hook automatically reads generated optimistic functions from the DSL.
+ * No manual registration required - functions are injected as JSON in the page.
+ *
  * Usage:
- * 1. Add phx-hook="LavashOptimistic" to your root element
- * 2. Add data-lavash-state={Jason.encode!(state)} with current state
- * 3. Add data-optimistic="actionName" to buttons/elements
- * 4. Define client-side functions in ColocatedJS
- * 5. Register the functions via window.Lavash.optimistic[moduleName]
+ * 1. Add `optimistic: true` to state/derive declarations in your LiveView
+ * 2. Add data-optimistic="actionName" to buttons/elements
+ * 3. Add data-optimistic-display="fieldName" to elements that display state
+ * 4. (Optional) Define custom client-side functions via ColocatedJS for complex logic
  */
 
-// Registry for optimistic function modules
+// Registry for optimistic function modules (for custom overrides)
 window.Lavash = window.Lavash || {};
 window.Lavash.optimistic = window.Lavash.optimistic || {};
 
-// Helper to register optimistic functions for a module
+// Helper to register custom optimistic functions for a module
 window.Lavash.registerOptimistic = function(moduleName, fns) {
   window.Lavash.optimistic[moduleName] = fns;
 };
@@ -28,15 +30,56 @@ const LavashOptimistic = {
 
     // Try to find the optimistic functions for this module
     this.moduleName = this.el.dataset.lavashModule || null;
-    this.fns = this.moduleName ? (window.Lavash.optimistic[this.moduleName] || {}) : {};
+
+    // Load generated functions from inline JSON script tag
+    this.loadGeneratedFunctions();
+
+    // Merge with any custom registered functions (custom overrides generated)
+    const customFns = this.moduleName ? (window.Lavash.optimistic[this.moduleName] || {}) : {};
+    this.fns = { ...this.fns, ...customFns };
 
     console.log("[LavashOptimistic] Mounted with state:", this.state);
-    console.log("[LavashOptimistic] Module:", this.moduleName, "Functions:", Object.keys(this.fns));
+    console.log("[LavashOptimistic] Module:", this.moduleName);
+    console.log("[LavashOptimistic] Generated functions:", Object.keys(this.fns).filter(k => !k.startsWith("__")));
+    console.log("[LavashOptimistic] Derives:", this.deriveNames);
+    console.log("[LavashOptimistic] Fields:", this.fieldNames);
 
     // Intercept clicks on elements with data-optimistic
     this.el.addEventListener("click", this.handleClick.bind(this), true);
     // Intercept input/change on elements with data-optimistic-field
     this.el.addEventListener("input", this.handleInput.bind(this), true);
+  },
+
+  loadGeneratedFunctions() {
+    // Look for the generated functions script tag
+    const scriptEl = this.el.querySelector("#lavash-optimistic-fns");
+    if (scriptEl) {
+      try {
+        // Parse the JSON and eval to get functions
+        // The content is a JS object literal, so we need to eval it
+        const fnCode = scriptEl.textContent.trim();
+        if (fnCode) {
+          // Use Function constructor to evaluate the object literal
+          const fnObj = new Function(`return ${fnCode}`)();
+          this.fns = fnObj;
+          this.deriveNames = fnObj.__derives__ || [];
+          this.fieldNames = fnObj.__fields__ || [];
+        } else {
+          this.fns = {};
+          this.deriveNames = [];
+          this.fieldNames = [];
+        }
+      } catch (e) {
+        console.error("[LavashOptimistic] Error parsing generated functions:", e);
+        this.fns = {};
+        this.deriveNames = [];
+        this.fieldNames = [];
+      }
+    } else {
+      this.fns = {};
+      this.deriveNames = [];
+      this.fieldNames = [];
+    }
   },
 
   handleClick(e) {
@@ -101,11 +144,10 @@ const LavashOptimistic = {
   },
 
   recomputeDerives() {
-    // Look for derive functions and recompute them
-    // These are functions that compute a value from state (not actions that return deltas)
-    const deriveNames = ["doubled", "fact"];
+    // Look for derive functions and recompute them using metadata from DSL
+    // this.deriveNames is populated from __derives__ in the generated functions
     for (const [name, fn] of Object.entries(this.fns)) {
-      if (deriveNames.includes(name) || name.endsWith("_derive")) {
+      if (this.deriveNames.includes(name) || name.endsWith("_derive")) {
         try {
           const result = fn(this.state);
           // If result is not an object or doesn't look like a state delta, it's a derive
@@ -120,35 +162,16 @@ const LavashOptimistic = {
   },
 
   updateDOM() {
-    // Update count display
-    const countEl = document.getElementById("count-display");
-    if (countEl && this.state.count !== undefined) {
-      countEl.textContent = this.state.count;
-    }
-
-    // Update count in factorial label
-    const factCountEl = document.getElementById("fact-count-display");
-    if (factCountEl && this.state.count !== undefined) {
-      factCountEl.textContent = this.state.count;
-    }
-
-    // Update multiplier display
-    const multiplierEl = document.getElementById("multiplier-display");
-    if (multiplierEl && this.state.multiplier !== undefined) {
-      multiplierEl.textContent = this.state.multiplier;
-    }
-
-    // Update doubled display
-    const doubledEl = document.getElementById("doubled-display");
-    if (doubledEl && this.state.doubled !== undefined) {
-      doubledEl.textContent = this.state.doubled;
-    }
-
-    // Update fact display
-    const factEl = document.getElementById("fact-display");
-    if (factEl && this.state.fact !== undefined) {
-      factEl.textContent = this.state.fact;
-    }
+    // Update all elements with data-optimistic-display attribute
+    // This replaces hardcoded element IDs with a declarative approach
+    const displayElements = this.el.querySelectorAll("[data-optimistic-display]");
+    displayElements.forEach(el => {
+      const fieldName = el.dataset.optimisticDisplay;
+      const value = this.state[fieldName];
+      if (value !== undefined) {
+        el.textContent = value;
+      }
+    });
 
     console.log("[LavashOptimistic] DOM updated with state:", this.state);
   },

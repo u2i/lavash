@@ -12,6 +12,8 @@ defmodule Lavash.Derived.Field do
     arguments: [],
     # Resource dependencies - for automatic invalidation when these resources are mutated
     reads: [],
+    # Enable client-side optimistic computation
+    optimistic: false,
     # Legacy field - computed from arguments for backwards compatibility
     depends_on: [],
     # Legacy field - wrapped version of run

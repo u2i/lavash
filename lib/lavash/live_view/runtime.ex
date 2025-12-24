@@ -37,29 +37,58 @@ defmodule Lavash.LiveView.Runtime do
       module_name = inspect(module)
       optimistic_json = Jason.encode!(optimistic_state)
 
+      # Generate optimistic functions from DSL
+      generated_js = Lavash.Optimistic.JsGenerator.generate(module)
+
       # Escape for HTML attribute
       escaped_module = Phoenix.HTML.Safe.to_iodata(module_name)
       escaped_json = Phoenix.HTML.Safe.to_iodata(optimistic_json)
 
       # Build wrapper as a Rendered struct so LiveView can diff it properly
       # The static parts are the wrapper div, dynamic parts include the inner content
-      %Phoenix.LiveView.Rendered{
-        static: [
-          ~s(<div id="lavash-optimistic-root" phx-hook="LavashOptimistic" data-lavash-module="),
-          ~s(" data-lavash-state="),
-          ~s(">),
-          ~s(</div>)
-        ],
-        dynamic: fn _ ->
-          [
-            escaped_module,
-            escaped_json,
-            inner_content
-          ]
-        end,
-        fingerprint: :erlang.phash2({module_name, optimistic_json}),
-        root: true
-      }
+      if generated_js do
+        # Include generated JS as inline script
+        # The JS is already safe (we generated it), so just use it directly as iodata
+        # Script content doesn't need HTML escaping since it's interpreted as JS, not HTML
+
+        %Phoenix.LiveView.Rendered{
+          static: [
+            ~s(<div id="lavash-optimistic-root" phx-hook="LavashOptimistic" data-lavash-module="),
+            ~s(" data-lavash-state="),
+            ~s(">),
+            ~s(<script type="application/json" id="lavash-optimistic-fns">),
+            ~s(</script></div>)
+          ],
+          dynamic: fn _ ->
+            [
+              escaped_module,
+              escaped_json,
+              inner_content,
+              generated_js
+            ]
+          end,
+          fingerprint: :erlang.phash2({module_name, optimistic_json, generated_js}),
+          root: true
+        }
+      else
+        %Phoenix.LiveView.Rendered{
+          static: [
+            ~s(<div id="lavash-optimistic-root" phx-hook="LavashOptimistic" data-lavash-module="),
+            ~s(" data-lavash-state="),
+            ~s(">),
+            ~s(</div>)
+          ],
+          dynamic: fn _ ->
+            [
+              escaped_module,
+              escaped_json,
+              inner_content
+            ]
+          end,
+          fingerprint: :erlang.phash2({module_name, optimistic_json}),
+          root: true
+        }
+      end
     end
   end
 

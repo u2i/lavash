@@ -55,7 +55,7 @@ defmodule DemoWeb.CounterLive do
       <h1 class="text-2xl font-bold text-center mb-6">Lavash Counter Demo</h1>
 
       <div class="text-center mb-6">
-        <div id="count-display" class="text-6xl font-mono font-bold text-indigo-600 mb-2">
+        <div data-optimistic-display="count" class="text-6xl font-mono font-bold text-indigo-600 mb-2">
           {@count}
         </div>
         <p class="text-gray-500">
@@ -94,17 +94,17 @@ defmodule DemoWeb.CounterLive do
               class="w-32"
             />
           </form>
-          <span id="multiplier-display" class="font-mono w-8 text-right">{@multiplier}</span>
+          <span data-optimistic-display="multiplier" class="font-mono w-8 text-right">{@multiplier}</span>
         </div>
 
         <div class="flex items-center justify-between">
-          <span class="text-gray-600">Count x {@multiplier} =</span>
-          <span id="doubled-display" class="font-mono font-bold text-lg">{@doubled}</span>
+          <span class="text-gray-600">Count x <span data-optimistic-display="multiplier">{@multiplier}</span> =</span>
+          <span data-optimistic-display="doubled" class="font-mono font-bold text-lg">{@doubled}</span>
         </div>
 
         <div class="flex items-center justify-between">
-          <span class="text-gray-600"><span id="fact-count-display">{@count}</span>! =</span>
-          <span id="fact-display" class="font-mono font-bold text-lg">
+          <span class="text-gray-600"><span data-optimistic-display="count">{@count}</span>! =</span>
+          <span data-optimistic-display="fact" class="font-mono font-bold text-lg">
             <%= case @fact do %>
               <% %Phoenix.LiveView.AsyncResult{loading: loading} when loading != nil -> %>
                 <span class="text-gray-400 animate-pulse">computing...</span>
@@ -149,8 +149,9 @@ defmodule DemoWeb.CounterLive do
       </div>
 
       <script :type={Phoenix.LiveView.ColocatedJS} name="optimistic">
-        // Client-side functions for optimistic updates
-        // These mirror the server-side action/derive logic
+        // Client-side derive functions for optimistic updates
+        // Actions (increment, decrement, set_count) are auto-generated from DSL
+        // Only custom derive logic needs to be defined here
 
         function factorial(n) {
           if (n < 0) return null;
@@ -161,21 +162,6 @@ defmodule DemoWeb.CounterLive do
         }
 
         export default {
-          // Action: increment - returns state delta
-          increment(state) {
-            return { count: state.count + 1 };
-          },
-
-          // Action: decrement - returns state delta
-          decrement(state) {
-            return { count: state.count - 1 };
-          },
-
-          // Action: set_count - takes a value argument
-          set_count(state, value) {
-            return { count: Number(value) };
-          },
-
           // Derive: doubled - computes from state
           doubled(state) {
             return state.count * state.multiplier;
