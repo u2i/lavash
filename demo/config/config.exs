@@ -10,7 +10,8 @@ import Config
 config :demo,
   ecto_repos: [Demo.Repo],
   generators: [timestamp_type: :utc_datetime],
-  ash_domains: [Demo.Catalog]
+  ash_domains: [Demo.Catalog, Demo.Accounts],
+  token_signing_secret: "super_secret_key_for_development_only_change_in_production"
 
 # Configure Lavash PubSub for cross-process resource invalidation
 config :lavash, pubsub: Demo.PubSub

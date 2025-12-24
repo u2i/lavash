@@ -50,6 +50,8 @@ defmodule DemoWeb do
     quote do
       use Phoenix.LiveView
 
+      on_mount {DemoWeb.LiveUserAuth, :live_user_optional}
+
       unquote(html_helpers())
     end
   end
