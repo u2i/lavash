@@ -135,6 +135,17 @@ defmodule Lavash.TypeTest do
     test "returns error if any element fails to parse" do
       assert {:error, _} = Type.parse({:array, :integer}, "1,abc,3")
     end
+
+    test "filters out empty strings from comma-separated input" do
+      assert {:ok, ["a", "b"]} = Type.parse({:array, :string}, "a,,b")
+      assert {:ok, ["a"]} = Type.parse({:array, :string}, "a,")
+      assert {:ok, ["b"]} = Type.parse({:array, :string}, ",b")
+    end
+
+    test "filters out empty strings and nils from list input" do
+      assert {:ok, ["a", "b"]} = Type.parse({:array, :string}, ["a", "", "b"])
+      assert {:ok, ["a", "b"]} = Type.parse({:array, :string}, ["a", nil, "b"])
+    end
   end
 
   describe "dump/2 with :string" do

@@ -130,8 +130,10 @@ defmodule Lavash.Type do
     else
       value
       |> String.split(",")
+      |> Enum.map(&String.trim/1)
+      |> Enum.reject(&(&1 == ""))
       |> Enum.reduce_while({:ok, []}, fn item, {:ok, acc} ->
-        case parse(inner_type, String.trim(item)) do
+        case parse(inner_type, item) do
           {:ok, parsed} -> {:cont, {:ok, [parsed | acc]}}
           {:error, _} = err -> {:halt, err}
         end
@@ -146,6 +148,7 @@ defmodule Lavash.Type do
   # Handle already-parsed list (e.g., from Phoenix params with foo[]=a&foo[]=b)
   def parse({:array, inner_type}, values) when is_list(values) do
     values
+    |> Enum.reject(&(&1 == "" or is_nil(&1)))
     |> Enum.reduce_while({:ok, []}, fn item, {:ok, acc} ->
       case parse(inner_type, item) do
         {:ok, parsed} -> {:cont, {:ok, [parsed | acc]}}

@@ -4,6 +4,8 @@ defmodule Demo.Catalog.Product do
     data_layer: AshSqlite.DataLayer,
     extensions: [Lavash.Resource]
 
+  require Ash.Query
+
   lavash do
     notify_on [:category_id, :in_stock]
   end
@@ -89,6 +91,39 @@ defmodule Demo.Catalog.Product do
                  (is_nil(^arg(:min_price)) or price >= ^arg(:min_price)) and
                  (is_nil(^arg(:max_price)) or price <= ^arg(:max_price)) and
                  (is_nil(^arg(:min_rating)) or rating >= ^arg(:min_rating))
+             )
+    end
+
+    read :storefront do
+      argument :roast, {:array, :atom}
+      argument :category_slugs, {:array, :string}
+      argument :in_stock, :boolean
+
+      prepare fn query, _context ->
+        query = Ash.Query.sort(query, :name)
+
+        # Convert category slugs to IDs for filtering
+        case Ash.Query.get_argument(query, :category_slugs) do
+          nil ->
+            query
+
+          [] ->
+            query
+
+          slugs ->
+            category_ids =
+              Demo.Catalog.Category
+              |> Ash.Query.filter(slug: [in: slugs])
+              |> Ash.read!()
+              |> Enum.map(& &1.id)
+
+            Ash.Query.filter(query, category_id: [in: category_ids])
+        end
+      end
+
+      filter expr(
+               (is_nil(^arg(:roast)) or ^arg(:roast) == [] or roast_level in ^arg(:roast)) and
+                 (is_nil(^arg(:in_stock)) or ^arg(:in_stock) == false or in_stock == true)
              )
     end
   end
