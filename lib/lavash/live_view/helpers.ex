@@ -162,4 +162,109 @@ defmodule Lavash.LiveView.Helpers do
     <.live_component {@__component_assigns__} />
     """
   end
+
+  @doc """
+  Renders a set of chips for multi-select state.
+
+  This component renders toggle buttons for each value in a multi-select field,
+  with optimistic updates wired automatically.
+
+  ## Examples
+
+      # Basic usage with static values from DSL
+      multi_select :roast, ["light", "medium", "dark"], from: :url
+
+      <.chip_set field={:roast} chips={@roast_chips} values={["light", "medium", "dark"]} />
+
+      # With custom labels
+      <.chip_set
+        field={:roast}
+        chips={@roast_chips}
+        values={["light", "medium", "dark"]}
+        labels={%{"medium" => "Med"}}
+      />
+
+      # With dynamic values (e.g., from a read)
+      <.chip_set
+        field={:category}
+        chips={@category_chips}
+        values={Enum.map(@categories, & &1.slug)}
+        labels={Map.new(@categories, &{&1.slug, &1.name})}
+      />
+  """
+  attr :field, :atom, required: true, doc: "The multi-select state field name"
+  attr :chips, :map, required: true, doc: "The chip class map from the derive (e.g., @roast_chips)"
+  attr :values, :list, required: true, doc: "The list of possible values"
+  attr :labels, :map, default: %{}, doc: "Optional map of value => display label"
+  attr :class, :string, default: "flex flex-wrap gap-2", doc: "Container CSS class"
+  attr :rest, :global, doc: "Additional HTML attributes for the container"
+
+  def chip_set(assigns) do
+    assigns = assign(assigns, :action_name, "toggle_#{assigns.field}")
+    assigns = assign(assigns, :derive_name, "#{assigns.field}_chips")
+
+    ~H"""
+    <div class={@class} {@rest}>
+      <button
+        :for={value <- @values}
+        type="button"
+        class={@chips[value]}
+        phx-click={@action_name}
+        phx-value-val={value}
+        data-optimistic={@action_name}
+        data-optimistic-value={value}
+        data-optimistic-class={"#{@derive_name}.#{value}"}
+      >
+        {Map.get(@labels, value, humanize(value))}
+      </button>
+    </div>
+    """
+  end
+
+  @doc """
+  Renders a toggle chip button for boolean state.
+
+  This component renders a single toggle button with optimistic updates wired automatically.
+
+  ## Examples
+
+      # Basic usage
+      toggle :in_stock, from: :url
+
+      <.toggle_chip field={:in_stock} active={@in_stock} chip={@in_stock_chip} />
+
+      # With custom label
+      <.toggle_chip field={:in_stock} active={@in_stock} chip={@in_stock_chip} label="In Stock Only" />
+  """
+  attr :field, :atom, required: true, doc: "The toggle state field name"
+  attr :active, :boolean, required: true, doc: "Whether the toggle is currently active"
+  attr :chip, :string, required: true, doc: "The chip class from the derive (e.g., @in_stock_chip)"
+  attr :label, :string, default: nil, doc: "Optional display label (defaults to humanized field name)"
+  attr :rest, :global, doc: "Additional HTML attributes"
+
+  def toggle_chip(assigns) do
+    assigns = assign(assigns, :action_name, "toggle_#{assigns.field}")
+    assigns = assign(assigns, :derive_name, "#{assigns.field}_chip")
+    assigns = assign_new(assigns, :display_label, fn -> assigns.label || humanize(to_string(assigns.field)) end)
+
+    ~H"""
+    <button
+      type="button"
+      class={@chip}
+      phx-click={@action_name}
+      data-optimistic={@action_name}
+      data-optimistic-class={@derive_name}
+      {@rest}
+    >
+      {@display_label}
+    </button>
+    """
+  end
+
+  defp humanize(value) when is_binary(value) do
+    value
+    |> String.replace("_", " ")
+    |> String.split(" ")
+    |> Enum.map_join(" ", &String.capitalize/1)
+  end
 end

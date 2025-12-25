@@ -9,10 +9,19 @@ defmodule DemoWeb.Storefront.ProductsLive do
 
   alias Demo.Catalog.{Product, Category}
 
-  # URL state for filters - shareable, bookmarkable, optimistic
-  state :roast, {:array, :string}, from: :url, default: [], optimistic: true
+  # Static multi-select: roast levels are known at compile time
+  # This auto-generates: state, toggle action, and chip derive
+  multi_select :roast, ["light", "medium", "medium_dark", "dark"],
+    from: :url,
+    labels: %{"medium_dark" => "Med-Dark"}
+
+  # Dynamic multi-select: category values come from a read
+  # We use explicit state + action + derive since values are runtime-dependent
   state :category, {:array, :string}, from: :url, default: [], optimistic: true
-  state :in_stock, :boolean, from: :url, default: false, optimistic: true
+
+  # Boolean toggle for in_stock filter
+  # This auto-generates: state, toggle action, and chip derive
+  toggle :in_stock, from: :url
 
   # Load categories for filter chips
   read :categories, Category do
@@ -37,18 +46,7 @@ defmodule DemoWeb.Storefront.ProductsLive do
     end
   end
 
-  # Derive chip classes for roast levels
-  derive :roast_chips do
-    optimistic true
-    argument :roast, state(:roast)
-
-    run fn %{roast: selected}, _ ->
-      levels = ["light", "medium", "medium_dark", "dark"]
-      Map.new(levels, fn level -> {level, chip_class(level in selected)} end)
-    end
-  end
-
-  # Derive chip classes for categories
+  # Derive chip classes for categories (dynamic values require explicit derive)
   derive :category_chips do
     optimistic true
     argument :category, state(:category)
@@ -56,16 +54,6 @@ defmodule DemoWeb.Storefront.ProductsLive do
 
     run fn %{category: selected, categories: cats}, _ ->
       Map.new(cats, fn cat -> {cat.slug, chip_class(cat.slug in selected)} end)
-    end
-  end
-
-  # Derive chip class for in_stock toggle
-  derive :in_stock_chip do
-    optimistic true
-    argument :in_stock, state(:in_stock)
-
-    run fn %{in_stock: active}, _ ->
-      chip_class(active)
     end
   end
 
@@ -86,16 +74,9 @@ defmodule DemoWeb.Storefront.ProductsLive do
   defp to_atoms(_), do: []
 
   actions do
-    action :toggle_roast, [:val] do
-      set :roast, &toggle_in_list(&1.state.roast, &1.params.val)
-    end
-
+    # Toggle action for dynamic category values
     action :toggle_category, [:val] do
       set :category, &toggle_in_list(&1.state.category, &1.params.val)
-    end
-
-    action :toggle_in_stock do
-      set :in_stock, &(not &1.state.in_stock)
     end
 
     action :clear_filters do
@@ -149,51 +130,32 @@ defmodule DemoWeb.Storefront.ProductsLive do
       <!-- Filters -->
       <div class="card bg-base-200 p-4">
         <div class="flex flex-wrap gap-6">
-          <!-- Roast Level Filter -->
+          <!-- Roast Level Filter (static values - uses chip_set helper) -->
           <div>
             <h3 class="text-sm font-semibold text-base-content/60 mb-2">Roast Level</h3>
-            <div class="flex flex-wrap gap-2">
-              <button class={@roast_chips["light"]} phx-click="toggle_roast" phx-value-val="light"
-                      data-optimistic="toggle_roast" data-optimistic-value="light" data-optimistic-class="roast_chips.light">
-                Light
-              </button>
-              <button class={@roast_chips["medium"]} phx-click="toggle_roast" phx-value-val="medium"
-                      data-optimistic="toggle_roast" data-optimistic-value="medium" data-optimistic-class="roast_chips.medium">
-                Medium
-              </button>
-              <button class={@roast_chips["medium_dark"]} phx-click="toggle_roast" phx-value-val="medium_dark"
-                      data-optimistic="toggle_roast" data-optimistic-value="medium_dark" data-optimistic-class="roast_chips.medium_dark">
-                Med-Dark
-              </button>
-              <button class={@roast_chips["dark"]} phx-click="toggle_roast" phx-value-val="dark"
-                      data-optimistic="toggle_roast" data-optimistic-value="dark" data-optimistic-class="roast_chips.dark">
-                Dark
-              </button>
-            </div>
+            <.chip_set
+              field={:roast}
+              chips={@roast_chips}
+              values={["light", "medium", "medium_dark", "dark"]}
+              labels={%{"medium_dark" => "Med-Dark"}}
+            />
           </div>
 
-          <!-- Category Filter -->
+          <!-- Category Filter (dynamic values from read) -->
           <div>
             <h3 class="text-sm font-semibold text-base-content/60 mb-2">Category</h3>
-            <div class="flex flex-wrap gap-2">
-              <%= for cat <- @categories do %>
-                <button class={@category_chips[cat.slug]} phx-click="toggle_category" phx-value-val={cat.slug}
-                        data-optimistic="toggle_category" data-optimistic-value={cat.slug} data-optimistic-class={"category_chips.#{cat.slug}"}>
-                  {cat.name}
-                </button>
-              <% end %>
-            </div>
+            <.chip_set
+              field={:category}
+              chips={@category_chips}
+              values={Enum.map(@categories, & &1.slug)}
+              labels={Map.new(@categories, &{&1.slug, &1.name})}
+            />
           </div>
 
-          <!-- In Stock Filter -->
+          <!-- In Stock Filter (boolean toggle) -->
           <div>
             <h3 class="text-sm font-semibold text-base-content/60 mb-2">Availability</h3>
-            <div class="flex flex-wrap gap-2">
-              <button class={@in_stock_chip} phx-click="toggle_in_stock"
-                      data-optimistic="toggle_in_stock" data-optimistic-class="in_stock_chip">
-                In Stock Only
-              </button>
-            </div>
+            <.toggle_chip field={:in_stock} active={@in_stock} chip={@in_stock_chip} label="In Stock Only" />
           </div>
         </div>
 
@@ -268,7 +230,9 @@ defmodule DemoWeb.Storefront.ProductsLive do
       <% end %>
 
       <script :type={Phoenix.LiveView.ColocatedJS} name="optimistic">
-        // Client-side optimistic functions for filter chips
+        // Client-side optimistic functions for dynamic filter chips
+        // Note: toggle_roast, toggle_in_stock, roast_chips, and in_stock_chip
+        // are auto-generated from the DSL. Only custom functions needed here.
 
         const CHIP_BASE = "px-3 py-1.5 text-sm rounded-full border transition-colors cursor-pointer";
         const CHIP_ACTIVE = CHIP_BASE + " bg-primary text-primary-content border-primary";
@@ -290,29 +254,12 @@ defmodule DemoWeb.Storefront.ProductsLive do
         }
 
         export default {
-          // Actions
-          toggle_roast(state, value) {
-            return { roast: toggleInList(state.roast, value) };
-          },
-
+          // Action for dynamic category values
           toggle_category(state, value) {
             return { category: toggleInList(state.category, value) };
           },
 
-          toggle_in_stock(state) {
-            return { in_stock: !state.in_stock };
-          },
-
-          // Derives
-          roast_chips(state) {
-            const levels = ["light", "medium", "medium_dark", "dark"];
-            const result = {};
-            for (const level of levels) {
-              result[level] = chipClass((state.roast || []).includes(level));
-            }
-            return result;
-          },
-
+          // Derive for dynamic category chips (values come from read result)
           category_chips(state) {
             // Use category_slugs from initial render data if available
             const slugs = state._category_slugs || [];
@@ -321,10 +268,6 @@ defmodule DemoWeb.Storefront.ProductsLive do
               result[slug] = chipClass((state.category || []).includes(slug));
             }
             return result;
-          },
-
-          in_stock_chip(state) {
-            return chipClass(state.in_stock);
           }
         };
       </script>

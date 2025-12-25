@@ -41,14 +41,27 @@ defmodule Lavash.Optimistic.JsGenerator do
     actions = get_optimistic_actions(module)
     derives = get_optimistic_derives(module)
     optimistic_fields = get_optimistic_fields(module)
+    multi_selects = get_multi_selects(module)
+    toggles = get_toggles(module)
 
     action_fns = Enum.map(actions, &generate_action_js/1) |> Enum.filter(& &1)
 
-    # Build the JS object
-    fns = action_fns
+    # Generate JS for multi_select actions and derives
+    multi_select_action_fns = Enum.map(multi_selects, &generate_multi_select_action_js/1)
+    multi_select_derive_fns = Enum.map(multi_selects, &generate_multi_select_derive_js/1)
 
-    # Add derives metadata for the hook
-    derive_names = Enum.map(derives, & &1.name) |> Enum.map(&to_string/1)
+    # Generate JS for toggle actions and derives
+    toggle_action_fns = Enum.map(toggles, &generate_toggle_action_js/1)
+    toggle_derive_fns = Enum.map(toggles, &generate_toggle_derive_js/1)
+
+    # Build the JS object
+    fns = action_fns ++ multi_select_action_fns ++ multi_select_derive_fns ++ toggle_action_fns ++ toggle_derive_fns
+
+    # Add derives metadata for the hook (includes explicit and auto-generated)
+    explicit_derive_names = Enum.map(derives, & &1.name) |> Enum.map(&to_string/1)
+    multi_select_derive_names = Enum.map(multi_selects, fn ms -> "#{ms.name}_chips" end)
+    toggle_derive_names = Enum.map(toggles, fn t -> "#{t.name}_chip" end)
+    derive_names = explicit_derive_names ++ multi_select_derive_names ++ toggle_derive_names
 
     # Add optimistic field names
     field_names = Enum.map(optimistic_fields, & &1.name) |> Enum.map(&to_string/1)
@@ -72,8 +85,22 @@ defmodule Lavash.Optimistic.JsGenerator do
 
   defp get_optimistic_actions(module) do
     try do
+      # Get names of multi_select and toggle actions (handled separately)
+      multi_select_names = module.__lavash__(:multi_selects) |> Enum.map(& &1.name)
+      toggle_names = module.__lavash__(:toggles) |> Enum.map(& &1.name)
+
+      # Exclude toggle actions and setter actions for these fields
+      excluded_names =
+        (Enum.map(multi_select_names, &:"toggle_#{&1}") ++
+         Enum.map(multi_select_names, &:"set_#{&1}") ++
+         Enum.map(toggle_names, &:"toggle_#{&1}") ++
+         Enum.map(toggle_names, &:"set_#{&1}"))
+        |> MapSet.new()
+
       module.__lavash__(:actions)
       |> Enum.filter(&action_is_optimistic?/1)
+      # Exclude actions already handled by multi_select/toggle
+      |> Enum.reject(&MapSet.member?(excluded_names, &1.name))
       # Deduplicate by name (keep first occurrence, which is the user-defined one)
       |> Enum.uniq_by(& &1.name)
     rescue
@@ -188,19 +215,21 @@ defmodule Lavash.Optimistic.JsGenerator do
   end
 
   defp analyze_value(value) when is_function(value, 1) do
-    # Try to detect common patterns by inspecting the function
-    # This is a heuristic - we look for &String.to_integer(&1.params.value) or similar
-    info = Function.info(value)
+    # We can only reliably detect simple patterns like & &1.params.value
+    # by testing the function with a mock context
+    try do
+      # Test with a mock context that has params.value
+      test_ctx = %{params: %{value: "__TEST_VALUE__"}, state: %{}}
+      result = value.(test_ctx)
 
-    case info[:type] do
-      :external ->
-        # Check if it's the pattern: &String.to_integer(&1.params.value)
-        # We can't introspect closures directly, but we know this is a common pattern
-        # For now, assume any function that accesses params is :from_params_value
+      # If the result is exactly our test value, it's a direct params accessor
+      if result == "__TEST_VALUE__" do
         :from_params_value
-
-      _ ->
+      else
         :unknown
+      end
+    rescue
+      _ -> :unknown
     end
   end
 
@@ -235,4 +264,113 @@ defmodule Lavash.Optimistic.JsGenerator do
   end
 
   defp analyze_update_function(_), do: :unknown
+
+  # ============================================
+  # Multi-select and Toggle support
+  # ============================================
+
+  defp get_multi_selects(module) do
+    try do
+      module.__lavash__(:multi_selects)
+    rescue
+      _ -> []
+    end
+  end
+
+  defp get_toggles(module) do
+    try do
+      module.__lavash__(:toggles)
+    rescue
+      _ -> []
+    end
+  end
+
+  @default_chip_class [
+    base: "px-3 py-1.5 text-sm rounded-full border transition-colors cursor-pointer",
+    active: "bg-primary text-primary-content border-primary",
+    inactive: "bg-base-100 text-base-content/70 border-base-300 hover:border-primary/50"
+  ]
+
+  # Generate JS for multi_select toggle action
+  defp generate_multi_select_action_js(%Lavash.MultiSelect{} = ms) do
+    action_name = "toggle_#{ms.name}"
+    field = ms.name
+
+    """
+      #{action_name}(state, value) {
+        const list = state.#{field} || [];
+        const idx = list.indexOf(value);
+        if (idx >= 0) {
+          return { #{field}: list.filter(v => v !== value) };
+        } else {
+          return { #{field}: [...list, value] };
+        }
+      }
+    """
+  end
+
+  # Generate JS for multi_select chip derive
+  defp generate_multi_select_derive_js(%Lavash.MultiSelect{} = ms) do
+    derive_name = "#{ms.name}_chips"
+    field = ms.name
+    values = ms.values
+    chip_class = ms.chip_class || @default_chip_class
+
+    base = Keyword.get(chip_class, :base, "")
+    active = Keyword.get(chip_class, :active, "")
+    inactive = Keyword.get(chip_class, :inactive, "")
+
+    active_class = String.trim("#{base} #{active}")
+    inactive_class = String.trim("#{base} #{inactive}")
+
+    values_json = Jason.encode!(values)
+
+    """
+      #{derive_name}(state) {
+        const ACTIVE = #{Jason.encode!(active_class)};
+        const INACTIVE = #{Jason.encode!(inactive_class)};
+        const values = #{values_json};
+        const selected = state.#{field} || [];
+        const result = {};
+        for (const v of values) {
+          result[v] = selected.includes(v) ? ACTIVE : INACTIVE;
+        }
+        return result;
+      }
+    """
+  end
+
+  # Generate JS for toggle action
+  defp generate_toggle_action_js(%Lavash.Toggle{} = toggle) do
+    action_name = "toggle_#{toggle.name}"
+    field = toggle.name
+
+    """
+      #{action_name}(state) {
+        return { #{field}: !state.#{field} };
+      }
+    """
+  end
+
+  # Generate JS for toggle chip derive
+  defp generate_toggle_derive_js(%Lavash.Toggle{} = toggle) do
+    derive_name = "#{toggle.name}_chip"
+    field = toggle.name
+    chip_class = toggle.chip_class || @default_chip_class
+
+    base = Keyword.get(chip_class, :base, "")
+    active = Keyword.get(chip_class, :active, "")
+    inactive = Keyword.get(chip_class, :inactive, "")
+
+    active_class = String.trim("#{base} #{active}")
+    inactive_class = String.trim("#{base} #{inactive}")
+
+    """
+      #{derive_name}(state) {
+        const ACTIVE = #{Jason.encode!(active_class)};
+        const INACTIVE = #{Jason.encode!(inactive_class)};
+        return state.#{field} ? ACTIVE : INACTIVE;
+      }
+    """
+  end
 end

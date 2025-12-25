@@ -64,8 +64,15 @@ defmodule Lavash.LiveView.Compiler do
       end
 
       # Introspection functions - entities from top_level? sections
+      # Note: This returns StateField structs, including synthetic ones from multi_select/toggle
       def __lavash__(:states) do
-        Spark.Dsl.Extension.get_entities(__MODULE__, [:states])
+        explicit_states = Spark.Dsl.Extension.get_entities(__MODULE__, [:states])
+                          |> Enum.filter(&match?(%Lavash.StateField{}, &1))
+
+        multi_select_states = Lavash.LiveView.Compiler.generate_multi_select_states(__MODULE__)
+        toggle_states = Lavash.LiveView.Compiler.generate_toggle_states(__MODULE__)
+
+        explicit_states ++ multi_select_states ++ toggle_states
       end
 
       def __lavash__(:reads) do
@@ -77,14 +84,21 @@ defmodule Lavash.LiveView.Compiler do
       end
 
       def __lavash__(:derived_fields) do
-        Spark.Dsl.Extension.get_entities(__MODULE__, [:derives])
-        |> Enum.map(&Lavash.LiveView.Compiler.normalize_derived/1)
+        explicit_derives = Spark.Dsl.Extension.get_entities(__MODULE__, [:derives])
+                           |> Enum.map(&Lavash.LiveView.Compiler.normalize_derived/1)
+
+        multi_select_derives = Lavash.LiveView.Compiler.generate_multi_select_derives(__MODULE__)
+        toggle_derives = Lavash.LiveView.Compiler.generate_toggle_derives(__MODULE__)
+
+        explicit_derives ++ multi_select_derives ++ toggle_derives
       end
 
       def __lavash__(:actions) do
         declared_actions = Spark.Dsl.Extension.get_entities(__MODULE__, [:actions])
         setter_actions = Lavash.LiveView.Compiler.generate_setter_actions(__MODULE__)
-        declared_actions ++ setter_actions
+        multi_select_actions = Lavash.LiveView.Compiler.generate_multi_select_actions(__MODULE__)
+        toggle_actions = Lavash.LiveView.Compiler.generate_toggle_actions(__MODULE__)
+        declared_actions ++ setter_actions ++ multi_select_actions ++ toggle_actions
       end
 
       # Convenience accessors by storage type
@@ -107,6 +121,17 @@ defmodule Lavash.LiveView.Compiler do
       def __lavash__(:optimistic_derives) do
         Spark.Dsl.Extension.get_entities(__MODULE__, [:derives])
         |> Enum.filter(&(Map.get(&1, :optimistic, false) == true))
+      end
+
+      # Multi-select and Toggle introspection
+      def __lavash__(:multi_selects) do
+        Spark.Dsl.Extension.get_entities(__MODULE__, [:states])
+        |> Enum.filter(&match?(%Lavash.MultiSelect{}, &1))
+      end
+
+      def __lavash__(:toggles) do
+        Spark.Dsl.Extension.get_entities(__MODULE__, [:states])
+        |> Enum.filter(&match?(%Lavash.Toggle{}, &1))
       end
     end
   end
@@ -135,6 +160,184 @@ defmodule Lavash.LiveView.Compiler do
         navigates: [],
         flashes: [],
         invokes: []
+      }
+    end)
+  end
+
+  @doc """
+  Generate synthetic toggle actions for multi_select fields.
+  Each multi_select gets a toggle_<name> action that adds/removes values from the array.
+  """
+  def generate_multi_select_actions(module) do
+    module.__lavash__(:multi_selects)
+    |> Enum.map(fn ms ->
+      field_name = ms.name
+
+      %Lavash.Actions.Action{
+        name: :"toggle_#{ms.name}",
+        params: [:val],
+        when: [],
+        sets: [
+          %Lavash.Actions.Set{
+            field: field_name,
+            value: &toggle_in_list(Map.get(&1.state, field_name) || [], &1.params.val)
+          }
+        ],
+        updates: [],
+        effects: [],
+        submits: [],
+        navigates: [],
+        flashes: [],
+        invokes: []
+      }
+    end)
+  end
+
+  @doc """
+  Generate synthetic toggle actions for toggle fields.
+  Each toggle gets a toggle_<name> action that flips the boolean.
+  """
+  def generate_toggle_actions(module) do
+    module.__lavash__(:toggles)
+    |> Enum.map(fn toggle ->
+      field_name = toggle.name
+
+      %Lavash.Actions.Action{
+        name: :"toggle_#{toggle.name}",
+        params: [],
+        when: [],
+        sets: [],
+        updates: [
+          %Lavash.Actions.Update{
+            field: field_name,
+            fun: &(not &1)
+          }
+        ],
+        effects: [],
+        submits: [],
+        navigates: [],
+        flashes: [],
+        invokes: []
+      }
+    end)
+  end
+
+  defp toggle_in_list(list, value) when value in ["", nil], do: list
+
+  defp toggle_in_list(list, value) do
+    if value in list do
+      List.delete(list, value)
+    else
+      [value | list]
+    end
+  end
+
+  # ============================================
+  # State generation for multi_select and toggle
+  # ============================================
+
+  @doc """
+  Generate synthetic state fields for multi_select declarations.
+  """
+  def generate_multi_select_states(module) do
+    module.__lavash__(:multi_selects)
+    |> Enum.map(fn ms ->
+      %Lavash.StateField{
+        name: ms.name,
+        type: {:array, :string},
+        from: ms.from,
+        default: ms.default || [],
+        optimistic: true
+      }
+    end)
+  end
+
+  @doc """
+  Generate synthetic state fields for toggle declarations.
+  """
+  def generate_toggle_states(module) do
+    module.__lavash__(:toggles)
+    |> Enum.map(fn toggle ->
+      %Lavash.StateField{
+        name: toggle.name,
+        type: :boolean,
+        from: toggle.from,
+        default: toggle.default || false,
+        optimistic: true
+      }
+    end)
+  end
+
+  # ============================================
+  # Derive generation for multi_select and toggle
+  # ============================================
+
+  @default_chip_class [
+    base: "px-3 py-1.5 text-sm rounded-full border transition-colors cursor-pointer",
+    active: "bg-primary text-primary-content border-primary",
+    inactive: "bg-base-100 text-base-content/70 border-base-300 hover:border-primary/50"
+  ]
+
+  @doc """
+  Generate synthetic chip derives for multi_select declarations.
+  Each multi_select gets a <name>_chips derive that computes CSS classes.
+  """
+  def generate_multi_select_derives(module) do
+    module.__lavash__(:multi_selects)
+    |> Enum.map(fn ms ->
+      field_name = ms.name
+      values = ms.values
+      chip_class = ms.chip_class || @default_chip_class
+
+      base = Keyword.get(chip_class, :base, "")
+      active = Keyword.get(chip_class, :active, "")
+      inactive = Keyword.get(chip_class, :inactive, "")
+
+      active_class = String.trim("#{base} #{active}")
+      inactive_class = String.trim("#{base} #{inactive}")
+
+      %Lavash.Derived.Field{
+        name: :"#{ms.name}_chips",
+        async: false,
+        optimistic: true,
+        depends_on: [field_name],
+        compute: fn deps ->
+          selected = Map.get(deps, field_name) || []
+          Map.new(values, fn value ->
+            class = if value in selected, do: active_class, else: inactive_class
+            {value, class}
+          end)
+        end
+      }
+    end)
+  end
+
+  @doc """
+  Generate synthetic chip derives for toggle declarations.
+  Each toggle gets a <name>_chip derive that computes the CSS class.
+  """
+  def generate_toggle_derives(module) do
+    module.__lavash__(:toggles)
+    |> Enum.map(fn toggle ->
+      field_name = toggle.name
+      chip_class = toggle.chip_class || @default_chip_class
+
+      base = Keyword.get(chip_class, :base, "")
+      active = Keyword.get(chip_class, :active, "")
+      inactive = Keyword.get(chip_class, :inactive, "")
+
+      active_class = String.trim("#{base} #{active}")
+      inactive_class = String.trim("#{base} #{inactive}")
+
+      %Lavash.Derived.Field{
+        name: :"#{toggle.name}_chip",
+        async: false,
+        optimistic: true,
+        depends_on: [field_name],
+        compute: fn deps ->
+          active = Map.get(deps, field_name)
+          if active, do: active_class, else: inactive_class
+        end
       }
     end)
   end
