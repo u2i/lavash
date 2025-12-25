@@ -38,11 +38,19 @@ const LavashOptimistic = {
     const customFns = this.moduleName ? (window.Lavash.optimistic[this.moduleName] || {}) : {};
     this.fns = { ...this.fns, ...customFns };
 
+    // Also check for derive names from custom fns
+    if (!this.deriveNames || this.deriveNames.length === 0) {
+      // Infer derives from function names that match known patterns
+      this.deriveNames = Object.keys(this.fns).filter(k =>
+        k.endsWith("_chips") || k.endsWith("_chip") || k === "doubled" || k === "fact"
+      );
+    }
+
     console.log("[LavashOptimistic] Mounted with state:", this.state);
     console.log("[LavashOptimistic] Module:", this.moduleName);
-    console.log("[LavashOptimistic] Generated functions:", Object.keys(this.fns).filter(k => !k.startsWith("__")));
+    console.log("[LavashOptimistic] Available functions:", Object.keys(this.fns));
     console.log("[LavashOptimistic] Derives:", this.deriveNames);
-    console.log("[LavashOptimistic] Fields:", this.fieldNames);
+    console.log("[LavashOptimistic] window.Lavash.optimistic:", window.Lavash?.optimistic);
 
     // Intercept clicks on elements with data-optimistic
     this.el.addEventListener("click", this.handleClick.bind(this), true);
@@ -150,10 +158,9 @@ const LavashOptimistic = {
       if (this.deriveNames.includes(name) || name.endsWith("_derive")) {
         try {
           const result = fn(this.state);
-          // If result is not an object or doesn't look like a state delta, it's a derive
-          if (typeof result !== "object" || result === null) {
-            this.state[name] = result;
-          }
+          // Store the derive result directly - derives always produce a value
+          this.state[name] = result;
+          console.log(`[LavashOptimistic] Derive ${name} =`, result);
         } catch (err) {
           console.error(`[LavashOptimistic] Error computing derive ${name}:`, err);
         }
@@ -162,14 +169,32 @@ const LavashOptimistic = {
   },
 
   updateDOM() {
-    // Update all elements with data-optimistic-display attribute
-    // This replaces hardcoded element IDs with a declarative approach
+    // Update all elements with data-optimistic-display attribute (text content)
     const displayElements = this.el.querySelectorAll("[data-optimistic-display]");
     displayElements.forEach(el => {
       const fieldName = el.dataset.optimisticDisplay;
       const value = this.state[fieldName];
       if (value !== undefined) {
         el.textContent = value;
+      }
+    });
+
+    // Update all elements with data-optimistic-class attribute (class from map)
+    // Format: data-optimistic-class="roast_chips.light" means state.roast_chips["light"]
+    const classElements = this.el.querySelectorAll("[data-optimistic-class]");
+    console.log(`[LavashOptimistic] Found ${classElements.length} class elements to update`);
+    classElements.forEach(el => {
+      const path = el.dataset.optimisticClass;
+      const [field, key] = path.split(".");
+      const classMap = this.state[field];
+      console.log(`[LavashOptimistic] Class update: ${path} -> field=${field}, key=${key}, classMap=`, classMap);
+      if (classMap && key && classMap[key]) {
+        console.log(`[LavashOptimistic] Setting class on element to:`, classMap[key]);
+        el.className = classMap[key];
+      } else if (classMap && !key) {
+        // Direct field reference (e.g., "in_stock_chip")
+        console.log(`[LavashOptimistic] Setting direct class to:`, classMap);
+        el.className = classMap;
       }
     });
 

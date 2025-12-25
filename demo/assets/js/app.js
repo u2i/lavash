@@ -25,19 +25,17 @@ import {LiveSocket} from "phoenix_live_view"
 import topbar from "../vendor/topbar"
 // Colocated hooks from Lavash library
 import {hooks as lavashHooks} from "phoenix-colocated/lavash"
-// Colocated JS (non-hook exports) from this app
-import demoJS from "phoenix-colocated/demo"
+// Colocated JS (non-hook exports) from this app - import directly by module
+import counterOptimistic from "phoenix-colocated/demo/DemoWeb.CounterLive/54_tigxgsumzfejan3k2k4c4n3r4m.js"
+import storefrontOptimistic from "phoenix-colocated/demo/DemoWeb.Storefront.ProductsLive/142_tigxgsumzfejan3k2k4c4n3r4m.js"
 // Lavash optimistic hook
 import {LavashOptimistic} from "./lavash_optimistic"
 
 // Register optimistic functions from colocated JS
-// The counter's optimistic functions are exported under demoJS.optimistic
-// (name="optimistic" from the ColocatedJS script tag)
 window.Lavash = window.Lavash || {};
 window.Lavash.optimistic = window.Lavash.optimistic || {};
-if (demoJS?.optimistic) {
-  window.Lavash.optimistic["DemoWeb.CounterLive"] = demoJS.optimistic;
-}
+window.Lavash.optimistic["DemoWeb.CounterLive"] = counterOptimistic;
+window.Lavash.optimistic["DemoWeb.Storefront.ProductsLive"] = storefrontOptimistic;
 
 // Merge hooks from Lavash library and app-specific hooks
 const colocatedHooks = {

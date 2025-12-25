@@ -1,5 +1,6 @@
 defmodule DemoWeb.Storefront.ProductsLive do
   use Lavash.LiveView
+  import Lavash.LiveView.Helpers
 
   use Phoenix.VerifiedRoutes,
     endpoint: DemoWeb.Endpoint,
@@ -8,10 +9,10 @@ defmodule DemoWeb.Storefront.ProductsLive do
 
   alias Demo.Catalog.{Product, Category}
 
-  # URL state for filters - shareable, bookmarkable
-  state :roast, {:array, :string}, from: :url, default: []
-  state :category, {:array, :string}, from: :url, default: []
-  state :in_stock, :boolean, from: :url, default: false
+  # URL state for filters - shareable, bookmarkable, optimistic
+  state :roast, {:array, :string}, from: :url, default: [], optimistic: true
+  state :category, {:array, :string}, from: :url, default: [], optimistic: true
+  state :in_stock, :boolean, from: :url, default: false, optimistic: true
 
   # Load categories for filter chips
   read :categories, Category do
@@ -33,6 +34,48 @@ defmodule DemoWeb.Storefront.ProductsLive do
 
     run fn args, _ ->
       args.roast != [] or args.category != [] or args.in_stock
+    end
+  end
+
+  # Derive chip classes for roast levels
+  derive :roast_chips do
+    optimistic true
+    argument :roast, state(:roast)
+
+    run fn %{roast: selected}, _ ->
+      levels = ["light", "medium", "medium_dark", "dark"]
+      Map.new(levels, fn level -> {level, chip_class(level in selected)} end)
+    end
+  end
+
+  # Derive chip classes for categories
+  derive :category_chips do
+    optimistic true
+    argument :category, state(:category)
+    argument :categories, result(:categories)
+
+    run fn %{category: selected, categories: cats}, _ ->
+      Map.new(cats, fn cat -> {cat.slug, chip_class(cat.slug in selected)} end)
+    end
+  end
+
+  # Derive chip class for in_stock toggle
+  derive :in_stock_chip do
+    optimistic true
+    argument :in_stock, state(:in_stock)
+
+    run fn %{in_stock: active}, _ ->
+      chip_class(active)
+    end
+  end
+
+  defp chip_class(active) do
+    base = "px-3 py-1.5 text-sm rounded-full border transition-colors cursor-pointer"
+
+    if active do
+      "#{base} bg-primary text-primary-content border-primary"
+    else
+      "#{base} bg-base-100 text-base-content/70 border-base-300 hover:border-primary/50"
     end
   end
 
@@ -95,16 +138,6 @@ defmodule DemoWeb.Storefront.ProductsLive do
     end
   end
 
-  defp chip_class(active) do
-    base = "px-3 py-1.5 text-sm rounded-full border transition-colors cursor-pointer"
-
-    if active do
-      "#{base} bg-primary text-primary-content border-primary"
-    else
-      "#{base} bg-base-100 text-base-content/70 border-base-300 hover:border-primary/50"
-    end
-  end
-
   def render(assigns) do
     ~H"""
     <div class="space-y-6">
@@ -120,16 +153,20 @@ defmodule DemoWeb.Storefront.ProductsLive do
           <div>
             <h3 class="text-sm font-semibold text-base-content/60 mb-2">Roast Level</h3>
             <div class="flex flex-wrap gap-2">
-              <button class={chip_class("light" in @roast)} phx-click="toggle_roast" phx-value-val="light">
+              <button class={@roast_chips["light"]} phx-click="toggle_roast" phx-value-val="light"
+                      data-optimistic="toggle_roast" data-optimistic-value="light" data-optimistic-class="roast_chips.light">
                 Light
               </button>
-              <button class={chip_class("medium" in @roast)} phx-click="toggle_roast" phx-value-val="medium">
+              <button class={@roast_chips["medium"]} phx-click="toggle_roast" phx-value-val="medium"
+                      data-optimistic="toggle_roast" data-optimistic-value="medium" data-optimistic-class="roast_chips.medium">
                 Medium
               </button>
-              <button class={chip_class("medium_dark" in @roast)} phx-click="toggle_roast" phx-value-val="medium_dark">
+              <button class={@roast_chips["medium_dark"]} phx-click="toggle_roast" phx-value-val="medium_dark"
+                      data-optimistic="toggle_roast" data-optimistic-value="medium_dark" data-optimistic-class="roast_chips.medium_dark">
                 Med-Dark
               </button>
-              <button class={chip_class("dark" in @roast)} phx-click="toggle_roast" phx-value-val="dark">
+              <button class={@roast_chips["dark"]} phx-click="toggle_roast" phx-value-val="dark"
+                      data-optimistic="toggle_roast" data-optimistic-value="dark" data-optimistic-class="roast_chips.dark">
                 Dark
               </button>
             </div>
@@ -140,7 +177,8 @@ defmodule DemoWeb.Storefront.ProductsLive do
             <h3 class="text-sm font-semibold text-base-content/60 mb-2">Category</h3>
             <div class="flex flex-wrap gap-2">
               <%= for cat <- @categories do %>
-                <button class={chip_class(cat.slug in @category)} phx-click="toggle_category" phx-value-val={cat.slug}>
+                <button class={@category_chips[cat.slug]} phx-click="toggle_category" phx-value-val={cat.slug}
+                        data-optimistic="toggle_category" data-optimistic-value={cat.slug} data-optimistic-class={"category_chips.#{cat.slug}"}>
                   {cat.name}
                 </button>
               <% end %>
@@ -151,7 +189,8 @@ defmodule DemoWeb.Storefront.ProductsLive do
           <div>
             <h3 class="text-sm font-semibold text-base-content/60 mb-2">Availability</h3>
             <div class="flex flex-wrap gap-2">
-              <button class={chip_class(@in_stock)} phx-click="toggle_in_stock">
+              <button class={@in_stock_chip} phx-click="toggle_in_stock"
+                      data-optimistic="toggle_in_stock" data-optimistic-class="in_stock_chip">
                 In Stock Only
               </button>
             </div>
@@ -227,6 +266,68 @@ defmodule DemoWeb.Storefront.ProductsLive do
           </button>
         </div>
       <% end %>
+
+      <script :type={Phoenix.LiveView.ColocatedJS} name="optimistic">
+        // Client-side optimistic functions for filter chips
+
+        const CHIP_BASE = "px-3 py-1.5 text-sm rounded-full border transition-colors cursor-pointer";
+        const CHIP_ACTIVE = CHIP_BASE + " bg-primary text-primary-content border-primary";
+        const CHIP_INACTIVE = CHIP_BASE + " bg-base-100 text-base-content/70 border-base-300 hover:border-primary/50";
+
+        function chipClass(active) {
+          return active ? CHIP_ACTIVE : CHIP_INACTIVE;
+        }
+
+        function toggleInList(list, value) {
+          if (!value) return list;
+          const arr = list || [];
+          const idx = arr.indexOf(value);
+          if (idx >= 0) {
+            return arr.filter(v => v !== value);
+          } else {
+            return [...arr, value];
+          }
+        }
+
+        export default {
+          // Actions
+          toggle_roast(state, value) {
+            return { roast: toggleInList(state.roast, value) };
+          },
+
+          toggle_category(state, value) {
+            return { category: toggleInList(state.category, value) };
+          },
+
+          toggle_in_stock(state) {
+            return { in_stock: !state.in_stock };
+          },
+
+          // Derives
+          roast_chips(state) {
+            const levels = ["light", "medium", "medium_dark", "dark"];
+            const result = {};
+            for (const level of levels) {
+              result[level] = chipClass((state.roast || []).includes(level));
+            }
+            return result;
+          },
+
+          category_chips(state) {
+            // Use category_slugs from initial render data if available
+            const slugs = state._category_slugs || [];
+            const result = {};
+            for (const slug of slugs) {
+              result[slug] = chipClass((state.category || []).includes(slug));
+            }
+            return result;
+          },
+
+          in_stock_chip(state) {
+            return chipClass(state.in_stock);
+          }
+        };
+      </script>
     </div>
     """
   end
