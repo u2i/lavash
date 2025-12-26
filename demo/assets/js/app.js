@@ -68,7 +68,46 @@ const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: () => ({ _csrf_token: csrfToken, _lavash_state: lavashState }),
-  hooks: colocatedHooks
+  hooks: colocatedHooks,
+  dom: {
+    // Prevent stale patches from overwriting optimistic updates
+    onBeforeElUpdated(from, to) {
+      // Check if this element is inside a Lavash optimistic wrapper
+      const wrapper = from.closest("[data-lavash-version]");
+      if (!wrapper) return; // Not in optimistic context
+
+      // Get the hook instance from the wrapper element
+      const hookInstance = wrapper.__lavash_hook__;
+      if (!hookInstance) return; // Hook not initialized yet
+
+      // Get incoming server version from the patch
+      const serverVersion = parseInt(to.dataset?.lavashVersion || wrapper.dataset.lavashVersion || "0", 10);
+      const clientVersion = hookInstance.clientVersion || 0;
+
+      // If server version is less than client version, this is a stale patch
+      if (serverVersion < clientVersion) {
+        console.log(`[LavashOptimistic] Rejecting stale patch: server v${serverVersion} < client v${clientVersion}`);
+
+        // Preserve attributes on elements with data-optimistic-class
+        if (from.hasAttribute("data-optimistic-class")) {
+          to.className = from.className;
+        }
+
+        // Also preserve class on children with data-optimistic-class
+        const optimisticEls = from.querySelectorAll("[data-optimistic-class]");
+        optimisticEls.forEach((fromEl, i) => {
+          const toEl = to.querySelectorAll("[data-optimistic-class]")[i];
+          if (toEl) {
+            toEl.className = fromEl.className;
+          }
+        });
+      } else if (serverVersion >= clientVersion) {
+        // Server caught up - update hook's server version
+        hookInstance.serverVersion = serverVersion;
+        console.log(`[LavashOptimistic] Server caught up: v${serverVersion}`);
+      }
+    }
+  }
 })
 
 // Show progress bar on live navigation and form submits

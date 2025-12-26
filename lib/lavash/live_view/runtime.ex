@@ -37,12 +37,26 @@ defmodule Lavash.LiveView.Runtime do
       module_name = inspect(module)
       optimistic_json = Jason.encode!(optimistic_state)
 
+      # Get the optimistic version from socket (passed via assigns.__changed__ context)
+      # We need to get it from the socket which is available in assigns
+      version =
+        case assigns do
+          %{__changed__: _} = a ->
+            # In a LiveView, we can access socket via assigns
+            socket = Map.get(a, :socket)
+            if socket, do: LSocket.optimistic_version(socket), else: 0
+
+          _ ->
+            0
+        end
+
       # Generate optimistic functions from DSL
       generated_js = Lavash.Optimistic.JsGenerator.generate(module)
 
       # Escape for HTML attribute
       escaped_module = Phoenix.HTML.Safe.to_iodata(module_name)
       escaped_json = Phoenix.HTML.Safe.to_iodata(optimistic_json)
+      version_str = to_string(version)
 
       # Build wrapper as a Rendered struct so LiveView can diff it properly
       # The static parts are the wrapper div, dynamic parts include the inner content
@@ -55,6 +69,7 @@ defmodule Lavash.LiveView.Runtime do
           static: [
             ~s(<div id="lavash-optimistic-root" phx-hook="LavashOptimistic" data-lavash-module="),
             ~s(" data-lavash-state="),
+            ~s(" data-lavash-version="),
             ~s(">),
             ~s(<script type="application/json" id="lavash-optimistic-fns">),
             ~s(</script></div>)
@@ -63,11 +78,12 @@ defmodule Lavash.LiveView.Runtime do
             [
               escaped_module,
               escaped_json,
+              version_str,
               inner_content,
               generated_js
             ]
           end,
-          fingerprint: :erlang.phash2({module_name, optimistic_json, generated_js}),
+          fingerprint: :erlang.phash2({module_name, optimistic_json, version, generated_js}),
           root: true
         }
       else
@@ -75,6 +91,7 @@ defmodule Lavash.LiveView.Runtime do
           static: [
             ~s(<div id="lavash-optimistic-root" phx-hook="LavashOptimistic" data-lavash-module="),
             ~s(" data-lavash-state="),
+            ~s(" data-lavash-version="),
             ~s(">),
             ~s(</div>)
           ],
@@ -82,10 +99,11 @@ defmodule Lavash.LiveView.Runtime do
             [
               escaped_module,
               escaped_json,
+              version_str,
               inner_content
             ]
           end,
-          fingerprint: :erlang.phash2({module_name, optimistic_json}),
+          fingerprint: :erlang.phash2({module_name, optimistic_json, version}),
           root: true
         }
       end
@@ -269,6 +287,9 @@ defmodule Lavash.LiveView.Runtime do
         end
 
       action ->
+        # Bump optimistic version - client will use this to detect stale patches
+        socket = LSocket.bump_optimistic_version(socket)
+
         case execute_action(socket, module, action, params) do
           {:ok, socket} ->
             socket =

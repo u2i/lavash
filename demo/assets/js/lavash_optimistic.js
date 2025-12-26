@@ -28,6 +28,11 @@ const LavashOptimistic = {
     // Track which fields have pending optimistic updates (field -> expected value)
     this.pending = {};
 
+    // Version tracking for stale patch rejection
+    // Client version starts at server version and bumps on each optimistic action
+    this.serverVersion = parseInt(this.el.dataset.lavashVersion || "0", 10);
+    this.clientVersion = this.serverVersion;
+
     // Try to find the optimistic functions for this module
     this.moduleName = this.el.dataset.lavashModule || null;
 
@@ -46,11 +51,14 @@ const LavashOptimistic = {
       );
     }
 
+    // Expose hook instance on element for onBeforeElUpdated access
+    this.el.__lavash_hook__ = this;
+
     console.log("[LavashOptimistic] Mounted with state:", this.state);
     console.log("[LavashOptimistic] Module:", this.moduleName);
+    console.log("[LavashOptimistic] Version:", this.clientVersion);
     console.log("[LavashOptimistic] Available functions:", Object.keys(this.fns));
     console.log("[LavashOptimistic] Derives:", this.deriveNames);
-    console.log("[LavashOptimistic] window.Lavash.optimistic:", window.Lavash?.optimistic);
 
     // Intercept clicks on elements with data-optimistic
     this.el.addEventListener("click", this.handleClick.bind(this), true);
@@ -72,21 +80,81 @@ const LavashOptimistic = {
           this.fns = fnObj;
           this.deriveNames = fnObj.__derives__ || [];
           this.fieldNames = fnObj.__fields__ || [];
+          this.graph = fnObj.__graph__ || {};
         } else {
           this.fns = {};
           this.deriveNames = [];
           this.fieldNames = [];
+          this.graph = {};
         }
       } catch (e) {
         console.error("[LavashOptimistic] Error parsing generated functions:", e);
         this.fns = {};
         this.deriveNames = [];
         this.fieldNames = [];
+        this.graph = {};
       }
     } else {
       this.fns = {};
       this.deriveNames = [];
       this.fieldNames = [];
+      this.graph = {};
+    }
+
+    // Execute any component-generated optimistic scripts (LiveView doesn't auto-execute inline scripts)
+    this.executeComponentScripts();
+  },
+
+  executeComponentScripts() {
+    // Find all script tags with id ending in "-optimistic" (component-generated)
+    const scripts = this.el.querySelectorAll('script[id$="-optimistic"]');
+    scripts.forEach(script => {
+      // Skip the main functions script
+      if (script.id === "lavash-optimistic-fns") return;
+
+      try {
+        // Execute the script content (it's an IIFE that registers functions)
+        new Function(script.textContent)();
+        console.log(`[LavashOptimistic] Executed component script: ${script.id}`);
+      } catch (e) {
+        console.error(`[LavashOptimistic] Error executing component script ${script.id}:`, e);
+      }
+    });
+
+    // After executing component scripts, merge any registered functions into our local state
+    this.mergeRegisteredFunctions();
+  },
+
+  mergeRegisteredFunctions() {
+    if (!this.moduleName) return;
+
+    const moduleFns = window.Lavash.optimistic[this.moduleName];
+    if (!moduleFns) return;
+
+    // Merge functions
+    for (const [name, fn] of Object.entries(moduleFns)) {
+      if (typeof fn === 'function' && !this.fns[name]) {
+        this.fns[name] = fn;
+        console.log(`[LavashOptimistic] Merged function: ${name}`);
+      }
+    }
+
+    // Merge derives
+    if (moduleFns.__derives__) {
+      for (const d of moduleFns.__derives__) {
+        if (!this.deriveNames.includes(d)) {
+          this.deriveNames.push(d);
+        }
+        // Add to graph if not present (component derives depend on their state field)
+        if (!this.graph[d]) {
+          // Infer dependency from derive name pattern (e.g., "roast_chips" depends on "roast")
+          const match = d.match(/^(.+)_chips?$/);
+          if (match) {
+            this.graph[d] = { deps: [match[1]] };
+            console.log(`[LavashOptimistic] Added to graph: ${d} -> deps: [${match[1]}]`);
+          }
+        }
+      }
     }
   },
 
@@ -150,7 +218,9 @@ const LavashOptimistic = {
       return;
     }
 
-    console.log(`[LavashOptimistic] Running optimistic action: ${actionName}`, value ? `with value: ${value}` : "");
+    // Bump client version - this will be compared against server version to detect stale patches
+    this.clientVersion++;
+    console.log(`[LavashOptimistic] Running optimistic action: ${actionName} (v${this.clientVersion})`, value ? `with value: ${value}` : "");
 
     // Run the client-side function to get state delta
     try {
@@ -158,13 +228,15 @@ const LavashOptimistic = {
       console.log(`[LavashOptimistic] State delta:`, delta);
 
       // Apply delta to state and track pending fields
-      for (const [key, value] of Object.entries(delta)) {
-        this.state[key] = value;
-        this.pending[key] = value;
+      const changedFields = [];
+      for (const [key, val] of Object.entries(delta)) {
+        this.state[key] = val;
+        this.pending[key] = val;
+        changedFields.push(key);
       }
 
-      // Recompute derives
-      this.recomputeDerives();
+      // Recompute derives affected by the changed fields
+      this.recomputeDerives(changedFields);
 
       // Update the DOM immediately
       this.updateDOM();
@@ -174,14 +246,22 @@ const LavashOptimistic = {
     }
   },
 
-  recomputeDerives() {
-    // Look for derive functions and recompute them using metadata from DSL
-    // this.deriveNames is populated from __derives__ in the generated functions
+  recomputeDerives(changedFields = null) {
+    // Use graph-based recomputation if available
+    if (Object.keys(this.graph).length > 0) {
+      this.recomputeGraph(changedFields);
+    } else {
+      // Fallback to simple iteration for backwards compatibility
+      this.recomputeDerivesSimple();
+    }
+  },
+
+  // Simple derive recomputation (legacy mode)
+  recomputeDerivesSimple() {
     for (const [name, fn] of Object.entries(this.fns)) {
       if (this.deriveNames.includes(name) || name.endsWith("_derive")) {
         try {
           const result = fn(this.state);
-          // Store the derive result directly - derives always produce a value
           this.state[name] = result;
           console.log(`[LavashOptimistic] Derive ${name} =`, result);
         } catch (err) {
@@ -189,6 +269,95 @@ const LavashOptimistic = {
         }
       }
     }
+  },
+
+  // Graph-based derive recomputation
+  recomputeGraph(changedFields = null) {
+    // Find all derives affected by changed fields
+    const affected = this.findAffectedDerives(changedFields);
+
+    // Topologically sort affected derives
+    const sorted = this.topologicalSort(affected);
+
+    console.log(`[LavashOptimistic] Recomputing graph: changed=${JSON.stringify(changedFields)}, affected=${JSON.stringify(affected)}, sorted=${JSON.stringify(sorted)}`);
+
+    // Recompute in dependency order
+    for (const name of sorted) {
+      const fn = this.fns[name];
+      if (fn) {
+        try {
+          const result = fn(this.state);
+          this.state[name] = result;
+          console.log(`[LavashOptimistic] Derive ${name} =`, result);
+        } catch (err) {
+          console.error(`[LavashOptimistic] Error computing derive ${name}:`, err);
+        }
+      }
+    }
+  },
+
+  // Find all derives affected by changed fields (transitive)
+  findAffectedDerives(changedFields) {
+    // If no specific fields, recompute all
+    if (!changedFields) {
+      return Object.keys(this.graph);
+    }
+
+    const affected = new Set();
+    const queue = [...changedFields];
+
+    while (queue.length > 0) {
+      const field = queue.shift();
+
+      // Find derives that depend on this field
+      for (const [deriveName, meta] of Object.entries(this.graph)) {
+        if (meta.deps && meta.deps.includes(field) && !affected.has(deriveName)) {
+          affected.add(deriveName);
+          // This derive's output might affect other derives
+          queue.push(deriveName);
+        }
+      }
+    }
+
+    return Array.from(affected);
+  },
+
+  // Topological sort of derive names based on dependencies
+  topologicalSort(deriveNames) {
+    const result = [];
+    const visited = new Set();
+    const visiting = new Set(); // For cycle detection
+
+    const visit = (name) => {
+      if (visited.has(name)) return;
+      if (visiting.has(name)) {
+        console.warn(`[LavashOptimistic] Cycle detected at ${name}`);
+        return;
+      }
+
+      visiting.add(name);
+
+      // Visit dependencies first
+      const meta = this.graph[name];
+      if (meta && meta.deps) {
+        for (const dep of meta.deps) {
+          // Only visit if dep is also a derive we're computing
+          if (deriveNames.includes(dep)) {
+            visit(dep);
+          }
+        }
+      }
+
+      visiting.delete(name);
+      visited.add(name);
+      result.push(name);
+    };
+
+    for (const name of deriveNames) {
+      visit(name);
+    }
+
+    return result;
   },
 
   updateDOM() {
@@ -226,35 +395,37 @@ const LavashOptimistic = {
 
   updated() {
     const serverState = JSON.parse(this.el.dataset.lavashState || "{}");
+    const newServerVersion = parseInt(this.el.dataset.lavashVersion || "0", 10);
 
-    console.log("[LavashOptimistic] Server state:", serverState, "Pending:", this.pending);
+    console.log(`[LavashOptimistic] updated() - server v${newServerVersion}, client v${this.clientVersion}`);
 
-    // For each field, decide whether to accept server value or keep optimistic value
-    for (const [key, serverValue] of Object.entries(serverState)) {
-      if (key in this.pending) {
-        // We have a pending optimistic value for this field
-        if (serverValue === this.pending[key]) {
-          // Server caught up to our expected value - clear pending
-          delete this.pending[key];
+    // Check if server has caught up to our version
+    const serverCaughtUp = newServerVersion >= this.clientVersion;
+
+    if (serverCaughtUp) {
+      // Server caught up - accept all server state, clear pending
+      this.serverVersion = newServerVersion;
+      this.state = { ...serverState };
+      this.pending = {};
+      console.log(`[LavashOptimistic] Server caught up (v${newServerVersion}), accepting all state`);
+    } else {
+      // Server is stale - keep our optimistic state, but update non-pending fields
+      console.log(`[LavashOptimistic] Server stale (v${newServerVersion} < v${this.clientVersion}), keeping optimistic state`);
+
+      for (const [key, serverValue] of Object.entries(serverState)) {
+        if (!(key in this.pending)) {
+          // No pending update for this field - accept server value
           this.state[key] = serverValue;
-          console.log(`[LavashOptimistic] ${key}: server caught up (${serverValue})`);
-        } else {
-          // Server is stale for this field - keep our optimistic value
-          console.log(`[LavashOptimistic] ${key}: server stale (got ${serverValue}, expected ${this.pending[key]})`);
         }
-      } else {
-        // No pending update for this field - accept server value
-        this.state[key] = serverValue;
       }
     }
 
     // Recompute derives based on current state
     this.recomputeDerives();
 
-    // Update DOM if we still have pending values
-    if (Object.keys(this.pending).length > 0) {
-      this.updateDOM();
-    }
+    // Always update DOM after server update to reapply optimistic-controlled classes
+    // (server doesn't know about client-side derives like roast_chips)
+    this.updateDOM();
   },
 
   destroyed() {

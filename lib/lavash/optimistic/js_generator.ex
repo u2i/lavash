@@ -66,21 +66,68 @@ defmodule Lavash.Optimistic.JsGenerator do
     # Add optimistic field names
     field_names = Enum.map(optimistic_fields, & &1.name) |> Enum.map(&to_string/1)
 
+    # Build graph metadata for each derive
+    # Format: { name: { deps: [...], fn: function }, ... }
+    graph_entries = build_graph_entries(derives, multi_selects, toggles)
+
     if fns == [] and derive_names == [] do
       nil
     else
       fns_str = Enum.join(fns, ",\n")
       derives_str = Jason.encode!(derive_names)
       fields_str = Jason.encode!(field_names)
+      graph_str = Jason.encode!(graph_entries)
 
       """
       {
       #{fns_str}#{if fns_str != "", do: ",", else: ""}
       __derives__: #{derives_str},
-      __fields__: #{fields_str}
+      __fields__: #{fields_str},
+      __graph__: #{graph_str}
       }
       """
     end
+  end
+
+  # Build graph entries with dependency information for each derive
+  defp build_graph_entries(derives, multi_selects, toggles) do
+    # Explicit derives from DSL
+    explicit_entries =
+      Enum.map(derives, fn derive ->
+        # Extract deps from arguments (raw DSL entity doesn't have depends_on populated)
+        deps = extract_deps_from_arguments(derive.arguments || [])
+        {to_string(derive.name), %{deps: deps}}
+      end)
+
+    # Multi-select derives depend on their field
+    multi_select_entries =
+      Enum.map(multi_selects, fn ms ->
+        {"#{ms.name}_chips", %{deps: [to_string(ms.name)]}}
+      end)
+
+    # Toggle derives depend on their field
+    toggle_entries =
+      Enum.map(toggles, fn t ->
+        {"#{t.name}_chip", %{deps: [to_string(t.name)]}}
+      end)
+
+    (explicit_entries ++ multi_select_entries ++ toggle_entries)
+    |> Map.new()
+  end
+
+  # Extract dependency names from argument list
+  defp extract_deps_from_arguments(arguments) do
+    Enum.map(arguments, fn arg ->
+      source = arg.source || {:state, arg.name}
+      case source do
+        {:state, name} -> to_string(name)
+        {:result, name} -> to_string(name)
+        {:prop, name} -> to_string(name)
+        name when is_atom(name) -> to_string(name)
+        _ -> nil
+      end
+    end)
+    |> Enum.filter(& &1)
   end
 
   defp get_optimistic_actions(module) do
