@@ -120,7 +120,30 @@ const LavashOptimistic = {
   },
 
   runOptimisticAction(actionName, value) {
-    const fn = this.fns[actionName];
+    // First check cached functions, then check module registry (for dynamically added component functions)
+    let fn = this.fns[actionName];
+
+    if (!fn && this.moduleName) {
+      // Check if a component has registered this function dynamically
+      const moduleFns = window.Lavash.optimistic[this.moduleName];
+      console.log(`[LavashOptimistic] Checking module registry for ${actionName}:`, moduleFns, Object.keys(moduleFns || {}));
+      if (moduleFns && moduleFns[actionName]) {
+        fn = moduleFns[actionName];
+        // Cache it for future use
+        this.fns[actionName] = fn;
+        // Also check for associated derives
+        if (moduleFns.__derives__) {
+          for (const d of moduleFns.__derives__) {
+            if (!this.deriveNames.includes(d)) {
+              this.deriveNames.push(d);
+            }
+            if (moduleFns[d] && !this.fns[d]) {
+              this.fns[d] = moduleFns[d];
+            }
+          }
+        }
+      }
+    }
 
     if (!fn) {
       console.log(`[LavashOptimistic] No client function for "${actionName}", letting server handle it`);

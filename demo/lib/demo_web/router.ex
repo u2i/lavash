@@ -62,5 +62,6 @@ defmodule DemoWeb.Router do
     live "/counter", CounterLive
     live "/products-socket", ProductsSocketLive
     live "/components", ComponentsDemoLive
+    live "/bindings", BindingsDemoLive
   end
 end

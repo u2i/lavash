@@ -360,6 +360,19 @@ defmodule Lavash.LiveView.Runtime do
     handle_event(module, event, params, socket)
   end
 
+  def handle_info(module, {:lavash_component_delta, field, value}, socket) do
+    # Handle state deltas from child Lavash components with bindings
+    # This directly updates the parent's state and recomputes dependents
+    socket =
+      socket
+      |> LSocket.put_state(field, value)
+      |> maybe_push_patch(module)
+      |> Graph.recompute_dirty(module)
+      |> Assigns.project(module)
+
+    {:noreply, socket}
+  end
+
   def handle_info(
         _module,
         {:lavash_component_async, component_module, component_id, field, result},
