@@ -54,12 +54,6 @@ const LavashOptimistic = {
     // Expose hook instance on element for onBeforeElUpdated access
     this.el.__lavash_hook__ = this;
 
-    console.log("[LavashOptimistic] Mounted with state:", this.state);
-    console.log("[LavashOptimistic] Module:", this.moduleName);
-    console.log("[LavashOptimistic] Version:", this.clientVersion);
-    console.log("[LavashOptimistic] Available functions:", Object.keys(this.fns));
-    console.log("[LavashOptimistic] Derives:", this.deriveNames);
-
     // Intercept clicks on elements with data-optimistic
     this.el.addEventListener("click", this.handleClick.bind(this), true);
     // Intercept input/change on elements with data-optimistic-field
@@ -115,7 +109,6 @@ const LavashOptimistic = {
       try {
         // Execute the script content (it's an IIFE that registers functions)
         new Function(script.textContent)();
-        console.log(`[LavashOptimistic] Executed component script: ${script.id}`);
       } catch (e) {
         console.error(`[LavashOptimistic] Error executing component script ${script.id}:`, e);
       }
@@ -135,7 +128,6 @@ const LavashOptimistic = {
     for (const [name, fn] of Object.entries(moduleFns)) {
       if (typeof fn === 'function' && !this.fns[name]) {
         this.fns[name] = fn;
-        console.log(`[LavashOptimistic] Merged function: ${name}`);
       }
     }
 
@@ -151,7 +143,6 @@ const LavashOptimistic = {
           const match = d.match(/^(.+)_chips?$/);
           if (match) {
             this.graph[d] = { deps: [match[1]] };
-            console.log(`[LavashOptimistic] Added to graph: ${d} -> deps: [${match[1]}]`);
           }
         }
       }
@@ -165,6 +156,21 @@ const LavashOptimistic = {
     const actionName = target.dataset.optimistic;
     const value = target.dataset.optimisticValue;
     this.runOptimisticAction(actionName, value);
+
+    // For optimistic elements, we send events directly to the parent LiveView
+    // to bypass LiveView's element locking (data-phx-ref-lock) which prevents
+    // rapid clicks from being sent to the server
+    if (value) {
+      // Prevent LiveView's default phx-click handling
+      e.preventDefault();
+      e.stopPropagation();
+
+      // Extract the field name from the action (e.g., "toggle_roast" -> "roast")
+      const fieldName = actionName.replace(/^toggle_/, '');
+
+      // Send event to the parent LiveView (not the component)
+      this.pushEvent("lavash:toggle", { field: fieldName, value: value });
+    }
   },
 
   handleInput(e) {
@@ -175,8 +181,6 @@ const LavashOptimistic = {
     const value = target.type === "range" || target.type === "number"
       ? Number(target.value)
       : target.value;
-
-    console.log(`[LavashOptimistic] Input field ${fieldName} = ${value}`);
 
     // Directly update state and pending
     this.state[fieldName] = value;
@@ -194,7 +198,6 @@ const LavashOptimistic = {
     if (!fn && this.moduleName) {
       // Check if a component has registered this function dynamically
       const moduleFns = window.Lavash.optimistic[this.moduleName];
-      console.log(`[LavashOptimistic] Checking module registry for ${actionName}:`, moduleFns, Object.keys(moduleFns || {}));
       if (moduleFns && moduleFns[actionName]) {
         fn = moduleFns[actionName];
         // Cache it for future use
@@ -213,19 +216,14 @@ const LavashOptimistic = {
       }
     }
 
-    if (!fn) {
-      console.log(`[LavashOptimistic] No client function for "${actionName}", letting server handle it`);
-      return;
-    }
+    if (!fn) return;
 
     // Bump client version - this will be compared against server version to detect stale patches
     this.clientVersion++;
-    console.log(`[LavashOptimistic] Running optimistic action: ${actionName} (v${this.clientVersion})`, value ? `with value: ${value}` : "");
 
     // Run the client-side function to get state delta
     try {
       const delta = fn(this.state, value);
-      console.log(`[LavashOptimistic] State delta:`, delta);
 
       // Apply delta to state and track pending fields
       const changedFields = [];
@@ -242,7 +240,7 @@ const LavashOptimistic = {
       this.updateDOM();
 
     } catch (err) {
-      console.error(`[LavashOptimistic] Error in action ${actionName}:`, err);
+      // Silently ignore client-side errors - server will be source of truth
     }
   },
 
@@ -263,9 +261,8 @@ const LavashOptimistic = {
         try {
           const result = fn(this.state);
           this.state[name] = result;
-          console.log(`[LavashOptimistic] Derive ${name} =`, result);
         } catch (err) {
-          console.error(`[LavashOptimistic] Error computing derive ${name}:`, err);
+          // Ignore derive computation errors
         }
       }
     }
@@ -279,8 +276,6 @@ const LavashOptimistic = {
     // Topologically sort affected derives
     const sorted = this.topologicalSort(affected);
 
-    console.log(`[LavashOptimistic] Recomputing graph: changed=${JSON.stringify(changedFields)}, affected=${JSON.stringify(affected)}, sorted=${JSON.stringify(sorted)}`);
-
     // Recompute in dependency order
     for (const name of sorted) {
       const fn = this.fns[name];
@@ -288,9 +283,8 @@ const LavashOptimistic = {
         try {
           const result = fn(this.state);
           this.state[name] = result;
-          console.log(`[LavashOptimistic] Derive ${name} =`, result);
         } catch (err) {
-          console.error(`[LavashOptimistic] Error computing derive ${name}:`, err);
+          // Ignore derive computation errors
         }
       }
     }
@@ -330,10 +324,7 @@ const LavashOptimistic = {
 
     const visit = (name) => {
       if (visited.has(name)) return;
-      if (visiting.has(name)) {
-        console.warn(`[LavashOptimistic] Cycle detected at ${name}`);
-        return;
-      }
+      if (visiting.has(name)) return; // Cycle detected
 
       visiting.add(name);
 
@@ -374,30 +365,22 @@ const LavashOptimistic = {
     // Update all elements with data-optimistic-class attribute (class from map)
     // Format: data-optimistic-class="roast_chips.light" means state.roast_chips["light"]
     const classElements = this.el.querySelectorAll("[data-optimistic-class]");
-    console.log(`[LavashOptimistic] Found ${classElements.length} class elements to update`);
     classElements.forEach(el => {
       const path = el.dataset.optimisticClass;
       const [field, key] = path.split(".");
       const classMap = this.state[field];
-      console.log(`[LavashOptimistic] Class update: ${path} -> field=${field}, key=${key}, classMap=`, classMap);
       if (classMap && key && classMap[key]) {
-        console.log(`[LavashOptimistic] Setting class on element to:`, classMap[key]);
         el.className = classMap[key];
       } else if (classMap && !key) {
         // Direct field reference (e.g., "in_stock_chip")
-        console.log(`[LavashOptimistic] Setting direct class to:`, classMap);
         el.className = classMap;
       }
     });
-
-    console.log("[LavashOptimistic] DOM updated with state:", this.state);
   },
 
   updated() {
     const serverState = JSON.parse(this.el.dataset.lavashState || "{}");
     const newServerVersion = parseInt(this.el.dataset.lavashVersion || "0", 10);
-
-    console.log(`[LavashOptimistic] updated() - server v${newServerVersion}, client v${this.clientVersion}`);
 
     // Check if server has caught up to our version
     const serverCaughtUp = newServerVersion >= this.clientVersion;
@@ -407,11 +390,8 @@ const LavashOptimistic = {
       this.serverVersion = newServerVersion;
       this.state = { ...serverState };
       this.pending = {};
-      console.log(`[LavashOptimistic] Server caught up (v${newServerVersion}), accepting all state`);
     } else {
       // Server is stale - keep our optimistic state, but update non-pending fields
-      console.log(`[LavashOptimistic] Server stale (v${newServerVersion} < v${this.clientVersion}), keeping optimistic state`);
-
       for (const [key, serverValue] of Object.entries(serverState)) {
         if (!(key in this.pending)) {
           // No pending update for this field - accept server value

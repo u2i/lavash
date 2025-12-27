@@ -260,6 +260,37 @@ defmodule Lavash.LiveView.Runtime do
     end
   end
 
+  # Handle optimistic toggle events sent directly from the client hook
+  # This bypasses LiveView's element locking, allowing rapid clicks to work
+  def handle_event(module, "lavash:toggle", %{"field" => field_str, "value" => value}, socket) do
+    # Convert field string to atom safely (only if it's a known state field)
+    states = module.__lavash__(:states)
+    field = Enum.find_value(states, fn f -> if Atom.to_string(f.name) == field_str, do: f.name end)
+
+    if field do
+      current = LSocket.get_state(socket, field) || []
+
+      new_value =
+        if value in current do
+          List.delete(current, value)
+        else
+          [value | current]
+        end
+
+      socket =
+        socket
+        |> LSocket.bump_optimistic_version()
+        |> LSocket.put_state(field, new_value)
+        |> maybe_push_patch(module)
+        |> Graph.recompute_dirty(module)
+        |> Assigns.project(module)
+
+      {:noreply, socket}
+    else
+      {:noreply, socket}
+    end
+  end
+
   def handle_event(module, event, params, socket) do
     # Capture old state for subscription updates
     old_state = LSocket.state(socket)
@@ -387,6 +418,29 @@ defmodule Lavash.LiveView.Runtime do
     socket =
       socket
       |> LSocket.put_state(field, value)
+      |> maybe_push_patch(module)
+      |> Graph.recompute_dirty(module)
+      |> Assigns.project(module)
+
+    {:noreply, socket}
+  end
+
+  def handle_info(module, {:lavash_component_toggle, field, value}, socket) do
+    # Handle toggle operations from child Lavash components
+    # This applies the toggle to the CURRENT state, ensuring rapid clicks work correctly
+    current = LSocket.get_state(socket, field) || []
+
+    new_value =
+      if value in current do
+        List.delete(current, value)
+      else
+        [value | current]
+      end
+
+    socket =
+      socket
+      |> LSocket.bump_optimistic_version()
+      |> LSocket.put_state(field, new_value)
       |> maybe_push_patch(module)
       |> Graph.recompute_dirty(module)
       |> Assigns.project(module)

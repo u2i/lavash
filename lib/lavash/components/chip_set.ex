@@ -82,6 +82,7 @@ defmodule Lavash.Components.ChipSet do
         phx-click="toggle"
         phx-value-val={value}
         phx-target={@myself}
+        phx-disable-with={false}
         data-optimistic={@optimistic_action}
         data-optimistic-value={if @optimistic_enabled, do: value}
         data-optimistic-class={if @optimistic_enabled, do: "#{@optimistic_derive}.#{value}"}
@@ -94,16 +95,29 @@ defmodule Lavash.Components.ChipSet do
   end
 
   def handle_event("toggle", %{"val" => val}, socket) do
-    selected = socket.assigns[:selected] || []
+    # Send a toggle operation to the parent instead of the full value
+    # This ensures rapid clicks on different chips all get applied correctly
+    binding_map = socket.assigns[:__lavash_binding_map__] || %{}
 
-    new_selected =
-      if val in selected do
-        List.delete(selected, val)
-      else
-        [val | selected]
-      end
+    case Map.get(binding_map, :selected) do
+      nil ->
+        # Not bound - update locally
+        selected = socket.assigns[:selected] || []
 
-    {:noreply, update_binding(socket, :selected, new_selected)}
+        new_selected =
+          if val in selected do
+            List.delete(selected, val)
+          else
+            [val | selected]
+          end
+
+        {:noreply, Phoenix.Component.assign(socket, :selected, new_selected)}
+
+      parent_field ->
+        # Bound to parent - send toggle operation (not full value)
+        send(self(), {:lavash_component_toggle, parent_field, val})
+        {:noreply, socket}
+    end
   end
 
   defp humanize(value) when is_binary(value) do
