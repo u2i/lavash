@@ -65,6 +65,7 @@ window.addEventListener("phx:_lavash_component_sync", (e) => {
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 
+
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: () => ({ _csrf_token: csrfToken, _lavash_state: lavashState }),
@@ -114,6 +115,17 @@ const liveSocket = new LiveSocket("/live", Socket, {
 topbar.config({barColors: {0: "#29d"}, shadowColor: "rgba(0, 0, 0, .3)"})
 window.addEventListener("phx:page-loading-start", _info => topbar.show(300))
 window.addEventListener("phx:page-loading-stop", _info => topbar.hide())
+
+// Enable debug mode to trace events BEFORE connecting
+liveSocket.enableDebug()
+
+// Minimal click tracer - capture phase, just logs
+window.addEventListener("click", e => {
+  const btn = e.target.closest("[phx-click]");
+  if (btn) {
+    console.log("[CLICK]", btn.getAttribute("phx-value-val"), "refSrc:", btn.getAttribute("data-phx-ref-src"));
+  }
+}, true);
 
 // connect if there are any LiveViews on the page
 liveSocket.connect()

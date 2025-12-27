@@ -53,9 +53,15 @@ defmodule Lavash.LiveView.Runtime do
       # Generate optimistic functions from DSL
       generated_js = Lavash.Optimistic.JsGenerator.generate(module)
 
+      # Get URL field names for client-side URL sync
+      url_field_names =
+        module.__lavash__(:url_fields)
+        |> Enum.map(& &1.name)
+
       # Escape for HTML attribute
       escaped_module = Phoenix.HTML.Safe.to_iodata(module_name)
       escaped_json = Phoenix.HTML.Safe.to_iodata(optimistic_json)
+      escaped_url_fields = Phoenix.HTML.Safe.to_iodata(Jason.encode!(url_field_names))
       version_str = to_string(version)
 
       # Build wrapper as a Rendered struct so LiveView can diff it properly
@@ -70,6 +76,7 @@ defmodule Lavash.LiveView.Runtime do
             ~s(<div id="lavash-optimistic-root" phx-hook="LavashOptimistic" data-lavash-module="),
             ~s(" data-lavash-state="),
             ~s(" data-lavash-version="),
+            ~s(" data-lavash-url-fields="),
             ~s(">),
             ~s(<script type="application/json" id="lavash-optimistic-fns">),
             ~s(</script></div>)
@@ -79,11 +86,16 @@ defmodule Lavash.LiveView.Runtime do
               escaped_module,
               escaped_json,
               version_str,
+              escaped_url_fields,
               inner_content,
               generated_js
             ]
           end,
-          fingerprint: :erlang.phash2({module_name, optimistic_json, version, generated_js}),
+          # IMPORTANT: fingerprint must NOT include dynamic values (state, version) that change
+          # on every update. Including them causes LiveView to treat this as a completely new
+          # template, wiping out the component registry and breaking CID-based event targeting.
+          # Only include structural information that defines the template shape.
+          fingerprint: :erlang.phash2({module_name, url_field_names, generated_js}),
           root: true
         }
       else
@@ -92,6 +104,7 @@ defmodule Lavash.LiveView.Runtime do
             ~s(<div id="lavash-optimistic-root" phx-hook="LavashOptimistic" data-lavash-module="),
             ~s(" data-lavash-state="),
             ~s(" data-lavash-version="),
+            ~s(" data-lavash-url-fields="),
             ~s(">),
             ~s(</div>)
           ],
@@ -100,10 +113,15 @@ defmodule Lavash.LiveView.Runtime do
               escaped_module,
               escaped_json,
               version_str,
+              escaped_url_fields,
               inner_content
             ]
           end,
-          fingerprint: :erlang.phash2({module_name, optimistic_json, version}),
+          # IMPORTANT: fingerprint must NOT include dynamic values (state, version) that change
+          # on every update. Including them causes LiveView to treat this as a completely new
+          # template, wiping out the component registry and breaking CID-based event targeting.
+          # Only include structural information that defines the template shape.
+          fingerprint: :erlang.phash2({module_name, url_field_names}),
           root: true
         }
       end
@@ -260,37 +278,6 @@ defmodule Lavash.LiveView.Runtime do
     end
   end
 
-  # Handle optimistic toggle events sent directly from the client hook
-  # This bypasses LiveView's element locking, allowing rapid clicks to work
-  def handle_event(module, "lavash:toggle", %{"field" => field_str, "value" => value}, socket) do
-    # Convert field string to atom safely (only if it's a known state field)
-    states = module.__lavash__(:states)
-    field = Enum.find_value(states, fn f -> if Atom.to_string(f.name) == field_str, do: f.name end)
-
-    if field do
-      current = LSocket.get_state(socket, field) || []
-
-      new_value =
-        if value in current do
-          List.delete(current, value)
-        else
-          [value | current]
-        end
-
-      socket =
-        socket
-        |> LSocket.bump_optimistic_version()
-        |> LSocket.put_state(field, new_value)
-        |> maybe_push_patch(module)
-        |> Graph.recompute_dirty(module)
-        |> Assigns.project(module)
-
-      {:noreply, socket}
-    else
-      {:noreply, socket}
-    end
-  end
-
   def handle_event(module, event, params, socket) do
     # Capture old state for subscription updates
     old_state = LSocket.state(socket)
@@ -426,8 +413,9 @@ defmodule Lavash.LiveView.Runtime do
   end
 
   def handle_info(module, {:lavash_component_toggle, field, value}, socket) do
-    # Handle toggle operations from child Lavash components
-    # This applies the toggle to the CURRENT state, ensuring rapid clicks work correctly
+    # Handle toggle operations from child Lavash components.
+    # Components send atomic toggle ops (not full values) so rapid clicks
+    # each apply to the current server state rather than overwriting each other.
     current = LSocket.get_state(socket, field) || []
 
     new_value =
@@ -436,6 +424,9 @@ defmodule Lavash.LiveView.Runtime do
       else
         [value | current]
       end
+
+    require Logger
+    Logger.warning("[Lavash] toggle #{field}: #{inspect(current)} + #{value} => #{inspect(new_value)}")
 
     socket =
       socket
@@ -734,7 +725,17 @@ defmodule Lavash.LiveView.Runtime do
     Phoenix.LiveView.push_navigate(socket, to: nav.to)
   end
 
-  defp maybe_push_patch(socket, module) do
+  defp maybe_push_patch(socket, _module) do
+    # URL sync is now handled client-side via history.replaceState in the
+    # LavashOptimistic hook. This avoids triggering a live_patch which would
+    # interrupt inflight events (causing rapid clicks to be dropped).
+    # Just clear the URL changed flag.
+    LSocket.clear_url_changed(socket)
+  end
+
+  defp _maybe_push_patch_server_side(socket, module) do
+    # NOTE: This version uses push_patch which triggers handle_params and
+    # interrupts inflight events. Use only if client-side URL sync is disabled.
     if LSocket.url_changed?(socket) do
       url_fields = module.__lavash__(:url_fields)
       state = LSocket.state(socket)

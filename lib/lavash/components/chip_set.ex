@@ -82,7 +82,6 @@ defmodule Lavash.Components.ChipSet do
         phx-click="toggle"
         phx-value-val={value}
         phx-target={@myself}
-        phx-disable-with={false}
         data-optimistic={@optimistic_action}
         data-optimistic-value={if @optimistic_enabled, do: value}
         data-optimistic-class={if @optimistic_enabled, do: "#{@optimistic_derive}.#{value}"}
@@ -95,8 +94,13 @@ defmodule Lavash.Components.ChipSet do
   end
 
   def handle_event("toggle", %{"val" => val}, socket) do
-    # Send a toggle operation to the parent instead of the full value
-    # This ensures rapid clicks on different chips all get applied correctly
+    # DEBUG: Log every toggle event received
+    require Logger
+    Logger.warning("[ChipSet] toggle event received: val=#{val}")
+
+    # When bound to parent, send a toggle operation (not the full value).
+    # This is critical for rapid clicks: if we sent the full computed value,
+    # a second click would use stale assigns and overwrite the first click's change.
     binding_map = socket.assigns[:__lavash_binding_map__] || %{}
 
     case Map.get(binding_map, :selected) do

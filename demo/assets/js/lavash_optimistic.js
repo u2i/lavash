@@ -36,6 +36,9 @@ const LavashOptimistic = {
     // Try to find the optimistic functions for this module
     this.moduleName = this.el.dataset.lavashModule || null;
 
+    // URL fields that should be synced to the browser URL
+    this.urlFields = JSON.parse(this.el.dataset.lavashUrlFields || "[]");
+
     // Load generated functions from inline JSON script tag
     this.loadGeneratedFunctions();
 
@@ -56,6 +59,7 @@ const LavashOptimistic = {
 
     // Intercept clicks on elements with data-optimistic
     this.el.addEventListener("click", this.handleClick.bind(this), true);
+
     // Intercept input/change on elements with data-optimistic-field
     this.el.addEventListener("input", this.handleInput.bind(this), true);
   },
@@ -155,22 +159,9 @@ const LavashOptimistic = {
 
     const actionName = target.dataset.optimistic;
     const value = target.dataset.optimisticValue;
+
     this.runOptimisticAction(actionName, value);
-
-    // For optimistic elements, we send events directly to the parent LiveView
-    // to bypass LiveView's element locking (data-phx-ref-lock) which prevents
-    // rapid clicks from being sent to the server
-    if (value) {
-      // Prevent LiveView's default phx-click handling
-      e.preventDefault();
-      e.stopPropagation();
-
-      // Extract the field name from the action (e.g., "toggle_roast" -> "roast")
-      const fieldName = actionName.replace(/^toggle_/, '');
-
-      // Send event to the parent LiveView (not the component)
-      this.pushEvent("lavash:toggle", { field: fieldName, value: value });
-    }
+    // Let the normal phx-click propagate to the server
   },
 
   handleInput(e) {
@@ -390,6 +381,9 @@ const LavashOptimistic = {
       this.serverVersion = newServerVersion;
       this.state = { ...serverState };
       this.pending = {};
+
+      // Sync URL with server-confirmed state
+      this.syncUrl();
     } else {
       // Server is stale - keep our optimistic state, but update non-pending fields
       for (const [key, serverValue] of Object.entries(serverState)) {
@@ -406,6 +400,46 @@ const LavashOptimistic = {
     // Always update DOM after server update to reapply optimistic-controlled classes
     // (server doesn't know about client-side derives like roast_chips)
     this.updateDOM();
+  },
+
+  // Sync URL fields to browser URL without triggering navigation
+  syncUrl() {
+    if (this.urlFields.length === 0) return;
+
+    const url = new URL(window.location.href);
+    let changed = false;
+
+    for (const field of this.urlFields) {
+      const value = this.state[field];
+      const currentParam = url.searchParams.get(field);
+
+      // Serialize the value for URL
+      let serialized;
+      if (value === null || value === undefined) {
+        serialized = null;
+      } else if (Array.isArray(value)) {
+        // Arrays: join with comma, or null if empty
+        serialized = value.length > 0 ? value.join(",") : null;
+      } else {
+        serialized = String(value);
+      }
+
+      // Check if we need to update
+      if (serialized === null || serialized === "") {
+        if (currentParam !== null) {
+          url.searchParams.delete(field);
+          changed = true;
+        }
+      } else if (currentParam !== serialized) {
+        url.searchParams.set(field, serialized);
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      // Use replaceState to update URL without triggering navigation
+      window.history.replaceState(window.history.state, "", url.toString());
+    }
   },
 
   destroyed() {
