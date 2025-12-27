@@ -94,6 +94,61 @@ defmodule Lavash.LiveComponent do
     end
   end
 
+  @doc """
+  Defines a template with a colocated hook that generates JS render functions.
+
+  At compile time, this macro:
+  1. Parses the template source to extract structure
+  2. Generates a JS render function that creates DOM elements
+  3. Emits both HEEx and a colocated hook script
+
+  The hook name must be a compile-time literal string.
+
+  ## Example
+
+      optimistic_template ".ChipSetHook" do
+        \"""
+        <div class="flex gap-2">
+          <button
+            :for={v <- @values}
+            phx-click="toggle"
+            phx-value-val={v}
+            class={if v in @selected, do: @active_class, else: @inactive_class}
+          >
+            {Map.get(@labels, v, v)}
+          </button>
+        </div>
+        \"""
+      end
+  """
+  defmacro optimistic_template(hook_name, do: template_source) when is_binary(hook_name) do
+    # At compile time, parse the template and generate JS
+    {heex_source, js_render_fn} = Lavash.Template.compile_template(template_source)
+
+    quote do
+      # The colocated hook with generated render function
+      @doc false
+      def __lavash_colocated_hook__ do
+        {unquote(hook_name), unquote(js_render_fn)}
+      end
+
+      def render(var!(assigns)) do
+        # Include the colocated hook script tag in the output
+        hook_name = unquote(hook_name)
+        js_code = unquote(js_render_fn)
+
+        # Inject the script tag and render the template
+        import Phoenix.Component, only: [sigil_H: 2]
+
+        ~H"""
+        <script :type={Phoenix.LiveView.ColocatedHook} name={unquote(hook_name)}>
+        <%= raw(unquote(js_render_fn)) %>
+        </script>
+        """ <> sigil_H(unquote(heex_source), [])
+      end
+    end
+  end
+
   defmacro __before_compile__(env) do
     bindings = Module.get_attribute(env.module, :lavash_bindings) || []
     props = Module.get_attribute(env.module, :lavash_props) || []

@@ -68,10 +68,10 @@ defmodule DemoWeb.BindingsDemoLive do
       </div>
 
       <div class="bg-gray-50 p-6 rounded-lg mb-6">
-        <h2 class="font-semibold mb-4">Roast Level Filter</h2>
+        <h2 class="font-semibold mb-4">Roast Level Filter (Shadow DOM + morphdom)</h2>
 
         <.live_component
-          module={Lavash.Components.ChipSet}
+          module={Lavash.Components.TemplatedChipSet}
           id="roast-filter"
           bind={[selected: :roast]}
           selected={@roast}

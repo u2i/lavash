@@ -23,6 +23,9 @@ import "phoenix_html"
 import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 import topbar from "../vendor/topbar"
+// morphdom for efficient DOM diffing (used by Shadow DOM components)
+import morphdom from "../vendor/morphdom"
+window.morphdom = morphdom
 // Colocated hooks from Lavash library
 import {hooks as lavashHooks} from "phoenix-colocated/lavash"
 // Colocated JS (non-hook exports) from this app - import directly by module
@@ -30,6 +33,8 @@ import counterOptimistic from "phoenix-colocated/demo/DemoWeb.CounterLive/54_tig
 import storefrontOptimistic from "phoenix-colocated/demo/DemoWeb.Storefront.ProductsLive/123_tigxgsumzfejan3k2k4c4n3r4m.js"
 // Lavash optimistic hook
 import {LavashOptimistic} from "./lavash_optimistic"
+// Templated ChipSet hook (Shadow DOM + morphdom)
+import TemplatedChipSet from "./templated_chip_set_hook"
 
 // Register optimistic functions from colocated JS
 window.Lavash = window.Lavash || {};
@@ -40,8 +45,11 @@ window.Lavash.optimistic["DemoWeb.Storefront.ProductsLive"] = storefrontOptimist
 // Merge hooks from Lavash library and app-specific hooks
 const colocatedHooks = {
   ...lavashHooks,
-  LavashOptimistic
+  LavashOptimistic,
+  TemplatedChipSet
 }
+
+console.log("[app.js] Registered hooks:", Object.keys(colocatedHooks));
 
 // Lavash state - survives reconnects, lost on page refresh
 let lavashState = {
