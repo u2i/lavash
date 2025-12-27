@@ -91,18 +91,7 @@ defmodule Lavash.Components.TemplatedChipSet do
         data-lavash-state={@state_json}
         data-lavash-version="0"
       >
-        <div class="flex flex-wrap gap-2">
-          <button
-            :for={value <- @values}
-            type="button"
-            class={if value in (@selected || []), do: @active_class, else: @inactive_class}
-            phx-click="toggle"
-            phx-value-val={value}
-            phx-target={@myself}
-          >
-            {Map.get(@labels || %{}, value, humanize(value))}
-          </button>
-        </div>
+        <%!-- JS hook renders into Shadow DOM, this is just a container --%>
       </div>
     </div>
     """
