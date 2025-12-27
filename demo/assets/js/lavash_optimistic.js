@@ -161,6 +161,23 @@ const LavashOptimistic = {
     const value = target.dataset.optimisticValue;
 
     this.runOptimisticAction(actionName, value);
+
+    // Clear LiveView's element lock so rapid clicks on the same element work.
+    // LiveView sets data-phx-ref-src during click handling to prevent duplicate
+    // submissions, but for optimistic updates we want to allow rapid clicks since
+    // each click is meaningful (e.g., select then unselect).
+    //
+    // We clear it synchronously in capture phase (before LiveView's bubble handler),
+    // and also schedule a microtask for after LiveView sets it during this click.
+    target.removeAttribute("data-phx-ref-src");
+    target.removeAttribute("data-phx-ref-lock");
+
+    // Also clear after LiveView's handler sets it (for this click's event to be unlocked for future clicks)
+    setTimeout(() => {
+      target.removeAttribute("data-phx-ref-src");
+      target.removeAttribute("data-phx-ref-lock");
+    }, 0);
+
     // Let the normal phx-click propagate to the server
   },
 
