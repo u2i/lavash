@@ -113,6 +113,13 @@ defmodule Lavash.Template do
     parse_children(rest, [node | acc])
   end
 
+  # body_expr is the token type for expressions inside element content
+  # like {Map.get(@labels, v, humanize(v))} in button text
+  defp parse_children([{:body_expr, code, meta} | rest], acc) do
+    node = {:expr, code, meta}
+    parse_children(rest, [node | acc])
+  end
+
   defp parse_children([{:special_attr, type, name, value, meta} | rest], acc) do
     # Handle :for, :if, :let etc - these modify the parent element
     # For now, include as a special node
@@ -540,6 +547,22 @@ defmodule Lavash.Template do
     "#{ast_to_js(list)}.includes(#{ast_to_js(val)})"
   end
 
+  # Map.get(map, key) -> map[key]
+  defp ast_to_js({{:., _, [{:__aliases__, _, [:Map]}, :get]}, _, [map, key]}) do
+    "#{ast_to_js(map)}[#{ast_to_js(key)}]"
+  end
+
+  # Map.get(map, key, default) -> (map[key] ?? default)
+  defp ast_to_js({{:., _, [{:__aliases__, _, [:Map]}, :get]}, _, [map, key, default]}) do
+    "(#{ast_to_js(map)}[#{ast_to_js(key)}] ?? #{ast_to_js(default)})"
+  end
+
+  # humanize(value) -> capitalize first letter, replace underscores with spaces
+  defp ast_to_js({:humanize, _, [value]}) do
+    js_val = ast_to_js(value)
+    "(#{js_val}.toString().replace(/_/g, ' ').replace(/^\\w/, c => c.toUpperCase()))"
+  end
+
   # item.field -> item.field (dot access)
   defp ast_to_js({{:., _, [Access, :get]}, _, [obj, key]}) do
     "#{ast_to_js(obj)}[#{ast_to_js(key)}]"
@@ -665,79 +688,48 @@ defmodule Lavash.Template do
     source
   end
 
-  # Generate a JS function that renders the template
-  # Uses Shadow DOM for isolation and morphdom for efficient DOM diffing
-  defp generate_js_render_function(tree) do
-    render_code = tree_to_js_render(tree, "root", 0)
-
+  # Generate a JS hook that applies optimistic updates to server-rendered content
+  # Server renders the actual DOM, JS only modifies classes on click
+  defp generate_js_render_function(_tree) do
     """
-    // Generated JS render function with Shadow DOM + morphdom
+    // Generated JS hook for optimistic updates on server-rendered content
     export default {
       mounted() {
         this.state = JSON.parse(this.el.dataset.lavashState || "{}");
-        this.pending = {};
         this.serverVersion = parseInt(this.el.dataset.lavashVersion || "0", 10);
         this.clientVersion = this.serverVersion;
+        this.pendingActions = []; // Track pending optimistic actions
 
-        // Create Shadow DOM for isolation from LiveView patching
-        this.shadow = this.el.attachShadow({ mode: 'open' });
-
-        // Copy styles into shadow DOM (inherit from light DOM)
-        this.injectStyles();
-
-        // Create render container inside shadow
-        this.container = document.createElement('div');
-        this.shadow.appendChild(this.container);
-
-        // Initial render
-        this.render();
-
-        // Handle clicks - use shadow root for event delegation
-        this.shadow.addEventListener("click", this.handleClick.bind(this), true);
-      },
-
-      injectStyles() {
-        // Adopt stylesheets if supported (modern browsers)
-        if (document.adoptedStyleSheets && this.shadow.adoptedStyleSheets !== undefined) {
-          this.shadow.adoptedStyleSheets = [...document.adoptedStyleSheets];
-        } else {
-          // Fallback: copy all stylesheets
-          const styles = document.querySelectorAll('link[rel="stylesheet"], style');
-          styles.forEach(style => {
-            this.shadow.appendChild(style.cloneNode(true));
-          });
-        }
+        // Handle clicks via event delegation
+        this.clickHandler = this.handleClick.bind(this);
+        this.el.addEventListener("click", this.clickHandler, true);
       },
 
       handleClick(e) {
         const target = e.target.closest("[data-optimistic]");
         if (!target) return;
 
+        e.stopPropagation();
+
         const actionName = target.dataset.optimistic;
         const value = target.dataset.optimisticValue;
 
-        // Run optimistic update
-        this.runOptimisticAction(actionName, value);
+        // Apply optimistic update to state
+        this.clientVersion++;
+        this.applyOptimisticAction(actionName, value);
 
-        // Dispatch the original phx-click event to LiveView
-        // We need to bubble this up through the shadow boundary
-        const phxEvent = target.dataset.phxClick || actionName.replace("toggle_", "toggle");
-        this.el.dispatchEvent(new CustomEvent("phx:click", {
-          bubbles: true,
-          detail: { event: phxEvent, value: { val: value } }
-        }));
+        // Track this pending action so we can re-apply after server update if needed
+        this.pendingActions.push({ action: actionName, value, version: this.clientVersion });
 
-        // Also trigger the actual phx-click by finding and clicking a hidden trigger
-        // or by sending directly via pushEvent
-        if (this.el.phxHook) {
-          this.el.phxHook.pushEvent(phxEvent, { val: value });
-        }
+        // Apply class changes directly to DOM
+        this.applyOptimisticClasses();
+
+        // Send event to server
+        const phxEvent = target.dataset.phxClick || actionName.split("_")[0];
+        this.pushEventTo(this.el, phxEvent, { val: value });
       },
 
-      runOptimisticAction(actionName, value) {
-        this.clientVersion++;
-
-        // Default array toggle action
+      applyOptimisticAction(actionName, value) {
         if (actionName.startsWith("toggle_")) {
           const field = actionName.replace("toggle_", "");
           const current = this.state[field] || [];
@@ -746,36 +738,27 @@ defmodule Lavash.Template do
           } else {
             this.state[field] = [...current, value];
           }
-          this.pending[field] = this.state[field];
         }
-
-        this.render();
       },
 
-      render() {
-        const state = this.state;
+      applyOptimisticClasses() {
+        // Find all elements with data-optimistic and update their classes based on state
+        const elements = this.el.querySelectorAll("[data-optimistic]");
+        const activeClass = this.state.active_class || "";
+        const inactiveClass = this.state.inactive_class || "";
 
-        // Build new DOM in a fragment
-        const root = document.createElement('div');
+        elements.forEach(el => {
+          const actionName = el.dataset.optimistic;
+          const value = el.dataset.optimisticValue;
 
-    #{render_code}
+          if (actionName.startsWith("toggle_")) {
+            const field = actionName.replace("toggle_", "");
+            const fieldState = this.state[field] || [];
+            const isActive = fieldState.includes(value);
 
-        // Use morphdom to efficiently diff and patch
-        if (window.morphdom) {
-          morphdom(this.container, root, {
-            childrenOnly: false,
-            onBeforeElUpdated: (fromEl, toEl) => {
-              // Preserve focus state
-              if (fromEl === document.activeElement) {
-                return false;
-              }
-              return true;
-            }
-          });
-        } else {
-          // Fallback: replace innerHTML
-          this.container.innerHTML = root.innerHTML;
-        }
+            el.className = isActive ? activeClass : inactiveClass;
+          }
+        });
       },
 
       updated() {
@@ -783,22 +766,33 @@ defmodule Lavash.Template do
         const newServerVersion = parseInt(this.el.dataset.lavashVersion || "0", 10);
 
         if (newServerVersion >= this.clientVersion) {
+          // Server has caught up - accept server state, clear pending
           this.serverVersion = newServerVersion;
+          this.clientVersion = newServerVersion;
           this.state = { ...serverState };
-          this.pending = {};
+          this.pendingActions = [];
+          // Server DOM is authoritative, no need to re-apply classes
         } else {
-          for (const [key, serverValue] of Object.entries(serverState)) {
-            if (!(key in this.pending)) {
-              this.state[key] = serverValue;
+          // Client is ahead - merge server state but keep pending fields
+          const pendingFields = new Set(
+            this.pendingActions.map(a => a.action.replace("toggle_", ""))
+          );
+
+          for (const [key, value] of Object.entries(serverState)) {
+            if (!pendingFields.has(key)) {
+              this.state[key] = value;
             }
           }
-        }
 
-        this.render();
+          // Re-apply optimistic classes since LiveView just patched the DOM
+          this.applyOptimisticClasses();
+        }
       },
 
       destroyed() {
-        this.shadow.removeEventListener("click", this.handleClick.bind(this), true);
+        if (this.clickHandler) {
+          this.el.removeEventListener("click", this.clickHandler, true);
+        }
       }
     };
     """
@@ -814,7 +808,11 @@ defmodule Lavash.Template do
     |> Enum.join("\n")
   end
 
-  defp tree_to_js_render({:element, tag, attrs, children, _meta}, parent_var, depth, idx) do
+  defp tree_to_js_render(node, parent_var, depth, idx) do
+    tree_to_js_render(node, parent_var, depth, idx, nil)
+  end
+
+  defp tree_to_js_render({:element, tag, attrs, children, _meta}, parent_var, depth, idx, loop_var) do
     indent = String.duplicate("    ", depth + 2)
     el_var = "el_#{depth}_#{idx}"
 
@@ -825,14 +823,15 @@ defmodule Lavash.Template do
       {":for", {:expr, for_code, _}} = for_attr
       # Parse "item <- @items" pattern
       case parse_for_expr(for_code) do
-        %{var: loop_var, collection: collection} ->
+        %{var: new_loop_var, collection: collection} ->
           coll_js = ast_to_js(collection)
-          loop_var_str = to_string(loop_var)
+          loop_var_str = to_string(new_loop_var)
 
           # Filter out :for from attrs for the inner element
           inner_attrs = Enum.reject(attrs, fn {name, _} -> name == ":for" end)
           attrs_js = attrs_to_js(inner_attrs, loop_var_str, el_var)
-          children_js = tree_to_js_render(children, el_var, depth + 1)
+          # Pass the loop variable to children
+          children_js = tree_to_js_render_list(children, el_var, depth + 1, loop_var_str)
 
           """
           #{indent}for (const #{loop_var_str} of #{coll_js}) {
@@ -846,7 +845,7 @@ defmodule Lavash.Template do
         nil ->
           # Fallback if we can't parse the for expression
           attrs_js = attrs_to_js(attrs, nil, el_var)
-          children_js = tree_to_js_render(children, el_var, depth + 1)
+          children_js = tree_to_js_render_list(children, el_var, depth + 1, loop_var)
 
           """
           #{indent}const #{el_var} = document.createElement('#{tag}');
@@ -856,8 +855,8 @@ defmodule Lavash.Template do
           """
       end
     else
-      attrs_js = attrs_to_js(attrs, nil, el_var)
-      children_js = tree_to_js_render(children, el_var, depth + 1)
+      attrs_js = attrs_to_js(attrs, loop_var, el_var)
+      children_js = tree_to_js_render_list(children, el_var, depth + 1, loop_var)
 
       """
       #{indent}const #{el_var} = document.createElement('#{tag}');
@@ -868,7 +867,7 @@ defmodule Lavash.Template do
     end
   end
 
-  defp tree_to_js_render({:text, content}, parent_var, depth, _idx) do
+  defp tree_to_js_render({:text, content}, parent_var, depth, _idx, _loop_var) do
     indent = String.duplicate("    ", depth + 2)
     trimmed = String.trim(content)
     if trimmed == "" do
@@ -880,15 +879,28 @@ defmodule Lavash.Template do
     end
   end
 
-  defp tree_to_js_render({:expr, code, _meta}, parent_var, depth, _idx) do
+  defp tree_to_js_render({:expr, code, _meta}, parent_var, depth, _idx, loop_var) do
     indent = String.duplicate("    ", depth + 2)
-    js_expr = elixir_to_js(code)
+    js_expr = elixir_to_js_with_loop_var(code, loop_var)
     """
     #{indent}#{parent_var}.appendChild(document.createTextNode(#{js_expr}));
     """
   end
 
-  defp tree_to_js_render(_, _parent_var, _depth, _idx), do: ""
+  defp tree_to_js_render(_, _parent_var, _depth, _idx, _loop_var), do: ""
+
+  # Helper to render a list of children with loop variable context
+  defp tree_to_js_render_list(children, parent_var, depth, loop_var) when is_list(children) do
+    children
+    |> Enum.with_index()
+    |> Enum.map(fn {child, idx} -> tree_to_js_render(child, parent_var, depth, idx, loop_var) end)
+    |> Enum.filter(&(&1 != ""))
+    |> Enum.join("\n")
+  end
+
+  defp tree_to_js_render_list(child, parent_var, depth, loop_var) do
+    tree_to_js_render(child, parent_var, depth, 0, loop_var)
+  end
 
   # Convert attrs to JS code that sets them on an element
   defp attrs_to_js(attrs, loop_var, el_var) do
@@ -966,6 +978,22 @@ defmodule Lavash.Template do
   # in operator
   defp ast_to_js_with_loop_var({:in, _, [val, list]}, loop_var) do
     "#{ast_to_js_with_loop_var(list, loop_var)}.includes(#{ast_to_js_with_loop_var(val, loop_var)})"
+  end
+
+  # Map.get(map, key) with loop var
+  defp ast_to_js_with_loop_var({{:., _, [{:__aliases__, _, [:Map]}, :get]}, _, [map, key]}, loop_var) do
+    "#{ast_to_js_with_loop_var(map, loop_var)}[#{ast_to_js_with_loop_var(key, loop_var)}]"
+  end
+
+  # Map.get(map, key, default) with loop var
+  defp ast_to_js_with_loop_var({{:., _, [{:__aliases__, _, [:Map]}, :get]}, _, [map, key, default]}, loop_var) do
+    "(#{ast_to_js_with_loop_var(map, loop_var)}[#{ast_to_js_with_loop_var(key, loop_var)}] ?? #{ast_to_js_with_loop_var(default, loop_var)})"
+  end
+
+  # humanize(value) with loop var
+  defp ast_to_js_with_loop_var({:humanize, _, [value]}, loop_var) do
+    js_val = ast_to_js_with_loop_var(value, loop_var)
+    "(#{js_val}.toString().replace(/_/g, ' ').replace(/^\\w/, c => c.toUpperCase()))"
   end
 
   defp ast_to_js_with_loop_var(str, _loop_var) when is_binary(str), do: Jason.encode!(str)
