@@ -563,6 +563,40 @@ defmodule Lavash.Template do
     "(#{js_val}.toString().replace(/_/g, ' ').replace(/^\\w/, c => c.toUpperCase()))"
   end
 
+  # length(list) -> list.length
+  defp ast_to_js({:length, _, [list]}) do
+    "(#{ast_to_js(list)}.length)"
+  end
+
+  # Enum.count(list) -> list.length
+  defp ast_to_js({{:., _, [{:__aliases__, _, [:Enum]}, :count]}, _, [list]}) do
+    "(#{ast_to_js(list)}.length)"
+  end
+
+  # Enum.join(list, sep) -> list.join(sep)
+  defp ast_to_js({{:., _, [{:__aliases__, _, [:Enum]}, :join]}, _, [list, sep]}) do
+    "(#{ast_to_js(list)}.join(#{ast_to_js(sep)}))"
+  end
+
+  # Enum.join(list) -> list.join(",")
+  defp ast_to_js({{:., _, [{:__aliases__, _, [:Enum]}, :join]}, _, [list]}) do
+    "(#{ast_to_js(list)}.join(\",\"))"
+  end
+
+  # Enum.map(list, fn x -> expr end) -> list.map(x => expr)
+  defp ast_to_js({{:., _, [{:__aliases__, _, [:Enum]}, :map]}, _, [list, {:fn, _, [{:->, _, [[{var, _, _}], body]}]}]}) do
+    var_str = to_string(var)
+    body_js = ast_to_js(body)
+    "(#{ast_to_js(list)}.map(#{var_str} => #{body_js}))"
+  end
+
+  # Enum.filter(list, fn x -> expr end) -> list.filter(x => expr)
+  defp ast_to_js({{:., _, [{:__aliases__, _, [:Enum]}, :filter]}, _, [list, {:fn, _, [{:->, _, [[{var, _, _}], body]}]}]}) do
+    var_str = to_string(var)
+    body_js = ast_to_js(body)
+    "(#{ast_to_js(list)}.filter(#{var_str} => #{body_js}))"
+  end
+
   # item.field -> item.field (dot access)
   defp ast_to_js({{:., _, [Access, :get]}, _, [obj, key]}) do
     "#{ast_to_js(obj)}[#{ast_to_js(key)}]"
@@ -613,7 +647,7 @@ defmodule Lavash.Template do
   end
 
   # Binary operators
-  defp ast_to_js({op, _, [left, right]}) when op in [:==, :!=, :&&, :||, :and, :or] do
+  defp ast_to_js({op, _, [left, right]}) when op in [:==, :!=, :&&, :||, :and, :or, :>, :<, :>=, :<=, :+, :-, :*, :/] do
     js_op =
       case op do
         :== -> "==="
@@ -679,6 +713,170 @@ defmodule Lavash.Template do
     js_render_fn = generate_js_render_function(tree)
 
     {heex_source, js_render_fn}
+  end
+
+  @doc """
+  Compiles a template with calculation support.
+
+  Like `compile_template/1` but also generates JS functions for each calculation,
+  allowing them to run on the client side for optimistic updates.
+
+  ## Parameters
+  - `source` - The HEEx template source
+  - `calculations` - List of `{name, source_string, ast}` tuples
+
+  ## Returns
+  `{heex_source, js_code}` where js_code includes calculation functions.
+  """
+  def compile_template_with_calculations(source, calculations) do
+    tokens = tokenize(source)
+    tree = parse(tokens)
+
+    # Generate both outputs
+    heex_source = generate_heex_with_template(source, tree)
+    js_render_fn = generate_js_render_function_with_calculations(tree, calculations)
+
+    {heex_source, js_render_fn}
+  end
+
+  # Generate JS for calculations
+  defp generate_calculation_js(calculations) do
+    calculations
+    |> Enum.map(fn {name, source, _ast} ->
+      # Parse the source string and convert to JS
+      js_expr = elixir_to_js(source)
+      "    #{name}(state) {\n      return #{js_expr};\n    }"
+    end)
+    |> Enum.join(",\n")
+  end
+
+  # Generate a JS hook with calculation support
+  defp generate_js_render_function_with_calculations(_tree, calculations) do
+    calc_js = generate_calculation_js(calculations)
+    calc_names = Enum.map(calculations, fn {name, _, _} -> to_string(name) end)
+    calc_names_json = Jason.encode!(calc_names)
+    calc_comma = if calc_js != "", do: ",", else: ""
+
+    # Build the JS in parts to avoid heredoc interpolation issues with ternary operators
+    ~s"""
+    // Generated JS hook for optimistic updates with calculations
+    export default {
+      mounted() {
+        this.state = JSON.parse(this.el.dataset.lavashState || "{}");
+        this.serverVersion = parseInt(this.el.dataset.lavashVersion || "0", 10);
+        this.clientVersion = this.serverVersion;
+        this.pendingActions = [];
+        this.calculations = #{calc_names_json};
+
+        this.clickHandler = this.handleClick.bind(this);
+        this.el.addEventListener("click", this.clickHandler, true);
+      },
+
+    #{calc_js}#{calc_comma}
+
+      runCalculations() {
+        for (const name of this.calculations) {
+          if (typeof this[name] === 'function') {
+            this.state[name] = this[name](this.state);
+          }
+        }
+      },
+
+      handleClick(e) {
+        const target = e.target.closest("[data-optimistic]");
+        if (!target) return;
+
+        e.stopPropagation();
+
+        const actionName = target.dataset.optimistic;
+        const value = target.dataset.optimisticValue;
+
+        this.clientVersion++;
+        this.applyOptimisticAction(actionName, value);
+        this.runCalculations();
+        this.pendingActions.push({ action: actionName, value, version: this.clientVersion });
+        this.applyOptimisticClasses();
+        this.applyOptimisticDisplays();
+
+        const phxEvent = target.dataset.phxClick || actionName.split("_")[0];
+        this.pushEventTo(this.el, phxEvent, { val: value });
+      },
+
+      applyOptimisticAction(actionName, value) {
+        if (actionName.startsWith("toggle_")) {
+          const field = actionName.replace("toggle_", "");
+          const current = this.state[field] || [];
+          if (current.includes(value)) {
+            this.state[field] = current.filter(v => v !== value);
+          } else {
+            this.state[field] = [...current, value];
+          }
+        }
+      },
+
+      applyOptimisticClasses() {
+        const elements = this.el.querySelectorAll("[data-optimistic]");
+        const activeClass = this.state.active_class || "";
+        const inactiveClass = this.state.inactive_class || "";
+
+        elements.forEach(el => {
+          const actionName = el.dataset.optimistic;
+          const value = el.dataset.optimisticValue;
+
+          if (actionName.startsWith("toggle_")) {
+            const field = actionName.replace("toggle_", "");
+            const fieldState = this.state[field] || [];
+            const isActive = fieldState.includes(value);
+            el.className = isActive ? activeClass : inactiveClass;
+          }
+        });
+      },
+
+      applyOptimisticDisplays() {
+        const displays = this.el.querySelectorAll("[data-optimistic-display]");
+
+        displays.forEach(el => {
+          const field = el.dataset.optimisticDisplay;
+          const value = this.state[field];
+          if (value !== undefined) {
+            el.textContent = value;
+          }
+        });
+      },
+
+      updated() {
+        const serverState = JSON.parse(this.el.dataset.lavashState || "{}");
+        const newServerVersion = parseInt(this.el.dataset.lavashVersion || "0", 10);
+
+        if (newServerVersion >= this.clientVersion) {
+          this.serverVersion = newServerVersion;
+          this.clientVersion = newServerVersion;
+          this.state = { ...serverState };
+          this.pendingActions = [];
+        } else {
+          const pendingFields = new Set(
+            this.pendingActions.map(a => a.action.replace("toggle_", ""))
+          );
+
+          for (const [key, value] of Object.entries(serverState)) {
+            if (!pendingFields.has(key)) {
+              this.state[key] = value;
+            }
+          }
+
+          this.runCalculations();
+          this.applyOptimisticClasses();
+          this.applyOptimisticDisplays();
+        }
+      },
+
+      destroyed() {
+        if (this.clickHandler) {
+          this.el.removeEventListener("click", this.clickHandler, true);
+        }
+      }
+    };
+    """
   end
 
   # Generate HEEx that includes a <template> tag for client-side rendering

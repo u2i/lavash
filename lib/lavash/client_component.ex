@@ -71,7 +71,7 @@ defmodule Lavash.ClientComponent do
 
     quote do
       use Lavash.LiveComponent
-      import Lavash.ClientComponent, only: [client_template: 1, client_container: 1]
+      import Lavash.ClientComponent, only: [client_template: 1, client_container: 1, calculate: 2]
       import Phoenix.Component
 
       @before_compile Lavash.ClientComponent
@@ -79,6 +79,7 @@ defmodule Lavash.ClientComponent do
       Module.register_attribute(__MODULE__, :client_template_source, accumulate: false)
       Module.register_attribute(__MODULE__, :client_hook_name, accumulate: false)
       Module.register_attribute(__MODULE__, :__lavash_colocated_data__, accumulate: true)
+      Module.register_attribute(__MODULE__, :__lavash_calculations__, accumulate: true)
       @client_hook_name unquote(hook_name)
 
       # Define humanize locally so it's available in templates
@@ -105,6 +106,66 @@ defmodule Lavash.ClientComponent do
       @client_template_source unquote(source)
     end
   end
+
+  @doc """
+  Defines a calculated field that runs on both server and client.
+
+  The expression is compiled to both Elixir (for server rendering) and JavaScript
+  (for optimistic client-side updates). The expression can reference:
+  - `@field` - state fields (e.g., `@selected`, `@values`)
+  - Common functions: `length/1`, `Enum.count/1`, `Enum.join/2`, `Map.get/2,3`
+
+  ## Example
+
+      # Count of selected items
+      calculate :selected_count, length(@selected)
+
+      # Formatted display string
+      calculate :selection_text, Enum.join(@selected, ", ")
+
+      # Conditional text
+      calculate :status, if(length(@selected) > 0, do: "Selected", else: "None")
+
+  The calculated value is automatically:
+  1. Computed server-side and included in assigns
+  2. Recomputed client-side after optimistic state changes
+  3. Updated in the DOM via `data-optimistic-display` attributes
+
+  ## Usage in template
+
+      <span data-optimistic-display="selected_count">{@selected_count}</span>
+  """
+  defmacro calculate(name, expr) do
+    # Convert the AST to source string before quote (for JS generation)
+    # This preserves the original expression like `length(@selected)`
+    expr_source = Macro.to_string(expr)
+
+    # Transform @var references in the AST to Map.get(state, :var) for runtime evaluation
+    transformed_expr = transform_at_refs(expr)
+
+    quote do
+      @__lavash_calculations__ {unquote(name), unquote(expr_source), unquote(Macro.escape(transformed_expr))}
+    end
+  end
+
+  # Transform @var references to Map.get(state, :var) for runtime evaluation
+  defp transform_at_refs({:@, _, [{var_name, _, _}]}) when is_atom(var_name) do
+    quote do: Map.get(state, unquote(var_name), nil)
+  end
+
+  defp transform_at_refs({form, meta, args}) when is_list(args) do
+    {form, meta, Enum.map(args, &transform_at_refs/1)}
+  end
+
+  defp transform_at_refs({left, right}) do
+    {transform_at_refs(left), transform_at_refs(right)}
+  end
+
+  defp transform_at_refs(list) when is_list(list) do
+    Enum.map(list, &transform_at_refs/1)
+  end
+
+  defp transform_at_refs(other), do: other
 
   @doc """
   Renders a client component container.
@@ -136,6 +197,7 @@ defmodule Lavash.ClientComponent do
   defmacro __before_compile__(env) do
     template_source = Module.get_attribute(env.module, :client_template_source)
     custom_hook_name = Module.get_attribute(env.module, :client_hook_name)
+    calculations = Module.get_attribute(env.module, :__lavash_calculations__) || []
 
     # Generate hook name from module
     module_name =
@@ -151,15 +213,20 @@ defmodule Lavash.ClientComponent do
 
     if template_source do
       # Parse template and generate JS at compile time
-      {_heex, js_render_body} = Lavash.Template.compile_template(template_source)
+      # Pass calculations so we can generate JS for them
+      {_heex, js_render_body} = Lavash.Template.compile_template_with_calculations(template_source, calculations)
 
       # Write the JS directly to the colocated hooks directory
       {_filename, hook_data} = write_colocated_hook(env, hook_name, full_hook_name, js_render_body)
+
+      # Generate the calculation function definitions
+      calc_fns = generate_calculation_functions(calculations)
 
       quote do
         def __hook_name__, do: unquote(hook_name)
         def __full_hook_name__, do: unquote(full_hook_name)
         def __generated_js__, do: unquote(js_render_body)
+        def __calculations__, do: unquote(Macro.escape(calculations))
 
         # Store hook name and template source as module attributes
         @__lavash_full_hook_name__ unquote(full_hook_name)
@@ -171,6 +238,9 @@ defmodule Lavash.ClientComponent do
             Phoenix.LiveView.ColocatedHook => [unquote(Macro.escape(hook_data))]
           }
         end
+
+        # Generate calculation functions
+        unquote(calc_fns)
 
         # Generate render using defmacro so template compiles in this module's context
         @doc false
@@ -194,6 +264,10 @@ defmodule Lavash.ClientComponent do
 
         def render(var!(assigns)) do
           state = client_state(var!(assigns))
+
+          # Compute calculations and add to state
+          state = __compute_calculations__(state)
+
           state_json = Jason.encode!(state)
 
           var!(assigns) =
@@ -228,8 +302,46 @@ defmodule Lavash.ClientComponent do
         def __hook_name__, do: unquote(hook_name)
         def __full_hook_name__, do: unquote(full_hook_name)
         def __generated_js__, do: nil
+        def __calculations__, do: []
       end
     end
+  end
+
+  # Generate Elixir functions for each calculation
+  defp generate_calculation_functions([]) do
+    # No calculations - just return state unchanged
+    quote do
+      defp __compute_calculations__(state), do: state
+    end
+  end
+
+  defp generate_calculation_functions(calculations) do
+    calc_clauses =
+      Enum.map(calculations, fn {name, _source, expr} ->
+        quote do
+          defp __calc__(unquote(name), state) do
+            # The expression already has Map.get(state, :field) calls from transform_at_refs
+            _ = state
+            unquote(expr)
+          end
+        end
+      end)
+
+    # Generate the main compute function that runs all calculations
+    calc_names = Enum.map(calculations, fn {name, _, _} -> name end)
+
+    compute_fn =
+      quote do
+        defp __compute_calculations__(state) do
+          Enum.reduce(unquote(calc_names), state, fn name, acc ->
+            value = __calc__(name, acc)
+            Map.put(acc, name, value)
+          end)
+        end
+      end
+
+    # Combine all the generated code
+    {:__block__, [], calc_clauses ++ [compute_fn]}
   end
 
   # Write JS directly to Phoenix's colocated hooks directory

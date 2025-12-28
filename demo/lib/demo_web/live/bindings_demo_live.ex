@@ -77,6 +77,7 @@ defmodule DemoWeb.BindingsDemoLive do
           selected={@roast}
           values={["light", "medium", "medium_dark", "dark"]}
           labels={%{"medium_dark" => "Med-Dark"}}
+          show_count={true}
         />
       </div>
 

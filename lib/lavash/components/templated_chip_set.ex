@@ -25,6 +25,10 @@ defmodule Lavash.Components.TemplatedChipSet do
   prop :values, {:list, :string}, required: true
   prop :labels, :map, default: %{}
   prop :chip_class, :keyword_list, default: nil
+  prop :show_count, :boolean, default: false
+
+  # Client-side calculations - these run on both server and client
+  calculate :selected_count, length(@selected)
 
   @default_chip_class [
     base: "px-3 py-1.5 text-sm rounded-full border transition-colors cursor-pointer",
@@ -35,7 +39,7 @@ defmodule Lavash.Components.TemplatedChipSet do
   # The template - JS is generated at compile time and written to colocated hooks dir
   # The render function is also auto-generated
   client_template """
-  <div class="flex flex-wrap gap-2">
+  <div class="flex flex-wrap gap-2 items-center">
     <button
       :for={v <- @values}
       type="button"
@@ -45,6 +49,9 @@ defmodule Lavash.Components.TemplatedChipSet do
     >
       {Map.get(@labels, v, humanize(v))}
     </button>
+    <span :if={@show_count} class="text-sm text-base-content/50 ml-2">
+      (<span data-optimistic-display="selected_count">{@selected_count}</span> selected)
+    </span>
   </div>
   """
 
@@ -59,6 +66,7 @@ defmodule Lavash.Components.TemplatedChipSet do
       selected: assigns[:selected] || [],
       values: assigns.values,
       labels: assigns[:labels] || %{},
+      show_count: assigns[:show_count] || false,
       active_class: String.trim("#{base} #{active}"),
       inactive_class: String.trim("#{base} #{inactive}")
     }
