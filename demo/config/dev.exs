@@ -60,7 +60,9 @@ config :demo, DemoWeb.Endpoint,
       ~r"priv/static/(?!uploads/).*(js|css|png|jpeg|jpg|gif|svg)$",
       ~r"lib/demo_web/(controllers|live|components)/.*(ex|heex)$",
       # Watch lavash dependency for development
-      ~r"../lib/lavash/.*(ex|heex)$"
+      ~r"../lib/lavash/.*(ex|heex)$",
+      # Watch colocated hooks for esbuild rebuild triggering
+      ~r"assets/vendor/phoenix-colocated/.*\.js$"
     ]
   ]
 

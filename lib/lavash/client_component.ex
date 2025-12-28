@@ -358,12 +358,30 @@ defmodule Lavash.ClientComponent do
     # Generate filename with hash for cache busting
     hash = :crypto.hash(:md5, js_code) |> Base.encode32(case: :lower, padding: false)
     filename = "#{env.line}_#{hash}.js"
+    full_path = Path.join(module_dir, filename)
 
     # Ensure directory exists
     File.mkdir_p!(module_dir)
 
-    # Write the JS file
-    File.write!(Path.join(module_dir, filename), js_code)
+    # Only write if content changed (avoids unnecessary esbuild rebuilds)
+    needs_write = case File.read(full_path) do
+      {:ok, existing} -> existing != js_code
+      {:error, _} -> true
+    end
+
+    if needs_write do
+      # Clean up old files in this module's directory to avoid stale files
+      case File.ls(module_dir) do
+        {:ok, files} ->
+          for file <- files, file != filename, String.ends_with?(file, ".js") do
+            File.rm(Path.join(module_dir, file))
+          end
+        _ -> :ok
+      end
+
+      # Write the new JS file
+      File.write!(full_path, js_code)
+    end
 
     # Return the hook data in the format Phoenix expects
     # key must be a string "hooks" not atom :hooks
