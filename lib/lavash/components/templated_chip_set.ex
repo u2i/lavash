@@ -49,7 +49,7 @@ defmodule Lavash.Components.TemplatedChipSet do
     >
       {Map.get(@labels, v, humanize(v))}
     </button>
-    <span :if={@show_count} class="text-sm text-base-content/50 ml-2">
+    <span :if={@show_count} class="text-sm text-gray-600 ml-2">
       (<span data-optimistic-display="selected_count">{@selected_count}</span> selected)
     </span>
   </div>
@@ -73,6 +73,8 @@ defmodule Lavash.Components.TemplatedChipSet do
   end
 
   def handle_event("toggle", %{"val" => val}, socket) do
+    # Bump version so client can detect stale updates
+    socket = bump_version(socket)
     binding_map = socket.assigns[:__lavash_binding_map__] || %{}
 
     case Map.get(binding_map, :selected) do

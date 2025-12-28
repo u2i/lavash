@@ -768,6 +768,9 @@ defmodule Lavash.Template do
         this.pendingActions = [];
         this.calculations = #{calc_names_json};
 
+        // Store hook reference for onBeforeElUpdated callback
+        this.el.__lavash_hook__ = this;
+
         this.clickHandler = this.handleClick.bind(this);
         this.el.addEventListener("click", this.clickHandler, true);
       },

@@ -33,8 +33,6 @@ import counterOptimistic from "phoenix-colocated/demo/DemoWeb.CounterLive/54_tig
 import storefrontOptimistic from "phoenix-colocated/demo/DemoWeb.Storefront.ProductsLive/123_tigxgsumzfejan3k2k4c4n3r4m.js"
 // Lavash optimistic hook
 import {LavashOptimistic} from "./lavash_optimistic"
-// Templated ChipSet hook (Shadow DOM + morphdom)
-import TemplatedChipSet from "./templated_chip_set_hook"
 
 // Register optimistic functions from colocated JS
 window.Lavash = window.Lavash || {};
@@ -45,8 +43,7 @@ window.Lavash.optimistic["DemoWeb.Storefront.ProductsLive"] = storefrontOptimist
 // Merge hooks from Lavash library and app-specific hooks
 const colocatedHooks = {
   ...lavashHooks,
-  LavashOptimistic,
-  TemplatedChipSet
+  LavashOptimistic
 }
 
 console.log("[app.js] Registered hooks:", Object.keys(colocatedHooks));
@@ -79,41 +76,25 @@ const liveSocket = new LiveSocket("/live", Socket, {
   params: () => ({ _csrf_token: csrfToken, _lavash_state: lavashState }),
   hooks: colocatedHooks,
   dom: {
-    // Prevent stale patches from overwriting optimistic updates
+    // Preserve optimistic updates during stale patches
+    // NOTE: LiveView ignores return value - we must copy content to `to` element
     onBeforeElUpdated(from, to) {
-      // Check if this element is inside a Lavash optimistic wrapper
-      const wrapper = from.closest("[data-lavash-version]");
-      if (!wrapper) return; // Not in optimistic context
+      // Check if this element IS a Lavash optimistic wrapper (has data-lavash-version)
+      if (from.hasAttribute("data-lavash-version")) {
+        const hookInstance = from.__lavash_hook__;
+        if (!hookInstance) return;
 
-      // Get the hook instance from the wrapper element
-      const hookInstance = wrapper.__lavash_hook__;
-      if (!hookInstance) return; // Hook not initialized yet
+        const serverVersion = parseInt(to.dataset.lavashVersion || "0", 10);
+        const clientVersion = hookInstance.clientVersion || 0;
 
-      // Get incoming server version from the patch
-      const serverVersion = parseInt(to.dataset?.lavashVersion || wrapper.dataset.lavashVersion || "0", 10);
-      const clientVersion = hookInstance.clientVersion || 0;
-
-      // If server version is less than client version, this is a stale patch
-      if (serverVersion < clientVersion) {
-        console.log(`[LavashOptimistic] Rejecting stale patch: server v${serverVersion} < client v${clientVersion}`);
-
-        // Preserve attributes on elements with data-optimistic-class
-        if (from.hasAttribute("data-optimistic-class")) {
-          to.className = from.className;
+        if (serverVersion < clientVersion) {
+          // Stale patch - preserve the entire optimistic DOM
+          to.innerHTML = from.innerHTML;
+          console.log(`[LavashOptimistic] Preserving innerHTML: server v${serverVersion} < client v${clientVersion}`);
+        } else {
+          // Server caught up
+          hookInstance.serverVersion = serverVersion;
         }
-
-        // Also preserve class on children with data-optimistic-class
-        const optimisticEls = from.querySelectorAll("[data-optimistic-class]");
-        optimisticEls.forEach((fromEl, i) => {
-          const toEl = to.querySelectorAll("[data-optimistic-class]")[i];
-          if (toEl) {
-            toEl.className = fromEl.className;
-          }
-        });
-      } else if (serverVersion >= clientVersion) {
-        // Server caught up - update hook's server version
-        hookInstance.serverVersion = serverVersion;
-        console.log(`[LavashOptimistic] Server caught up: v${serverVersion}`);
       }
     }
   }

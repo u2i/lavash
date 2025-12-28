@@ -270,11 +270,15 @@ defmodule Lavash.ClientComponent do
 
           state_json = Jason.encode!(state)
 
+          # Get version from assigns (set in mount/update)
+          version = Map.get(var!(assigns), :__lavash_version__, 0)
+
           var!(assigns) =
             var!(assigns)
             |> Phoenix.Component.assign(:client_state, state)
             |> Phoenix.Component.assign(:__state_json__, state_json)
             |> Phoenix.Component.assign(:__hook_name__, @__lavash_full_hook_name__)
+            |> Phoenix.Component.assign(:__version__, version)
             # Merge state into assigns so template expressions work
             |> Phoenix.Component.assign(state)
 
@@ -290,7 +294,7 @@ defmodule Lavash.ClientComponent do
             phx-hook={@__hook_name__}
             phx-target={@myself}
             data-lavash-state={@__state_json__}
-            data-lavash-version={0}
+            data-lavash-version={@__version__}
           >
             {@inner_content}
           </div>

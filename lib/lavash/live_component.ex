@@ -157,9 +157,14 @@ defmodule Lavash.LiveComponent do
       def __lavash_bindings__, do: unquote(Macro.escape(bindings))
       def __lavash_props__, do: unquote(Macro.escape(props))
 
-      # Override mount to set up bindings
+      # Override mount to set up bindings and version tracking
       def mount(socket) do
-        {:ok, assign(socket, :__lavash_binding_map__, %{})}
+        socket =
+          socket
+          |> assign(:__lavash_binding_map__, %{})
+          |> assign(:__lavash_version__, 0)
+
+        {:ok, socket}
       end
 
       defoverridable mount: 1
@@ -228,5 +233,17 @@ defmodule Lavash.LiveComponent do
   """
   def notify_parent(event, params \\ %{}) do
     send(self(), {:lavash_component_event, event, params})
+  end
+
+  @doc """
+  Bumps the optimistic version counter.
+
+  Call this in handle_event before sending updates to the parent.
+  The version is rendered in `data-lavash-version` and compared by the
+  client-side hook to detect and discard stale server updates.
+  """
+  def bump_version(socket) do
+    current = socket.assigns[:__lavash_version__] || 0
+    Phoenix.Component.assign(socket, :__lavash_version__, current + 1)
   end
 end
