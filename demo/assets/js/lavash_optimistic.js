@@ -439,6 +439,20 @@ const LavashOptimistic = {
     }
   },
 
+  // Check if a field has pending sources (for derives)
+  hasPendingSources(field) {
+    const meta = this.graph[field];
+    if (!meta || !meta.deps) return false;
+
+    // Check if any dependency is pending (either directly or transitively)
+    for (const dep of meta.deps) {
+      if (dep in this.pending) return true;
+      // Recursively check if dep is a derive with pending sources
+      if (this.hasPendingSources(dep)) return true;
+    }
+    return false;
+  },
+
   updated() {
     // Server patch arrived - check version to decide whether to accept
     const newServerVersion = parseInt(this.el.dataset.lavashVersion || "0", 10);
@@ -453,8 +467,10 @@ const LavashOptimistic = {
     } else {
       // Server version is stale (from an earlier action) - selectively merge
       // Only accept fields that don't have pending optimistic updates
+      // For derives, check if any of their source fields are pending
       for (const [key, serverValue] of Object.entries(serverState)) {
-        if (!(key in this.pending)) {
+        const isPending = (key in this.pending) || this.hasPendingSources(key);
+        if (!isPending) {
           this.state[key] = serverValue;
         }
       }

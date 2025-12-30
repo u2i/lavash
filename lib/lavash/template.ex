@@ -1198,8 +1198,14 @@ defmodule Lavash.Template do
           const value = this.state[localField];
           if (value !== undefined) {
             parentHook.state[parentField] = value;
+            // Mark as pending so parent rejects stale server patches for this field
+            parentHook.pending[parentField] = value;
             changedFields.push(parentField);
           }
+        }
+        // Bump parent's client version so stale server patches are rejected
+        if (changedFields.length > 0) {
+          parentHook.clientVersion++;
         }
         // Recompute parent's derives that depend on the changed fields
         if (changedFields.length > 0 && typeof parentHook.recomputeDerives === 'function') {
