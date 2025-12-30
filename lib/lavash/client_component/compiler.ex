@@ -1,4 +1,4 @@
-defmodule Lavash.ClientComponentV2.Compiler do
+defmodule Lavash.ClientComponent.Compiler do
   @moduledoc """
   Compiler for ClientComponent DSL.
 

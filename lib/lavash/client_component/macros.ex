@@ -1,6 +1,6 @@
 defmodule Lavash.ClientComponent.Macros do
   @moduledoc """
-  Macros for ClientComponentV2 that need to be imported.
+  Macros for ClientComponent that need to be imported.
 
   These are separate from the main module to avoid circular dependency issues
   with Spark DSL compilation.

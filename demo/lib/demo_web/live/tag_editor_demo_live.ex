@@ -64,7 +64,7 @@ defmodule DemoWeb.TagEditorDemoLive do
           <h2 class="font-semibold mb-4">Tag Editor (Optimistic)</h2>
 
           <.live_component
-            module={Lavash.Components.TagEditorV2}
+            module={Lavash.Components.TagEditor}
             id="demo-tags"
             bind={[tags: :tags]}
             tags={@tags}
