@@ -75,6 +75,7 @@ defmodule DemoWeb.BindingsDemoLive do
           id="roast-filter"
           bind={[selected: :roast]}
           selected={@roast}
+          __lavash_parent_version__={@__lavash_parent_version__}
           values={["light", "medium", "medium_dark", "dark"]}
           labels={%{"medium_dark" => "Med-Dark"}}
           show_count={true}

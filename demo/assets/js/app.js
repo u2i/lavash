@@ -31,8 +31,8 @@ import {hooks as lavashHooks} from "phoenix-colocated/lavash"
 // Colocated JS (non-hook exports) from this app - import directly by module
 import counterOptimistic from "phoenix-colocated/demo/DemoWeb.CounterLive/54_tigxgsumzfejan3k2k4c4n3r4m.js"
 import storefrontOptimistic from "phoenix-colocated/demo/DemoWeb.Storefront.ProductsLive/123_tigxgsumzfejan3k2k4c4n3r4m.js"
-// Lavash optimistic hook
-import {LavashOptimistic} from "./lavash_optimistic"
+// Lavash optimistic hook and DOM config
+import {LavashOptimistic, createLavashDom} from "./lavash_optimistic"
 
 // Register optimistic functions from colocated JS
 window.Lavash = window.Lavash || {};
@@ -71,29 +71,50 @@ window.addEventListener("phx:_lavash_component_sync", (e) => {
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 
 
+// DEBUG: Watch for DOM changes to selected_count with stack trace
+setTimeout(() => {
+  const countEl = document.querySelector('[data-optimistic-display="selected_count"]');
+  if (countEl) {
+    // Override textContent setter to capture stack trace
+    const originalDescriptor = Object.getOwnPropertyDescriptor(Node.prototype, 'textContent');
+    Object.defineProperty(countEl, 'textContent', {
+      set(value) {
+        console.log(`[textContent SET] "${countEl.textContent}" -> "${value}"`);
+        console.trace('Stack trace:');
+        return originalDescriptor.set.call(this, value);
+      },
+      get() {
+        return originalDescriptor.get.call(this);
+      }
+    });
+    console.log('[DEBUG] Watching selected_count textContent with stack traces');
+  }
+}, 1000);
+
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: () => ({ _csrf_token: csrfToken, _lavash_state: lavashState }),
   hooks: colocatedHooks,
   dom: {
-    // Preserve optimistic updates during stale patches
-    // NOTE: LiveView ignores return value - we must copy content to `to` element
     onBeforeElUpdated(from, to) {
-      // Check if this element IS a Lavash optimistic wrapper (has data-lavash-version)
-      if (from.hasAttribute("data-lavash-version")) {
-        const hookInstance = from.__lavash_hook__;
-        if (!hookInstance) return;
+      // If this element has a Lavash hook with pending actions, preserve its DOM
+      const hook = from.__lavash_hook__;
+      if (hook && hook.pendingCount > 0) {
+        console.log(`[onBeforeElUpdated] Preserving innerHTML for ${from.id} (pending=${hook.pendingCount})`);
+        to.innerHTML = from.innerHTML;
+      }
 
-        const serverVersion = parseInt(to.dataset.lavashVersion || "0", 10);
-        const clientVersion = hookInstance.clientVersion || 0;
-
-        if (serverVersion < clientVersion) {
-          // Stale patch - preserve the entire optimistic DOM
-          to.innerHTML = from.innerHTML;
-          console.log(`[LavashOptimistic] Preserving innerHTML: server v${serverVersion} < client v${clientVersion}`);
-        } else {
-          // Server caught up
-          hookInstance.serverVersion = serverVersion;
+      // Hardcoded test: preserve selected_count span when parent hook has pending actions
+      if (from.id === "selected-count-display") {
+        // Find parent hook
+        let parent = from.parentElement;
+        while (parent) {
+          if (parent.__lavash_hook__ && parent.__lavash_hook__.pendingCount > 0) {
+            console.log(`[onBeforeElUpdated] Preserving child #selected-count-display: "${from.textContent}"`);
+            to.innerHTML = from.innerHTML;
+            break;
+          }
+          parent = parent.parentElement;
         }
       }
     }

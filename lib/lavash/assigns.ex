@@ -33,6 +33,9 @@ defmodule Lavash.Assigns do
         Phoenix.Component.assign(sock, field_name, value)
       end)
 
+    # Project parent's optimistic version for child components to inherit
+    socket = Phoenix.Component.assign(socket, :__lavash_parent_version__, LSocket.optimistic_version(socket))
+
     # Project form metadata (action_type) for each form
     project_form_metadata(socket, module, derived)
   end

@@ -50,7 +50,7 @@ defmodule Lavash.Components.TemplatedChipSet do
       {Map.get(@labels, v, humanize(v))}
     </button>
     <span :if={@show_count} class="text-sm text-gray-600 ml-2">
-      (<span data-optimistic-display="selected_count">{@selected_count}</span> selected)
+      (<span id="selected-count-display" data-optimistic-display="selected_count">{@selected_count}</span> selected)
     </span>
   </div>
   """
@@ -73,12 +73,15 @@ defmodule Lavash.Components.TemplatedChipSet do
   end
 
   def handle_event("toggle", %{"val" => val}, socket) do
-    # Bump version so client can detect stale updates
-    socket = bump_version(socket)
+    require Logger
+    Logger.warning("[ChipSet] toggle val=#{val}, version=#{socket.assigns[:__lavash_version__]}")
+
     binding_map = socket.assigns[:__lavash_binding_map__] || %{}
 
     case Map.get(binding_map, :selected) do
       nil ->
+        # Not bound - component manages its own state, bump version here
+        socket = bump_version(socket)
         selected = socket.assigns[:selected] || []
 
         new_selected =
@@ -91,6 +94,8 @@ defmodule Lavash.Components.TemplatedChipSet do
         {:noreply, Phoenix.Component.assign(socket, :selected, new_selected)}
 
       parent_field ->
+        # Bound to parent - parent will bump version when it processes the toggle
+        # Don't bump here or we'll get ahead of the actual state changes
         send(self(), {:lavash_component_toggle, parent_field, val})
         {:noreply, socket}
     end

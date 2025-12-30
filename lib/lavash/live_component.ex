@@ -192,6 +192,15 @@ defmodule Lavash.LiveComponent do
             # Store the binding map for later use in update_binding
             socket = assign(socket, :__lavash_binding_map__, binding_map)
 
+            # Sync parent's optimistic version when bound
+            # This ensures the component's version tracks the parent's version
+            # so that optimistic updates work correctly across parent/child
+            socket =
+              case Map.get(assigns, :__lavash_parent_version__) do
+                nil -> socket
+                parent_version -> assign(socket, :__lavash_version__, parent_version)
+              end
+
             # For each binding, look up the parent's current value
             # The parent passes these as regular assigns
             Enum.reduce(bindings, socket, fn {local, parent}, sock ->

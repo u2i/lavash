@@ -763,9 +763,7 @@ defmodule Lavash.Template do
     export default {
       mounted() {
         this.state = JSON.parse(this.el.dataset.lavashState || "{}");
-        this.serverVersion = parseInt(this.el.dataset.lavashVersion || "0", 10);
-        this.clientVersion = this.serverVersion;
-        this.pendingActions = [];
+        this.pendingCount = 0;
         this.calculations = #{calc_names_json};
 
         // Store hook reference for onBeforeElUpdated callback
@@ -794,15 +792,20 @@ defmodule Lavash.Template do
         const actionName = target.dataset.optimistic;
         const value = target.dataset.optimisticValue;
 
-        this.clientVersion++;
+        // Track pending action for onBeforeElUpdated to check
+        this.pendingCount++;
+
+        // Apply optimistic update immediately
         this.applyOptimisticAction(actionName, value);
         this.runCalculations();
-        this.pendingActions.push({ action: actionName, value, version: this.clientVersion });
         this.applyOptimisticClasses();
         this.applyOptimisticDisplays();
 
+        // Send to server with callback to track completion
         const phxEvent = target.dataset.phxClick || actionName.split("_")[0];
-        this.pushEventTo(this.el, phxEvent, { val: value });
+        this.pushEventTo(this.el, phxEvent, { val: value }, () => {
+          this.pendingCount--;
+        });
       },
 
       applyOptimisticAction(actionName, value) {
@@ -848,29 +851,17 @@ defmodule Lavash.Template do
       },
 
       updated() {
+        // onBeforeElUpdated (in app.js) handles preserving optimistic visuals
+        // during morphdom patches. Here we only need to sync state when server catches up.
         const serverState = JSON.parse(this.el.dataset.lavashState || "{}");
-        const newServerVersion = parseInt(this.el.dataset.lavashVersion || "0", 10);
 
-        if (newServerVersion >= this.clientVersion) {
-          this.serverVersion = newServerVersion;
-          this.clientVersion = newServerVersion;
+        if (this.pendingCount === 0) {
+          // No pending actions - accept server state fully
           this.state = { ...serverState };
-          this.pendingActions = [];
-        } else {
-          const pendingFields = new Set(
-            this.pendingActions.map(a => a.action.replace("toggle_", ""))
-          );
-
-          for (const [key, value] of Object.entries(serverState)) {
-            if (!pendingFields.has(key)) {
-              this.state[key] = value;
-            }
-          }
-
           this.runCalculations();
-          this.applyOptimisticClasses();
-          this.applyOptimisticDisplays();
         }
+        // When pendingCount > 0, keep our optimistic state - visuals are already
+        // preserved by onBeforeElUpdated modifying the incoming server HTML
       },
 
       destroyed() {
