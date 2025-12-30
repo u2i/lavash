@@ -43,6 +43,7 @@ defmodule Lavash.Optimistic.JsGenerator do
     optimistic_fields = get_optimistic_fields(module)
     multi_selects = get_multi_selects(module)
     toggles = get_toggles(module)
+    calculations = get_calculations(module)
 
     action_fns = Enum.map(actions, &generate_action_js/1) |> Enum.filter(& &1)
 
@@ -54,21 +55,25 @@ defmodule Lavash.Optimistic.JsGenerator do
     toggle_action_fns = Enum.map(toggles, &generate_toggle_action_js/1)
     toggle_derive_fns = Enum.map(toggles, &generate_toggle_derive_js/1)
 
+    # Generate JS for calculate macro derives
+    calculation_fns = Enum.map(calculations, &generate_calculation_js/1) |> Enum.filter(& &1)
+
     # Build the JS object
-    fns = action_fns ++ multi_select_action_fns ++ multi_select_derive_fns ++ toggle_action_fns ++ toggle_derive_fns
+    fns = action_fns ++ multi_select_action_fns ++ multi_select_derive_fns ++ toggle_action_fns ++ toggle_derive_fns ++ calculation_fns
 
     # Add derives metadata for the hook (includes explicit and auto-generated)
     explicit_derive_names = Enum.map(derives, & &1.name) |> Enum.map(&to_string/1)
     multi_select_derive_names = Enum.map(multi_selects, fn ms -> "#{ms.name}_chips" end)
     toggle_derive_names = Enum.map(toggles, fn t -> "#{t.name}_chip" end)
-    derive_names = explicit_derive_names ++ multi_select_derive_names ++ toggle_derive_names
+    calculation_derive_names = Enum.map(calculations, fn {name, _, _, _} -> to_string(name) end)
+    derive_names = explicit_derive_names ++ multi_select_derive_names ++ toggle_derive_names ++ calculation_derive_names
 
     # Add optimistic field names
     field_names = Enum.map(optimistic_fields, & &1.name) |> Enum.map(&to_string/1)
 
     # Build graph metadata for each derive
     # Format: { name: { deps: [...], fn: function }, ... }
-    graph_entries = build_graph_entries(derives, multi_selects, toggles)
+    graph_entries = build_graph_entries(derives, multi_selects, toggles, calculations)
 
     if fns == [] and derive_names == [] do
       nil
@@ -90,7 +95,7 @@ defmodule Lavash.Optimistic.JsGenerator do
   end
 
   # Build graph entries with dependency information for each derive
-  defp build_graph_entries(derives, multi_selects, toggles) do
+  defp build_graph_entries(derives, multi_selects, toggles, calculations) do
     # Explicit derives from DSL
     explicit_entries =
       Enum.map(derives, fn derive ->
@@ -111,7 +116,13 @@ defmodule Lavash.Optimistic.JsGenerator do
         {"#{t.name}_chip", %{deps: [to_string(t.name)]}}
       end)
 
-    (explicit_entries ++ multi_select_entries ++ toggle_entries)
+    # Calculation derives have deps extracted from @var references
+    calculation_entries =
+      Enum.map(calculations, fn {name, _source, _ast, deps} ->
+        {to_string(name), %{deps: deps}}
+      end)
+
+    (explicit_entries ++ multi_select_entries ++ toggle_entries ++ calculation_entries)
     |> Map.new()
   end
 
@@ -330,6 +341,34 @@ defmodule Lavash.Optimistic.JsGenerator do
     rescue
       _ -> []
     end
+  end
+
+  # Get calculations from module attribute (set by calculate macro)
+  defp get_calculations(module) do
+    try do
+      # Calculations are stored as tuples: {name, source, ast, deps}
+      Module.get_attribute(module, :__lavash_calculations__) || []
+    rescue
+      _ ->
+        # Module already compiled, try to get from __lavash_calculations__/0 function
+        if function_exported?(module, :__lavash_calculations__, 0) do
+          module.__lavash_calculations__()
+        else
+          []
+        end
+    end
+  end
+
+  # Generate JS for a calculation (transpile Elixir expression to JS)
+  defp generate_calculation_js({name, source, _ast, _deps}) do
+    # Use the existing elixir_to_js transpiler
+    js_expr = Lavash.Template.elixir_to_js(source)
+
+    """
+      #{name}(state) {
+        return #{js_expr};
+      }
+    """
   end
 
   @default_chip_class [

@@ -702,6 +702,35 @@ defmodule Lavash.Template do
     "(#{ast_to_js(list)}.filter(x => x !== #{val_js}))"
   end
 
+  # String interpolation: "#{expr}" -> template literal `${expr}`
+  # AST form: {:<<>>, _, [part1, part2, ...]}
+  # where parts are either strings or {:"::", _, [expr, {:binary, _, _}]}
+  defp ast_to_js({:<<>>, _, parts}) do
+    js_parts =
+      Enum.map(parts, fn
+        # Plain string part
+        str when is_binary(str) ->
+          # Escape backticks and ${
+          str
+          |> String.replace("\\", "\\\\")
+          |> String.replace("`", "\\`")
+          |> String.replace("${", "\\${")
+
+        # Interpolation: {:"::", _, [{expr}, {:binary, _, _}]}
+        {:"::", _, [{{:., _, [Kernel, :to_string]}, _, [expr]}, {:binary, _, _}]} ->
+          "${#{ast_to_js(expr)}}"
+
+        # Interpolation variant without to_string wrapper
+        {:"::", _, [expr, {:binary, _, _}]} ->
+          "${#{ast_to_js(expr)}}"
+
+        other ->
+          "${#{ast_to_js(other)}}"
+      end)
+
+    "`#{Enum.join(js_parts, "")}`"
+  end
+
   # Fallback - return as comment for debugging
   defp ast_to_js(other) do
     "/* unknown: #{inspect(other)} */"
@@ -1001,8 +1030,10 @@ defmodule Lavash.Template do
         this.pendingCount = 0;
         this.clickHandler = this.handleClick.bind(this);
         this.keydownHandler = this.handleKeydown.bind(this);
+        this.inputHandler = this.handleInput.bind(this);
         this.el.addEventListener("click", this.clickHandler, true);
         this.el.addEventListener("keydown", this.keydownHandler, true);
+        this.el.addEventListener("input", this.inputHandler, true);
         this.el.__lavash_hook__ = this;
       },
 
@@ -1055,6 +1086,15 @@ defmodule Lavash.Template do
         }
       },
 
+      handleInput(e) {
+        // Stop input events from propagating to parent hooks
+        // This prevents parent LiveView from overwriting state.tags with string input value
+        const target = e.target.closest("[data-optimistic-field]");
+        if (target) {
+          e.stopPropagation();
+        }
+      },
+
       handleKeydown(e) {
         if (e.key !== "Enter") return;
 
@@ -1066,6 +1106,7 @@ defmodule Lavash.Template do
         if (action !== "add" || !field) return;
 
         e.preventDefault();
+        e.stopPropagation();
         const value = input.value.trim();
         if (!value) return;
 
@@ -1152,11 +1193,21 @@ defmodule Lavash.Template do
         const parentRoot = document.getElementById("lavash-optimistic-root");
         if (!parentRoot || !parentRoot.__lavash_hook__) return;
         const parentHook = parentRoot.__lavash_hook__;
+        const changedFields = [];
         for (const [localField, parentField] of Object.entries(this.bindings)) {
           const value = this.state[localField];
           if (value !== undefined) {
             parentHook.state[parentField] = value;
+            changedFields.push(parentField);
           }
+        }
+        // Recompute parent's derives that depend on the changed fields
+        if (changedFields.length > 0 && typeof parentHook.recomputeDerives === 'function') {
+          parentHook.recomputeDerives(changedFields);
+        }
+        // Update parent's DOM to reflect new derived values
+        if (typeof parentHook.updateDOM === 'function') {
+          parentHook.updateDOM();
         }
         if (typeof parentHook.syncUrl === 'function') {
           parentHook.syncUrl();
@@ -1169,6 +1220,9 @@ defmodule Lavash.Template do
         }
         if (this.keydownHandler) {
           this.el.removeEventListener("keydown", this.keydownHandler, true);
+        }
+        if (this.inputHandler) {
+          this.el.removeEventListener("input", this.inputHandler, true);
         }
       }
     };

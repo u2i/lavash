@@ -47,9 +47,14 @@ defmodule Lavash.LiveView do
       require Phoenix.Component
       import Phoenix.Component
 
+      # Register module attributes for optimistic macros
+      Module.register_attribute(__MODULE__, :__lavash_calculations__, accumulate: true)
+      Module.register_attribute(__MODULE__, :__lavash_optimistic_actions__, accumulate: true)
+
       @before_compile Lavash.LiveView.Compiler
 
       import Lavash.LiveView.Helpers
+      import Lavash.Optimistic.Macros, only: [calculate: 2, optimistic_action: 3]
     end
   end
 end

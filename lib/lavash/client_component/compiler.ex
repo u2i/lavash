@@ -173,8 +173,8 @@ defmodule Lavash.ClientComponent.Compiler do
   end
 
   defp generate_calculations(calculations) do
-    # Calculations are tuples: {name, source_string, transformed_expr}
-    calc_clauses = Enum.map(calculations, fn {name, _source, transformed_expr} ->
+    # Calculations are tuples: {name, source_string, transformed_expr, deps}
+    calc_clauses = Enum.map(calculations, fn {name, _source, transformed_expr, _deps} ->
       quote do
         defp __calc__(unquote(name), var!(state)) do
           _ = var!(state)
@@ -183,7 +183,7 @@ defmodule Lavash.ClientComponent.Compiler do
       end
     end)
 
-    calc_names = Enum.map(calculations, fn {name, _, _} -> name end)
+    calc_names = Enum.map(calculations, fn {name, _, _, _} -> name end)
 
     compute_fn = quote do
       defp __compute_calculations__(state) do
@@ -300,9 +300,9 @@ defmodule Lavash.ClientComponent.Compiler do
     render_body = "`" <> Enum.join(render_parts, "") <> "`"
 
     # Generate calculation JS
-    # Calculations are tuples: {name, source_string, transformed_expr}
+    # Calculations are tuples: {name, source_string, transformed_expr, deps}
     calc_js = generate_calculation_js(calculations)
-    calc_names = Enum.map(calculations, fn {name, _, _} -> to_string(name) end)
+    calc_names = Enum.map(calculations, fn {name, _, _, _} -> to_string(name) end)
     calc_names_json = Jason.encode!(calc_names)
 
     # Generate action JS
@@ -323,8 +323,10 @@ defmodule Lavash.ClientComponent.Compiler do
         this.pendingCount = 0;
         this.clickHandler = this.handleClick.bind(this);
         this.keydownHandler = this.handleKeydown.bind(this);
+        this.inputHandler = this.handleInput.bind(this);
         this.el.addEventListener("click", this.clickHandler, true);
         this.el.addEventListener("keydown", this.keydownHandler, true);
+        this.el.addEventListener("input", this.inputHandler, true);
         this.el.__lavash_hook__ = this;
       },
 
@@ -373,6 +375,15 @@ defmodule Lavash.ClientComponent.Compiler do
         }
       },
 
+      handleInput(e) {
+        // Stop input events from propagating to parent hooks
+        // This prevents parent LiveView from overwriting state.tags with string input value
+        const target = e.target.closest("[data-optimistic-field]");
+        if (target) {
+          e.stopPropagation();
+        }
+      },
+
       handleKeydown(e) {
         if (e.key !== "Enter") return;
         const input = e.target;
@@ -381,6 +392,7 @@ defmodule Lavash.ClientComponent.Compiler do
         if (action !== "add" || !field) return;
 
         e.preventDefault();
+        e.stopPropagation();
         const value = input.value.trim();
         if (!value) return;
 
@@ -434,11 +446,21 @@ defmodule Lavash.ClientComponent.Compiler do
         const parentRoot = document.getElementById("lavash-optimistic-root");
         if (!parentRoot || !parentRoot.__lavash_hook__) return;
         const parentHook = parentRoot.__lavash_hook__;
+        const changedFields = [];
         for (const [localField, parentField] of Object.entries(this.bindings)) {
           const value = this.state[localField];
           if (value !== undefined) {
             parentHook.state[parentField] = value;
+            changedFields.push(parentField);
           }
+        }
+        // Recompute parent derives affected by the changed fields
+        if (changedFields.length > 0 && typeof parentHook.recomputeDerives === 'function') {
+          parentHook.recomputeDerives(changedFields);
+        }
+        // Update parent DOM (for data-optimistic-display elements)
+        if (typeof parentHook.updateDOM === 'function') {
+          parentHook.updateDOM();
         }
         if (typeof parentHook.syncUrl === 'function') {
           parentHook.syncUrl();
@@ -452,16 +474,19 @@ defmodule Lavash.ClientComponent.Compiler do
         if (this.keydownHandler) {
           this.el.removeEventListener("keydown", this.keydownHandler, true);
         }
+        if (this.inputHandler) {
+          this.el.removeEventListener("input", this.inputHandler, true);
+        }
       }
     };
     """
   end
 
   # Generate JS for calculations
-  # Calculations are tuples: {name, source_string, transformed_expr}
+  # Calculations are tuples: {name, source_string, transformed_expr, deps}
   defp generate_calculation_js(calculations) do
     calculations
-    |> Enum.map(fn {name, source, _transformed_expr} ->
+    |> Enum.map(fn {name, source, _transformed_expr, _deps} ->
       js_expr = Lavash.Template.elixir_to_js(source)
       "  #{name}(state) {\n    return #{js_expr};\n  },"
     end)

@@ -21,19 +21,16 @@ defmodule DemoWeb.TagEditorDemoLive do
     end
   end
 
-  # Optimistic derive
-  derive :tag_summary do
-    argument :tags, state(:tags)
-    optimistic true
+  # Optimistic calculation - transpiles to both Elixir and JavaScript
+  calculate :tag_count, length(@tags)
 
-    run fn %{tags: tags}, _ ->
-      case length(tags) do
-        0 -> "No tags yet"
-        1 -> "1 tag"
-        n -> "#{n} tags"
-      end
-    end
-  end
+  calculate :tag_summary,
+            if(length(@tags) == 0,
+              do: "No tags yet",
+              else: if(length(@tags) == 1, do: "1 tag", else: "#{length(@tags)} tags")
+            )
+
+  calculate :tags_display, Enum.join(@tags, ", ")
 
   def render(assigns) do
     ~H"""
@@ -90,10 +87,10 @@ defmodule DemoWeb.TagEditorDemoLive do
             </div>
 
             <div>
-              <span class="text-gray-600">Raw tags value:</span>
-              <code class="bg-gray-100 px-2 py-1 rounded ml-2 text-xs">
-                {inspect(@tags)}
-              </code>
+              <span class="text-gray-600">Tags (optimistic):</span>
+              <span data-optimistic-display="tags_display" class="ml-2 font-medium">
+                {@tags_display}
+              </span>
             </div>
 
             <div>

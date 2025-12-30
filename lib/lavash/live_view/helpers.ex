@@ -50,7 +50,10 @@ defmodule Lavash.LiveView.Helpers do
     # Get optimistic derives
     derives = module.__lavash__(:optimistic_derives)
 
-    # Build the state map
+    # Get calculations from the calculate macro
+    calculations = get_calculations(module)
+
+    # Build the state map from optimistic fields
     state_map =
       Enum.reduce(state_fields, %{}, fn field, acc ->
         value = Map.get(assigns, field.name)
@@ -58,23 +61,42 @@ defmodule Lavash.LiveView.Helpers do
       end)
 
     # Add derives, unwrapping async values
-    Enum.reduce(derives, state_map, fn derive, acc ->
-      value = Map.get(assigns, derive.name)
+    state_map =
+      Enum.reduce(derives, state_map, fn derive, acc ->
+        value = Map.get(assigns, derive.name)
 
-      # Unwrap async values - handle both AsyncResult structs and plain tuples
-      value =
-        case value do
-          %Phoenix.LiveView.AsyncResult{ok?: true, result: v} -> v
-          %Phoenix.LiveView.AsyncResult{loading: loading} when loading != nil -> nil
-          %Phoenix.LiveView.AsyncResult{} -> nil
-          {:ok, v} -> v
-          :loading -> nil
-          {:error, _} -> nil
-          v -> v
-        end
+        # Unwrap async values - handle both AsyncResult structs and plain tuples
+        value =
+          case value do
+            %Phoenix.LiveView.AsyncResult{ok?: true, result: v} -> v
+            %Phoenix.LiveView.AsyncResult{loading: loading} when loading != nil -> nil
+            %Phoenix.LiveView.AsyncResult{} -> nil
+            {:ok, v} -> v
+            :loading -> nil
+            {:error, _} -> nil
+            v -> v
+          end
 
-      Map.put(acc, derive.name, value)
+        Map.put(acc, derive.name, value)
+      end)
+
+    # Add calculations - compute them from state
+    Enum.reduce(calculations, state_map, fn {name, _source, ast, _deps}, acc ->
+      try do
+        {result, _binding} = Code.eval_quoted(ast, [state: acc], __ENV__)
+        Map.put(acc, name, result)
+      rescue
+        _ -> acc
+      end
     end)
+  end
+
+  defp get_calculations(module) do
+    if function_exported?(module, :__lavash_calculations__, 0) do
+      module.__lavash_calculations__()
+    else
+      []
+    end
   end
 
   @doc """

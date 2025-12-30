@@ -185,6 +185,13 @@ const LavashOptimistic = {
     const target = e.target.closest("[data-optimistic-field]");
     if (!target) return;
 
+    // Skip if input is inside a child component (has its own hook)
+    // Child components handle their own inputs and sync to parent via syncParentUrl()
+    const childHook = target.closest("[data-lavash-state]");
+    if (childHook && childHook !== this.el) {
+      return;
+    }
+
     const fieldName = target.dataset.optimisticField;
     const value = target.type === "range" || target.type === "number"
       ? Number(target.value)

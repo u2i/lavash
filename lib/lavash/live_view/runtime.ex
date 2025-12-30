@@ -256,6 +256,7 @@ defmodule Lavash.LiveView.Runtime do
       |> LSocket.put(:path_param_values, path_param_values)
       |> State.hydrate_url(module, params)
       |> Graph.recompute_all(module)
+      |> compute_calculations(module)
       |> Assigns.project(module)
 
     # Update combination-based subscriptions based on new filter values
@@ -407,6 +408,7 @@ defmodule Lavash.LiveView.Runtime do
       |> LSocket.put_state(field, value)
       |> maybe_push_patch(module)
       |> Graph.recompute_dirty(module)
+      |> compute_calculations(module)
       |> Assigns.project(module)
 
     {:noreply, socket}
@@ -434,6 +436,7 @@ defmodule Lavash.LiveView.Runtime do
       |> LSocket.put_state(field, new_value)
       |> maybe_push_patch(module)
       |> Graph.recompute_dirty(module)
+      |> compute_calculations(module)
       |> Assigns.project(module)
 
     {:noreply, socket}
@@ -457,6 +460,7 @@ defmodule Lavash.LiveView.Runtime do
       |> LSocket.put_state(field, new_value)
       |> maybe_push_patch(module)
       |> Graph.recompute_dirty(module)
+      |> compute_calculations(module)
       |> Assigns.project(module)
 
     {:noreply, socket}
@@ -474,6 +478,7 @@ defmodule Lavash.LiveView.Runtime do
       |> LSocket.put_state(field, new_value)
       |> maybe_push_patch(module)
       |> Graph.recompute_dirty(module)
+      |> compute_calculations(module)
       |> Assigns.project(module)
 
     {:noreply, socket}
@@ -944,4 +949,35 @@ defmodule Lavash.LiveView.Runtime do
   defp extract_changeset(%AshPhoenix.Form{source: %Ash.Changeset{} = cs}), do: cs
   defp extract_changeset(%Ash.Changeset{} = cs), do: cs
   defp extract_changeset(_), do: nil
+
+  @doc """
+  Compute calculations from the `calculate` macro and add to assigns.
+
+  Calculations are simple expressions that reference state via @field syntax.
+  They're evaluated on the server and also transpiled to JS for client-side updates.
+  """
+  def compute_calculations(socket, module) do
+    calculations =
+      if function_exported?(module, :__lavash_calculations__, 0) do
+        module.__lavash_calculations__()
+      else
+        []
+      end
+
+    if calculations == [] do
+      socket
+    else
+      state = LSocket.state(socket)
+
+      Enum.reduce(calculations, socket, fn {name, _source, ast, _deps}, socket ->
+        # Evaluate the transformed AST with state bound
+        try do
+          {result, _binding} = Code.eval_quoted(ast, [state: state], __ENV__)
+          Phoenix.Component.assign(socket, name, result)
+        rescue
+          _ -> socket
+        end
+      end)
+    end
+  end
 end

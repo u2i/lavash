@@ -133,6 +133,11 @@ defmodule Lavash.LiveView.Compiler do
         Spark.Dsl.Extension.get_entities(__MODULE__, [:states])
         |> Enum.filter(&match?(%Lavash.Toggle{}, &1))
       end
+
+      # Expose calculations from the calculate macro for JsGenerator
+      def __lavash_calculations__ do
+        @__lavash_calculations__ || []
+      end
     end
   end
 

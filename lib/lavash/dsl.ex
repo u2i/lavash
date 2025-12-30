@@ -597,5 +597,5 @@ defmodule Lavash.Dsl do
       @actions_section
     ],
     transformers: [],
-    imports: [Phoenix.Component, Lavash.DslHelpers]
+    imports: [Phoenix.Component, Lavash.DslHelpers, Lavash.Optimistic.Macros]
 end
