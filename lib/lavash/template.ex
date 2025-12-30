@@ -684,6 +684,24 @@ defmodule Lavash.Template do
     "(#{ast_to_js(left)} + #{ast_to_js(right)})"
   end
 
+  # List concatenation with ++ -> [...list1, ...list2]
+  defp ast_to_js({:++, _, [left, right]}) do
+    "[...#{ast_to_js(left)}, ...#{ast_to_js(right)}]"
+  end
+
+  # Enum.reject(list, fn x -> expr end) -> list.filter(x => !expr)
+  defp ast_to_js({{:., _, [{:__aliases__, _, [:Enum]}, :reject]}, _, [list, {:fn, _, [{:->, _, [[{var, _, _}], body]}]}]}) do
+    var_str = to_string(var)
+    body_js = ast_to_js(body)
+    "(#{ast_to_js(list)}.filter(#{var_str} => !(#{body_js})))"
+  end
+
+  # Enum.reject with capture: Enum.reject(list, &(&1 == val)) -> list.filter(x => x !== val)
+  defp ast_to_js({{:., _, [{:__aliases__, _, [:Enum]}, :reject]}, _, [list, {:&, _, [{:==, _, [{:&, _, [1]}, val]}]}]}) do
+    val_js = ast_to_js(val)
+    "(#{ast_to_js(list)}.filter(x => x !== #{val_js}))"
+  end
+
   # Fallback - return as comment for debugging
   defp ast_to_js(other) do
     "/* unknown: #{inspect(other)} */"
