@@ -439,6 +439,46 @@ defmodule Lavash.LiveView.Runtime do
     {:noreply, socket}
   end
 
+  def handle_info(module, {:lavash_component_add, field, value}, socket) do
+    # Handle add operations from child Lavash components.
+    # Adds a value to an array field, with duplicate prevention.
+    current = LSocket.get_state(socket, field) || []
+
+    new_value =
+      if value in current do
+        current
+      else
+        current ++ [value]
+      end
+
+    socket =
+      socket
+      |> LSocket.bump_optimistic_version()
+      |> LSocket.put_state(field, new_value)
+      |> maybe_push_patch(module)
+      |> Graph.recompute_dirty(module)
+      |> Assigns.project(module)
+
+    {:noreply, socket}
+  end
+
+  def handle_info(module, {:lavash_component_remove, field, value}, socket) do
+    # Handle remove operations from child Lavash components.
+    # Removes a value from an array field.
+    current = LSocket.get_state(socket, field) || []
+    new_value = Enum.reject(current, &(&1 == value))
+
+    socket =
+      socket
+      |> LSocket.bump_optimistic_version()
+      |> LSocket.put_state(field, new_value)
+      |> maybe_push_patch(module)
+      |> Graph.recompute_dirty(module)
+      |> Assigns.project(module)
+
+    {:noreply, socket}
+  end
+
   def handle_info(
         _module,
         {:lavash_component_async, component_module, component_id, field, result},

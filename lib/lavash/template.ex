@@ -635,6 +635,11 @@ defmodule Lavash.Template do
     to_string(bool)
   end
 
+  # nil literal
+  defp ast_to_js(nil) do
+    "null"
+  end
+
   # Atom literal (convert to string)
   defp ast_to_js(atom) when is_atom(atom) do
     inspect(to_string(atom))
@@ -977,7 +982,9 @@ defmodule Lavash.Template do
         this.bindings = JSON.parse(this.el.dataset.lavashBindings || "{}");
         this.pendingCount = 0;
         this.clickHandler = this.handleClick.bind(this);
+        this.keydownHandler = this.handleKeydown.bind(this);
         this.el.addEventListener("click", this.clickHandler, true);
+        this.el.addEventListener("keydown", this.keydownHandler, true);
         this.el.__lavash_hook__ = this;
       },
 
@@ -1030,38 +1037,93 @@ defmodule Lavash.Template do
         }
       },
 
-      handleClick(e) {
-        const target = e.target.closest("[data-optimistic]");
-        if (!target) return;
+      handleKeydown(e) {
+        if (e.key !== "Enter") return;
 
-        e.stopPropagation();
+        const input = e.target;
+        const action = input.dataset.optimistic;
+        const field = input.dataset.optimisticField;
 
-        const actionName = target.dataset.optimistic;
-        const value = target.dataset.optimisticValue;
+        // Only handle "add" actions on Enter
+        if (action !== "add" || !field) return;
 
-        // Increment pending count - client now owns DOM until server catches up
+        e.preventDefault();
+        const value = input.value.trim();
+        if (!value) return;
+
+        const current = this.state[field] || [];
+
+        // Check for max limit (convention: max_<field> e.g. max_tags)
+        const maxKey = `max_${field}`;
+        const maxLimit = this.state[maxKey];
+        if (maxLimit && current.length >= maxLimit) return;
+
+        // Check for duplicate
+        if (current.includes(value)) {
+          input.value = "";
+          return;
+        }
+
         this.pendingCount++;
 
-        this.applyOptimisticAction(actionName, value);
+        // Apply optimistic add
+        this.applyOptimisticAction("add", field, value);
         this.runCalculations();
         this.updateDOM();
         this.syncParentUrl();
 
-        // Send to server, decrement pending on response
-        const phxEvent = target.dataset.phxClick || actionName.split("_")[0];
+        // Clear input after re-render (need to find it again)
+        const newInput = this.el.querySelector(`[data-optimistic="add"][data-optimistic-field="${field}"]`);
+        if (newInput) newInput.value = "";
+
+        // Send to server - use field-specific event name
+        const phxEvent = `add_${field.replace(/s$/, '')}`;
         this.pushEventTo(this.el, phxEvent, { val: value }, () => {
           this.pendingCount--;
-          // If all pending actions resolved, let next server patch apply
         });
       },
 
-      applyOptimisticAction(actionName, value) {
-        if (actionName.startsWith("toggle_")) {
-          const field = actionName.replace("toggle_", "");
-          const current = this.state[field] || [];
+      handleClick(e) {
+        const target = e.target.closest("[data-optimistic]");
+        if (!target) return;
+
+        const action = target.dataset.optimistic;
+        const field = target.dataset.optimisticField;
+        const value = target.dataset.optimisticValue;
+
+        // Skip non-click actions (handled by other listeners)
+        if (action === "add" && !value) return;
+
+        e.stopPropagation();
+
+        // Increment pending count - client now owns DOM until server catches up
+        this.pendingCount++;
+
+        this.applyOptimisticAction(action, field, value);
+        this.runCalculations();
+        this.updateDOM();
+        this.syncParentUrl();
+
+        // Send to server - use field-specific event name for routing
+        const phxEvent = target.dataset.phxClick || `${action}_${field.replace(/s$/, '')}`;
+        this.pushEventTo(this.el, phxEvent, { val: value }, () => {
+          this.pendingCount--;
+        });
+      },
+
+      applyOptimisticAction(action, field, value) {
+        const current = this.state[field] || [];
+
+        if (action === "toggle") {
           if (current.includes(value)) {
             this.state[field] = current.filter(v => v !== value);
           } else {
+            this.state[field] = [...current, value];
+          }
+        } else if (action === "remove") {
+          this.state[field] = current.filter(v => v !== value);
+        } else if (action === "add") {
+          if (!current.includes(value)) {
             this.state[field] = [...current, value];
           }
         }
@@ -1086,6 +1148,9 @@ defmodule Lavash.Template do
       destroyed() {
         if (this.clickHandler) {
           this.el.removeEventListener("click", this.clickHandler, true);
+        }
+        if (this.keydownHandler) {
+          this.el.removeEventListener("keydown", this.keydownHandler, true);
         }
       }
     };
