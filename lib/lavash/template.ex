@@ -975,8 +975,20 @@ defmodule Lavash.Template do
         this.state = JSON.parse(this.el.dataset.lavashState || "{}");
         this.calculations = #{calc_names_json};
         this.bindings = JSON.parse(this.el.dataset.lavashBindings || "{}");
+        this.pendingCount = 0;
         this.clickHandler = this.handleClick.bind(this);
         this.el.addEventListener("click", this.clickHandler, true);
+        this.el.__lavash_hook__ = this;
+      },
+
+      updated() {
+        // Server patch arrived - accept if no optimistic actions pending
+        if (this.pendingCount === 0) {
+          // Sync our state with server's authoritative state
+          this.state = JSON.parse(this.el.dataset.lavashState || "{}");
+          this.runCalculations();
+        }
+        // If pendingCount > 0, ignore server patch - client owns DOM
       },
 
     #{calc_js}#{calc_comma}
@@ -1001,7 +1013,15 @@ defmodule Lavash.Template do
           const currentChild = this.el.firstElementChild;
           const newChild = temp.firstElementChild;
           if (currentChild && newChild) {
-            window.morphdom(currentChild, newChild);
+            window.morphdom(currentChild, newChild, {
+              onBeforeElUpdated(fromEl, toEl) {
+                // Preserve elements marked for server-only rendering
+                if (fromEl.hasAttribute('data-lavash-preserve')) {
+                  return false; // Skip this element and its children
+                }
+                return true;
+              }
+            });
           } else {
             this.el.innerHTML = newHtml;
           }
@@ -1019,14 +1039,20 @@ defmodule Lavash.Template do
         const actionName = target.dataset.optimistic;
         const value = target.dataset.optimisticValue;
 
+        // Increment pending count - client now owns DOM until server catches up
+        this.pendingCount++;
+
         this.applyOptimisticAction(actionName, value);
         this.runCalculations();
         this.updateDOM();
         this.syncParentUrl();
 
-        // Send to server
+        // Send to server, decrement pending on response
         const phxEvent = target.dataset.phxClick || actionName.split("_")[0];
-        this.pushEventTo(this.el, phxEvent, { val: value });
+        this.pushEventTo(this.el, phxEvent, { val: value }, () => {
+          this.pendingCount--;
+          // If all pending actions resolved, let next server patch apply
+        });
       },
 
       applyOptimisticAction(actionName, value) {

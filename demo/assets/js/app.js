@@ -73,7 +73,23 @@ const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: () => ({ _csrf_token: csrfToken, _lavash_state: lavashState }),
-  hooks: colocatedHooks
+  hooks: colocatedHooks,
+  dom: {
+    // Gate server patches on optimistic elements with pending actions
+    onBeforeElUpdated(fromEl, _toEl) {
+      // Check if this element (or an ancestor) has a lavash hook with pending actions
+      const hookEl = fromEl.closest("[phx-hook]");
+      if (hookEl && hookEl.__lavash_hook__) {
+        const hook = hookEl.__lavash_hook__;
+        if (hook.pendingCount > 0) {
+          // Client owns DOM - skip this patch, keep fromEl as-is
+          return false;
+        }
+      }
+      // No pending actions - let LiveView apply the patch
+      return true;
+    }
+  }
 })
 
 // Show progress bar on live navigation and form submits

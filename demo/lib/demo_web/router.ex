@@ -63,5 +63,6 @@ defmodule DemoWeb.Router do
     live "/products-socket", ProductsSocketLive
     live "/components", ComponentsDemoLive
     live "/bindings", BindingsDemoLive
+    live "/nested-optimistic", NestedOptimisticDemoLive
   end
 end
