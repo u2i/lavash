@@ -212,9 +212,9 @@ defmodule Lavash.ClientComponent do
     full_hook_name = "#{inspect(env.module)}.#{hook_name_clean}"
 
     if template_source do
-      # Parse template and generate JS at compile time
-      # Pass calculations so we can generate JS for them
-      {_heex, js_render_body} = Lavash.Template.compile_template_with_calculations(template_source, calculations)
+      # Parse template and generate JS at compile time with full render support
+      # This generates a render(state) function that can handle :for and :if
+      {_heex, js_render_body} = Lavash.Template.compile_template_with_render(template_source, calculations)
 
       # Write the JS directly to the colocated hooks directory
       {_filename, hook_data} = write_colocated_hook(env, hook_name, full_hook_name, js_render_body)

@@ -669,6 +669,16 @@ defmodule Lavash.Template do
     "!#{ast_to_js(expr)}"
   end
 
+  # "in" operator: value in list -> list.includes(value)
+  defp ast_to_js({:in, _, [value, list]}) do
+    "#{ast_to_js(list)}.includes(#{ast_to_js(value)})"
+  end
+
+  # String concatenation with <>
+  defp ast_to_js({:<>, _, [left, right]}) do
+    "(#{ast_to_js(left)} + #{ast_to_js(right)})"
+  end
+
   # Fallback - return as comment for debugging
   defp ast_to_js(other) do
     "/* unknown: #{inspect(other)} */"
@@ -688,6 +698,222 @@ defmodule Lavash.Template do
       lavash: lavash,
       js: generate_js(lavash)
     }
+  end
+
+  # ===========================================================================
+  # JS Render Function Generation
+  # ===========================================================================
+  #
+  # Transpiles a HEEx template to a JavaScript render function that produces
+  # HTML as a template literal string. This allows the client to fully own
+  # the DOM during optimistic updates.
+  #
+  # Input (HEEx):
+  #   <div class="flex gap-2">
+  #     <button :for={v <- @values} class={if v in @selected, do: "active", else: "inactive"}>
+  #       {humanize(v)}
+  #     </button>
+  #     <span :if={@show_count}>({@count} selected)</span>
+  #   </div>
+  #
+  # Output (JS render function):
+  #   render(state) {
+  #     return `<div class="flex gap-2">${state.values.map(v =>
+  #       `<button class="${state.selected.includes(v) ? "active" : "inactive"}">${
+  #         humanize(v)
+  #       }</button>`
+  #     ).join('')}${state.show_count ? `<span>(${state.count} selected)</span>` : ''}</div>`;
+  #   }
+  #
+  # ===========================================================================
+
+  @doc """
+  Generates a JS render function from a parsed template tree.
+
+  Returns a JavaScript function body that takes `state` and returns an HTML string.
+  """
+  def generate_js_render(tree) do
+    # tree_to_js_parts returns raw parts without wrapper backticks
+    parts = tree_to_js_parts(tree, %{})
+    body = "`" <> Enum.join(parts, "") <> "`"
+    """
+    render(state) {
+      return #{body};
+    }
+    """
+  end
+
+  @doc """
+  Generates a JS render function from template source.
+
+  Convenience wrapper that tokenizes, parses, and generates in one call.
+
+  ## Example
+
+      iex> source = ~S(<button :for={v <- @values} class={if v in @selected, do: "on", else: "off"}>{v}</button>)
+      iex> Lavash.Template.generate_js_render_from_source(source)
+      # => render(state) { return `${state.values.map(v => `<button class="${state.selected.includes(v) ? "on" : "off"}">${v}</button>`).join('')}`; }
+  """
+  def generate_js_render_from_source(source) do
+    source
+    |> tokenize()
+    |> parse()
+    |> generate_js_render()
+  end
+
+  # Convert parsed tree nodes to JS template literal parts (without wrapper backticks)
+  # Returns a list of string parts that can be joined into a template literal body
+  defp tree_to_js_parts(nodes, ctx) when is_list(nodes) do
+    Enum.flat_map(nodes, &node_to_js_parts(&1, ctx))
+  end
+
+  # Single node to parts
+  defp node_to_js_parts({:text, content}, _ctx) do
+    escaped = content
+    |> String.replace("\\", "\\\\")
+    |> String.replace("`", "\\`")
+    |> String.replace("${", "\\${")
+    [escaped]
+  end
+
+  # Expression node (like {humanize(v)} or {@field})
+  defp node_to_js_parts({:expr, code, _meta}, _ctx) do
+    js_expr = elixir_to_js(code)
+    ["${#{js_expr}}"]
+  end
+
+  # Element with :for special attribute
+  defp node_to_js_parts({:element, tag, attrs, children, meta}, ctx) do
+    case find_special_attr(attrs, :for) do
+      {:for, for_expr} ->
+        # Parse the for expression: "v <- @values"
+        {var, collection_js} = parse_for_to_js(for_expr)
+
+        # Remove :for from attrs and recurse with var in context
+        attrs_without_for = reject_special_attr(attrs, :for)
+        new_ctx = Map.put(ctx, :loop_var, var)
+
+        inner = render_element_wrapped(tag, attrs_without_for, children, meta, new_ctx)
+
+        # Wrap in map().join('')
+        ["${#{collection_js}.map(#{var} => #{inner}).join('')}"]
+
+      nil ->
+        # Check for :if
+        case find_special_attr(attrs, :if) do
+          {:if, if_expr} ->
+            # Parse condition
+            condition_js = elixir_to_js(if_expr)
+
+            # Remove :if from attrs and render normally
+            attrs_without_if = reject_special_attr(attrs, :if)
+            inner = render_element_wrapped(tag, attrs_without_if, children, meta, ctx)
+
+            # Wrap in ternary
+            ["${#{condition_js} ? #{inner} : ''}"]
+
+          nil ->
+            # Regular element - return inline parts
+            render_element_parts(tag, attrs, children, meta, ctx)
+        end
+    end
+  end
+
+  # Special attribute node (standalone - shouldn't happen in well-formed input)
+  defp node_to_js_parts({:special_attr, _, _, _, _}, _ctx), do: []
+
+  # Render element parts inline (no wrapper backticks)
+  defp render_element_parts(tag, attrs, children, _meta, ctx) do
+    attrs_js = render_attrs_to_js(attrs, ctx)
+
+    if children == [] do
+      ["<#{tag}#{attrs_js}></#{tag}>"]
+    else
+      children_parts = tree_to_js_parts(children, ctx)
+      ["<#{tag}#{attrs_js}>"] ++ children_parts ++ ["</#{tag}>"]
+    end
+  end
+
+  # Render element wrapped in backticks (for use inside map/ternary)
+  defp render_element_wrapped(tag, attrs, children, _meta, ctx) do
+    attrs_js = render_attrs_to_js(attrs, ctx)
+
+    if children == [] do
+      "`<#{tag}#{attrs_js}></#{tag}>`"
+    else
+      children_parts = tree_to_js_parts(children, ctx)
+      children_js = Enum.join(children_parts, "")
+      "`<#{tag}#{attrs_js}>#{children_js}</#{tag}>`"
+    end
+  end
+
+  # Render attributes to JS - handles static strings and expressions
+  defp render_attrs_to_js(attrs, ctx) do
+    attrs
+    |> Enum.reject(fn {name, _} -> String.starts_with?(name, ":") end)
+    |> Enum.map(fn {name, value} -> render_attr_to_js(name, value, ctx) end)
+    |> Enum.join("")
+  end
+
+  # Static string attribute
+  defp render_attr_to_js(name, {:string, value}, _ctx) do
+    # Escape for HTML attribute
+    escaped = escape_attr_value(value)
+    " #{name}=\"#{escaped}\""
+  end
+
+  # Expression attribute (like class={expr} or data-value={v})
+  defp render_attr_to_js(name, {:expr, code, _}, _ctx) do
+    js_expr = elixir_to_js(code)
+    " #{name}=\"${#{js_expr}}\""
+  end
+
+  # Boolean attribute
+  defp render_attr_to_js(name, {:boolean, true}, _ctx) do
+    " #{name}"
+  end
+
+  defp render_attr_to_js(_name, {:boolean, false}, _ctx) do
+    ""
+  end
+
+  # Fallback
+  defp render_attr_to_js(_name, _value, _ctx), do: ""
+
+  # Escape attribute value for HTML
+  defp escape_attr_value(value) do
+    value
+    |> String.replace("&", "&amp;")
+    |> String.replace("\"", "&quot;")
+    |> String.replace("<", "&lt;")
+    |> String.replace(">", "&gt;")
+  end
+
+  # Find a special attribute by type
+  defp find_special_attr(attrs, type) do
+    key = ":#{type}"
+    case Enum.find(attrs, fn {name, _} -> name == key end) do
+      {^key, {:expr, code, _}} -> {type, code}
+      _ -> nil
+    end
+  end
+
+  # Remove a special attribute
+  defp reject_special_attr(attrs, type) do
+    key = ":#{type}"
+    Enum.reject(attrs, fn {name, _} -> name == key end)
+  end
+
+  # Parse a for comprehension to JS: "v <- @values" -> {"v", "state.values"}
+  defp parse_for_to_js(code) do
+    case Code.string_to_quoted(code) do
+      {:ok, {:<-, _, [{var, _, _}, collection]}} when is_atom(var) ->
+        {to_string(var), ast_to_js(collection)}
+
+      _ ->
+        # Fallback
+        {"item", "[]"}
+    end
   end
 
   @doc """
@@ -737,6 +963,31 @@ defmodule Lavash.Template do
     js_render_fn = generate_js_render_function_with_calculations(tree, calculations)
 
     {heex_source, js_render_fn}
+  end
+
+  @doc """
+  Compiles a template with full client-side render support.
+
+  Generates a JS hook that includes a `render(state)` function which
+  fully regenerates the component's innerHTML from state. This allows
+  the client to handle `:for` loops and `:if` conditionals.
+
+  ## Parameters
+  - `source` - The HEEx template source
+  - `calculations` - List of `{name, source_string, ast}` tuples
+
+  ## Returns
+  `{heex_source, js_code}` where js_code includes the render function.
+  """
+  def compile_template_with_render(source, calculations) do
+    tokens = tokenize(source)
+    tree = parse(tokens)
+
+    # Generate both outputs
+    heex_source = generate_heex_with_template(source, tree)
+    js_code = generate_js_hook_with_render(tree, calculations)
+
+    {heex_source, js_code}
   end
 
   # Generate JS for calculations
@@ -867,6 +1118,166 @@ defmodule Lavash.Template do
         }
         // When pendingCount > 0, keep our optimistic state - visuals are already
         // preserved by onBeforeElUpdated modifying the incoming server HTML
+      },
+
+      // Sync bound fields to parent's LavashOptimistic hook for URL updates
+      syncParentUrl() {
+        if (Object.keys(this.bindings).length === 0) return;
+
+        // Find parent LavashOptimistic hook
+        const parentRoot = document.getElementById("lavash-optimistic-root");
+        if (!parentRoot || !parentRoot.__lavash_hook__) return;
+
+        const parentHook = parentRoot.__lavash_hook__;
+
+        // Update parent state with bound field values
+        for (const [localField, parentField] of Object.entries(this.bindings)) {
+          const value = this.state[localField];
+          if (value !== undefined) {
+            parentHook.state[parentField] = value;
+          }
+        }
+
+        // Trigger parent URL sync
+        if (typeof parentHook.syncUrl === 'function') {
+          parentHook.syncUrl();
+        }
+      },
+
+      destroyed() {
+        if (this.clickHandler) {
+          this.el.removeEventListener("click", this.clickHandler, true);
+        }
+      }
+    };
+    """
+  end
+
+  # Generate a JS hook with full render support - regenerates innerHTML from state
+  # This approach handles :for loops and :if conditionals properly
+  defp generate_js_hook_with_render(tree, calculations) do
+    calc_js = generate_calculation_js(calculations)
+    calc_names = Enum.map(calculations, fn {name, _, _} -> to_string(name) end)
+    calc_names_json = Jason.encode!(calc_names)
+    calc_comma = if calc_js != "", do: ",", else: ""
+
+    # Generate the render function body from the template tree
+    render_parts = tree_to_js_parts(tree, %{})
+    render_body = "`" <> Enum.join(render_parts, "") <> "`"
+
+    ~s"""
+    // Generated JS hook with full render support
+    // Helper function for humanize
+    function humanize(value) {
+      return String(value).replace(/_/g, ' ').replace(/^\\w/, c => c.toUpperCase());
+    }
+
+    export default {
+      mounted() {
+        this.state = JSON.parse(this.el.dataset.lavashState || "{}");
+        this.pendingCount = 0;
+        this.calculations = #{calc_names_json};
+        // Bindings map: {localField: parentField} for URL sync
+        this.bindings = JSON.parse(this.el.dataset.lavashBindings || "{}");
+
+        // Store hook reference for onBeforeElUpdated callback
+        this.el.__lavash_hook__ = this;
+
+        this.clickHandler = this.handleClick.bind(this);
+        this.el.addEventListener("click", this.clickHandler, true);
+      },
+
+    #{calc_js}#{calc_comma}
+
+      runCalculations() {
+        for (const name of this.calculations) {
+          if (typeof this[name] === 'function') {
+            this.state[name] = this[name](this.state);
+          }
+        }
+      },
+
+      // Full render function - regenerates innerHTML from state
+      render(state) {
+        return #{render_body};
+      },
+
+      // Update DOM using morphdom for efficient diffing
+      updateDOM() {
+        const newHtml = this.render(this.state);
+        // Create a temporary container to parse the new HTML
+        const temp = document.createElement('div');
+        temp.innerHTML = newHtml;
+        // morphdom the first child (the actual content) into our container
+        if (temp.firstElementChild && window.morphdom) {
+          // If we have a single root element, morph it directly
+          const currentChild = this.el.firstElementChild;
+          const newChild = temp.firstElementChild;
+          if (currentChild && newChild) {
+            window.morphdom(currentChild, newChild);
+          } else {
+            // Fallback to innerHTML if structure doesn't match
+            this.el.innerHTML = newHtml;
+          }
+        } else {
+          // Fallback if morphdom not available
+          this.el.innerHTML = newHtml;
+        }
+      },
+
+      handleClick(e) {
+        const target = e.target.closest("[data-optimistic]");
+        if (!target) return;
+
+        e.stopPropagation();
+
+        const actionName = target.dataset.optimistic;
+        const value = target.dataset.optimisticValue;
+
+        // Track pending action for onBeforeElUpdated to check
+        this.pendingCount++;
+
+        // Apply optimistic update immediately
+        this.applyOptimisticAction(actionName, value);
+        this.runCalculations();
+
+        // Re-render using morphdom for efficient updates
+        this.updateDOM();
+
+        // Sync URL via parent LavashOptimistic hook
+        this.syncParentUrl();
+
+        // Send to server with callback to track completion
+        const phxEvent = target.dataset.phxClick || actionName.split("_")[0];
+        this.pushEventTo(this.el, phxEvent, { val: value }, () => {
+          this.pendingCount--;
+        });
+      },
+
+      applyOptimisticAction(actionName, value) {
+        if (actionName.startsWith("toggle_")) {
+          const field = actionName.replace("toggle_", "");
+          const current = this.state[field] || [];
+          if (current.includes(value)) {
+            this.state[field] = current.filter(v => v !== value);
+          } else {
+            this.state[field] = [...current, value];
+          }
+        }
+      },
+
+      updated() {
+        // When server responds with new state
+        const serverState = JSON.parse(this.el.dataset.lavashState || "{}");
+
+        if (this.pendingCount === 0) {
+          // No pending actions - accept server state fully
+          this.state = { ...serverState };
+          this.runCalculations();
+          // Server already rendered the DOM, no need to re-render
+        }
+        // When pendingCount > 0, onBeforeElUpdated preserves our innerHTML
+        // so we keep the optimistic render
       },
 
       // Sync bound fields to parent's LavashOptimistic hook for URL updates
