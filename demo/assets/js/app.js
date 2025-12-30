@@ -75,19 +75,14 @@ const liveSocket = new LiveSocket("/live", Socket, {
   params: () => ({ _csrf_token: csrfToken, _lavash_state: lavashState }),
   hooks: colocatedHooks,
   dom: {
-    // Gate server patches on optimistic elements with pending actions
-    onBeforeElUpdated(fromEl, _toEl) {
-      // Check if this element (or an ancestor) has a lavash hook with pending actions
-      const hookEl = fromEl.closest("[phx-hook]");
-      if (hookEl && hookEl.__lavash_hook__) {
-        const hook = hookEl.__lavash_hook__;
-        if (hook.pendingCount > 0) {
-          // Client owns DOM - skip this patch, keep fromEl as-is
-          return false;
-        }
+    // Preserve optimistic DOM when hooks have pending actions
+    onBeforeElUpdated(from, to) {
+      // If this element has a Lavash hook with pending actions, preserve its DOM
+      const hook = from.__lavash_hook__;
+      if (hook && hook.pendingCount > 0) {
+        // Copy current DOM into the incoming element so LiveView applies preserved content
+        to.innerHTML = from.innerHTML;
       }
-      // No pending actions - let LiveView apply the patch
-      return true;
     }
   }
 })

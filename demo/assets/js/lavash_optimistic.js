@@ -439,6 +439,34 @@ const LavashOptimistic = {
     }
   },
 
+  updated() {
+    // Server patch arrived - check version to decide whether to accept
+    const newServerVersion = parseInt(this.el.dataset.lavashVersion || "0", 10);
+    const serverState = JSON.parse(this.el.dataset.lavashState || "{}");
+
+    if (newServerVersion >= this.clientVersion) {
+      // Server version is current or ahead - accept full server state
+      this.serverVersion = newServerVersion;
+      this.clientVersion = newServerVersion;
+      this.state = { ...serverState };
+      this.pending = {};
+    } else {
+      // Server version is stale (from an earlier action) - selectively merge
+      // Only accept fields that don't have pending optimistic updates
+      for (const [key, serverValue] of Object.entries(serverState)) {
+        if (!(key in this.pending)) {
+          this.state[key] = serverValue;
+        }
+      }
+      // Update server version tracking but keep client version
+      this.serverVersion = newServerVersion;
+    }
+
+    // Recompute derives based on current state and update DOM
+    this.recomputeDerives();
+    this.updateDOM();
+  },
+
   destroyed() {
     this.el.removeEventListener("click", this.handleClick.bind(this), true);
   }
