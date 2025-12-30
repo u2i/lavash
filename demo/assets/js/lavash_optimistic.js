@@ -366,27 +366,9 @@ const LavashOptimistic = {
   },
 
   updateDOM() {
-    // Helper to check if element is inside a container with pending optimistic actions
-    const hasPendingParent = (el) => {
-      let parent = el.parentElement;
-      while (parent) {
-        if (parent.__lavash_hook__ && parent.__lavash_hook__.pendingCount > 0) {
-          console.log(`[updateDOM] hasPendingParent: found ${parent.id} with pendingCount=${parent.__lavash_hook__.pendingCount}`);
-          return true;
-        }
-        parent = parent.parentElement;
-      }
-      return false;
-    };
-
     // Update all elements with data-optimistic-display attribute (text content)
     const displayElements = this.el.querySelectorAll("[data-optimistic-display]");
     displayElements.forEach(el => {
-      // Skip if inside a container with pending actions (let that hook manage its own DOM)
-      const pending = hasPendingParent(el);
-      console.log(`[updateDOM] checking ${el.id || el.dataset.optimisticDisplay}: hasPendingParent=${pending}`);
-      if (pending) return;
-
       const fieldName = el.dataset.optimisticDisplay;
       const value = this.state[fieldName];
       if (value !== undefined) {
@@ -398,9 +380,6 @@ const LavashOptimistic = {
     // Format: data-optimistic-class="roast_chips.light" means state.roast_chips["light"]
     const classElements = this.el.querySelectorAll("[data-optimistic-class]");
     classElements.forEach(el => {
-      // Skip if inside a container with pending actions
-      if (hasPendingParent(el)) return;
-
       const path = el.dataset.optimisticClass;
       const [field, key] = path.split(".");
       const classMap = this.state[field];
@@ -411,41 +390,6 @@ const LavashOptimistic = {
         el.className = classMap;
       }
     });
-  },
-
-  updated() {
-    // DISABLED - testing onBeforeElUpdated DOM copying approach
-    return;
-    const serverState = JSON.parse(this.el.dataset.lavashState || "{}");
-    const newServerVersion = parseInt(this.el.dataset.lavashVersion || "0", 10);
-
-    // Check if server has caught up to our version
-    const serverCaughtUp = newServerVersion >= this.clientVersion;
-
-    if (serverCaughtUp) {
-      // Server caught up - accept all server state, clear pending
-      this.serverVersion = newServerVersion;
-      this.state = { ...serverState };
-      this.pending = {};
-
-      // Sync URL with server-confirmed state
-      this.syncUrl();
-    } else {
-      // Server is stale - keep our optimistic state, but update non-pending fields
-      for (const [key, serverValue] of Object.entries(serverState)) {
-        if (!(key in this.pending)) {
-          // No pending update for this field - accept server value
-          this.state[key] = serverValue;
-        }
-      }
-    }
-
-    // Recompute derives based on current state
-    this.recomputeDerives();
-
-    // Always update DOM after server update to reapply optimistic-controlled classes
-    // (server doesn't know about client-side derives like roast_chips)
-    this.updateDOM();
   },
 
   // Sync URL fields to browser URL without triggering navigation
@@ -493,90 +437,4 @@ const LavashOptimistic = {
   }
 };
 
-/**
- * Creates the dom configuration for LiveSocket that preserves optimistic updates.
- *
- * When a Lavash hook has pending actions (pendingCount > 0), this prevents
- * morphdom from overwriting optimistic UI state with stale server values.
- *
- * Usage:
- *   import { createLavashDom } from "./lavash_optimistic"
- *
- *   const liveSocket = new LiveSocket("/live", Socket, {
- *     hooks: { ...lavashHooks, LavashOptimistic },
- *     dom: createLavashDom()
- *   })
- */
-function createLavashDom() {
-  return {
-    onBeforeElUpdated(from, to) {
-      // Skip undoRefs calls where LiveView passes same element as both args
-      if (from === to) {
-        return;
-      }
-
-      const ds = to.dataset || {};
-      const hasOptimistic = ds.optimistic || ds.optimisticDisplay;
-
-      // Find the Lavash hook for this element
-      // Child elements don't have IDs, so we need to search via data attributes
-      let hook = null;
-
-      // Try direct ID lookup first (for container element)
-      const directEl = document.getElementById(from.id || to.id);
-      if (directEl?.__lavash_hook__) {
-        hook = directEl.__lavash_hook__;
-      } else {
-        // For child elements, find the live DOM element and traverse up
-        if (to.dataset?.optimistic || to.dataset?.optimisticDisplay) {
-          const selector = to.dataset.optimisticDisplay
-            ? `[data-optimistic-display="${to.dataset.optimisticDisplay}"]`
-            : `[data-optimistic="${to.dataset.optimistic}"][data-optimistic-value="${to.dataset.optimisticValue}"]`;
-          const liveChild = document.querySelector(selector);
-          if (liveChild) {
-            let parent = liveChild.parentElement;
-            while (parent) {
-              if (parent.__lavash_hook__) {
-                hook = parent.__lavash_hook__;
-                break;
-              }
-              parent = parent.parentElement;
-            }
-          }
-        }
-      }
-
-      if (hasOptimistic) {
-        console.log(`[createLavashDom] optimistic=${ds.optimistic} display=${ds.optimisticDisplay} hook=${!!hook} pendingCount=${hook?.pendingCount}`);
-      }
-
-      if (!hook || hook.pendingCount === 0) {
-        return; // No pending actions, let server state through
-      }
-
-      // Pending actions exist - modify `to` to preserve optimistic values
-      // This way morphdom applies OUR values instead of stale server values
-
-      // Handle optimistic-display elements (text content like counts)
-      const displayField = to.dataset?.optimisticDisplay;
-      if (displayField && hook.state[displayField] !== undefined) {
-        console.log(`[createLavashDom] MODIFYING display ${displayField}: "${to.textContent}" -> "${hook.state[displayField]}"`);
-        to.textContent = hook.state[displayField];
-      }
-
-      // Handle optimistic toggle elements (buttons with active/inactive classes)
-      const actionName = to.dataset?.optimistic;
-      if (actionName?.startsWith("toggle_")) {
-        const field = actionName.replace("toggle_", "");
-        const fieldState = hook.state[field] || [];
-        const value = to.dataset?.optimisticValue;
-        const isActive = fieldState.includes(value);
-        const targetClass = isActive ? hook.state.active_class : hook.state.inactive_class;
-        console.log(`[createLavashDom] MODIFYING class ${value}: isActive=${isActive}`);
-        to.className = targetClass;
-      }
-    }
-  };
-}
-
-export { LavashOptimistic, createLavashDom };
+export { LavashOptimistic };

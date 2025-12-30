@@ -965,8 +965,7 @@ defmodule Lavash.Template do
     render_body = "`" <> Enum.join(render_parts, "") <> "`"
 
     ~s"""
-    // Generated JS hook with full render support
-    // Helper function for humanize
+    // Generated JS hook with client-side rendering
     function humanize(value) {
       return String(value).replace(/_/g, ' ').replace(/^\\w/, c => c.toUpperCase());
     }
@@ -974,14 +973,8 @@ defmodule Lavash.Template do
     export default {
       mounted() {
         this.state = JSON.parse(this.el.dataset.lavashState || "{}");
-        this.pendingCount = 0;
         this.calculations = #{calc_names_json};
-        // Bindings map: {localField: parentField} for URL sync
         this.bindings = JSON.parse(this.el.dataset.lavashBindings || "{}");
-
-        // Store hook reference for onBeforeElUpdated callback
-        this.el.__lavash_hook__ = this;
-
         this.clickHandler = this.handleClick.bind(this);
         this.el.addEventListener("click", this.clickHandler, true);
       },
@@ -996,30 +989,23 @@ defmodule Lavash.Template do
         }
       },
 
-      // Full render function - regenerates innerHTML from state
       render(state) {
         return #{render_body};
       },
 
-      // Update DOM using morphdom for efficient diffing
       updateDOM() {
         const newHtml = this.render(this.state);
-        // Create a temporary container to parse the new HTML
         const temp = document.createElement('div');
         temp.innerHTML = newHtml;
-        // morphdom the first child (the actual content) into our container
         if (temp.firstElementChild && window.morphdom) {
-          // If we have a single root element, morph it directly
           const currentChild = this.el.firstElementChild;
           const newChild = temp.firstElementChild;
           if (currentChild && newChild) {
             window.morphdom(currentChild, newChild);
           } else {
-            // Fallback to innerHTML if structure doesn't match
             this.el.innerHTML = newHtml;
           }
         } else {
-          // Fallback if morphdom not available
           this.el.innerHTML = newHtml;
         }
       },
@@ -1033,24 +1019,14 @@ defmodule Lavash.Template do
         const actionName = target.dataset.optimistic;
         const value = target.dataset.optimisticValue;
 
-        // Track pending action for onBeforeElUpdated to check
-        this.pendingCount++;
-
-        // Apply optimistic update immediately
         this.applyOptimisticAction(actionName, value);
         this.runCalculations();
-
-        // Re-render using morphdom for efficient updates
         this.updateDOM();
-
-        // Sync URL via parent LavashOptimistic hook
         this.syncParentUrl();
 
-        // Send to server with callback to track completion
+        // Send to server
         const phxEvent = target.dataset.phxClick || actionName.split("_")[0];
-        this.pushEventTo(this.el, phxEvent, { val: value }, () => {
-          this.pendingCount--;
-        });
+        this.pushEventTo(this.el, phxEvent, { val: value });
       },
 
       applyOptimisticAction(actionName, value) {
@@ -1065,39 +1041,17 @@ defmodule Lavash.Template do
         }
       },
 
-      updated() {
-        // When server responds with new state
-        const serverState = JSON.parse(this.el.dataset.lavashState || "{}");
-
-        if (this.pendingCount === 0) {
-          // No pending actions - accept server state fully
-          this.state = { ...serverState };
-          this.runCalculations();
-          // Server already rendered the DOM, no need to re-render
-        }
-        // When pendingCount > 0, onBeforeElUpdated preserves our innerHTML
-        // so we keep the optimistic render
-      },
-
-      // Sync bound fields to parent's LavashOptimistic hook for URL updates
       syncParentUrl() {
         if (Object.keys(this.bindings).length === 0) return;
-
-        // Find parent LavashOptimistic hook
         const parentRoot = document.getElementById("lavash-optimistic-root");
         if (!parentRoot || !parentRoot.__lavash_hook__) return;
-
         const parentHook = parentRoot.__lavash_hook__;
-
-        // Update parent state with bound field values
         for (const [localField, parentField] of Object.entries(this.bindings)) {
           const value = this.state[localField];
           if (value !== undefined) {
             parentHook.state[parentField] = value;
           }
         }
-
-        // Trigger parent URL sync
         if (typeof parentHook.syncUrl === 'function') {
           parentHook.syncUrl();
         }

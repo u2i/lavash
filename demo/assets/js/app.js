@@ -31,8 +31,8 @@ import {hooks as lavashHooks} from "phoenix-colocated/lavash"
 // Colocated JS (non-hook exports) from this app - import directly by module
 import counterOptimistic from "phoenix-colocated/demo/DemoWeb.CounterLive/54_tigxgsumzfejan3k2k4c4n3r4m.js"
 import storefrontOptimistic from "phoenix-colocated/demo/DemoWeb.Storefront.ProductsLive/123_tigxgsumzfejan3k2k4c4n3r4m.js"
-// Lavash optimistic hook and DOM config
-import {LavashOptimistic, createLavashDom} from "./lavash_optimistic"
+// Lavash optimistic hook for URL sync
+import {LavashOptimistic} from "./lavash_optimistic"
 
 // Register optimistic functions from colocated JS
 window.Lavash = window.Lavash || {};
@@ -70,72 +70,16 @@ window.addEventListener("phx:_lavash_component_sync", (e) => {
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 
-
-// DEBUG: Watch for DOM changes to selected_count with stack trace
-setTimeout(() => {
-  const countEl = document.querySelector('[data-optimistic-display="selected_count"]');
-  if (countEl) {
-    // Override textContent setter to capture stack trace
-    const originalDescriptor = Object.getOwnPropertyDescriptor(Node.prototype, 'textContent');
-    Object.defineProperty(countEl, 'textContent', {
-      set(value) {
-        console.log(`[textContent SET] "${countEl.textContent}" -> "${value}"`);
-        console.trace('Stack trace:');
-        return originalDescriptor.set.call(this, value);
-      },
-      get() {
-        return originalDescriptor.get.call(this);
-      }
-    });
-    console.log('[DEBUG] Watching selected_count textContent with stack traces');
-  }
-}, 1000);
-
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: () => ({ _csrf_token: csrfToken, _lavash_state: lavashState }),
-  hooks: colocatedHooks,
-  dom: {
-    onBeforeElUpdated(from, to) {
-      // If this element has a Lavash hook with pending actions, preserve its DOM
-      const hook = from.__lavash_hook__;
-      if (hook && hook.pendingCount > 0) {
-        console.log(`[onBeforeElUpdated] Preserving innerHTML for ${from.id} (pending=${hook.pendingCount})`);
-        to.innerHTML = from.innerHTML;
-      }
-
-      // Hardcoded test: preserve selected_count span when parent hook has pending actions
-      if (from.id === "selected-count-display") {
-        // Find parent hook
-        let parent = from.parentElement;
-        while (parent) {
-          if (parent.__lavash_hook__ && parent.__lavash_hook__.pendingCount > 0) {
-            console.log(`[onBeforeElUpdated] Preserving child #selected-count-display: "${from.textContent}"`);
-            to.innerHTML = from.innerHTML;
-            break;
-          }
-          parent = parent.parentElement;
-        }
-      }
-    }
-  }
+  hooks: colocatedHooks
 })
 
 // Show progress bar on live navigation and form submits
 topbar.config({barColors: {0: "#29d"}, shadowColor: "rgba(0, 0, 0, .3)"})
 window.addEventListener("phx:page-loading-start", _info => topbar.show(300))
 window.addEventListener("phx:page-loading-stop", _info => topbar.hide())
-
-// Enable debug mode to trace events BEFORE connecting
-liveSocket.enableDebug()
-
-// Minimal click tracer - capture phase, just logs
-window.addEventListener("click", e => {
-  const btn = e.target.closest("[phx-click]");
-  if (btn) {
-    console.log("[CLICK]", btn.getAttribute("phx-value-val"), "refSrc:", btn.getAttribute("data-phx-ref-src"));
-  }
-}, true);
 
 // connect if there are any LiveViews on the page
 liveSocket.connect()
