@@ -197,6 +197,9 @@ const LavashOptimistic = {
     // Recompute derives and update DOM
     this.recomputeDerives();
     this.updateDOM();
+
+    // Sync URL fields immediately (optimistic URL update)
+    this.syncUrl();
   },
 
   runOptimisticAction(actionName, value) {
@@ -246,6 +249,9 @@ const LavashOptimistic = {
 
       // Update the DOM immediately
       this.updateDOM();
+
+      // Sync URL fields immediately (optimistic URL update)
+      this.syncUrl();
 
     } catch (err) {
       // Silently ignore client-side errors - server will be source of truth
@@ -443,42 +449,42 @@ const LavashOptimistic = {
   },
 
   // Sync URL fields to browser URL without triggering navigation
+  // Uses Elixir-style array params: field[]=val1&field[]=val2
   syncUrl() {
     if (this.urlFields.length === 0) return;
 
     const url = new URL(window.location.href);
-    let changed = false;
+
+    // Build query string manually to avoid URLSearchParams encoding [] as %5B%5D
+    const params = [];
 
     for (const field of this.urlFields) {
       const value = this.state[field];
-      const currentParam = url.searchParams.get(field);
 
-      // Serialize the value for URL
-      let serialized;
-      if (value === null || value === undefined) {
-        serialized = null;
-      } else if (Array.isArray(value)) {
-        // Arrays: join with comma, or null if empty
-        serialized = value.length > 0 ? value.join(",") : null;
-      } else {
-        serialized = String(value);
-      }
-
-      // Check if we need to update
-      if (serialized === null || serialized === "") {
-        if (currentParam !== null) {
-          url.searchParams.delete(field);
-          changed = true;
+      if (Array.isArray(value)) {
+        // Elixir-style array params: field[]=val1&field[]=val2
+        for (const v of value) {
+          params.push(`${encodeURIComponent(field)}[]=${encodeURIComponent(v)}`);
         }
-      } else if (currentParam !== serialized) {
-        url.searchParams.set(field, serialized);
-        changed = true;
+      } else if (value !== null && value !== undefined && value !== "") {
+        params.push(`${encodeURIComponent(field)}=${encodeURIComponent(value)}`);
       }
     }
 
-    if (changed) {
-      // Use replaceState to update URL without triggering navigation
-      window.history.replaceState(window.history.state, "", url.toString());
+    // Preserve non-lavash params from the current URL
+    for (const [key, val] of url.searchParams.entries()) {
+      // Skip lavash-managed fields (both scalar and array forms)
+      const baseKey = key.replace(/\[\]$/, "");
+      if (!this.urlFields.includes(baseKey)) {
+        params.push(`${encodeURIComponent(key)}=${encodeURIComponent(val)}`);
+      }
+    }
+
+    const newSearch = params.length > 0 ? `?${params.join("&")}` : "";
+    const newUrl = url.origin + url.pathname + newSearch + url.hash;
+
+    if (newUrl !== window.location.href) {
+      window.history.replaceState(window.history.state, "", newUrl);
     }
   },
 

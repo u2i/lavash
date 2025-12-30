@@ -765,6 +765,8 @@ defmodule Lavash.Template do
         this.state = JSON.parse(this.el.dataset.lavashState || "{}");
         this.pendingCount = 0;
         this.calculations = #{calc_names_json};
+        // Bindings map: {localField: parentField} for URL sync
+        this.bindings = JSON.parse(this.el.dataset.lavashBindings || "{}");
 
         // Store hook reference for onBeforeElUpdated callback
         this.el.__lavash_hook__ = this;
@@ -800,6 +802,9 @@ defmodule Lavash.Template do
         this.runCalculations();
         this.applyOptimisticClasses();
         this.applyOptimisticDisplays();
+
+        // Sync URL via parent LavashOptimistic hook
+        this.syncParentUrl();
 
         // Send to server with callback to track completion
         const phxEvent = target.dataset.phxClick || actionName.split("_")[0];
@@ -862,6 +867,30 @@ defmodule Lavash.Template do
         }
         // When pendingCount > 0, keep our optimistic state - visuals are already
         // preserved by onBeforeElUpdated modifying the incoming server HTML
+      },
+
+      // Sync bound fields to parent's LavashOptimistic hook for URL updates
+      syncParentUrl() {
+        if (Object.keys(this.bindings).length === 0) return;
+
+        // Find parent LavashOptimistic hook
+        const parentRoot = document.getElementById("lavash-optimistic-root");
+        if (!parentRoot || !parentRoot.__lavash_hook__) return;
+
+        const parentHook = parentRoot.__lavash_hook__;
+
+        // Update parent state with bound field values
+        for (const [localField, parentField] of Object.entries(this.bindings)) {
+          const value = this.state[localField];
+          if (value !== undefined) {
+            parentHook.state[parentField] = value;
+          }
+        }
+
+        // Trigger parent URL sync
+        if (typeof parentHook.syncUrl === 'function') {
+          parentHook.syncUrl();
+        }
       },
 
       destroyed() {

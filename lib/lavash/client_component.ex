@@ -273,10 +273,16 @@ defmodule Lavash.ClientComponent do
           # Get version from assigns (set in mount/update)
           version = Map.get(var!(assigns), :__lavash_version__, 0)
 
+          # Get binding map for client-side URL sync
+          # Format: {local_field: parent_field} e.g. {selected: "roast"}
+          binding_map = Map.get(var!(assigns), :__lavash_binding_map__, %{})
+          bindings_json = Jason.encode!(binding_map)
+
           var!(assigns) =
             var!(assigns)
             |> Phoenix.Component.assign(:client_state, state)
             |> Phoenix.Component.assign(:__state_json__, state_json)
+            |> Phoenix.Component.assign(:__bindings_json__, bindings_json)
             |> Phoenix.Component.assign(:__hook_name__, @__lavash_full_hook_name__)
             |> Phoenix.Component.assign(:__version__, version)
             # Merge state into assigns so template expressions work
@@ -295,6 +301,7 @@ defmodule Lavash.ClientComponent do
             phx-target={@myself}
             data-lavash-state={@__state_json__}
             data-lavash-version={@__version__}
+            data-lavash-bindings={@__bindings_json__}
           >
             {@inner_content}
           </div>
