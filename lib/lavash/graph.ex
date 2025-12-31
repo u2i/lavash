@@ -32,6 +32,7 @@ defmodule Lavash.Graph do
   end
 
   # Expand calculate entities into derived-like field structs
+  # Handles both legacy 4-tuple and new 7-tuple formats
   defp expand_calculations(module) do
     calculations =
       if function_exported?(module, :__lavash_calculations__, 0) do
@@ -40,11 +41,22 @@ defmodule Lavash.Graph do
         []
       end
 
-    Enum.map(calculations, fn {name, _source, ast, deps} ->
+    Enum.map(calculations, fn calc ->
+      # Normalize to 7-tuple format for consistency
+      {name, _source, ast, deps, _optimistic, is_async, reads} =
+        case calc do
+          {name, source, ast, deps} ->
+            {name, source, ast, deps, true, false, []}
+
+          {name, source, ast, deps, opt, async, reads} ->
+            {name, source, ast, deps, opt, async, reads}
+        end
+
       %Lavash.Derived.Field{
         name: name,
         depends_on: deps,
-        async: false,
+        async: is_async,
+        reads: reads,
         optimistic: true,
         compute: fn deps_map ->
           # Build state map from deps_map for AST evaluation

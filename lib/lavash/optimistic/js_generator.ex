@@ -65,7 +65,10 @@ defmodule Lavash.Optimistic.JsGenerator do
     explicit_derive_names = Enum.map(derives, & &1.name) |> Enum.map(&to_string/1)
     multi_select_derive_names = Enum.map(multi_selects, fn ms -> "#{ms.name}_chips" end)
     toggle_derive_names = Enum.map(toggles, fn t -> "#{t.name}_chip" end)
-    calculation_derive_names = Enum.map(calculations, fn {name, _, _, _} -> to_string(name) end)
+    calculation_derive_names = Enum.map(calculations, fn calc ->
+      {name, _, _, _} = normalize_calculation(calc)
+      to_string(name)
+    end)
     derive_names = explicit_derive_names ++ multi_select_derive_names ++ toggle_derive_names ++ calculation_derive_names
 
     # Add optimistic field names
@@ -118,7 +121,8 @@ defmodule Lavash.Optimistic.JsGenerator do
 
     # Calculation derives have deps extracted from @var references
     calculation_entries =
-      Enum.map(calculations, fn {name, _source, _ast, deps} ->
+      Enum.map(calculations, fn calc ->
+        {name, _source, _ast, deps} = normalize_calculation(calc)
         {to_string(name), %{deps: deps}}
       end)
 
@@ -343,24 +347,21 @@ defmodule Lavash.Optimistic.JsGenerator do
     end
   end
 
-  # Get calculations from module attribute (set by calculate macro)
+  # Get calculations from __lavash_calculations__/0 function
+  # Returns list of tuples in either 4-tuple or 7-tuple format
   defp get_calculations(module) do
-    try do
-      # Calculations are stored as tuples: {name, source, ast, deps}
-      Module.get_attribute(module, :__lavash_calculations__) || []
-    rescue
-      _ ->
-        # Module already compiled, try to get from __lavash_calculations__/0 function
-        if function_exported?(module, :__lavash_calculations__, 0) do
-          module.__lavash_calculations__()
-        else
-          []
-        end
+    if function_exported?(module, :__lavash_calculations__, 0) do
+      module.__lavash_calculations__()
+    else
+      []
     end
   end
 
   # Generate JS for a calculation (transpile Elixir expression to JS)
-  defp generate_calculation_js({name, source, _ast, _deps}) do
+  # Handles both 4-tuple and 7-tuple formats
+  defp generate_calculation_js(calc) do
+    {name, source, _ast, _deps} = normalize_calculation(calc)
+
     # Use the existing elixir_to_js transpiler
     js_expr = Lavash.Template.elixir_to_js(source)
 
@@ -370,6 +371,10 @@ defmodule Lavash.Optimistic.JsGenerator do
       }
     """
   end
+
+  # Normalize calculation tuple to consistent format
+  defp normalize_calculation({name, source, ast, deps}), do: {name, source, ast, deps}
+  defp normalize_calculation({name, source, ast, deps, _opt, _async, _reads}), do: {name, source, ast, deps}
 
   @default_chip_class [
     base: "px-3 py-1.5 text-sm rounded-full border transition-colors cursor-pointer",

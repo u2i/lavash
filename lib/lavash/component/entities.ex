@@ -184,7 +184,7 @@ defmodule Lavash.Component.Calculate do
       calculate :can_add, rx(@max == nil or length(@items) < @max)
       calculate :server_only, rx(complex_fn(@data)), optimistic: false
   """
-  defstruct [:name, :rx, optimistic: true, __spark_metadata__: nil]
+  defstruct [:name, :rx, optimistic: true, async: false, reads: [], __spark_metadata__: nil]
 end
 
 defmodule Lavash.Component.OptimisticAction do

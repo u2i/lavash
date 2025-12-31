@@ -96,10 +96,14 @@ defmodule Lavash.Assigns do
   end
 
   # Get calculation field names from __lavash_calculations__
+  # Handles both 4-tuple and 7-tuple formats
   defp safe_get_calculations(module) do
     if function_exported?(module, :__lavash_calculations__, 0) do
       module.__lavash_calculations__()
-      |> Enum.map(fn {name, _source, _ast, _deps} -> name end)
+      |> Enum.map(fn
+        {name, _source, _ast, _deps} -> name
+        {name, _source, _ast, _deps, _opt, _async, _reads} -> name
+      end)
     else
       []
     end

@@ -31,8 +31,8 @@ import "./synced_var.js"
 // Colocated hooks from Lavash library
 import {hooks as lavashHooks} from "phoenix-colocated/lavash"
 // Colocated JS (non-hook exports) from this app - import directly by module
-import counterOptimistic from "phoenix-colocated/demo/DemoWeb.CounterLive/54_tigxgsumzfejan3k2k4c4n3r4m.js"
-import storefrontOptimistic from "phoenix-colocated/demo/DemoWeb.Storefront.ProductsLive/123_tigxgsumzfejan3k2k4c4n3r4m.js"
+import counterOptimistic from "phoenix-colocated/demo/DemoWeb.CounterLive/46_tigxgsumzfejan3k2k4c4n3r4m.js"
+import storefrontOptimistic from "phoenix-colocated/demo/DemoWeb.Storefront.ProductsLive/115_tigxgsumzfejan3k2k4c4n3r4m.js"
 // Lavash optimistic hook for URL sync
 import {LavashOptimistic} from "./lavash_optimistic"
 

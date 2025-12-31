@@ -136,19 +136,15 @@ defmodule Lavash.LiveView.Compiler do
       end
 
       # Expose calculations for JsGenerator
-      # Merges Spark DSL calculations with legacy macro-based calculations
+      # Returns 7-tuples from Spark DSL entities: {name, source, ast, deps, optimistic, async, reads}
       def __lavash_calculations__ do
-        # Get calculations from Spark DSL entities and convert to tuple format
-        spark_calculations =
-          Spark.Dsl.Extension.get_entities(__MODULE__, [:calculations])
-          |> Enum.map(fn calc ->
-            {calc.name, calc.rx.source, calc.rx.ast, calc.rx.deps}
-          end)
-
-        # Get legacy macro-based calculations
-        macro_calculations = @__lavash_calculations__ || []
-
-        spark_calculations ++ macro_calculations
+        Spark.Dsl.Extension.get_entities(__MODULE__, [:calculations])
+        |> Enum.map(fn calc ->
+          {calc.name, calc.rx.source, calc.rx.ast, calc.rx.deps,
+           Map.get(calc, :optimistic, true),
+           Map.get(calc, :async, false),
+           Map.get(calc, :reads, [])}
+        end)
       end
 
       # Expose optimistic actions from the optimistic_action macro

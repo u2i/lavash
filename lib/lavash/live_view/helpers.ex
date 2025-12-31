@@ -81,12 +81,28 @@ defmodule Lavash.LiveView.Helpers do
       end)
 
     # Add calculations - compute them from state
-    Enum.reduce(calculations, state_map, fn {name, _source, ast, _deps}, acc ->
-      try do
-        {result, _binding} = Code.eval_quoted(ast, [state: acc], __ENV__)
-        Map.put(acc, name, result)
-      rescue
-        _ -> acc
+    # Handle both legacy 4-tuple and new 7-tuple formats
+    # Only include optimistic calculations (optimistic: true)
+    Enum.reduce(calculations, state_map, fn calc, acc ->
+      {name, _source, ast, _deps, optimistic} =
+        case calc do
+          {name, source, ast, deps} ->
+            {name, source, ast, deps, true}
+
+          {name, source, ast, deps, opt, _async, _reads} ->
+            {name, source, ast, deps, opt}
+        end
+
+      # Skip non-optimistic calculations
+      if not optimistic do
+        acc
+      else
+        try do
+          {result, _binding} = Code.eval_quoted(ast, [state: acc], __ENV__)
+          Map.put(acc, name, result)
+        rescue
+          _ -> acc
+        end
       end
     end)
   end

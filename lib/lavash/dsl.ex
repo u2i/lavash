@@ -384,6 +384,16 @@ defmodule Lavash.Dsl do
         Whether to transpile to JavaScript for client-side updates.
         Set to false for expressions that can't be transpiled.
         """
+      ],
+      async: [
+        type: :boolean,
+        default: false,
+        doc: "Whether this calculation is async (returns loading/ok/error states)"
+      ],
+      reads: [
+        type: {:list, :atom},
+        default: [],
+        doc: "Ash resources this calculation reads from. Used for automatic invalidation."
       ]
     ]
   }
