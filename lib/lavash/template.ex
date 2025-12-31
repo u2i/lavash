@@ -731,6 +731,19 @@ defmodule Lavash.Template do
     "`#{Enum.join(js_parts, "")}`"
   end
 
+  # Map literal %{} or %{key: value, ...}
+  defp ast_to_js({:%{}, _, pairs}) when is_list(pairs) do
+    if pairs == [] do
+      "{}"
+    else
+      js_pairs = Enum.map(pairs, fn {key, value} ->
+        js_key = if is_atom(key), do: inspect(key), else: ast_to_js(key)
+        "#{js_key}: #{ast_to_js(value)}"
+      end)
+      "{#{Enum.join(js_pairs, ", ")}}"
+    end
+  end
+
   # Fallback - return as comment for debugging
   defp ast_to_js(other) do
     "/* unknown: #{inspect(other)} */"

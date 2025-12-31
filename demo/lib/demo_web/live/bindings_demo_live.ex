@@ -71,14 +71,13 @@ defmodule DemoWeb.BindingsDemoLive do
         <h2 class="font-semibold mb-4">Roast Level Filter (Shadow DOM + morphdom)</h2>
 
         <.live_component
-          module={Lavash.Components.TemplatedChipSet}
+          module={Lavash.Components.ChipSet}
           id="roast-filter"
           bind={[selected: :roast]}
           selected={@roast}
           __lavash_parent_version__={@__lavash_parent_version__}
           values={["light", "medium", "medium_dark", "dark"]}
           labels={%{"medium_dark" => "Med-Dark"}}
-          show_count={true}
         />
       </div>
 

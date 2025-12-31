@@ -151,7 +151,7 @@ defmodule Lavash.ClientComponent.Compiler do
     end)
 
     prop_fields = Enum.map(props, fn %{name: name, default: default} ->
-      default_val = default || nil
+      default_val = Macro.escape(default || nil)
       {name, quote do: Map.get(assigns, unquote(name), unquote(default_val))}
     end)
 

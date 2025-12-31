@@ -42,8 +42,8 @@ defmodule DemoWeb.TagEditorDemoLive do
             Full client re-render with structural changes
           </p>
         </div>
-        <a href="/demos/nested-optimistic" class="text-indigo-600 hover:text-indigo-800">
-          &larr; Nested Optimistic Demo
+        <a href="/demos/bindings" class="text-indigo-600 hover:text-indigo-800">
+          &larr; Bindings Demo
         </a>
       </div>
 
@@ -153,15 +153,10 @@ defmodule DemoWeb.TagEditorDemoLive do
 
       <!-- Contrast with nested approach -->
       <div class="mt-6 bg-yellow-50 p-6 rounded-lg">
-        <h2 class="font-semibold mb-3">Contrast: Nested vs Separate</h2>
+        <h2 class="font-semibold mb-3">Best Practice: Keep Optimistic Regions Small</h2>
         <div class="text-sm text-yellow-800">
-          <p class="mb-2">
-            The <a href="/demos/nested-optimistic" class="underline">Nested Optimistic Demo</a>
-            uses <code>data-lavash-preserve</code> to embed server content inside an optimistic
-            component. This works but adds complexity.
-          </p>
           <p>
-            This demo shows the cleaner approach: keep optimistic regions small and self-contained,
+            Keep optimistic regions small and self-contained,
             place server content beside them. No special preservation logic needed.
           </p>
         </div>
