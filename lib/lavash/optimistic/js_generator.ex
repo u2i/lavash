@@ -120,15 +120,24 @@ defmodule Lavash.Optimistic.JsGenerator do
       end)
 
     # Calculation derives have deps extracted from @var references
+    # Deps can be atoms (:count) or path tuples ({:path, :params, ["name"]})
     calculation_entries =
       Enum.map(calculations, fn calc ->
         {name, _source, _ast, deps} = normalize_calculation(calc)
-        {to_string(name), %{deps: deps}}
+        # Normalize deps to string field names
+        normalized_deps = Enum.map(deps, &normalize_dep_to_string/1) |> Enum.uniq()
+        {to_string(name), %{deps: normalized_deps}}
       end)
 
     (explicit_entries ++ multi_select_entries ++ toggle_entries ++ calculation_entries)
     |> Map.new()
   end
+
+  # Normalize a dependency to its root field name as a string
+  # Path deps like {:path, :params, ["name"]} -> "params"
+  # Atom deps like :count -> "count"
+  defp normalize_dep_to_string({:path, root, _path}), do: to_string(root)
+  defp normalize_dep_to_string(atom) when is_atom(atom), do: to_string(atom)
 
   # Extract dependency names from argument list
   defp extract_deps_from_arguments(arguments) do

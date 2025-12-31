@@ -568,6 +568,56 @@ defmodule Lavash.Template do
     "(#{ast_to_js(list)}.length)"
   end
 
+  # is_nil(x) -> (x === null || x === undefined)
+  defp ast_to_js({:is_nil, _, [expr]}) do
+    js_expr = ast_to_js(expr)
+    "(#{js_expr} === null || #{js_expr} === undefined)"
+  end
+
+  # String.length(str) -> str.length
+  defp ast_to_js({{:., _, [{:__aliases__, _, [:String]}, :length]}, _, [str]}) do
+    "(#{ast_to_js(str)}.length)"
+  end
+
+  # String.to_float(str) -> parseFloat(str)
+  defp ast_to_js({{:., _, [{:__aliases__, _, [:String]}, :to_float]}, _, [str]}) do
+    "parseFloat(#{ast_to_js(str)})"
+  end
+
+  # String.to_integer(str) -> parseInt(str, 10)
+  defp ast_to_js({{:., _, [{:__aliases__, _, [:String]}, :to_integer]}, _, [str]}) do
+    "parseInt(#{ast_to_js(str)}, 10)"
+  end
+
+  # String.trim(str) -> str.trim()
+  defp ast_to_js({{:., _, [{:__aliases__, _, [:String]}, :trim]}, _, [str]}) do
+    "(#{ast_to_js(str)}.trim())"
+  end
+
+  # String.match?(str, regex) -> regex.test(str)
+  # Note: regex patterns need to be written in JS-compatible format
+  defp ast_to_js({{:., _, [{:__aliases__, _, [:String]}, :match?]}, _, [str, {:sigil_r, _, [{:<<>>, _, [pattern]}, []]}]}) do
+    "(/#{pattern}/.test(#{ast_to_js(str)}))"
+  end
+
+  # get_in(map, [keys]) -> nested access
+  defp ast_to_js({:get_in, _, [map, keys]}) when is_list(keys) do
+    base = ast_to_js(map)
+    path = Enum.map(keys, fn
+      k when is_atom(k) -> ".#{k}"
+      k when is_binary(k) -> "[#{inspect(k)}]"
+      k -> "[#{ast_to_js(k)}]"
+    end)
+    "(#{base}#{Enum.join(path, "")})"
+  end
+
+  # get_in with dynamic keys list
+  defp ast_to_js({:get_in, _, [map, keys_expr]}) do
+    map_js = ast_to_js(map)
+    keys_js = ast_to_js(keys_expr)
+    "(#{keys_js}.reduce((acc, key) => acc?.[key], #{map_js}))"
+  end
+
   # Enum.count(list) -> list.length
   defp ast_to_js({{:., _, [{:__aliases__, _, [:Enum]}, :count]}, _, [list]}) do
     "(#{ast_to_js(list)}.length)"
@@ -805,6 +855,23 @@ defmodule Lavash.Template do
 
   # humanize/1
   defp validate_ast({:humanize, _, [arg]}), do: validate_ast(arg)
+
+  # is_nil/1
+  defp validate_ast({:is_nil, _, [arg]}), do: validate_ast(arg)
+
+  # get_in/2
+  defp validate_ast({:get_in, _, [map, keys]}) do
+    with :ok <- validate_ast(map),
+         :ok <- validate_ast(keys) do
+      :ok
+    end
+  end
+
+  # Supported String functions
+  defp validate_ast({{:., _, [{:__aliases__, _, [:String]}, func]}, _, args})
+       when func in [:length, :to_float, :to_integer, :trim, :match?] do
+    validate_all_args(args)
+  end
 
   # Binary operators
   defp validate_ast({op, _, [left, right]})
