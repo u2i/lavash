@@ -25,8 +25,8 @@ defmodule Lavash.Components.SyncedToggle do
 
   use Lavash.LiveComponent
 
-  # Synced field connects to parent state
-  synced :value, :boolean
+  # State connects to parent state
+  state :value, :boolean
 
   # Props from parent (read-only)
   prop :label, :string, default: ""

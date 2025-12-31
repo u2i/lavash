@@ -40,8 +40,8 @@ defmodule Lavash.Components.ChipSet do
 
   use Lavash.ClientComponent
 
-  # Binding declaration - this gets connected to parent state
-  bind :selected, {:array, :string}
+  # State connects to parent state
+  state :selected, {:array, :string}
 
   # Props passed from parent
   prop :values, {:list, :string}, required: true

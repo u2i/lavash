@@ -31,7 +31,7 @@ defmodule Lavash.Components.TagEditor do
 
   use Lavash.ClientComponent
 
-  bind :tags, {:array, :string}
+  state :tags, {:array, :string}
 
   prop :placeholder, :string, default: "Add tag..."
   prop :max_tags, :integer, default: nil
