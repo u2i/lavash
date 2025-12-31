@@ -42,7 +42,7 @@ defmodule Lavash.LiveComponent.Dsl do
 
   @prop_entity %Spark.Dsl.Entity{
     name: :prop,
-    target: Lavash.LiveComponent.Prop,
+    target: Lavash.Component.Prop,
     args: [:name, :type],
     schema: [
       name: [
@@ -80,7 +80,7 @@ defmodule Lavash.LiveComponent.Dsl do
 
   @optimistic_action_entity %Spark.Dsl.Entity{
     name: :optimistic_action,
-    target: Lavash.LiveComponent.OptimisticAction,
+    target: Lavash.Component.OptimisticAction,
     args: [:name, :field],
     schema: [
       name: [
@@ -121,7 +121,7 @@ defmodule Lavash.LiveComponent.Dsl do
 
   @template_entity %Spark.Dsl.Entity{
     name: :client_template,
-    target: Lavash.LiveComponent.Template,
+    target: Lavash.Component.Template,
     args: [:source],
     schema: [
       source: [
@@ -153,19 +153,8 @@ defmodule Lavash.LiveComponent.Dsl do
     imports: [Lavash.Optimistic.Macros]
 end
 
-# Entity structs
+# Entity structs (component-specific ones only, shared ones are in Lavash.Component.*)
 defmodule Lavash.LiveComponent.Synced do
+  @moduledoc "A synced field that connects component state to parent state."
   defstruct [:name, :type, __spark_metadata__: nil]
-end
-
-defmodule Lavash.LiveComponent.Prop do
-  defstruct [:name, :type, :required, :default, __spark_metadata__: nil]
-end
-
-defmodule Lavash.LiveComponent.OptimisticAction do
-  defstruct [:name, :field, :run, :run_source, __spark_metadata__: nil]
-end
-
-defmodule Lavash.LiveComponent.Template do
-  defstruct [:source, __spark_metadata__: nil]
 end

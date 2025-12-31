@@ -73,7 +73,7 @@ defmodule Lavash.ClientComponent.Dsl do
 
   @prop_entity %Spark.Dsl.Entity{
     name: :prop,
-    target: Lavash.ClientComponent.Prop,
+    target: Lavash.Component.Prop,
     args: [:name, :type],
     schema: [
       name: [
@@ -118,7 +118,7 @@ defmodule Lavash.ClientComponent.Dsl do
 
   @optimistic_action_entity %Spark.Dsl.Entity{
     name: :optimistic_action,
-    target: Lavash.ClientComponent.OptimisticAction,
+    target: Lavash.Component.OptimisticAction,
     args: [:name, :field],
     schema: [
       name: [
@@ -197,7 +197,7 @@ defmodule Lavash.ClientComponent.Dsl do
 
   @template_entity %Spark.Dsl.Entity{
     name: :client_template,
-    target: Lavash.ClientComponent.Template,
+    target: Lavash.Component.Template,
     args: [:source],
     schema: [
       source: [
@@ -226,5 +226,5 @@ defmodule Lavash.ClientComponent.Dsl do
       @optimistic_actions_section,
       @template_section
     ],
-    imports: [Lavash.ClientComponent.Macros]
+    imports: [Lavash.Optimistic.Macros]
 end

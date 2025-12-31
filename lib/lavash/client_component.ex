@@ -79,7 +79,7 @@ defmodule Lavash.ClientComponent do
       require Phoenix.LiveView.TagEngine
       require Phoenix.Component
       import Phoenix.Component
-      import Lavash.ClientComponent.Macros, only: [calculate: 2, optimistic_action: 3]
+      import Lavash.Optimistic.Macros, only: [calculate: 2, optimistic_action: 3]
 
       Module.register_attribute(__MODULE__, :__lavash_calculations__, accumulate: true)
       Module.register_attribute(__MODULE__, :__lavash_optimistic_actions__, accumulate: true)

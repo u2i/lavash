@@ -8,6 +8,8 @@ defmodule Lavash.LiveComponent.Compiler do
   - Handle event functions for optimistic actions
   """
 
+  alias Lavash.Component.CompilerHelpers
+
   defmacro __before_compile__(env) do
     synced_fields = Spark.Dsl.Extension.get_entities(env.module, [:synced_fields]) || []
     props = Spark.Dsl.Extension.get_entities(env.module, [:props]) || []
@@ -37,7 +39,7 @@ defmodule Lavash.LiveComponent.Compiler do
     js_code = generate_js_hook(synced_fields, calculations, actions)
 
     # Write to colocated hooks directory
-    hook_data = write_colocated_hook(env, hook_name, full_hook_name, js_code)
+    hook_data = CompilerHelpers.write_colocated_hook(env, full_hook_name, js_code)
 
     # Pre-escape hook_data before entering quote
     escaped_hook_data = if hook_data, do: Macro.escape(hook_data), else: nil
@@ -438,7 +440,7 @@ defmodule Lavash.LiveComponent.Compiler do
     action_clauses =
       Enum.map(actions, fn %{name: name, field: field, run_source: run_source} ->
         # Parse the run function source to AST
-        run_fn_ast = parse_fn_source(run_source)
+        run_fn_ast = CompilerHelpers.parse_fn_source(run_source)
 
         quote do
           def handle_event(
@@ -473,57 +475,6 @@ defmodule Lavash.LiveComponent.Compiler do
     quote do
       unquote_splicing(action_clauses)
     end
-  end
-
-  # Parse fn source string to AST
-  defp parse_fn_source(nil), do: nil
-  defp parse_fn_source(source) do
-    case Code.string_to_quoted(source) do
-      {:ok, ast} -> ast
-      _ -> nil
-    end
-  end
-
-  defp write_colocated_hook(env, _hook_name, full_hook_name, js_code) do
-    target_dir = get_target_dir()
-    module_dir = Path.join(target_dir, inspect(env.module))
-
-    hash = :crypto.hash(:md5, js_code) |> Base.encode32(case: :lower, padding: false)
-    filename = "#{env.line}_#{hash}.js"
-    full_path = Path.join(module_dir, filename)
-
-    File.mkdir_p!(module_dir)
-
-    needs_write =
-      case File.read(full_path) do
-        {:ok, existing} -> existing != js_code
-        {:error, _} -> true
-      end
-
-    if needs_write do
-      case File.ls(module_dir) do
-        {:ok, files} ->
-          for file <- files, file != filename, String.ends_with?(file, ".js") do
-            File.rm(Path.join(module_dir, file))
-          end
-
-        _ ->
-          :ok
-      end
-
-      File.write!(full_path, js_code)
-    end
-
-    {filename, %{name: full_hook_name, key: "hooks"}}
-  end
-
-  defp get_target_dir do
-    default = Path.join(Mix.Project.build_path(), "phoenix-colocated")
-    app = to_string(Mix.Project.config()[:app])
-
-    Application.get_env(:phoenix_live_view, :colocated_js, [])
-    |> Keyword.get(:target_directory, default)
-    |> Path.join(app)
   end
 
   # Generate render function from template

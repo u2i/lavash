@@ -11,6 +11,8 @@ defmodule Lavash.ClientComponent.Compiler do
 
   use Spark.Dsl.Extension
 
+  alias Lavash.Component.CompilerHelpers
+
   @doc false
   defmacro __before_compile__(env) do
     # Get DSL entities from Spark
@@ -47,7 +49,7 @@ defmodule Lavash.ClientComponent.Compiler do
     end
 
     hook_data = if js_code do
-      write_colocated_hook(env, hook_name, full_hook_name, js_code)
+      CompilerHelpers.write_colocated_hook(env, full_hook_name, js_code)
     end
 
     render_fn = if template_source do
@@ -212,8 +214,8 @@ defmodule Lavash.ClientComponent.Compiler do
       event_name = "#{action_name}_#{field |> to_string() |> String.trim_trailing("s")}"
 
       # Parse function sources to AST - these are the full fn expressions
-      run_fn_ast = parse_fn_source(run_source)
-      validate_fn_ast = parse_fn_source(validate_source)
+      run_fn_ast = CompilerHelpers.parse_fn_source(run_source)
+      validate_fn_ast = CompilerHelpers.parse_fn_source(validate_source)
 
       # Build the condition AST based on which checks are needed
       condition_ast = build_condition_ast(validate_fn_ast, max_field)
@@ -245,15 +247,6 @@ defmodule Lavash.ClientComponent.Compiler do
         end
       end
     end)
-  end
-
-  # Parse fn source string to AST
-  defp parse_fn_source(nil), do: nil
-  defp parse_fn_source(source) do
-    case Code.string_to_quoted(source) do
-      {:ok, ast} -> ast
-      _ -> nil
-    end
   end
 
   # Build the validation condition based on what checks are needed
@@ -679,55 +672,6 @@ defmodule Lavash.ClientComponent.Compiler do
         __render_wrapper__(var!(assigns))
       end
     end
-  end
-
-  # Write colocated hook file and return {filename, hook_data} for Phoenix
-  defp write_colocated_hook(env, _hook_name, full_hook_name, js_code) do
-    # Get the target directory from Phoenix config
-    target_dir = get_target_dir()
-    module_dir = Path.join(target_dir, inspect(env.module))
-
-    # Generate filename with hash for cache busting
-    hash = :crypto.hash(:md5, js_code) |> Base.encode32(case: :lower, padding: false)
-    filename = "#{env.line}_#{hash}.js"
-    full_path = Path.join(module_dir, filename)
-
-    # Ensure directory exists
-    File.mkdir_p!(module_dir)
-
-    # Only write if content changed (avoids unnecessary esbuild rebuilds)
-    needs_write = case File.read(full_path) do
-      {:ok, existing} -> existing != js_code
-      {:error, _} -> true
-    end
-
-    if needs_write do
-      # Clean up old files in this module's directory to avoid stale files
-      case File.ls(module_dir) do
-        {:ok, files} ->
-          for file <- files, file != filename, String.ends_with?(file, ".js") do
-            File.rm(Path.join(module_dir, file))
-          end
-        _ -> :ok
-      end
-
-      # Write the new JS file
-      File.write!(full_path, js_code)
-    end
-
-    # Return the hook data in the format Phoenix expects
-    # key must be a string "hooks" not atom :hooks
-    {filename, %{name: full_hook_name, key: "hooks"}}
-  end
-
-  defp get_target_dir do
-    # Match Phoenix's logic for target directory
-    default = Path.join(Mix.Project.build_path(), "phoenix-colocated")
-    app = to_string(Mix.Project.config()[:app])
-
-    Application.get_env(:phoenix_live_view, :colocated_js, [])
-    |> Keyword.get(:target_directory, default)
-    |> Path.join(app)
   end
 
   # Delegate to Lavash.Template for tree_to_js_parts
