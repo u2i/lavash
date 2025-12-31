@@ -103,4 +103,169 @@ defmodule Lavash.Component.CompilerHelpers do
     |> Keyword.get(:target_directory, default)
     |> Path.join(app)
   end
+
+  # ============================================
+  # Binding Resolution (shared between ClientComponent and LiveComponent)
+  # ============================================
+
+  @doc """
+  Generates the AST for `__resolve_bindings__/2` function.
+
+  This is used by both ClientComponent and LiveComponent to resolve
+  bindings from the `bind` prop in `update/2`.
+
+  Returns quoted code that defines `__resolve_bindings__/2`.
+  """
+  def generate_binding_resolution_code do
+    quote do
+      defp __resolve_bindings__(assigns, socket) do
+        case Map.get(assigns, :bind) do
+          nil ->
+            socket
+
+          bindings when is_list(bindings) ->
+            # Build a map of local_name -> parent_field
+            binding_map =
+              Enum.into(bindings, %{}, fn {local, parent} ->
+                {local, parent}
+              end)
+
+            # Store the binding map for later use in handle_event
+            socket = Phoenix.Component.assign(socket, :__lavash_binding_map__, binding_map)
+
+            # Sync parent's optimistic version when bound
+            socket =
+              case Map.get(assigns, :__lavash_parent_version__) do
+                nil -> socket
+                parent_version -> Phoenix.Component.assign(socket, :__lavash_version__, parent_version)
+              end
+
+            # For each binding, look up the parent's current value
+            Enum.reduce(bindings, socket, fn {local, _parent}, sock ->
+              value = Map.get(assigns, local)
+              Phoenix.Component.assign(sock, local, value)
+            end)
+        end
+      end
+    end
+  end
+
+  # ============================================
+  # Action JS Compilation (shared between ClientComponent and LiveComponent)
+  # ============================================
+
+  @doc """
+  Generates JS calculation functions from calculation tuples.
+
+  Calculations are tuples: {name, source_string, transformed_expr, deps}
+  Each becomes a JS method: `name(state) { return <js_expr>; }`
+
+  ## Example
+
+      generate_calculation_js([{:can_add, "length(@tags) < @max", ast, [:tags, :max]}])
+      # => "  can_add(state) {\n    return state.tags.length < state.max;\n  },"
+  """
+  def generate_calculation_js(calculations) do
+    calculations
+    |> Enum.map(fn {name, source, _transformed_expr, _deps} ->
+      js_expr = Lavash.Template.elixir_to_js(source)
+      "  #{name}(state) {\n    return #{js_expr};\n  },"
+    end)
+    |> Enum.join("\n")
+  end
+
+  @doc """
+  Converts an Elixir function source string to a JS assignment expression.
+
+  Parses the function source (e.g., "fn tags, tag -> tags ++ [tag] end"),
+  extracts the variable names and body, and returns JS code that assigns
+  the computed value to `this.state.<field>`.
+
+  ## Parameters
+
+  - `source` - The Elixir function source string
+  - `field` - The field name to assign the result to
+
+  ## Example
+
+      fn_source_to_js_assignment("fn tags, tag -> tags ++ [tag] end", :tags)
+      # => "this.state.tags = [...current, value];"
+  """
+  def fn_source_to_js_assignment(source, field) when is_binary(source) do
+    case Code.string_to_quoted(source) do
+      {:ok, {:fn, _, [{:->, _, [[{current_var, _, _}, {value_var, _, _}], body]}]}} ->
+        js_body = Lavash.Template.elixir_to_js(Macro.to_string(body))
+        js_body = String.replace(js_body, to_string(current_var), "current")
+        js_body = String.replace(js_body, to_string(value_var), "value")
+        "this.state.#{field} = #{js_body};"
+
+      _ ->
+        "// Could not compile function to JS for #{field}"
+    end
+  end
+
+  def fn_source_to_js_assignment(nil, field), do: "// No run function for #{field}"
+
+  @doc """
+  Converts an Elixir function source string to a JS boolean expression.
+
+  Similar to `fn_source_to_js_assignment/2` but returns just the expression
+  without assignment, for use in validation conditions.
+
+  ## Example
+
+      fn_source_to_js_bool("fn tags, tag -> tag not in tags end")
+      # => "!current.includes(value)"
+  """
+  def fn_source_to_js_bool(source) when is_binary(source) do
+    case Code.string_to_quoted(source) do
+      {:ok, {:fn, _, [{:->, _, [[{current_var, _, _}, {value_var, _, _}], body]}]}} ->
+        js_body = Lavash.Template.elixir_to_js(Macro.to_string(body))
+        js_body = String.replace(js_body, to_string(current_var), "current")
+        js_body = String.replace(js_body, to_string(value_var), "value")
+        js_body
+
+      _ ->
+        "true"
+    end
+  end
+
+  def fn_source_to_js_bool(nil), do: "true"
+
+  @doc """
+  Converts a simple Elixir function source to a JS return statement.
+
+  Used for simpler action functions where we just need to return the new value.
+  Handles common patterns like:
+  - `fn value, _arg -> !value end` → `return !currentValue;`
+  - `fn value, _arg -> value + 1 end` → `return currentValue + 1;`
+
+  Falls back to a TODO comment for unrecognized patterns.
+  """
+  def fn_source_to_js_return(source) when is_binary(source) do
+    cond do
+      String.contains?(source, "!value") or String.contains?(source, "not value") ->
+        "return !currentValue;"
+
+      String.contains?(source, "+ 1") ->
+        "return currentValue + 1;"
+
+      String.contains?(source, "- 1") ->
+        "return currentValue - 1;"
+
+      true ->
+        # Try to parse more complex expressions using the full parser
+        case Code.string_to_quoted(source) do
+          {:ok, {:fn, _, [{:->, _, [[{current_var, _, _}, {_value_var, _, _}], body]}]}} ->
+            js_body = Lavash.Template.elixir_to_js(Macro.to_string(body))
+            js_body = String.replace(js_body, to_string(current_var), "currentValue")
+            "return #{js_body};"
+
+          _ ->
+            "return currentValue; // TODO: parse #{inspect(source)}"
+        end
+    end
+  end
+
+  def fn_source_to_js_return(nil), do: "return currentValue;"
 end

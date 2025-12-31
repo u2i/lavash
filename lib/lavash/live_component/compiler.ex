@@ -284,12 +284,7 @@ defmodule Lavash.LiveComponent.Compiler do
   end
 
   defp generate_calculation_js(calculations) do
-    calculations
-    |> Enum.map(fn {name, source, _ast, _deps} ->
-      js_expr = Lavash.Template.elixir_to_js(source)
-      "  #{name}(state) {\n    return #{js_expr};\n  },"
-    end)
-    |> Enum.join("\n")
+    CompilerHelpers.generate_calculation_js(calculations)
   end
 
   defp generate_run_calculations(calculations) do
@@ -316,22 +311,7 @@ defmodule Lavash.LiveComponent.Compiler do
   end
 
   defp fn_source_to_js(source) do
-    # Parse the source and convert to JS
-    # For simple cases like "fn value, _arg -> !value end"
-    cond do
-      String.contains?(source, "!value") or String.contains?(source, "not value") ->
-        "return !currentValue;"
-
-      String.contains?(source, "+ 1") ->
-        "return currentValue + 1;"
-
-      String.contains?(source, "- 1") ->
-        "return currentValue - 1;"
-
-      true ->
-        # Fallback - try to parse more complex expressions
-        "return currentValue; // TODO: parse #{inspect(source)}"
-    end
+    CompilerHelpers.fn_source_to_js_return(source)
   end
 
   defp generate_mount_update(synced_fields, props, calculations) do

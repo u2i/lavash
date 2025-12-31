@@ -95,8 +95,10 @@ defmodule Lavash.ClientComponent.Compiler do
   end
 
   # Generate mount and update callbacks for binding resolution
-  # This mirrors Lavash.LiveComponent's mount/update logic
+  # Uses shared binding resolution code from CompilerHelpers
   defp generate_mount_update(_bindings) do
+    binding_resolution = CompilerHelpers.generate_binding_resolution_code()
+
     quote do
       # Initialize binding map and version tracking
       def mount(socket) do
@@ -114,35 +116,8 @@ defmodule Lavash.ClientComponent.Compiler do
         {:ok, Phoenix.Component.assign(socket, Map.drop(assigns, [:bind, :__changed__]))}
       end
 
-      defp __resolve_bindings__(assigns, socket) do
-        case Map.get(assigns, :bind) do
-          nil ->
-            socket
-
-          bindings when is_list(bindings) ->
-            # Build a map of local_name -> parent_field
-            binding_map =
-              Enum.into(bindings, %{}, fn {local, parent} ->
-                {local, parent}
-              end)
-
-            # Store the binding map for later use in handle_event
-            socket = Phoenix.Component.assign(socket, :__lavash_binding_map__, binding_map)
-
-            # Sync parent's optimistic version when bound
-            socket =
-              case Map.get(assigns, :__lavash_parent_version__) do
-                nil -> socket
-                parent_version -> Phoenix.Component.assign(socket, :__lavash_version__, parent_version)
-              end
-
-            # For each binding, look up the parent's current value
-            Enum.reduce(bindings, socket, fn {local, _parent}, sock ->
-              value = Map.get(assigns, local)
-              Phoenix.Component.assign(sock, local, value)
-            end)
-        end
-      end
+      # Inject shared binding resolution code
+      unquote(binding_resolution)
     end
   end
 
@@ -500,18 +475,13 @@ defmodule Lavash.ClientComponent.Compiler do
   # Generate JS for calculations
   # Calculations are tuples: {name, source_string, transformed_expr, deps}
   defp generate_calculation_js(calculations) do
-    calculations
-    |> Enum.map(fn {name, source, _transformed_expr, _deps} ->
-      js_expr = Lavash.Template.elixir_to_js(source)
-      "  #{name}(state) {\n    return #{js_expr};\n  },"
-    end)
-    |> Enum.join("\n")
+    CompilerHelpers.generate_calculation_js(calculations)
   end
 
   # Generate JS for optimistic actions
   defp generate_action_js(actions) do
     action_cases = Enum.map(actions, fn %{name: action_name, field: field, run_source: run_source} ->
-      run_js = fn_source_to_js(run_source, field)
+      run_js = CompilerHelpers.fn_source_to_js_assignment(run_source, field)
       ~s|    if (action === "#{action_name}" && field === "#{field}") {\n      #{run_js}\n    }|
     end)
     |> Enum.join("\n")
@@ -520,7 +490,7 @@ defmodule Lavash.ClientComponent.Compiler do
       conditions = []
 
       conditions = if validate_source do
-        validate_js = fn_source_to_js_bool(validate_source)
+        validate_js = CompilerHelpers.fn_source_to_js_bool(validate_source)
         [~s|!(#{validate_js})| | conditions]
       else
         conditions
@@ -555,38 +525,6 @@ defmodule Lavash.ClientComponent.Compiler do
       },
     """
   end
-
-  # Convert fn source string to JS expression
-  # Parses "fn tags, tag -> tags ++ [tag] end" and extracts variable names and body
-  defp fn_source_to_js(source, field) when is_binary(source) do
-    case Code.string_to_quoted(source) do
-      {:ok, {:fn, _, [{:->, _, [[{current_var, _, _}, {value_var, _, _}], body]}]}} ->
-        js_body = Lavash.Template.elixir_to_js(Macro.to_string(body))
-        js_body = String.replace(js_body, to_string(current_var), "current")
-        js_body = String.replace(js_body, to_string(value_var), "value")
-        "this.state.#{field} = #{js_body};"
-
-      _ ->
-        "// Could not compile function to JS for #{field}"
-    end
-  end
-
-  defp fn_source_to_js(nil, field), do: "// No run function for #{field}"
-
-  defp fn_source_to_js_bool(source) when is_binary(source) do
-    case Code.string_to_quoted(source) do
-      {:ok, {:fn, _, [{:->, _, [[{current_var, _, _}, {value_var, _, _}], body]}]}} ->
-        js_body = Lavash.Template.elixir_to_js(Macro.to_string(body))
-        js_body = String.replace(js_body, to_string(current_var), "current")
-        js_body = String.replace(js_body, to_string(value_var), "value")
-        js_body
-
-      _ ->
-        "true"
-    end
-  end
-
-  defp fn_source_to_js_bool(nil), do: "true"
 
   # Generate render function
   defp generate_render(template_source, full_hook_name, _env) do
