@@ -26,6 +26,8 @@ import topbar from "../vendor/topbar"
 // morphdom for efficient DOM diffing (used by Shadow DOM components)
 import morphdom from "../vendor/morphdom"
 window.morphdom = morphdom
+// SyncedVar for optimistic state synchronization
+import "./synced_var.js"
 // Colocated hooks from Lavash library
 import {hooks as lavashHooks} from "phoenix-colocated/lavash"
 // Colocated JS (non-hook exports) from this app - import directly by module

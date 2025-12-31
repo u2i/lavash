@@ -65,5 +65,6 @@ defmodule DemoWeb.Router do
     live "/bindings", BindingsDemoLive
     live "/nested-optimistic", NestedOptimisticDemoLive
     live "/tag-editor", TagEditorDemoLive
+    live "/toggle", ToggleDemoLive
   end
 end
