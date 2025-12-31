@@ -52,9 +52,13 @@ defmodule Lavash.Graph do
             {name, source, ast, deps, opt, async, reads}
         end
 
+      # Normalize path deps to root field names for dependency tracking
+      # {:path, :params, ["name"]} -> :params
+      normalized_deps = Enum.map(deps, &normalize_dep/1) |> Enum.uniq()
+
       %Lavash.Derived.Field{
         name: name,
-        depends_on: deps,
+        depends_on: normalized_deps,
         async: is_async,
         reads: reads,
         optimistic: true,
@@ -66,6 +70,10 @@ defmodule Lavash.Graph do
       }
     end)
   end
+
+  # Normalize a dependency - extract root field from path deps
+  defp normalize_dep({:path, root, _path}), do: root
+  defp normalize_dep(atom) when is_atom(atom), do: atom
 
   # Expand read entities into derived-like field structs
   defp expand_reads(module) do

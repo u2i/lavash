@@ -53,11 +53,22 @@ defmodule Lavash.LiveView.Helpers do
     # Get calculations from the calculate macro
     calculations = get_calculations(module)
 
+    # Get forms - their params are automatically optimistic
+    forms = get_forms(module)
+
     # Build the state map from optimistic fields
     state_map =
       Enum.reduce(state_fields, %{}, fn field, acc ->
         value = Map.get(assigns, field.name)
         Map.put(acc, field.name, value)
+      end)
+
+    # Add form params - forms are implicitly optimistic for client-side validation
+    state_map =
+      Enum.reduce(forms, state_map, fn form, acc ->
+        params_field = :"#{form.name}_params"
+        value = Map.get(assigns, params_field, %{})
+        Map.put(acc, params_field, value)
       end)
 
     # Add derives, unwrapping async values
@@ -110,6 +121,14 @@ defmodule Lavash.LiveView.Helpers do
   defp get_calculations(module) do
     if function_exported?(module, :__lavash_calculations__, 0) do
       module.__lavash_calculations__()
+    else
+      []
+    end
+  end
+
+  defp get_forms(module) do
+    if function_exported?(module, :__lavash__, 1) do
+      module.__lavash__(:forms)
     else
       []
     end

@@ -54,7 +54,7 @@ defmodule Lavash.Rx do
       %Lavash.Rx{
         source: unquote(source),
         ast: unquote(Macro.escape(ast)),
-        deps: unquote(deps)
+        deps: unquote(Macro.escape(deps))
       }
     end
   end
@@ -62,6 +62,36 @@ defmodule Lavash.Rx do
   # Transform @var references to Map.get(state, :var) for runtime evaluation
   # Use Macro.var with nil context to create an unhygienic variable reference
   # that can be bound in the target context (the generated code)
+
+  # Path access via bracket notation: @params["name"] → get_in(state, [:params, "name"])
+  defp transform_at_refs({{:., _, [Access, :get]}, _, [{:@, _, [{var_name, _, _}]}, key]})
+       when is_atom(var_name) do
+    state_var = Macro.var(:state, nil)
+    quote do: get_in(unquote(state_var), [unquote(var_name), unquote(key)])
+  end
+
+  # Nested path access: @params["address"]["city"] → get_in(state, [:params, "address", "city"])
+  defp transform_at_refs({{:., _, [Access, :get]}, _, [inner, key]}) do
+    case extract_path_for_transform(inner, [key]) do
+      {:ok, var_name, path} ->
+        state_var = Macro.var(:state, nil)
+        quote do: get_in(unquote(state_var), [unquote(var_name) | unquote(path)])
+
+      :not_a_path ->
+        # Not a path rooted at @var, transform normally
+        transformed_inner = transform_at_refs(inner)
+        quote do: Access.get(unquote(transformed_inner), unquote(key))
+    end
+  end
+
+  # Dot access: @params.name → get_in(state, [:params, :name])
+  defp transform_at_refs({{:., _, [{:@, _, [{var_name, _, _}]}, field]}, _, []})
+       when is_atom(var_name) and is_atom(field) do
+    state_var = Macro.var(:state, nil)
+    quote do: get_in(unquote(state_var), [unquote(var_name), unquote(field)])
+  end
+
+  # Simple @var reference
   defp transform_at_refs({:@, _, [{var_name, _, _}]}) when is_atom(var_name) do
     state_var = Macro.var(:state, nil)
     quote do: Map.get(unquote(state_var), unquote(var_name), nil)
@@ -81,13 +111,58 @@ defmodule Lavash.Rx do
 
   defp transform_at_refs(other), do: other
 
+  # Helper for transform - extract path from nested Access.get for transformation
+  defp extract_path_for_transform({:@, _, [{var_name, _, _}]}, path) when is_atom(var_name) do
+    {:ok, var_name, path}
+  end
+
+  defp extract_path_for_transform({{:., _, [Access, :get]}, _, [inner, key]}, path) do
+    extract_path_for_transform(inner, [key | path])
+  end
+
+  defp extract_path_for_transform(_, _), do: :not_a_path
+
   # Extract dependency names from @var references
+  # Supports both simple refs (@count) and path-based refs (@params["name"], @params.name)
   defp extract_deps(expr) do
     expr
     |> find_at_refs([])
     |> Enum.uniq()
   end
 
+  # Path access via bracket notation: @params["name"] or @params[:key]
+  # AST: {{:., _, [Access, :get]}, _, [{:@, _, [{var, _, _}]}, key]}
+  defp find_at_refs(
+         {{:., _, [Access, :get]}, _, [{:@, _, [{var_name, _, _}]}, key]},
+         acc
+       )
+       when is_atom(var_name) do
+    [{:path, var_name, [key]} | acc]
+  end
+
+  # Nested path access: @params["address"]["city"]
+  # Continue extracting path segments
+  defp find_at_refs(
+         {{:., _, [Access, :get]}, _, [inner, key]},
+         acc
+       ) do
+    case extract_path(inner, [key]) do
+      {:ok, var_name, path} -> [{:path, var_name, path} | acc]
+      :not_a_path -> find_at_refs(inner, acc)
+    end
+  end
+
+  # Dot access: @params.name
+  # AST: {{:., _, [{:@, _, [{var, _, _}]}, field]}, _, []}
+  defp find_at_refs(
+         {{:., _, [{:@, _, [{var_name, _, _}]}, field]}, _, []},
+         acc
+       )
+       when is_atom(var_name) and is_atom(field) do
+    [{:path, var_name, [field]} | acc]
+  end
+
+  # Simple @var reference
   defp find_at_refs({:@, _, [{var_name, _, _}]}, acc) when is_atom(var_name) do
     [var_name | acc]
   end
@@ -106,6 +181,17 @@ defmodule Lavash.Rx do
   end
 
   defp find_at_refs(_other, acc), do: acc
+
+  # Helper to extract nested path from Access.get chains
+  defp extract_path({:@, _, [{var_name, _, _}]}, path) when is_atom(var_name) do
+    {:ok, var_name, path}
+  end
+
+  defp extract_path({{:., _, [Access, :get]}, _, [inner, key]}, path) do
+    extract_path(inner, [key | path])
+  end
+
+  defp extract_path(_, _), do: :not_a_path
 end
 
 defmodule Lavash.Component.State do
