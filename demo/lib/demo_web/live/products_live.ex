@@ -74,7 +74,7 @@ defmodule DemoWeb.ProductsLive do
           <p class="text-gray-500 mt-1">Filter state stored in URL - try bookmarking or sharing</p>
         </div>
         <div class="flex gap-4">
-          <a href="/products-socket" class="text-indigo-600 hover:text-indigo-800">
+          <a href="/demos/products-socket" class="text-indigo-600 hover:text-indigo-800">
             Socket State Version
           </a>
           <a href="/" class="text-indigo-600 hover:text-indigo-800">&larr; Demos</a>

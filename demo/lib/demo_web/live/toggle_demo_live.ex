@@ -35,9 +35,7 @@ defmodule DemoWeb.ToggleDemoLive do
             SyncedVar-based optimistic toggles
           </p>
         </div>
-        <a href="/demos/tag-editor" class="text-indigo-600 hover:text-indigo-800">
-          &larr; Tag Editor Demo
-        </a>
+        <a href="/" class="text-indigo-600 hover:text-indigo-800">&larr; Demos</a>
       </div>
 
       <div class="bg-blue-50 p-4 rounded-lg mb-6 text-sm">

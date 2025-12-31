@@ -142,8 +142,8 @@ defmodule DemoWeb.CounterLive do
       </div>
 
       <div class="mt-6 text-center">
-        <a href="/products" class="text-indigo-600 hover:text-indigo-800">
-          View Products Demo &rarr;
+        <a href="/" class="text-indigo-600 hover:text-indigo-800">
+          &larr; Demos
         </a>
       </div>
 

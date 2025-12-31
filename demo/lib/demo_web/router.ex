@@ -67,6 +67,7 @@ defmodule DemoWeb.Router do
     pipe_through :browser
 
     live "/counter", CounterLive
+    live "/products", ProductsLive
     live "/products-socket", ProductsSocketLive
     live "/components", ComponentsDemoLive
     live "/bindings", BindingsDemoLive

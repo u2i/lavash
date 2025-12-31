@@ -51,9 +51,14 @@ defmodule DemoWeb.DemosIndexLive do
               description="Basic state management with optimistic increment/decrement."
             />
             <.demo_card
+              href={~p"/demos/products"}
+              title="Products (URL State)"
+              description="Product catalog with filters stored in URL. Shareable and bookmarkable."
+            />
+            <.demo_card
               href={~p"/demos/products-socket"}
-              title="Products Socket"
-              description="Real-time product updates via Phoenix PubSub."
+              title="Products (Socket State)"
+              description="Same catalog with filters in socket. Survives reconnect, lost on refresh."
             />
           </div>
         </section>

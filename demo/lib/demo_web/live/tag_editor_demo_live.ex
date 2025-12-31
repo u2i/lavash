@@ -42,9 +42,7 @@ defmodule DemoWeb.TagEditorDemoLive do
             Full client re-render with structural changes
           </p>
         </div>
-        <a href="/demos/bindings" class="text-indigo-600 hover:text-indigo-800">
-          &larr; Bindings Demo
-        </a>
+        <a href="/" class="text-indigo-600 hover:text-indigo-800">&larr; Demos</a>
       </div>
 
       <div class="bg-blue-50 p-4 rounded-lg mb-6 text-sm">
