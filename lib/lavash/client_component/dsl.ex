@@ -5,13 +5,22 @@ defmodule Lavash.ClientComponent.Dsl do
   ClientComponents are optimistic UI components that render on both server and client.
   They generate JS hook code from templates at compile time.
 
+  ## State Declaration
+
+  Use `state` to declare fields that sync to parent state:
+
+      state :tags, {:array, :string}
+      state :active, :boolean
+
+  The `bind` keyword is also supported for backwards compatibility.
+
   ## Example
 
       defmodule MyApp.TagEditor do
         use Lavash.ClientComponent
 
-        # Bindings connect to parent state
-        bind :tags, {:array, :string}
+        # State connects to parent state (new syntax)
+        state :tags, {:array, :string}
 
         # Props from parent (read-only)
         prop :placeholder, :string, default: "Add tag..."
@@ -22,8 +31,13 @@ defmodule Lavash.ClientComponent.Dsl do
         calculate :tag_count, length(@tags)
 
         # Optimistic actions generate both client JS and server handlers
-        optimistic_action :add, :tags, unique: true, max: :max_tags
-        optimistic_action :remove, :tags
+        optimistic_action :add, :tags,
+          run: fn tags, tag -> tags ++ [tag] end,
+          validate: fn tags, tag -> tag not in tags end,
+          max: :max_tags
+
+        optimistic_action :remove, :tags,
+          run: fn tags, tag -> Enum.reject(tags, &(&1 == tag)) end
 
         # Template compiles to both HEEx and JS render function
         client_template \"\"\"
@@ -39,32 +53,53 @@ defmodule Lavash.ClientComponent.Dsl do
   """
 
   # ============================================
-  # Bindings - connect to parent state
+  # State - connect to parent state
+  # (unified naming across component types)
   # ============================================
 
-  @bind_entity %Spark.Dsl.Entity{
-    name: :bind,
-    target: Lavash.ClientComponent.Bind,
-    args: [:name, :type],
-    schema: [
-      name: [
-        type: :atom,
-        required: true,
-        doc: "The local name for this binding"
-      ],
-      type: [
-        type: :any,
-        required: true,
-        doc: "The type of the bound field"
-      ]
+  @state_schema [
+    name: [
+      type: :atom,
+      required: true,
+      doc: "The local name for this state field"
+    ],
+    type: [
+      type: :any,
+      required: true,
+      doc: "The type of the state field"
+    ],
+    from: [
+      type: {:in, [:parent]},
+      default: :parent,
+      doc: "Storage location (always :parent for components)"
+    ],
+    default: [
+      type: :any,
+      doc: "Default value if not provided by parent"
     ]
+  ]
+
+  # New unified `state` entity
+  @state_entity %Spark.Dsl.Entity{
+    name: :state,
+    target: Lavash.Component.State,
+    args: [:name, :type],
+    schema: @state_schema
   }
 
-  @bindings_section %Spark.Dsl.Section{
-    name: :bindings,
+  # Legacy `bind` entity (backwards compatibility)
+  @bind_entity %Spark.Dsl.Entity{
+    name: :bind,
+    target: Lavash.Component.State,
+    args: [:name, :type],
+    schema: @state_schema
+  }
+
+  @state_section %Spark.Dsl.Section{
+    name: :state_fields,
     top_level?: true,
-    describe: "Bindings connect component-local names to parent state fields.",
-    entities: [@bind_entity]
+    describe: "State fields connect component-local names to parent state fields.",
+    entities: [@state_entity, @bind_entity]
   }
 
   # ============================================
@@ -221,10 +256,16 @@ defmodule Lavash.ClientComponent.Dsl do
 
   use Spark.Dsl.Extension,
     sections: [
-      @bindings_section,
+      @state_section,
       @props_section,
       @optimistic_actions_section,
       @template_section
     ],
     imports: [Lavash.Optimistic.Macros]
+end
+
+# Backwards compatibility alias
+defmodule Lavash.ClientComponent.Bind do
+  @moduledoc "Deprecated: Use Lavash.Component.State instead."
+  defstruct [:name, :type, :from, :default, __spark_metadata__: nil]
 end

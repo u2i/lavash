@@ -11,7 +11,7 @@ defmodule Lavash.LiveComponent.Compiler do
   alias Lavash.Component.CompilerHelpers
 
   defmacro __before_compile__(env) do
-    synced_fields = Spark.Dsl.Extension.get_entities(env.module, [:synced_fields]) || []
+    synced_fields = Spark.Dsl.Extension.get_entities(env.module, [:state_fields]) || []
     props = Spark.Dsl.Extension.get_entities(env.module, [:props]) || []
     templates = Spark.Dsl.Extension.get_entities(env.module, [:template]) || []
 

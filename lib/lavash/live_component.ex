@@ -21,8 +21,8 @@ defmodule Lavash.LiveComponent do
       defmodule MyApp.Toggle do
         use Lavash.LiveComponent
 
-        # Synced field connects to parent state
-        synced :value, :boolean
+        # State field connects to parent state
+        state :value, :boolean
 
         # Props from parent (read-only)
         prop :label, :string, default: ""
@@ -42,6 +42,12 @@ defmodule Lavash.LiveComponent do
         \"\"\"
       end
 
+  ## Convenience Macros
+
+  Use `toggle` for boolean state with auto-generated toggle action:
+
+      toggle :active  # Expands to state + optimistic_action
+
   ## Data Attributes (auto-generated from template)
 
   - `l-action="toggle"` → `data-synced-action="toggle" data-synced-field="value"`
@@ -60,9 +66,12 @@ defmodule Lavash.LiveComponent do
       require Phoenix.Component
       import Phoenix.Component
       import Lavash.Optimistic.Macros, only: [calculate: 2, optimistic_action: 3]
+      import Lavash.Component.Conveniences, only: [toggle: 1, toggle: 2, multi_select: 2, multi_select: 3]
 
       Module.register_attribute(__MODULE__, :__lavash_calculations__, accumulate: true)
       Module.register_attribute(__MODULE__, :__lavash_optimistic_actions__, accumulate: true)
+      Module.register_attribute(__MODULE__, :__lavash_toggle_states__, accumulate: true)
+      Module.register_attribute(__MODULE__, :__lavash_multi_select_states__, accumulate: true)
 
       @before_compile Lavash.LiveComponent.Compiler
     end

@@ -16,7 +16,7 @@ defmodule Lavash.ClientComponent.Compiler do
   @doc false
   defmacro __before_compile__(env) do
     # Get DSL entities from Spark
-    bindings = Spark.Dsl.Extension.get_entities(env.module, [:bindings]) || []
+    bindings = Spark.Dsl.Extension.get_entities(env.module, [:state_fields]) || []
     props = Spark.Dsl.Extension.get_entities(env.module, [:props]) || []
     templates = Spark.Dsl.Extension.get_entities(env.module, [:template]) || []
 

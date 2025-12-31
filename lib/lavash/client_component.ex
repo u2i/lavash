@@ -2,7 +2,7 @@ defmodule Lavash.ClientComponent do
   @moduledoc """
   A Spark-based component that renders on both server and client with optimistic updates.
 
-  Uses Spark DSL for declarative definition of bindings, props, calculations,
+  Uses Spark DSL for declarative definition of state, props, calculations,
   and optimistic actions.
 
   ## How It Works
@@ -18,8 +18,8 @@ defmodule Lavash.ClientComponent do
       defmodule MyApp.TagEditor do
         use Lavash.ClientComponent
 
-        # Bindings connect to parent state
-        bind :tags, {:array, :string}
+        # State connects to parent state
+        state :tags, {:array, :string}
 
         # Props from parent (read-only)
         prop :placeholder, :string, default: "Add tag..."
@@ -80,9 +80,12 @@ defmodule Lavash.ClientComponent do
       require Phoenix.Component
       import Phoenix.Component
       import Lavash.Optimistic.Macros, only: [calculate: 2, optimistic_action: 3]
+      import Lavash.Component.Conveniences, only: [toggle: 1, toggle: 2, multi_select: 2, multi_select: 3]
 
       Module.register_attribute(__MODULE__, :__lavash_calculations__, accumulate: true)
       Module.register_attribute(__MODULE__, :__lavash_optimistic_actions__, accumulate: true)
+      Module.register_attribute(__MODULE__, :__lavash_toggle_states__, accumulate: true)
+      Module.register_attribute(__MODULE__, :__lavash_multi_select_states__, accumulate: true)
 
       @before_compile Lavash.ClientComponent.Compiler
 

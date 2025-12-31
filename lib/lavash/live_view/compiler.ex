@@ -98,7 +98,8 @@ defmodule Lavash.LiveView.Compiler do
         setter_actions = Lavash.LiveView.Compiler.generate_setter_actions(__MODULE__)
         multi_select_actions = Lavash.LiveView.Compiler.generate_multi_select_actions(__MODULE__)
         toggle_actions = Lavash.LiveView.Compiler.generate_toggle_actions(__MODULE__)
-        declared_actions ++ setter_actions ++ multi_select_actions ++ toggle_actions
+        optimistic_actions = Lavash.LiveView.Compiler.generate_optimistic_actions(__MODULE__)
+        declared_actions ++ setter_actions ++ multi_select_actions ++ toggle_actions ++ optimistic_actions
       end
 
       # Convenience accessors by storage type
@@ -137,6 +138,11 @@ defmodule Lavash.LiveView.Compiler do
       # Expose calculations from the calculate macro for JsGenerator
       def __lavash_calculations__ do
         @__lavash_calculations__ || []
+      end
+
+      # Expose optimistic actions from the optimistic_action macro
+      def __lavash_optimistic_actions__ do
+        @__lavash_optimistic_actions__ || []
       end
     end
   end
@@ -234,6 +240,68 @@ defmodule Lavash.LiveView.Compiler do
       List.delete(list, value)
     else
       [value | list]
+    end
+  end
+
+  @doc """
+  Generate actions from optimistic_action macro definitions.
+
+  Each optimistic_action is converted to a Lavash.Actions.Action with an update
+  that applies the run function. This allows optimistic_action to be used in LiveViews
+  just like in components.
+
+  ## Example
+
+      optimistic_action :add_tag, :tags,
+        run: fn tags, tag -> tags ++ [tag] end,
+        validate: fn tags, tag -> tag not in tags end
+
+  Generates an action equivalent to:
+
+      action :add_tag, params: [:value] do
+        update :tags, fn current -> run_fn.(current, params.value) end
+      end
+  """
+  def generate_optimistic_actions(module) do
+    if function_exported?(module, :__lavash_optimistic_actions__, 0) do
+      module.__lavash_optimistic_actions__()
+      |> Enum.map(fn {name, field, run_source, _validate_source, _max} ->
+        # Parse the run function from source
+        run_fn =
+          case Code.string_to_quoted(run_source) do
+            {:ok, ast} ->
+              {fun, _} = Code.eval_quoted(ast)
+              fun
+
+            _ ->
+              fn current, _value -> current end
+          end
+
+        # Create an action with an update step
+        %Lavash.Actions.Action{
+          name: name,
+          params: [:value],
+          when: [],
+          sets: [],
+          updates: [
+            %Lavash.Actions.Update{
+              field: field,
+              # The update function calls the parsed run_fn with current value and params.value
+              fun: fn current, context ->
+                value = Map.get(context.params, :value)
+                run_fn.(current, value)
+              end
+            }
+          ],
+          effects: [],
+          submits: [],
+          navigates: [],
+          flashes: [],
+          invokes: []
+        }
+      end)
+    else
+      []
     end
   end
 
