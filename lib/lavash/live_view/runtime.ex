@@ -256,7 +256,6 @@ defmodule Lavash.LiveView.Runtime do
       |> LSocket.put(:path_param_values, path_param_values)
       |> State.hydrate_url(module, params)
       |> Graph.recompute_all(module)
-      |> compute_calculations(module)
       |> Assigns.project(module)
 
     # Update combination-based subscriptions based on new filter values
@@ -408,7 +407,6 @@ defmodule Lavash.LiveView.Runtime do
       |> LSocket.put_state(field, value)
       |> maybe_push_patch(module)
       |> Graph.recompute_dirty(module)
-      |> compute_calculations(module)
       |> Assigns.project(module)
 
     {:noreply, socket}
@@ -436,7 +434,6 @@ defmodule Lavash.LiveView.Runtime do
       |> LSocket.put_state(field, new_value)
       |> maybe_push_patch(module)
       |> Graph.recompute_dirty(module)
-      |> compute_calculations(module)
       |> Assigns.project(module)
 
     {:noreply, socket}
@@ -460,7 +457,6 @@ defmodule Lavash.LiveView.Runtime do
       |> LSocket.put_state(field, new_value)
       |> maybe_push_patch(module)
       |> Graph.recompute_dirty(module)
-      |> compute_calculations(module)
       |> Assigns.project(module)
 
     {:noreply, socket}
@@ -478,7 +474,6 @@ defmodule Lavash.LiveView.Runtime do
       |> LSocket.put_state(field, new_value)
       |> maybe_push_patch(module)
       |> Graph.recompute_dirty(module)
-      |> compute_calculations(module)
       |> Assigns.project(module)
 
     {:noreply, socket}
@@ -949,103 +944,4 @@ defmodule Lavash.LiveView.Runtime do
   defp extract_changeset(%AshPhoenix.Form{source: %Ash.Changeset{} = cs}), do: cs
   defp extract_changeset(%Ash.Changeset{} = cs), do: cs
   defp extract_changeset(_), do: nil
-
-  @doc """
-  Compute calculations from the `calculate` macro and add to assigns.
-
-  Calculations are simple expressions that reference state via @field syntax.
-  They're evaluated on the server and also transpiled to JS for client-side updates.
-
-  Calculations can depend on other calculations. Dependencies are resolved via
-  topological sort to ensure proper evaluation order.
-  """
-  def compute_calculations(socket, module) do
-    calculations =
-      if function_exported?(module, :__lavash_calculations__, 0) do
-        module.__lavash_calculations__()
-      else
-        []
-      end
-
-    if calculations == [] do
-      socket
-    else
-      # Sort calculations by dependencies (topological order)
-      sorted = topological_sort_calculations(calculations)
-
-      # Start with state, then accumulate computed calculations
-      initial_state = LSocket.state(socket)
-
-      {socket, _final_state} =
-        Enum.reduce(sorted, {socket, initial_state}, fn {name, _source, ast, _deps}, {socket, state} ->
-          # Evaluate the transformed AST with current state (includes computed calcs)
-          try do
-            {result, _binding} = Code.eval_quoted(ast, [state: state], __ENV__)
-            # Update both socket assigns and state map for subsequent calculations
-            {Phoenix.Component.assign(socket, name, result), Map.put(state, name, result)}
-          rescue
-            _ -> {socket, state}
-          end
-        end)
-
-      socket
-    end
-  end
-
-  # Topological sort for calculations based on their dependencies
-  defp topological_sort_calculations(calculations) do
-    # Build a map of name -> {name, source, ast, deps}
-    calc_map = Map.new(calculations, fn {name, _, _, _} = calc -> {name, calc} end)
-    calc_names = MapSet.new(Map.keys(calc_map))
-
-    # Build dependency graph (only for dependencies that are other calculations)
-    deps_graph =
-      Map.new(calculations, fn {name, _source, _ast, deps} ->
-        # Filter deps to only include other calculations (not state fields)
-        calc_deps = Enum.filter(deps, &MapSet.member?(calc_names, &1))
-        {name, calc_deps}
-      end)
-
-    # Kahn's algorithm for topological sort
-    # Start with nodes that have no dependencies on other calculations
-    {sorted, _} = kahn_sort(deps_graph, calc_map)
-    sorted
-  end
-
-  defp kahn_sort(deps_graph, calc_map) do
-    # Find nodes with no dependencies
-    no_deps =
-      deps_graph
-      |> Enum.filter(fn {_name, deps} -> deps == [] end)
-      |> Enum.map(fn {name, _} -> name end)
-
-    kahn_sort_loop(no_deps, deps_graph, calc_map, [])
-  end
-
-  defp kahn_sort_loop([], _deps_graph, _calc_map, sorted), do: {Enum.reverse(sorted), []}
-
-  defp kahn_sort_loop([node | rest], deps_graph, calc_map, sorted) do
-    # Add this node to sorted list
-    calc = Map.get(calc_map, node)
-    new_sorted = [calc | sorted]
-
-    # Remove this node from all dependency lists
-    updated_graph =
-      Map.new(deps_graph, fn {name, deps} ->
-        {name, List.delete(deps, node)}
-      end)
-
-    # Find newly available nodes (deps now empty, not already processed or queued)
-    already_done = MapSet.new([node | Enum.map(new_sorted, fn {n, _, _, _} -> n end)])
-    queued = MapSet.new(rest)
-
-    newly_available =
-      updated_graph
-      |> Enum.filter(fn {name, deps} ->
-        deps == [] and not MapSet.member?(already_done, name) and not MapSet.member?(queued, name)
-      end)
-      |> Enum.map(fn {name, _} -> name end)
-
-    kahn_sort_loop(rest ++ newly_available, updated_graph, calc_map, new_sorted)
-  end
 end

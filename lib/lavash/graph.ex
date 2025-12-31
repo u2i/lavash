@@ -27,7 +27,32 @@ defmodule Lavash.Graph do
     derived_fields = module.__lavash__(:derived_fields)
     read_fields = expand_reads(module)
     form_fields = expand_forms(module)
-    derived_fields ++ read_fields ++ form_fields
+    calculation_fields = expand_calculations(module)
+    derived_fields ++ read_fields ++ form_fields ++ calculation_fields
+  end
+
+  # Expand calculate entities into derived-like field structs
+  defp expand_calculations(module) do
+    calculations =
+      if function_exported?(module, :__lavash_calculations__, 0) do
+        module.__lavash_calculations__()
+      else
+        []
+      end
+
+    Enum.map(calculations, fn {name, _source, ast, deps} ->
+      %Lavash.Derived.Field{
+        name: name,
+        depends_on: deps,
+        async: false,
+        optimistic: true,
+        compute: fn deps_map ->
+          # Build state map from deps_map for AST evaluation
+          {result, _binding} = Code.eval_quoted(ast, [state: deps_map], __ENV__)
+          result
+        end
+      }
+    end)
   end
 
   # Expand read entities into derived-like field structs

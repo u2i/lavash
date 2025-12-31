@@ -69,6 +69,9 @@ defmodule Lavash.Assigns do
     socket_fields = safe_get(module, :socket_fields) |> Enum.map(& &1.name)
     derived_fields = safe_get(module, :derived_fields) |> Enum.map(& &1.name)
 
+    # Calculation fields (from calculate macro)
+    calculation_fields = safe_get_calculations(module)
+
     # LiveView-specific fields
     url_fields = safe_get(module, :url_fields) |> Enum.map(& &1.name)
     read_fields = safe_get(module, :reads) |> Enum.map(& &1.name)
@@ -79,7 +82,8 @@ defmodule Lavash.Assigns do
 
     url_fields ++
       ephemeral_fields ++
-      socket_fields ++ derived_fields ++ read_fields ++ form_fields ++ prop_fields
+      socket_fields ++
+      derived_fields ++ calculation_fields ++ read_fields ++ form_fields ++ prop_fields
   end
 
   # Safely get entities, returning empty list if not defined
@@ -88,6 +92,16 @@ defmodule Lavash.Assigns do
       module.__lavash__(key)
     rescue
       _ -> []
+    end
+  end
+
+  # Get calculation field names from __lavash_calculations__
+  defp safe_get_calculations(module) do
+    if function_exported?(module, :__lavash_calculations__, 0) do
+      module.__lavash_calculations__()
+      |> Enum.map(fn {name, _source, _ast, _deps} -> name end)
+    else
+      []
     end
   end
 
