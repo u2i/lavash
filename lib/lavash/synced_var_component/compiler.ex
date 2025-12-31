@@ -11,6 +11,7 @@ defmodule Lavash.SyncedVarComponent.Compiler do
   defmacro __before_compile__(env) do
     synced_fields = Spark.Dsl.Extension.get_entities(env.module, [:synced_fields]) || []
     props = Spark.Dsl.Extension.get_entities(env.module, [:props]) || []
+    templates = Spark.Dsl.Extension.get_entities(env.module, [:template]) || []
 
     # Calculations are stored as 4-tuples: {name, source, transformed_ast, deps}
     calculations = Module.get_attribute(env.module, :__lavash_calculations__) || []
@@ -20,6 +21,12 @@ defmodule Lavash.SyncedVarComponent.Compiler do
     actions = Enum.map(action_tuples, fn {name, field, run_source, validate_source, max} ->
       %{name: name, field: field, run_source: run_source, validate_source: validate_source, max: max}
     end)
+
+    # Get template source (if provided via DSL)
+    template_source = case templates do
+      [%{source: source} | _] -> source
+      _ -> nil
+    end
 
     # Generate hook name from module
     module_name = env.module |> Module.split() |> List.last()
@@ -36,13 +43,18 @@ defmodule Lavash.SyncedVarComponent.Compiler do
     escaped_hook_data = if hook_data, do: Macro.escape(hook_data), else: nil
 
     # Generate mount/update callbacks
-    mount_update_fns = generate_mount_update(synced_fields, props)
+    mount_update_fns = generate_mount_update(synced_fields, props, calculations)
 
     # Generate handle_event functions
     handle_event_fns = generate_handle_events(actions, synced_fields)
 
     # Generate calculation functions for server-side
     calculation_fns = generate_server_calculations(calculations)
+
+    # Generate render function if template is provided
+    render_fn = if template_source do
+      generate_render(template_source, full_hook_name, calculations, actions, synced_fields, env)
+    end
 
     quote do
       # Hook metadata
@@ -67,6 +79,9 @@ defmodule Lavash.SyncedVarComponent.Compiler do
 
       # Handle event functions
       unquote(handle_event_fns)
+
+      # Render function (if template provided)
+      unquote(render_fn)
     end
   end
 
@@ -317,9 +332,10 @@ defmodule Lavash.SyncedVarComponent.Compiler do
     end
   end
 
-  defp generate_mount_update(synced_fields, props) do
+  defp generate_mount_update(synced_fields, props, calculations) do
     synced_names = Enum.map(synced_fields, & &1.name)
     prop_defaults = Enum.map(props, fn p -> {p.name, p.default} end)
+    calc_names = Enum.map(calculations, fn {name, _, _, _} -> name end)
 
     quote do
       def mount(socket) do
@@ -356,7 +372,7 @@ defmodule Lavash.SyncedVarComponent.Compiler do
         # Run server-side calculations
         socket = run_server_calculations(socket)
 
-        # Build state JSON for client
+        # Build state JSON for client (synced fields + calculation results)
         state =
           unquote(synced_names)
           |> Enum.map(fn name -> {to_string(name), socket.assigns[name]} end)
@@ -364,8 +380,9 @@ defmodule Lavash.SyncedVarComponent.Compiler do
 
         # Add calculation results to state
         state =
-          unquote(Enum.map(Macro.escape(synced_fields), fn _ -> nil end))
-          |> Enum.reduce(state, fn _, acc -> acc end)
+          Enum.reduce(unquote(calc_names), state, fn name, acc ->
+            Map.put(acc, to_string(name), socket.assigns[name])
+          end)
 
         socket =
           socket
@@ -507,5 +524,81 @@ defmodule Lavash.SyncedVarComponent.Compiler do
     Application.get_env(:phoenix_live_view, :colocated_js, [])
     |> Keyword.get(:target_directory, default)
     |> Path.join(app)
+  end
+
+  # Generate render function from template
+  defp generate_render(template_source, full_hook_name, calculations, actions, synced_fields, _env) do
+    # Transform template to inject data-synced-* attributes
+    transformed_template =
+      Lavash.SyncedVarComponent.TemplateTransformer.transform(
+        template_source,
+        calculations,
+        actions,
+        synced_fields
+      )
+
+    # Wrapper template that adds the hook container
+    wrapper_template = """
+    <div
+      id={@id}
+      phx-hook={@__hook_name__}
+      phx-target={@myself}
+      data-synced-state={@__state_json__}
+      data-synced-bindings={@__bindings_json__}
+    >
+      {@inner_content}
+    </div>
+    """
+
+    quote do
+      # Store template sources for __render_inner__ macro
+      @__lavash_full_hook_name__ unquote(full_hook_name)
+      @__lavash_template_source__ unquote(transformed_template)
+      @__lavash_wrapper_template__ unquote(wrapper_template)
+
+      @doc false
+      defmacro __render_inner__(assigns_var) do
+        template = Module.get_attribute(__MODULE__, :__lavash_template_source__)
+
+        opts = [
+          engine: Phoenix.LiveView.TagEngine,
+          caller: __CALLER__,
+          source: template,
+          tag_handler: Phoenix.LiveView.HTMLEngine
+        ]
+
+        ast = EEx.compile_string(template, opts)
+
+        quote do
+          var!(assigns) = unquote(assigns_var)
+          unquote(ast)
+        end
+      end
+
+      @doc false
+      defmacro __render_wrapper__(assigns_var) do
+        template = Module.get_attribute(__MODULE__, :__lavash_wrapper_template__)
+
+        opts = [
+          engine: Phoenix.LiveView.TagEngine,
+          caller: __CALLER__,
+          source: template,
+          tag_handler: Phoenix.LiveView.HTMLEngine
+        ]
+
+        ast = EEx.compile_string(template, opts)
+
+        quote do
+          var!(assigns) = unquote(assigns_var)
+          unquote(ast)
+        end
+      end
+
+      def render(var!(assigns)) do
+        inner_content = __render_inner__(var!(assigns))
+        var!(assigns) = Phoenix.Component.assign(var!(assigns), :inner_content, inner_content)
+        __render_wrapper__(var!(assigns))
+      end
+    end
   end
 end

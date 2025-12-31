@@ -24,7 +24,6 @@ defmodule Lavash.Components.SyncedToggle do
   """
 
   use Lavash.SyncedVarComponent
-  import Phoenix.Component, only: [sigil_H: 2]
 
   # Synced field connects to parent state
   synced :value, :boolean
@@ -51,38 +50,28 @@ defmodule Lavash.Components.SyncedToggle do
   optimistic_action :toggle, :value,
     run: fn value, _arg -> !value end
 
-  def render(assigns) do
-    ~H"""
-    <div
-      id={@id}
-      phx-hook={@__hook_name__}
-      data-synced-state={@__state_json__}
-      data-synced-bindings={@__bindings_json__}
-      class="inline-flex items-center gap-2"
+  # Template with natural syntax - l-action and class={@calc} are auto-transformed
+  client_template """
+  <div class="inline-flex items-center gap-2">
+    <button
+      type="button"
+      role="switch"
+      aria-checked={to_string(@value)}
+      disabled={@disabled}
+      l-action="toggle"
+      class={@button_class}
     >
-      <button
-        type="button"
-        role="switch"
-        aria-checked={to_string(@value)}
-        disabled={@disabled}
-        data-synced-action="toggle"
-        data-synced-field="value"
-        data-synced-class="button_class"
-        class={@button_class}
-      >
-        <span
-          aria-hidden="true"
-          data-synced-class="knob_class"
-          class={@knob_class}
-        />
-      </button>
-      <span :if={@label != ""} class="text-sm font-medium text-gray-900">
-        {@label}
-      </span>
-      <span :if={@label == ""} class="text-sm text-gray-500" data-synced-text="display_label">
-        {@display_label}
-      </span>
-    </div>
-    """
-  end
+      <span
+        aria-hidden="true"
+        class={@knob_class}
+      />
+    </button>
+    <span :if={@label != ""} class="text-sm font-medium text-gray-900">
+      {@label}
+    </span>
+    <span :if={@label == ""} class="text-sm text-gray-500">
+      {@display_label}
+    </span>
+  </div>
+  """
 end

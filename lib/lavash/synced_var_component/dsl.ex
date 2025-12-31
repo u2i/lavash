@@ -116,6 +116,30 @@ defmodule Lavash.SyncedVarComponent.Dsl do
   }
 
   # ============================================
+  # Template - compiles to HEEx + JS
+  # ============================================
+
+  @template_entity %Spark.Dsl.Entity{
+    name: :client_template,
+    target: Lavash.SyncedVarComponent.Template,
+    args: [:source],
+    schema: [
+      source: [
+        type: :string,
+        required: true,
+        doc: "The HEEx template source"
+      ]
+    ]
+  }
+
+  @template_section %Spark.Dsl.Section{
+    name: :template,
+    top_level?: true,
+    describe: "The component template, compiled to both HEEx and JS with auto-generated data-synced-* attributes.",
+    entities: [@template_entity]
+  }
+
+  # ============================================
   # Extension setup
   # ============================================
 
@@ -123,7 +147,8 @@ defmodule Lavash.SyncedVarComponent.Dsl do
     sections: [
       @synced_section,
       @props_section,
-      @optimistic_actions_section
+      @optimistic_actions_section,
+      @template_section
     ],
     imports: [Lavash.Optimistic.Macros]
 end
@@ -139,4 +164,8 @@ end
 
 defmodule Lavash.SyncedVarComponent.OptimisticAction do
   defstruct [:name, :field, :run, :run_source, __spark_metadata__: nil]
+end
+
+defmodule Lavash.SyncedVarComponent.Template do
+  defstruct [:source, __spark_metadata__: nil]
 end
