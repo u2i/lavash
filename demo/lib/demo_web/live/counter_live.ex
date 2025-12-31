@@ -5,15 +5,7 @@ defmodule DemoWeb.CounterLive do
   state :count, :integer, from: :url, default: 0, optimistic: true
   state :multiplier, :integer, from: :ephemeral, default: 2, optimistic: true
 
-  derive :doubled do
-    optimistic true
-    argument :count, state(:count)
-    argument :multiplier, state(:multiplier)
-
-    run fn %{count: c, multiplier: m}, _ ->
-      c * m
-    end
-  end
+  calculate :doubled, rx(@count * @multiplier)
 
   derive :fact do
     optimistic true

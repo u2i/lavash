@@ -36,15 +36,7 @@ defmodule DemoWeb.Storefront.ProductsLive do
     argument :category_slugs, state(:category)
   end
 
-  derive :has_filters do
-    argument :roast, state(:roast)
-    argument :category, state(:category)
-    argument :in_stock, state(:in_stock)
-
-    run fn args, _ ->
-      args.roast != [] or args.category != [] or args.in_stock
-    end
-  end
+  calculate :has_filters, rx(@roast != [] or @category != [] or @in_stock), optimistic: false
 
   # Derive chip classes for categories (dynamic values require explicit derive)
   derive :category_chips do

@@ -11,7 +11,7 @@ defmodule DemoWeb.BindingsDemoLive do
   # optimistic: true enables the wrapper hook that handles client-side updates
   state :roast, {:array, :string}, from: :url, default: [], optimistic: true
 
-  # Chain of derives to test graph-based recomputation with topological sorting:
+  # Chain of calculations to test graph-based recomputation with topological sorting:
   # roast -> selected_count -> has_selection -> summary_text
   #                       \-> summary_text (also depends on selected_count directly)
   #
@@ -20,39 +20,20 @@ defmodule DemoWeb.BindingsDemoLive do
   # 2. Topological sorting (has_selection must compute before summary_text)
 
   # Level 1: depends on state
-  derive :selected_count do
-    argument :roast, state(:roast)
-    optimistic true
+  calculate :selected_count, rx(length(@roast))
 
-    run fn %{roast: roast}, _ ->
-      length(roast)
-    end
-  end
+  # Level 2: depends on another calculation
+  calculate :has_selection, rx(@selected_count > 0)
 
-  # Level 2: depends on another derive
-  derive :has_selection do
-    argument :count, result(:selected_count)
-    optimistic true
-
-    run fn %{count: count}, _ ->
-      count > 0
-    end
-  end
-
-  # Level 3: depends on multiple derives (tests proper ordering)
-  derive :summary_text do
-    argument :count, result(:selected_count)
-    argument :has_any, result(:has_selection)
-    optimistic true
-
-    run fn %{count: count, has_any: has_any}, _ ->
-      if has_any do
-        "#{count} roast#{if count == 1, do: "", else: "s"} selected"
-      else
-        "No roasts selected"
-      end
-    end
-  end
+  # Level 3: depends on multiple calculations (tests proper ordering)
+  calculate :summary_text,
+            rx(
+              if @has_selection do
+                "#{@selected_count} roast#{if @selected_count == 1, do: "", else: "s"} selected"
+              else
+                "No roasts selected"
+              end
+            )
 
   def render(assigns) do
     ~H"""
@@ -88,18 +69,18 @@ defmodule DemoWeb.BindingsDemoLive do
             Selected roasts: <code class="bg-gray-200 px-2 py-1 rounded">{inspect(@roast)}</code>
           </p>
           <p class="text-gray-600">
-            Count (Level 1 derive): <code class="bg-gray-200 px-2 py-1 rounded">{@selected_count}</code>
+            Count (Level 1 calc): <code class="bg-gray-200 px-2 py-1 rounded">{@selected_count}</code>
           </p>
           <p class="text-gray-600">
-            Has selection (Level 2 derive): <code class="bg-gray-200 px-2 py-1 rounded">{inspect(@has_selection)}</code>
+            Has selection (Level 2 calc): <code class="bg-gray-200 px-2 py-1 rounded">{inspect(@has_selection)}</code>
           </p>
           <p class="text-gray-600">
-            Summary (Level 3 derive): <code class="bg-gray-200 px-2 py-1 rounded">{@summary_text}</code>
+            Summary (Level 3 calc): <code class="bg-gray-200 px-2 py-1 rounded">{@summary_text}</code>
           </p>
         </div>
         <p class="text-sm text-gray-500 mt-4">
           The ChipSet component binds its <code>selected</code> to the parent's <code>:roast</code> state.
-          When you toggle chips, the parent state updates and the derive chain recomputes in order.
+          When you toggle chips, the parent state updates and the calculation chain recomputes in order.
         </p>
       </div>
     </div>

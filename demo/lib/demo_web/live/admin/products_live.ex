@@ -24,15 +24,9 @@ defmodule DemoWeb.Admin.ProductsLive do
     run fn %{products: products}, _ -> length(products) end
   end
 
-  derive :has_filters do
-    argument :search, state(:search)
-    argument :category_id, state(:category_id)
-    argument :in_stock, state(:in_stock)
-
-    run fn f, _ ->
-      f.search != "" or f.category_id != nil or f.in_stock != nil
-    end
-  end
+  calculate :has_filters,
+            rx(@search != "" or @category_id != nil or @in_stock != nil),
+            optimistic: false
 
   actions do
     action :clear_filters do
