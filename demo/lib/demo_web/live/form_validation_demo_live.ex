@@ -137,7 +137,7 @@ defmodule DemoWeb.FormValidationDemoLive do
               value={@params["name"] || ""}
               phx-change="update_field"
               phx-value-field="name"
-              data-optimistic-input="params.name"
+              data-synced="params.name"
               autocomplete="off"
               data-1p-ignore
               class={"w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 " <>
@@ -169,7 +169,7 @@ defmodule DemoWeb.FormValidationDemoLive do
               value={@params["email"] || ""}
               phx-change="update_field"
               phx-value-field="email"
-              data-optimistic-input="params.email"
+              data-synced="params.email"
               autocomplete="off"
               data-1p-ignore
               class={"w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 " <>
@@ -201,7 +201,7 @@ defmodule DemoWeb.FormValidationDemoLive do
               value={@params["age"] || ""}
               phx-change="update_field"
               phx-value-field="age"
-              data-optimistic-input="params.age"
+              data-synced="params.age"
               autocomplete="off"
               data-1p-ignore
               min="0"

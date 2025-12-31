@@ -10,8 +10,11 @@
  * 1. Add `optimistic: true` to state/derive declarations in your LiveView
  * 2. Add data-optimistic="actionName" to buttons/elements
  * 3. Add data-optimistic-display="fieldName" to elements that display state
- * 4. (Optional) Define custom client-side functions via ColocatedJS for complex logic
+ * 4. Add data-synced="fieldName" or data-synced="field.path" for input bindings
+ * 5. (Optional) Define custom client-side functions via ColocatedJS for complex logic
  */
+
+import { SyncedVar } from "./synced_var.js";
 
 // Registry for optimistic function modules (for custom overrides)
 window.Lavash = window.Lavash || {};
@@ -27,6 +30,10 @@ const LavashOptimistic = {
     this.state = JSON.parse(this.el.dataset.lavashState || "{}");
     // Track which fields have pending optimistic updates (field -> expected value)
     this.pending = {};
+
+    // SyncedVar instances for each state field (for nested path support)
+    // Maps field name -> SyncedVar instance
+    this.syncedVars = {};
 
     // Version tracking for stale patch rejection
     // Client version starts at server version and bumps on each optimistic action
@@ -54,14 +61,50 @@ const LavashOptimistic = {
       );
     }
 
+    // Initialize SyncedVars for each state field
+    this.initSyncedVars();
+
     // Expose hook instance on element for onBeforeElUpdated access
     this.el.__lavash_hook__ = this;
 
     // Intercept clicks on elements with data-optimistic
     this.el.addEventListener("click", this.handleClick.bind(this), true);
 
-    // Intercept input/change on elements with data-optimistic-field
+    // Intercept input/change on elements with data-optimistic-field or data-synced
     this.el.addEventListener("input", this.handleInput.bind(this), true);
+  },
+
+  /**
+   * Initialize SyncedVar instances for each state field.
+   * This allows nested path access via setAtPath/getAtPath.
+   */
+  initSyncedVars() {
+    for (const fieldName of this.fieldNames) {
+      const initialValue = this.state[fieldName];
+      this.syncedVars[fieldName] = new SyncedVar(initialValue, (newVal, oldVal, source) => {
+        // Update local state when SyncedVar changes
+        this.state[fieldName] = newVal;
+        if (source === "optimistic") {
+          this.pending[fieldName] = newVal;
+        }
+      });
+    }
+  },
+
+  /**
+   * Get or create a SyncedVar for a field.
+   */
+  getSyncedVar(fieldName) {
+    if (!this.syncedVars[fieldName]) {
+      const initialValue = this.state[fieldName];
+      this.syncedVars[fieldName] = new SyncedVar(initialValue, (newVal, oldVal, source) => {
+        this.state[fieldName] = newVal;
+        if (source === "optimistic") {
+          this.pending[fieldName] = newVal;
+        }
+      });
+    }
+    return this.syncedVars[fieldName];
   },
 
   loadGeneratedFunctions() {
@@ -182,8 +225,8 @@ const LavashOptimistic = {
   },
 
   handleInput(e) {
-    // Support both data-optimistic-field and data-optimistic-input (for nested paths)
-    const target = e.target.closest("[data-optimistic-field], [data-optimistic-input]");
+    // Support data-synced (preferred), data-optimistic-field, and data-optimistic-input
+    const target = e.target.closest("[data-synced], [data-optimistic-field], [data-optimistic-input]");
     if (!target) return;
 
     // Skip if input is inside a child component (has its own hook)
@@ -193,44 +236,35 @@ const LavashOptimistic = {
       return;
     }
 
-    // Bump client version - prevents stale server patches from overwriting optimistic state
-    this.clientVersion++;
-
-    const fieldPath = target.dataset.optimisticField || target.dataset.optimisticInput;
+    // Get the field path from data-synced (preferred) or legacy attributes
+    const fieldPath = target.dataset.synced || target.dataset.optimisticField || target.dataset.optimisticInput;
     // For form inputs, keep as string to match Elixir params behavior
     const value = target.value;
 
-    console.log("[Lavash] handleInput:", fieldPath, "=", value, "clientVersion:", this.clientVersion);
+    console.log("[Lavash] handleInput:", fieldPath, "=", value);
 
-    // Handle dotted path like "params.name" for nested map updates
-    if (fieldPath.includes(".")) {
-      const [rootField, ...pathParts] = fieldPath.split(".");
-      // Deep clone the current value
-      const currentVal = this.state[rootField] || {};
-      const newVal = { ...currentVal };
+    // Parse the path to determine root field and nested path
+    const dotIndex = fieldPath.indexOf(".");
+    const rootField = dotIndex > 0 ? fieldPath.substring(0, dotIndex) : fieldPath;
+    const nestedPath = dotIndex > 0 ? fieldPath.substring(dotIndex + 1) : null;
 
-      // Set the nested value
-      let obj = newVal;
-      for (let i = 0; i < pathParts.length - 1; i++) {
-        const part = pathParts[i];
-        obj[part] = { ...(obj[part] || {}) };
-        obj = obj[part];
-      }
-      obj[pathParts[pathParts.length - 1]] = value;
+    // Get or create the SyncedVar for this root field
+    const syncedVar = this.getSyncedVar(rootField);
 
-      this.state[rootField] = newVal;
-      this.pending[rootField] = newVal;
-
-      // Recompute derives affected by the root field
-      this.recomputeDerives([rootField]);
+    // Use SyncedVar's path-based API for updates
+    if (nestedPath) {
+      // Nested path: use setAtPath
+      syncedVar.setAtPath(nestedPath, value);
     } else {
-      // Simple field update
-      this.state[fieldPath] = value;
-      this.pending[fieldPath] = value;
-
-      // Recompute derives and update DOM
-      this.recomputeDerives([fieldPath]);
+      // Simple field: use setOptimistic
+      syncedVar.setOptimistic(value);
     }
+
+    // Bump client version for stale patch rejection
+    this.clientVersion++;
+
+    // Recompute derives affected by the root field
+    this.recomputeDerives([rootField]);
 
     this.updateDOM();
 
@@ -548,39 +582,32 @@ const LavashOptimistic = {
 
     console.log("[Lavash] updated() - server:", newServerVersion, "client:", this.clientVersion, "pending:", Object.keys(this.pending));
 
+    // Update each SyncedVar with server state
+    for (const [fieldName, serverValue] of Object.entries(serverState)) {
+      const syncedVar = this.syncedVars[fieldName];
+      if (syncedVar) {
+        // SyncedVar.serverSet only accepts if no pending operations
+        const accepted = syncedVar.serverSet(serverValue);
+        if (accepted) {
+          // Also update our local state mirror
+          this.state[fieldName] = serverValue;
+          delete this.pending[fieldName];
+        }
+        // If not accepted, the pending optimistic value is preserved in SyncedVar
+      } else {
+        // Field doesn't have a SyncedVar (not a managed field)
+        // Accept server value if not pending
+        if (!(fieldName in this.pending)) {
+          this.state[fieldName] = serverValue;
+        }
+      }
+    }
+
+    // Update version tracking
     if (newServerVersion >= this.clientVersion) {
-      // Server version is current or ahead - accept full server state
-      // BUT preserve any pending values if they differ from server (race condition protection)
-      console.log("[Lavash] Accepting full server state, pending keys:", Object.keys(this.pending));
       this.serverVersion = newServerVersion;
       this.clientVersion = newServerVersion;
-
-      // Preserve pending values that differ from server state
-      const preservedPending = {};
-      for (const [key, pendingVal] of Object.entries(this.pending)) {
-        const serverVal = serverState[key];
-        // If pending value differs from server, preserve it
-        if (JSON.stringify(pendingVal) !== JSON.stringify(serverVal)) {
-          preservedPending[key] = pendingVal;
-          console.log("[Lavash] Preserving pending:", key, "pending:", pendingVal, "server:", serverVal);
-        }
-      }
-
-      // Start with server state, then overlay preserved pending values
-      this.state = { ...serverState, ...preservedPending };
-      this.pending = preservedPending;
     } else {
-      // Server version is stale (from an earlier action) - selectively merge
-      // Only accept fields that don't have pending optimistic updates
-      // For derives, check if any of their source fields are pending
-      console.log("[Lavash] Stale server update, selective merge");
-      for (const [key, serverValue] of Object.entries(serverState)) {
-        const isPending = (key in this.pending) || this.hasPendingSources(key);
-        if (!isPending) {
-          this.state[key] = serverValue;
-        }
-      }
-      // Update server version tracking but keep client version
       this.serverVersion = newServerVersion;
     }
 
@@ -593,34 +620,28 @@ const LavashOptimistic = {
     const visElements = this.el.querySelectorAll("[data-optimistic-visible]");
     console.log("[Lavash] Found", visElements.length, "visibility elements");
 
-    // Update DOM after server patch - but only if we're not mid-input
-    // Check if any input element has focus inside our container
+    // Update DOM after server patch
+    this.updateDOM();
+
+    // If input is focused, restore optimistic value if server morphed it away
     const activeEl = document.activeElement;
     const inputHasFocus = activeEl &&
       this.el.contains(activeEl) &&
-      (activeEl.matches("[data-optimistic-input], [data-optimistic-field]"));
+      (activeEl.matches("[data-synced], [data-optimistic-input], [data-optimistic-field]"));
 
-    // Always update DOM to reflect current state
-    this.updateDOM();
-
-    // If input is focused, re-read from state to ensure input value matches
-    // (LiveView may have morphed the input value to server state)
     if (inputHasFocus) {
-      const fieldPath = activeEl.dataset.optimisticInput || activeEl.dataset.optimisticField;
-      if (fieldPath && fieldPath.includes(".")) {
-        const [rootField, ...pathParts] = fieldPath.split(".");
-        let val = this.state[rootField];
-        for (const part of pathParts) {
-          val = val?.[part];
-        }
-        if (val !== undefined && activeEl.value !== val) {
-          // Restore the optimistic value if server morphed it away
-          activeEl.value = val;
-        }
-      } else if (fieldPath) {
-        const val = this.state[fieldPath];
-        if (val !== undefined && activeEl.value !== val) {
-          activeEl.value = val;
+      const fieldPath = activeEl.dataset.synced || activeEl.dataset.optimisticInput || activeEl.dataset.optimisticField;
+      if (fieldPath) {
+        const dotIndex = fieldPath.indexOf(".");
+        const rootField = dotIndex > 0 ? fieldPath.substring(0, dotIndex) : fieldPath;
+        const nestedPath = dotIndex > 0 ? fieldPath.substring(dotIndex + 1) : null;
+
+        const syncedVar = this.syncedVars[rootField];
+        if (syncedVar) {
+          const val = nestedPath ? syncedVar.getAtPath(nestedPath) : syncedVar.value;
+          if (val !== undefined && activeEl.value !== val) {
+            activeEl.value = val;
+          }
         }
       }
     }
