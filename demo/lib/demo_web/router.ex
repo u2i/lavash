@@ -26,8 +26,15 @@ defmodule DemoWeb.Router do
     reset_route auth_routes_prefix: "/auth"
   end
 
-  # Storefront (public)
+  # Demos index (home page)
   scope "/", DemoWeb do
+    pipe_through :browser
+
+    live "/", DemosIndexLive
+  end
+
+  # Storefront (public)
+  scope "/storefront", DemoWeb do
     pipe_through :browser
 
     live "/", StorefrontLive

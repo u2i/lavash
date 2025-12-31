@@ -1,9 +1,9 @@
 defmodule Lavash.Components.SyncedToggle do
   @moduledoc """
-  Optimistic toggle switch using SyncedVarComponent.
+  Optimistic toggle switch using LiveComponent.
 
   This component uses SyncedVar for per-field optimistic tracking.
-  Unlike ClientComponent which re-renders entire HTML, SyncedVarComponent
+  Unlike ClientComponent which re-renders entire HTML, LiveComponent
   updates individual values in a static DOM structure via data-synced-* attributes.
 
   ## Usage
@@ -23,7 +23,7 @@ defmodule Lavash.Components.SyncedToggle do
   3. SyncedVar.serverSet() only accepts if no pending updates (version match)
   """
 
-  use Lavash.SyncedVarComponent
+  use Lavash.LiveComponent
 
   # Synced field connects to parent state
   synced :value, :boolean

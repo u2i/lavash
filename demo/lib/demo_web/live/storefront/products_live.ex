@@ -176,7 +176,7 @@ defmodule DemoWeb.Storefront.ProductsLive do
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <%= for product <- @products do %>
           <% {badge_color, badge_label} = roast_badge(product.roast_level) %>
-          <a href={~p"/products/#{product.id}"} class="card bg-base-200 hover:shadow-lg transition-all hover:-translate-y-1">
+          <a href={~p"/storefront/products/#{product.id}"} class="card bg-base-200 hover:shadow-lg transition-all hover:-translate-y-1">
             <figure class="px-4 pt-4">
               <img
                 src={"https://images.unsplash.com/#{coffee_image(product.roast_level)}?w=400&q=80"}

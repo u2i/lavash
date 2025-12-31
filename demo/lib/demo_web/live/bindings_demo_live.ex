@@ -64,7 +64,7 @@ defmodule DemoWeb.BindingsDemoLive do
             ChipSet component bound to parent :roast state
           </p>
         </div>
-        <a href="/" class="text-indigo-600 hover:text-indigo-800">&larr; Home</a>
+        <a href="/" class="text-indigo-600 hover:text-indigo-800">&larr; Demos</a>
       </div>
 
       <div class="bg-gray-50 p-6 rounded-lg mb-6">

@@ -1,203 +1,87 @@
 defmodule Lavash.LiveComponent do
   @moduledoc """
-  A LiveComponent that can bind to parent Lavash state.
+  A Spark-based component that uses SyncedVar for optimistic state synchronization.
 
-  Components using `use Lavash.LiveComponent` can declare bindings to parent
-  state fields, allowing them to read and write parent state directly.
+  Unlike ClientComponent which re-renders entire HTML on the client, LiveComponent
+  keeps the DOM static and updates individual values via SyncedVar. This is more efficient
+  for simple value changes but cannot handle structural DOM changes.
 
-  ## Example
+  ## Key Differences from ClientComponent
 
-      defmodule MyApp.Components.ChipSet do
+  | Aspect | ClientComponent | LiveComponent |
+  |--------|-----------------|---------------|
+  | Rendering | Client re-renders HTML | Server renders, client updates values |
+  | Structural changes | Yes (add/remove nodes) | No |
+  | Pending tracking | `pendingCount` (global) | `SyncedVar` per field |
+  | Template | `client_template` (transpiled) | `client_template` with data-synced-* |
+  | Update mechanism | Full innerHTML | `data-synced-*` attributes |
+
+  ## Usage
+
+      defmodule MyApp.Toggle do
         use Lavash.LiveComponent
 
-        # Declare what this component binds to
-        bind :selected, {:array, :string}
+        # Synced field connects to parent state
+        synced :value, :boolean
 
-        # Props passed from parent
-        prop :values, {:list, :string}, required: true
-        prop :labels, :map, default: %{}
+        # Props from parent (read-only)
+        prop :label, :string, default: ""
 
-        def render(assigns) do
-          ~H'''
-          <div class="flex gap-2">
-            <button
-              :for={v <- @values}
-              class={chip_class(v in @selected)}
-              phx-click="toggle"
-              phx-value-val={v}
-              phx-target={@myself}
-            >
-              {Map.get(@labels, v, humanize(v))}
-            </button>
-          </div>
-          '''
-        end
+        # Calculations for derived display values
+        calculate :button_class, if(@value, do: "bg-blue-600", else: "bg-gray-200")
 
-        # Component handles its own events
-        def handle_event("toggle", %{"val" => val}, socket) do
-          selected = socket.assigns.selected
-          new_selected = if val in selected,
-            do: List.delete(selected, val),
-            else: [val | selected]
+        # Optimistic action
+        optimistic_action :toggle, :value,
+          run: fn value, _arg -> !value end
 
-          # This updates the bound parent state
-          {:noreply, update_binding(socket, :selected, new_selected)}
-        end
+        # Template with natural syntax - l-action and class={@calc} are auto-transformed
+        client_template \"\"\"
+        <button l-action="toggle" class={@button_class}>
+          <span>{if @value, do: "On", else: "Off"}</span>
+        </button>
+        \"\"\"
       end
 
-  ## Usage in parent
+  ## Data Attributes (auto-generated from template)
 
-      # In parent LiveView DSL:
-      state :roast, {:array, :string}, from: :url, default: []
-
-      # In parent template:
-      <.live_component
-        module={MyApp.Components.ChipSet}
-        id="roast-filter"
-        bind={[selected: :roast]}
-        values={["light", "medium", "dark"]}
-      />
+  - `l-action="toggle"` → `data-synced-action="toggle" data-synced-field="value"`
+  - `class={@calc}` → adds `data-synced-class="calc"`
+  - `{@calc}` in text → adds `data-synced-text="calc"` to parent element
   """
 
-  defmacro __using__(_opts) do
+  use Spark.Dsl,
+    default_extensions: [extensions: [Lavash.LiveComponent.Dsl]]
+
+  @impl Spark.Dsl
+  def handle_opts(_opts) do
     quote do
       use Phoenix.LiveComponent
+      require Phoenix.LiveView.TagEngine
+      require Phoenix.Component
+      import Phoenix.Component
+      import Lavash.Optimistic.Macros, only: [calculate: 2, optimistic_action: 3]
 
-      Module.register_attribute(__MODULE__, :lavash_bindings, accumulate: true)
-      Module.register_attribute(__MODULE__, :lavash_props, accumulate: true)
+      Module.register_attribute(__MODULE__, :__lavash_calculations__, accumulate: true)
+      Module.register_attribute(__MODULE__, :__lavash_optimistic_actions__, accumulate: true)
 
-      @before_compile Lavash.LiveComponent
-
-      # Import all macros and helpers
-      import Lavash.LiveComponent
+      @before_compile Lavash.LiveComponent.Compiler
     end
   end
 
-  @doc """
-  Declares a binding slot for this component.
-
-  Bindings connect component-local names to parent state fields.
-  The actual field name is provided at render time via the `bind` prop.
-  """
-  defmacro bind(name, type) do
-    quote do
-      @lavash_bindings {unquote(name), unquote(Macro.escape(type))}
-    end
+  @impl Spark.Dsl
+  def handle_before_compile(_opts) do
+    []
   end
 
   @doc """
-  Declares a prop for this component.
-  """
-  defmacro prop(name, type, opts \\ []) do
-    quote do
-      @lavash_props {unquote(name), unquote(Macro.escape(type)), unquote(opts)}
-    end
-  end
+  Bumps the version counter for server-side state changes.
 
-  defmacro __before_compile__(env) do
-    bindings = Module.get_attribute(env.module, :lavash_bindings) || []
-    props = Module.get_attribute(env.module, :lavash_props) || []
-
-    quote do
-      def __lavash_bindings__, do: unquote(Macro.escape(bindings))
-      def __lavash_props__, do: unquote(Macro.escape(props))
-
-      # Override mount to set up bindings and version tracking
-      def mount(socket) do
-        socket =
-          socket
-          |> assign(:__lavash_binding_map__, %{})
-          |> assign(:__lavash_version__, 0)
-
-        {:ok, socket}
-      end
-
-      defoverridable mount: 1
-
-      # Override update to handle binding resolution
-      def update(assigns, socket) do
-        socket = resolve_bindings(assigns, socket)
-        {:ok, assign(socket, Map.drop(assigns, [:bind, :__changed__]))}
-      end
-
-      defoverridable update: 2
-
-      defp resolve_bindings(assigns, socket) do
-        case Map.get(assigns, :bind) do
-          nil ->
-            socket
-
-          bindings when is_list(bindings) ->
-            # Build a map of local_name -> parent_field
-            binding_map =
-              Enum.into(bindings, %{}, fn {local, parent} ->
-                {local, parent}
-              end)
-
-            # Store the binding map for later use in update_binding
-            socket = assign(socket, :__lavash_binding_map__, binding_map)
-
-            # Sync parent's optimistic version when bound
-            # This ensures the component's version tracks the parent's version
-            # so that optimistic updates work correctly across parent/child
-            socket =
-              case Map.get(assigns, :__lavash_parent_version__) do
-                nil -> socket
-                parent_version -> assign(socket, :__lavash_version__, parent_version)
-              end
-
-            # For each binding, look up the parent's current value
-            # The parent passes these as regular assigns
-            Enum.reduce(bindings, socket, fn {local, parent}, sock ->
-              # Parent should have passed the current value as the local name
-              value = Map.get(assigns, local)
-              assign(sock, local, value)
-            end)
-        end
-      end
-    end
-  end
-
-  @doc """
-  Updates a bound value, which propagates to the parent's state.
-
-  This sends a message to the parent LiveView to update the bound state field.
-  """
-  def update_binding(socket, local_name, new_value) do
-    binding_map = socket.assigns[:__lavash_binding_map__] || %{}
-
-    case Map.get(binding_map, local_name) do
-      nil ->
-        # Not a bound field, just update locally
-        Phoenix.Component.assign(socket, local_name, new_value)
-
-      parent_field ->
-        # Update locally immediately for responsiveness
-        socket = Phoenix.Component.assign(socket, local_name, new_value)
-
-        # Send delta to parent via the existing component event mechanism
-        send(self(), {:lavash_component_delta, parent_field, new_value})
-
-        socket
-    end
-  end
-
-  @doc """
-  Sends an event to the parent LiveView to be handled as a Lavash action.
-  """
-  def notify_parent(event, params \\ %{}) do
-    send(self(), {:lavash_component_event, event, params})
-  end
-
-  @doc """
-  Bumps the optimistic version counter.
-
-  Call this in handle_event before sending updates to the parent.
-  The version is rendered in `data-lavash-version` and compared by the
-  client-side hook to detect and discard stale server updates.
+  This is used by ClientComponent to track when state changes happen
+  server-side, allowing the client to detect and reconcile with
+  optimistic updates.
   """
   def bump_version(socket) do
-    current = socket.assigns[:__lavash_version__] || 0
-    Phoenix.Component.assign(socket, :__lavash_version__, current + 1)
+    version = Map.get(socket.assigns, :__lavash_version__, 0)
+    Phoenix.Component.assign(socket, :__lavash_version__, version + 1)
   end
 end

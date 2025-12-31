@@ -33,7 +33,7 @@ defmodule DemoWeb.ComponentsDemoLive do
         <div class="flex gap-4">
           <a href="/products-socket" class="text-indigo-600 hover:text-indigo-800">Socket LiveView</a>
           <a href="/products" class="text-indigo-600 hover:text-indigo-800">URL LiveView</a>
-          <a href="/" class="text-indigo-600 hover:text-indigo-800">&larr; Counter</a>
+          <a href="/" class="text-indigo-600 hover:text-indigo-800">&larr; Demos</a>
         </div>
       </div>
       

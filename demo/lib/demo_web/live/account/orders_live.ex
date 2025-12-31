@@ -18,7 +18,7 @@ defmodule DemoWeb.Account.OrdersLive do
           <div class="card-body text-center py-12">
             <p class="text-base-content/50">No orders yet.</p>
             <div class="mt-4">
-              <a href={~p"/products"} class="btn btn-primary">Start Shopping</a>
+              <a href={~p"/storefront/products"} class="btn btn-primary">Start Shopping</a>
             </div>
           </div>
         </div>

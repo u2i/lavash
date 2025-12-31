@@ -77,7 +77,7 @@ defmodule DemoWeb.ProductsLive do
           <a href="/products-socket" class="text-indigo-600 hover:text-indigo-800">
             Socket State Version
           </a>
-          <a href="/" class="text-indigo-600 hover:text-indigo-800">&larr; Back to Counter</a>
+          <a href="/" class="text-indigo-600 hover:text-indigo-800">&larr; Demos</a>
         </div>
       </div>
 

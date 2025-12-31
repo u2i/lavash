@@ -9,14 +9,14 @@ defmodule DemoWeb.Storefront.ProductLive do
         {:ok, assign(socket, product: product)}
 
       {:error, _} ->
-        {:ok, push_navigate(socket, to: ~p"/products")}
+        {:ok, push_navigate(socket, to: ~p"/storefront/products")}
     end
   end
 
   def render(assigns) do
     ~H"""
     <div class="space-y-6">
-      <a href={~p"/products"} class="btn btn-ghost btn-sm">
+      <a href={~p"/storefront/products"} class="btn btn-ghost btn-sm">
         &larr; Back to Coffees
       </a>
 

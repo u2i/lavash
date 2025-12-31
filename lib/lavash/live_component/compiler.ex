@@ -1,6 +1,6 @@
-defmodule Lavash.SyncedVarComponent.Compiler do
+defmodule Lavash.LiveComponent.Compiler do
   @moduledoc """
-  Compile-time code generation for SyncedVarComponent.
+  Compile-time code generation for LiveComponent.
 
   Generates:
   - JS hook using SyncedVar for per-field optimistic tracking
@@ -94,7 +94,7 @@ defmodule Lavash.SyncedVarComponent.Compiler do
     action_js = generate_action_js(actions)
 
     ~s"""
-    // Generated SyncedVarComponent hook using SyncedVar
+    // Generated LiveComponent hook using SyncedVar
     // Each synced field gets its own SyncedVar for granular pending tracking
 
     export default {
@@ -530,7 +530,7 @@ defmodule Lavash.SyncedVarComponent.Compiler do
   defp generate_render(template_source, full_hook_name, calculations, actions, synced_fields, _env) do
     # Transform template to inject data-synced-* attributes
     transformed_template =
-      Lavash.SyncedVarComponent.TemplateTransformer.transform(
+      Lavash.LiveComponent.TemplateTransformer.transform(
         template_source,
         calculations,
         actions,

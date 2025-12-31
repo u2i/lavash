@@ -119,7 +119,7 @@ defmodule DemoWeb.ProductsSocketLive do
         </div>
         <div class="flex gap-4">
           <a href="/products" class="text-indigo-600 hover:text-indigo-800">URL State Version</a>
-          <a href="/" class="text-indigo-600 hover:text-indigo-800">&larr; Back to Counter</a>
+          <a href="/" class="text-indigo-600 hover:text-indigo-800">&larr; Demos</a>
         </div>
       </div>
       

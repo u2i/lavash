@@ -1,8 +1,8 @@
-defmodule Lavash.SyncedVarComponent.Dsl do
+defmodule Lavash.LiveComponent.Dsl do
   @moduledoc """
-  Spark DSL extension for Lavash SyncedVarComponents.
+  Spark DSL extension for Lavash LiveComponents.
 
-  SyncedVarComponents use SyncedVar for per-field optimistic state tracking.
+  LiveComponents use SyncedVar for per-field optimistic state tracking.
   Unlike ClientComponent, they don't re-render HTML - they update individual
   values in a static DOM structure.
   """
@@ -13,7 +13,7 @@ defmodule Lavash.SyncedVarComponent.Dsl do
 
   @synced_entity %Spark.Dsl.Entity{
     name: :synced,
-    target: Lavash.SyncedVarComponent.Synced,
+    target: Lavash.LiveComponent.Synced,
     args: [:name, :type],
     schema: [
       name: [
@@ -42,7 +42,7 @@ defmodule Lavash.SyncedVarComponent.Dsl do
 
   @prop_entity %Spark.Dsl.Entity{
     name: :prop,
-    target: Lavash.SyncedVarComponent.Prop,
+    target: Lavash.LiveComponent.Prop,
     args: [:name, :type],
     schema: [
       name: [
@@ -80,7 +80,7 @@ defmodule Lavash.SyncedVarComponent.Dsl do
 
   @optimistic_action_entity %Spark.Dsl.Entity{
     name: :optimistic_action,
-    target: Lavash.SyncedVarComponent.OptimisticAction,
+    target: Lavash.LiveComponent.OptimisticAction,
     args: [:name, :field],
     schema: [
       name: [
@@ -121,7 +121,7 @@ defmodule Lavash.SyncedVarComponent.Dsl do
 
   @template_entity %Spark.Dsl.Entity{
     name: :client_template,
-    target: Lavash.SyncedVarComponent.Template,
+    target: Lavash.LiveComponent.Template,
     args: [:source],
     schema: [
       source: [
@@ -154,18 +154,18 @@ defmodule Lavash.SyncedVarComponent.Dsl do
 end
 
 # Entity structs
-defmodule Lavash.SyncedVarComponent.Synced do
+defmodule Lavash.LiveComponent.Synced do
   defstruct [:name, :type, __spark_metadata__: nil]
 end
 
-defmodule Lavash.SyncedVarComponent.Prop do
+defmodule Lavash.LiveComponent.Prop do
   defstruct [:name, :type, :required, :default, __spark_metadata__: nil]
 end
 
-defmodule Lavash.SyncedVarComponent.OptimisticAction do
+defmodule Lavash.LiveComponent.OptimisticAction do
   defstruct [:name, :field, :run, :run_source, __spark_metadata__: nil]
 end
 
-defmodule Lavash.SyncedVarComponent.Template do
+defmodule Lavash.LiveComponent.Template do
   defstruct [:source, __spark_metadata__: nil]
 end

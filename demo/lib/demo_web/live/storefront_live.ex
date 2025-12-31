@@ -26,10 +26,10 @@ defmodule DemoWeb.StorefrontLive do
           From farm to cup, we obsess over every detail.
         </p>
         <div class="mt-8 flex gap-4 justify-center">
-          <a href={~p"/products"} class="btn btn-primary btn-lg">
+          <a href={~p"/storefront/products"} class="btn btn-primary btn-lg">
             Shop Coffees
           </a>
-          <a href={~p"/products"} class="btn btn-outline btn-lg">
+          <a href={~p"/storefront/products"} class="btn btn-outline btn-lg">
             Our Story
           </a>
         </div>
@@ -39,7 +39,7 @@ defmodule DemoWeb.StorefrontLive do
         <h2 class="text-2xl font-bold text-center mb-6">Featured Roasts</h2>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
           <%= for product <- @featured do %>
-            <a href={~p"/products/#{product.id}"} class="card bg-base-200 hover:shadow-xl transition-all hover:-translate-y-1">
+            <a href={~p"/storefront/products/#{product.id}"} class="card bg-base-200 hover:shadow-xl transition-all hover:-translate-y-1">
               <figure class="px-4 pt-4">
                 <img
                   src={"https://images.unsplash.com/photo-1559056199-641a0ac8b55e?w=400&q=80&seed=#{product.id}"}
@@ -60,7 +60,7 @@ defmodule DemoWeb.StorefrontLive do
           <% end %>
         </div>
         <div class="text-center mt-8">
-          <a href={~p"/products"} class="btn btn-ghost">View All Coffees →</a>
+          <a href={~p"/storefront/products"} class="btn btn-ghost">View All Coffees →</a>
         </div>
       </section>
 
@@ -101,7 +101,7 @@ defmodule DemoWeb.StorefrontLive do
             Never run out of coffee. Get your favorite roasts delivered on your schedule and save 15%.
           </p>
           <div class="mt-6">
-            <a href={~p"/products"} class="btn btn-primary">Start Subscription</a>
+            <a href={~p"/storefront/products"} class="btn btn-primary">Start Subscription</a>
           </div>
         </div>
       </section>
@@ -115,7 +115,7 @@ defmodule DemoWeb.StorefrontLive do
           +
           <a href="https://phoenixframework.org" class="link">Phoenix</a>
           ·
-          <a href={~p"/demos/counter"} class="link">Technical Demos</a>
+          <a href={~p"/"} class="link">Technical Demos</a>
         </p>
       </section>
     </div>

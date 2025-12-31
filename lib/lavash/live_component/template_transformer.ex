@@ -1,6 +1,6 @@
-defmodule Lavash.SyncedVarComponent.TemplateTransformer do
+defmodule Lavash.LiveComponent.TemplateTransformer do
   @moduledoc """
-  Transforms SyncedVarComponent templates by injecting data-synced-* attributes.
+  Transforms LiveComponent templates by injecting data-synced-* attributes.
 
   This module takes a template with natural syntax like:
     <button l-action="toggle" class={@button_class}>
