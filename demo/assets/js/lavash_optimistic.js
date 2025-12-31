@@ -397,6 +397,22 @@ const LavashOptimistic = {
         el.className = classMap;
       }
     });
+
+    // Notify bound children to refresh from parent state
+    this.notifyChildren();
+  },
+
+  notifyChildren() {
+    // Find all child hooks that bind to this parent
+    const children = this.el.querySelectorAll("[phx-hook]");
+    console.log("notifyChildren: found", children.length, "children with phx-hook");
+    children.forEach(el => {
+      const hook = el.__lavash_hook__;
+      console.log("  child:", el.id, "hook:", !!hook, "refreshFromParent:", !!hook?.refreshFromParent);
+      if (hook?.refreshFromParent) {
+        hook.refreshFromParent(this);
+      }
+    });
   },
 
   // Sync URL fields to browser URL without triggering navigation

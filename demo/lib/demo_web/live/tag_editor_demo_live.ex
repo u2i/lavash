@@ -55,10 +55,10 @@ defmodule DemoWeb.TagEditorDemoLive do
         </p>
       </div>
 
-      <div class="grid grid-cols-2 gap-6">
+      <div class="grid grid-cols-3 gap-6">
         <!-- Left: Optimistic region (self-contained, no server content inside) -->
         <div class="bg-gray-50 p-6 rounded-lg">
-          <h2 class="font-semibold mb-4">Tag Editor (Optimistic)</h2>
+          <h2 class="font-semibold mb-4">Tag Editor A</h2>
 
           <.live_component
             module={Lavash.Components.TagEditor}
@@ -74,9 +74,28 @@ defmodule DemoWeb.TagEditorDemoLive do
           </p>
         </div>
 
+        <!-- Middle: Second tag editor bound to the same state -->
+        <div class="bg-gray-50 p-6 rounded-lg">
+          <h2 class="font-semibold mb-4">Tag Editor B (Sibling)</h2>
+
+          <.live_component
+            module={Lavash.Components.TagEditor}
+            id="demo-tags-sibling"
+            bind={[tags: :tags]}
+            tags={@tags}
+            max_tags={8}
+            placeholder="Add tags here too..."
+          />
+
+          <p class="text-xs text-gray-400 mt-4">
+            Both editors bind to the same parent <code>tags</code> state.
+            Changes in one appear instantly in the other.
+          </p>
+        </div>
+
         <!-- Right: Server content (completely separate) -->
         <div class="bg-white p-6 rounded-lg border">
-          <h2 class="font-semibold mb-4">Server Content (Separate)</h2>
+          <h2 class="font-semibold mb-4">Server Content</h2>
 
           <div class="space-y-4 text-sm">
             <div>
@@ -102,8 +121,7 @@ defmodule DemoWeb.TagEditorDemoLive do
           </div>
 
           <p class="text-xs text-gray-400 mt-4">
-            Server content lives <em>beside</em> the optimistic component, not inside it.
-            No data-lavash-preserve needed.
+            Server content lives <em>beside</em> the optimistic components.
           </p>
         </div>
       </div>

@@ -451,19 +451,41 @@ defmodule Lavash.ClientComponent.Compiler do
           const value = this.state[localField];
           if (value !== undefined) {
             parentHook.state[parentField] = value;
+            // Mark as pending so parent rejects stale server patches for this field
+            parentHook.pending[parentField] = value;
             changedFields.push(parentField);
           }
         }
-        // Recompute parent derives affected by the changed fields
+        // Bump parent's client version so stale server patches are rejected
+        if (changedFields.length > 0) {
+          parentHook.clientVersion++;
+        }
+        // Recompute parent's derives that depend on the changed fields
         if (changedFields.length > 0 && typeof parentHook.recomputeDerives === 'function') {
           parentHook.recomputeDerives(changedFields);
         }
-        // Update parent DOM (for data-optimistic-display elements)
+        // Update parent's DOM to reflect new derived values
         if (typeof parentHook.updateDOM === 'function') {
           parentHook.updateDOM();
         }
         if (typeof parentHook.syncUrl === 'function') {
           parentHook.syncUrl();
+        }
+      },
+
+      // Called by parent when another sibling updates shared state
+      refreshFromParent(parentHook) {
+        let changed = false;
+        for (const [localField, parentField] of Object.entries(this.bindings)) {
+          const parentValue = parentHook.state[parentField];
+          if (parentValue !== undefined && parentValue !== this.state[localField]) {
+            this.state[localField] = parentValue;
+            changed = true;
+          }
+        }
+        if (changed) {
+          this.runCalculations();
+          this.updateDOM();
         }
       },
 
