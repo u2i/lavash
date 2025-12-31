@@ -14,7 +14,7 @@
  * 5. (Optional) Define custom client-side functions via ColocatedJS for complex logic
  */
 
-import { SyncedVar } from "./synced_var.js";
+import { SyncedVar, SyncedVarStore } from "./synced_var.js";
 
 // Registry for optimistic function modules (for custom overrides)
 window.Lavash = window.Lavash || {};
@@ -28,12 +28,10 @@ window.Lavash.registerOptimistic = function(moduleName, fns) {
 const LavashOptimistic = {
   mounted() {
     this.state = JSON.parse(this.el.dataset.lavashState || "{}");
-    // Track which fields have pending optimistic updates (field -> expected value)
-    this.pending = {};
 
-    // SyncedVar instances for each state field (for nested path support)
-    // Maps field name -> SyncedVar instance
-    this.syncedVars = {};
+    // SyncedVarStore for flattened path-based state management
+    // Each leaf path (e.g., "params.name") gets its own SyncedVar
+    this.store = new SyncedVarStore();
 
     // Version tracking for stale patch rejection
     // Client version starts at server version and bumps on each optimistic action
@@ -61,9 +59,6 @@ const LavashOptimistic = {
       );
     }
 
-    // Initialize SyncedVars for each state field
-    this.initSyncedVars();
-
     // Expose hook instance on element for onBeforeElUpdated access
     this.el.__lavash_hook__ = this;
 
@@ -75,36 +70,10 @@ const LavashOptimistic = {
   },
 
   /**
-   * Initialize SyncedVar instances for each state field.
-   * This allows nested path access via setAtPath/getAtPath.
+   * Get pending count for onBeforeElUpdated DOM preservation check.
    */
-  initSyncedVars() {
-    for (const fieldName of this.fieldNames) {
-      const initialValue = this.state[fieldName];
-      this.syncedVars[fieldName] = new SyncedVar(initialValue, (newVal, oldVal, source) => {
-        // Update local state when SyncedVar changes
-        this.state[fieldName] = newVal;
-        if (source === "optimistic") {
-          this.pending[fieldName] = newVal;
-        }
-      });
-    }
-  },
-
-  /**
-   * Get or create a SyncedVar for a field.
-   */
-  getSyncedVar(fieldName) {
-    if (!this.syncedVars[fieldName]) {
-      const initialValue = this.state[fieldName];
-      this.syncedVars[fieldName] = new SyncedVar(initialValue, (newVal, oldVal, source) => {
-        this.state[fieldName] = newVal;
-        if (source === "optimistic") {
-          this.pending[fieldName] = newVal;
-        }
-      });
-    }
-    return this.syncedVars[fieldName];
+  get pendingCount() {
+    return this.store.getPendingPaths().length;
   },
 
   loadGeneratedFunctions() {
@@ -243,25 +212,21 @@ const LavashOptimistic = {
 
     console.log("[Lavash] handleInput:", fieldPath, "=", value);
 
-    // Parse the path to determine root field and nested path
-    const dotIndex = fieldPath.indexOf(".");
-    const rootField = dotIndex > 0 ? fieldPath.substring(0, dotIndex) : fieldPath;
-    const nestedPath = dotIndex > 0 ? fieldPath.substring(dotIndex + 1) : null;
+    // Get or create a SyncedVar for this exact path
+    const syncedVar = this.store.get(fieldPath, value, (newVal, oldVal, source) => {
+      // Update state when SyncedVar changes
+      this.setStateAtPath(fieldPath, newVal);
+    });
 
-    // Get or create the SyncedVar for this root field
-    const syncedVar = this.getSyncedVar(rootField);
-
-    // Use SyncedVar's path-based API for updates
-    if (nestedPath) {
-      // Nested path: use setAtPath
-      syncedVar.setAtPath(nestedPath, value);
-    } else {
-      // Simple field: use setOptimistic
-      syncedVar.setOptimistic(value);
-    }
+    // Update the SyncedVar
+    syncedVar.setOptimistic(value);
 
     // Bump client version for stale patch rejection
     this.clientVersion++;
+
+    // Determine root field for derive recomputation
+    const dotIndex = fieldPath.indexOf(".");
+    const rootField = dotIndex > 0 ? fieldPath.substring(0, dotIndex) : fieldPath;
 
     // Recompute derives affected by the root field
     this.recomputeDerives([rootField]);
@@ -270,6 +235,41 @@ const LavashOptimistic = {
 
     // Sync URL fields immediately (optimistic URL update)
     this.syncUrl();
+  },
+
+  /**
+   * Set a value in state at a dotted path.
+   */
+  setStateAtPath(path, value) {
+    const parts = path.split(".");
+    if (parts.length === 1) {
+      this.state[path] = value;
+      return;
+    }
+
+    // Navigate to parent, creating intermediates as needed
+    let current = this.state;
+    for (let i = 0; i < parts.length - 1; i++) {
+      const part = parts[i];
+      if (!(part in current) || typeof current[part] !== "object") {
+        current[part] = {};
+      }
+      current = current[part];
+    }
+    current[parts[parts.length - 1]] = value;
+  },
+
+  /**
+   * Get a value from state at a dotted path.
+   */
+  getStateAtPath(path) {
+    const parts = path.split(".");
+    let current = this.state;
+    for (const part of parts) {
+      if (current == null || typeof current !== "object") return undefined;
+      current = current[part];
+    }
+    return current;
   },
 
   runOptimisticAction(actionName, value) {
@@ -306,11 +306,15 @@ const LavashOptimistic = {
     try {
       const delta = fn(this.state, value);
 
-      // Apply delta to state and track pending fields
+      // Apply delta to state and track in SyncedVarStore
       const changedFields = [];
       for (const [key, val] of Object.entries(delta)) {
         this.state[key] = val;
-        this.pending[key] = val;
+        // Create/update SyncedVar for this field
+        const syncedVar = this.store.get(key, val, (newVal) => {
+          this.state[key] = newVal;
+        });
+        syncedVar.setOptimistic(val);
         changedFields.push(key);
       }
 
@@ -566,9 +570,12 @@ const LavashOptimistic = {
     const meta = this.graph[field];
     if (!meta || !meta.deps) return false;
 
+    const pendingPaths = this.store.getPendingPaths();
+
     // Check if any dependency is pending (either directly or transitively)
     for (const dep of meta.deps) {
-      if (dep in this.pending) return true;
+      // Check if dep or any nested path under it is pending
+      if (pendingPaths.some(p => p === dep || p.startsWith(dep + "."))) return true;
       // Recursively check if dep is a derive with pending sources
       if (this.hasPendingSources(dep)) return true;
     }
@@ -580,28 +587,15 @@ const LavashOptimistic = {
     const newServerVersion = parseInt(this.el.dataset.lavashVersion || "0", 10);
     const serverState = JSON.parse(this.el.dataset.lavashState || "{}");
 
-    console.log("[Lavash] updated() - server:", newServerVersion, "client:", this.clientVersion, "pending:", Object.keys(this.pending));
+    console.log("[Lavash] updated() - server:", newServerVersion, "client:", this.clientVersion, "pending:", this.store.getPendingPaths());
 
-    // Update each SyncedVar with server state
-    for (const [fieldName, serverValue] of Object.entries(serverState)) {
-      const syncedVar = this.syncedVars[fieldName];
-      if (syncedVar) {
-        // SyncedVar.serverSet only accepts if no pending operations
-        const accepted = syncedVar.serverSet(serverValue);
-        if (accepted) {
-          // Also update our local state mirror
-          this.state[fieldName] = serverValue;
-          delete this.pending[fieldName];
-        }
-        // If not accepted, the pending optimistic value is preserved in SyncedVar
-      } else {
-        // Field doesn't have a SyncedVar (not a managed field)
-        // Accept server value if not pending
-        if (!(fieldName in this.pending)) {
-          this.state[fieldName] = serverValue;
-        }
-      }
-    }
+    // Update SyncedVars from server state (flattened paths)
+    // serverUpdate only updates vars that are not pending
+    this.store.serverUpdate(serverState);
+
+    // Also update our state object for fields without pending changes
+    const pendingPaths = new Set(this.store.getPendingPaths());
+    this.mergeServerState(serverState, "", pendingPaths);
 
     // Update version tracking
     if (newServerVersion >= this.clientVersion) {
@@ -616,10 +610,6 @@ const LavashOptimistic = {
 
     console.log("[Lavash] After recompute - name_valid:", this.state.name_valid, "params:", this.state.params);
 
-    // Check visibility elements before update
-    const visElements = this.el.querySelectorAll("[data-optimistic-visible]");
-    console.log("[Lavash] Found", visElements.length, "visibility elements");
-
     // Update DOM after server patch
     this.updateDOM();
 
@@ -631,18 +621,31 @@ const LavashOptimistic = {
 
     if (inputHasFocus) {
       const fieldPath = activeEl.dataset.synced || activeEl.dataset.optimisticInput || activeEl.dataset.optimisticField;
-      if (fieldPath) {
-        const dotIndex = fieldPath.indexOf(".");
-        const rootField = dotIndex > 0 ? fieldPath.substring(0, dotIndex) : fieldPath;
-        const nestedPath = dotIndex > 0 ? fieldPath.substring(dotIndex + 1) : null;
-
-        const syncedVar = this.syncedVars[rootField];
-        if (syncedVar) {
-          const val = nestedPath ? syncedVar.getAtPath(nestedPath) : syncedVar.value;
-          if (val !== undefined && activeEl.value !== val) {
-            activeEl.value = val;
-          }
+      if (fieldPath && this.store.has(fieldPath)) {
+        const val = this.store.getValue(fieldPath);
+        if (val !== undefined && activeEl.value !== val) {
+          activeEl.value = val;
         }
+      }
+    }
+  },
+
+  /**
+   * Merge server state into this.state, skipping paths that are pending.
+   */
+  mergeServerState(obj, prefix, pendingPaths) {
+    for (const [key, value] of Object.entries(obj)) {
+      const path = prefix ? `${prefix}.${key}` : key;
+
+      // Check if this exact path or any child path is pending
+      const hasPendingChild = [...pendingPaths].some(p => p === path || p.startsWith(path + "."));
+
+      if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+        // Recurse into nested objects
+        this.mergeServerState(value, path, pendingPaths);
+      } else if (!hasPendingChild) {
+        // Leaf value with no pending - update state
+        this.setStateAtPath(path, value);
       }
     }
   },

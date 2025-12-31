@@ -20,11 +20,8 @@
  *   // Server-initiated update (only accepts if not pending)
  *   counter.serverSet(5);
  *
- * Path-based access (for nested maps):
- *   const params = new SyncedVar({}, onChange);
- *   params.setAtPath("name", "Alice");           // Sets params.name = "Alice"
- *   params.getAtPath("name");                    // Returns "Alice"
- *   params.setAtPath("address.city", "Boston");  // Sets params.address.city = "Boston"
+ * For nested paths, use flattened keys in a SyncedVarStore:
+ *   store.get("params.name").setOptimistic("Alice");
  */
 export class SyncedVar {
   constructor(initialValue, onChange) {
@@ -114,102 +111,126 @@ export class SyncedVar {
   get isPending() {
     return this.version !== this.confirmedVersion;
   }
+}
 
-  /**
-   * Get a value at a dotted path within the value (for nested maps).
-   * @param path - Dotted path like "name" or "address.city"
-   * @returns The value at the path, or undefined if not found
-   */
-  getAtPath(path) {
-    if (!path) return this.value;
-    const parts = path.split(".");
-    let current = this.value;
-    for (const part of parts) {
-      if (current == null || typeof current !== "object") return undefined;
-      current = current[part];
-    }
-    return current;
+/**
+ * SyncedVarStore - Manages a collection of SyncedVars with flattened keys.
+ *
+ * Supports dotted path keys (e.g., "params.name") that map to nested state.
+ * Each leaf path gets its own SyncedVar for independent pending tracking.
+ */
+export class SyncedVarStore {
+  constructor() {
+    this.vars = {};  // path -> SyncedVar
   }
 
   /**
-   * Optimistically set a value at a dotted path within the value (for nested maps).
-   * Creates intermediate objects as needed.
-   * @param path - Dotted path like "name" or "address.city"
-   * @param newValue - The value to set at the path
-   * @returns true if the value changed, false otherwise
+   * Get or create a SyncedVar for a path.
+   * @param path - Dotted path like "count" or "params.name"
+   * @param initialValue - Initial value if creating new
+   * @param onChange - Change callback if creating new
    */
-  setAtPath(path, newValue) {
-    if (!path) {
-      return this.setOptimistic(newValue);
+  get(path, initialValue = undefined, onChange = null) {
+    if (!this.vars[path]) {
+      this.vars[path] = new SyncedVar(initialValue, onChange);
     }
+    return this.vars[path];
+  }
 
-    const oldRootValue = this.value;
-    const parts = path.split(".");
+  /**
+   * Check if a path exists in the store.
+   */
+  has(path) {
+    return path in this.vars;
+  }
 
-    // Deep clone the current value to avoid mutation
-    const newRootValue = typeof oldRootValue === "object" && oldRootValue !== null
-      ? { ...oldRootValue }
-      : {};
+  /**
+   * Check if any SyncedVar in the store has pending changes.
+   */
+  get hasPending() {
+    return Object.values(this.vars).some(v => v.isPending);
+  }
 
-    // Navigate to parent, creating intermediate objects as needed
-    let current = newRootValue;
-    for (let i = 0; i < parts.length - 1; i++) {
-      const part = parts[i];
-      if (current[part] == null || typeof current[part] !== "object") {
-        current[part] = {};
-      } else {
-        // Clone to avoid mutating the original
-        current[part] = { ...current[part] };
+  /**
+   * Get all pending paths.
+   */
+  getPendingPaths() {
+    return Object.entries(this.vars)
+      .filter(([_, v]) => v.isPending)
+      .map(([path, _]) => path);
+  }
+
+  /**
+   * Build a nested state object from all SyncedVar values.
+   * e.g., {"params.name": "Alice", "params.age": "25"} -> {params: {name: "Alice", age: "25"}}
+   */
+  toState() {
+    const state = {};
+    for (const [path, syncedVar] of Object.entries(this.vars)) {
+      setNestedValue(state, path, syncedVar.value);
+    }
+    return state;
+  }
+
+  /**
+   * Update SyncedVars from a nested server state object.
+   * Only updates vars that are not pending.
+   * @param serverState - Nested state object from server
+   */
+  serverUpdate(serverState) {
+    const flatState = flattenState(serverState);
+    for (const [path, value] of Object.entries(flatState)) {
+      if (this.vars[path]) {
+        this.vars[path].serverSet(value);
       }
-      current = current[part];
     }
-
-    // Set the final value
-    const lastPart = parts[parts.length - 1];
-    const oldValue = current[lastPart];
-    if (newValue === oldValue) return false;
-
-    current[lastPart] = newValue;
-
-    // Update version and value
-    this.version++;
-    this.value = newRootValue;
-    this.onChange?.(newRootValue, oldRootValue, "optimistic");
-    return true;
   }
 
   /**
-   * Check if a specific path has a pending value different from confirmed.
-   * Useful for deciding whether to accept server updates for nested fields.
-   * @param path - Dotted path to check
-   * @returns true if the path has pending changes
+   * Get value at a path (from SyncedVar if exists, otherwise undefined).
    */
-  isPathPending(path) {
-    if (!this.isPending) return false;
-    const currentVal = this.getAtPath(path);
-    const confirmedVal = this.getConfirmedAtPath(path);
-    return currentVal !== confirmedVal;
+  getValue(path) {
+    return this.vars[path]?.value;
   }
+}
 
-  /**
-   * Get the confirmed (server-acknowledged) value at a dotted path.
-   * @param path - Dotted path
-   * @returns The confirmed value at the path
-   */
-  getConfirmedAtPath(path) {
-    if (!path) return this.confirmedValue;
-    const parts = path.split(".");
-    let current = this.confirmedValue;
-    for (const part of parts) {
-      if (current == null || typeof current !== "object") return undefined;
-      current = current[part];
+/**
+ * Set a value in a nested object using a dotted path.
+ * Creates intermediate objects as needed.
+ */
+function setNestedValue(obj, path, value) {
+  const parts = path.split(".");
+  let current = obj;
+  for (let i = 0; i < parts.length - 1; i++) {
+    const part = parts[i];
+    if (!(part in current) || typeof current[part] !== "object") {
+      current[part] = {};
     }
-    return current;
+    current = current[part];
   }
+  current[parts[parts.length - 1]] = value;
+}
+
+/**
+ * Flatten a nested state object to dotted path keys.
+ * e.g., {params: {name: "Alice"}} -> {"params.name": "Alice"}
+ */
+function flattenState(obj, prefix = "") {
+  const result = {};
+  for (const [key, value] of Object.entries(obj)) {
+    const path = prefix ? `${prefix}.${key}` : key;
+    if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+      Object.assign(result, flattenState(value, path));
+    } else {
+      result[path] = value;
+    }
+  }
+  return result;
 }
 
 // Expose globally for other hooks
 window.Lavash = window.Lavash || {};
 window.Lavash.SyncedVar = SyncedVar;
+window.Lavash.SyncedVarStore = SyncedVarStore;
 
 export default SyncedVar;
