@@ -15,8 +15,14 @@ defmodule Lavash.LiveComponent.Compiler do
     props = Spark.Dsl.Extension.get_entities(env.module, [:props]) || []
     templates = Spark.Dsl.Extension.get_entities(env.module, [:template]) || []
 
-    # Calculations are stored as 4-tuples: {name, source, transformed_ast, deps}
-    calculations = Module.get_attribute(env.module, :__lavash_calculations__) || []
+    # Get calculations from Spark DSL entities and convert to tuple format
+    # Each Calculate struct has :name and :rx (a Lavash.Rx struct with :source, :ast, :deps)
+    spark_calculations = Spark.Dsl.Extension.get_entities(env.module, [:calculations]) || []
+
+    calculations =
+      Enum.map(spark_calculations, fn calc ->
+        {calc.name, calc.rx.source, calc.rx.ast, calc.rx.deps}
+      end)
 
     # Actions are stored as 5-tuples: {name, field, run_source, validate_source, max}
     action_tuples = Module.get_attribute(env.module, :__lavash_optimistic_actions__) || []

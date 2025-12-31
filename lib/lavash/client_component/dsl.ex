@@ -141,11 +141,62 @@ defmodule Lavash.ClientComponent.Dsl do
   }
 
   # ============================================
-  # Calculations - run on both client and server
+  # Calculate - reactive computed values
   # ============================================
 
-  # Note: calculate is handled separately via a macro, not Spark DSL,
-  # because it requires AST quoting which Spark doesn't natively support.
+  @calculate_entity %Spark.Dsl.Entity{
+    name: :calculate,
+    describe: """
+    Declares a calculated field computed from state.
+
+    Uses `rx()` to capture the expression, which is then transpiled to
+    JavaScript for client-side optimistic updates.
+
+    ## Examples
+
+        calculate :tag_count, rx(length(@tags))
+        calculate :can_add, rx(@max == nil or length(@items) < @max)
+        calculate :doubled, rx(@count * 2)
+
+    For server-only calculations that can't be transpiled:
+
+        calculate :complex, rx(some_function(@data)), optimistic: false
+    """,
+    target: Lavash.Component.Calculate,
+    args: [:name, :rx],
+    schema: [
+      name: [
+        type: :atom,
+        required: true,
+        doc: "The name of the calculated field"
+      ],
+      rx: [
+        type: {:struct, Lavash.Rx},
+        required: true,
+        doc: "The reactive expression wrapped in rx()"
+      ],
+      optimistic: [
+        type: :boolean,
+        default: true,
+        doc: """
+        Whether to transpile to JavaScript for client-side updates.
+        Set to false for expressions that can't be transpiled.
+        """
+      ]
+    ]
+  }
+
+  @calculations_section %Spark.Dsl.Section{
+    name: :calculations,
+    top_level?: true,
+    describe: """
+    Calculated fields derived from state using reactive expressions.
+
+    Use `rx()` to wrap expressions that reference state via `@field` syntax.
+    Calculations are automatically recomputed when their dependencies change.
+    """,
+    entities: [@calculate_entity]
+  }
 
   # ============================================
   # Optimistic Actions - generate client + server handlers
@@ -258,10 +309,11 @@ defmodule Lavash.ClientComponent.Dsl do
     sections: [
       @state_section,
       @props_section,
+      @calculations_section,
       @optimistic_actions_section,
       @template_section
     ],
-    imports: [Lavash.Optimistic.Macros]
+    imports: [Lavash.Rx, Lavash.Optimistic.ActionMacro]
 end
 
 # Backwards compatibility alias

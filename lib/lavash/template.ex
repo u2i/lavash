@@ -750,6 +750,201 @@ defmodule Lavash.Template do
   end
 
   @doc """
+  Validates that an Elixir expression can be transpiled to JavaScript.
+
+  Returns `:ok` if the expression is fully transpilable, or
+  `{:error, description}` if it contains unsupported constructs.
+
+  This is used at compile time to provide helpful error messages when
+  a derive expression cannot be optimistically run on the client.
+
+  ## Examples
+
+      iex> Lavash.Template.validate_transpilation("length(@tags)")
+      :ok
+
+      iex> Lavash.Template.validate_transpilation("Ash.read!(Product)")
+      {:error, "Ash.read!"}
+  """
+  def validate_transpilation(source) when is_binary(source) do
+    ast = Code.string_to_quoted!(source)
+    validate_ast(ast)
+  end
+
+  defp validate_ast({:if, _, [condition, [do: do_clause, else: else_clause]]}) do
+    with :ok <- validate_ast(condition),
+         :ok <- validate_ast(do_clause),
+         :ok <- validate_ast(else_clause) do
+      :ok
+    end
+  end
+
+  defp validate_ast({:if, _, [condition, [do: do_clause]]}) do
+    with :ok <- validate_ast(condition),
+         :ok <- validate_ast(do_clause) do
+      :ok
+    end
+  end
+
+  # @variable references are always transpilable
+  defp validate_ast({:@, _, [{_var_name, _, _}]}), do: :ok
+
+  # Supported Enum functions
+  defp validate_ast({{:., _, [{:__aliases__, _, [:Enum]}, func]}, _, args})
+       when func in [:member?, :count, :join, :map, :filter, :reject] do
+    validate_all_args(args)
+  end
+
+  # Supported Map functions
+  defp validate_ast({{:., _, [{:__aliases__, _, [:Map]}, :get]}, _, args}) do
+    validate_all_args(args)
+  end
+
+  # length/1
+  defp validate_ast({:length, _, [arg]}), do: validate_ast(arg)
+
+  # humanize/1
+  defp validate_ast({:humanize, _, [arg]}), do: validate_ast(arg)
+
+  # Binary operators
+  defp validate_ast({op, _, [left, right]})
+       when op in [:==, :!=, :&&, :||, :and, :or, :>, :<, :>=, :<=, :+, :-, :*, :/, :<>, :++, :in] do
+    with :ok <- validate_ast(left),
+         :ok <- validate_ast(right) do
+      :ok
+    end
+  end
+
+  # Unary operators
+  defp validate_ast({op, _, [expr]}) when op in [:not, :!] do
+    validate_ast(expr)
+  end
+
+  # Dot access (field access)
+  defp validate_ast({{:., _, [_obj, _field]}, _, []}) do
+    :ok
+  end
+
+  defp validate_ast({:., _, [obj, _field]}) do
+    validate_ast(obj)
+  end
+
+  # Access syntax
+  defp validate_ast({{:., _, [Access, :get]}, _, [obj, key]}) do
+    with :ok <- validate_ast(obj),
+         :ok <- validate_ast(key) do
+      :ok
+    end
+  end
+
+  # Variable reference
+  defp validate_ast({var_name, _, nil}) when is_atom(var_name), do: :ok
+  defp validate_ast({var_name, _, context}) when is_atom(var_name) and is_atom(context), do: :ok
+
+  # Literals
+  defp validate_ast(str) when is_binary(str), do: :ok
+  defp validate_ast(num) when is_number(num), do: :ok
+  defp validate_ast(bool) when is_boolean(bool), do: :ok
+  defp validate_ast(nil), do: :ok
+  defp validate_ast(atom) when is_atom(atom), do: :ok
+
+  # List literal
+  defp validate_ast(list) when is_list(list) do
+    validate_all_args(list)
+  end
+
+  # Map literal
+  defp validate_ast({:%{}, _, pairs}) when is_list(pairs) do
+    Enum.reduce_while(pairs, :ok, fn {key, value}, :ok ->
+      with :ok <- validate_ast(key),
+           :ok <- validate_ast(value) do
+        {:cont, :ok}
+      else
+        error -> {:halt, error}
+      end
+    end)
+  end
+
+  # String interpolation
+  defp validate_ast({:<<>>, _, parts}) do
+    Enum.reduce_while(parts, :ok, fn
+      str, :ok when is_binary(str) ->
+        {:cont, :ok}
+
+      {:"::", _, [{{:., _, [Kernel, :to_string]}, _, [expr]}, {:binary, _, _}]}, :ok ->
+        case validate_ast(expr) do
+          :ok -> {:cont, :ok}
+          error -> {:halt, error}
+        end
+
+      {:"::", _, [expr, {:binary, _, _}]}, :ok ->
+        case validate_ast(expr) do
+          :ok -> {:cont, :ok}
+          error -> {:halt, error}
+        end
+
+      other, :ok ->
+        case validate_ast(other) do
+          :ok -> {:cont, :ok}
+          error -> {:halt, error}
+        end
+    end)
+  end
+
+  # Anonymous function (used in Enum.map, etc.)
+  defp validate_ast({:fn, _, [{:->, _, [[_arg], body]}]}) do
+    validate_ast(body)
+  end
+
+  # Capture syntax &(&1 == val)
+  defp validate_ast({:&, _, [{op, _, [{:&, _, [1]}, val]}]}) when op in [:==, :!=] do
+    validate_ast(val)
+  end
+
+  defp validate_ast({:&, _, [_]}) do
+    # Simple captures like &1 are ok
+    :ok
+  end
+
+  # Two-element tuples (keyword-like)
+  defp validate_ast({left, right}) do
+    with :ok <- validate_ast(left),
+         :ok <- validate_ast(right) do
+      :ok
+    end
+  end
+
+  # Generic function call - not supported unless explicitly handled above
+  defp validate_ast({{:., _, [{:__aliases__, _, modules}, func]}, _, _args}) do
+    module_name = Enum.join(modules, ".")
+    {:error, "#{module_name}.#{func}"}
+  end
+
+  # Local function call - not transpilable
+  defp validate_ast({func, _, args}) when is_atom(func) and is_list(args) do
+    # Check if it's a known transpilable function
+    if func in [:length, :humanize, :if, :not, :!] do
+      validate_all_args(args)
+    else
+      {:error, "#{func}/#{length(args)}"}
+    end
+  end
+
+  # Fallback - unknown construct
+  defp validate_ast(other) do
+    {:error, inspect(other)}
+  end
+
+  defp validate_all_args(args) do
+    Enum.reduce_while(args, :ok, fn arg, :ok ->
+      case validate_ast(arg) do
+        :ok -> {:cont, :ok}
+        error -> {:halt, error}
+      end
+    end)
+  end
+
+  @doc """
   Debug helper to inspect tokenization and parsing.
   """
   def debug(source) do

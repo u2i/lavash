@@ -42,8 +42,8 @@ defmodule Lavash.Components.TagEditor do
     default:
       "px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
 
-  calculate :can_add, @max_tags == nil or length(@tags) < @max_tags
-  calculate :tag_count, length(@tags)
+  calculate :can_add, rx(@max_tags == nil or length(@tags) < @max_tags)
+  calculate :tag_count, rx(length(@tags))
 
   optimistic_action :add, :tags,
     run: fn tags, tag -> tags ++ [tag] end,
