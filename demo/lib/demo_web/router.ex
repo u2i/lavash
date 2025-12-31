@@ -73,5 +73,6 @@ defmodule DemoWeb.Router do
     live "/bindings", BindingsDemoLive
     live "/tag-editor", TagEditorDemoLive
     live "/toggle", ToggleDemoLive
+    live "/form-validation", FormValidationDemoLive
   end
 end

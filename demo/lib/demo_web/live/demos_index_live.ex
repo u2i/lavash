@@ -51,6 +51,11 @@ defmodule DemoWeb.DemosIndexLive do
               description="Basic state management with optimistic increment/decrement."
             />
             <.demo_card
+              href={~p"/demos/form-validation"}
+              title="Form Validation"
+              description="Client-side validation via transpiled rx() calculations. Instant feedback."
+            />
+            <.demo_card
               href={~p"/demos/products"}
               title="Products (URL State)"
               description="Product catalog with filters stored in URL. Shareable and bookmarkable."

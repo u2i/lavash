@@ -600,6 +600,11 @@ defmodule Lavash.Template do
     "(/#{pattern}/.test(#{ast_to_js(str)}))"
   end
 
+  # String.contains?(str, substring) -> str.includes(substring)
+  defp ast_to_js({{:., _, [{:__aliases__, _, [:String]}, :contains?]}, _, [str, substring]}) do
+    "(#{ast_to_js(str)}.includes(#{ast_to_js(substring)}))"
+  end
+
   # get_in(map, [keys]) -> nested access
   defp ast_to_js({:get_in, _, [map, keys]}) when is_list(keys) do
     base = ast_to_js(map)
@@ -869,7 +874,7 @@ defmodule Lavash.Template do
 
   # Supported String functions
   defp validate_ast({{:., _, [{:__aliases__, _, [:String]}, func]}, _, args})
-       when func in [:length, :to_float, :to_integer, :trim, :match?] do
+       when func in [:length, :to_float, :to_integer, :trim, :match?, :contains?] do
     validate_all_args(args)
   end
 
