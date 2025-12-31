@@ -79,8 +79,10 @@ defmodule DemoWeb.FormValidationDemoLive do
   end
 
   @impl true
-  def handle_event("update_field", %{"field" => field, "value" => value}, socket) do
-    params = Map.put(socket.assigns.params, field, value)
+  def handle_event("update_field", input_params, socket) do
+    # phx-change sends the input name/value as params directly
+    # Merge all input values into our params map
+    params = Map.merge(socket.assigns.params, input_params)
     {:noreply, assign(socket, :params, params)}
   end
 
@@ -136,6 +138,8 @@ defmodule DemoWeb.FormValidationDemoLive do
               phx-change="update_field"
               phx-value-field="name"
               data-optimistic-input="params.name"
+              autocomplete="off"
+              data-1p-ignore
               class={"w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 " <>
                 cond do
                   @name_valid -> "border-green-300 focus:ring-green-500"
@@ -166,6 +170,8 @@ defmodule DemoWeb.FormValidationDemoLive do
               phx-change="update_field"
               phx-value-field="email"
               data-optimistic-input="params.email"
+              autocomplete="off"
+              data-1p-ignore
               class={"w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 " <>
                 cond do
                   @email_valid -> "border-green-300 focus:ring-green-500"
@@ -196,6 +202,8 @@ defmodule DemoWeb.FormValidationDemoLive do
               phx-change="update_field"
               phx-value-field="age"
               data-optimistic-input="params.age"
+              autocomplete="off"
+              data-1p-ignore
               min="0"
               max="150"
               class={"w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 " <>

@@ -193,10 +193,14 @@ const LavashOptimistic = {
       return;
     }
 
+    // Bump client version - prevents stale server patches from overwriting optimistic state
+    this.clientVersion++;
+
     const fieldPath = target.dataset.optimisticField || target.dataset.optimisticInput;
-    const value = target.type === "range" || target.type === "number"
-      ? Number(target.value)
-      : target.value;
+    // For form inputs, keep as string to match Elixir params behavior
+    const value = target.value;
+
+    console.log("[Lavash] handleInput:", fieldPath, "=", value, "clientVersion:", this.clientVersion);
 
     // Handle dotted path like "params.name" for nested map updates
     if (fieldPath.includes(".")) {
@@ -322,15 +326,20 @@ const LavashOptimistic = {
     // Topologically sort affected derives
     const sorted = this.topologicalSort(affected);
 
+    console.log("[Lavash] recomputeGraph: changedFields=", changedFields, "affected=", affected.slice(0, 5), "sorted=", sorted.slice(0, 5));
+
     // Recompute in dependency order
     for (const name of sorted) {
       const fn = this.fns[name];
       if (fn) {
         try {
           const result = fn(this.state);
+          if (name === "name_valid" || name === "params") {
+            console.log("[Lavash] recomputed", name, "=", result);
+          }
           this.state[name] = result;
         } catch (err) {
-          // Ignore derive computation errors
+          console.error("[Lavash] Error computing", name, err);
         }
       }
     }
@@ -413,6 +422,7 @@ const LavashOptimistic = {
     visibleElements.forEach(el => {
       const fieldName = el.dataset.optimisticVisible;
       const value = this.state[fieldName];
+      console.log("[Lavash] updateDOM visibility:", fieldName, "=", value, "-> hidden:", !value);
       if (value) {
         el.classList.remove("hidden");
       } else {
@@ -536,16 +546,34 @@ const LavashOptimistic = {
     const newServerVersion = parseInt(this.el.dataset.lavashVersion || "0", 10);
     const serverState = JSON.parse(this.el.dataset.lavashState || "{}");
 
+    console.log("[Lavash] updated() - server:", newServerVersion, "client:", this.clientVersion, "pending:", Object.keys(this.pending));
+
     if (newServerVersion >= this.clientVersion) {
       // Server version is current or ahead - accept full server state
+      // BUT preserve any pending values if they differ from server (race condition protection)
+      console.log("[Lavash] Accepting full server state, pending keys:", Object.keys(this.pending));
       this.serverVersion = newServerVersion;
       this.clientVersion = newServerVersion;
-      this.state = { ...serverState };
-      this.pending = {};
+
+      // Preserve pending values that differ from server state
+      const preservedPending = {};
+      for (const [key, pendingVal] of Object.entries(this.pending)) {
+        const serverVal = serverState[key];
+        // If pending value differs from server, preserve it
+        if (JSON.stringify(pendingVal) !== JSON.stringify(serverVal)) {
+          preservedPending[key] = pendingVal;
+          console.log("[Lavash] Preserving pending:", key, "pending:", pendingVal, "server:", serverVal);
+        }
+      }
+
+      // Start with server state, then overlay preserved pending values
+      this.state = { ...serverState, ...preservedPending };
+      this.pending = preservedPending;
     } else {
       // Server version is stale (from an earlier action) - selectively merge
       // Only accept fields that don't have pending optimistic updates
       // For derives, check if any of their source fields are pending
+      console.log("[Lavash] Stale server update, selective merge");
       for (const [key, serverValue] of Object.entries(serverState)) {
         const isPending = (key in this.pending) || this.hasPendingSources(key);
         if (!isPending) {
@@ -556,9 +584,46 @@ const LavashOptimistic = {
       this.serverVersion = newServerVersion;
     }
 
-    // Recompute derives based on current state and update DOM
+    // Recompute derives based on current state
     this.recomputeDerives();
+
+    console.log("[Lavash] After recompute - name_valid:", this.state.name_valid, "params:", this.state.params);
+
+    // Check visibility elements before update
+    const visElements = this.el.querySelectorAll("[data-optimistic-visible]");
+    console.log("[Lavash] Found", visElements.length, "visibility elements");
+
+    // Update DOM after server patch - but only if we're not mid-input
+    // Check if any input element has focus inside our container
+    const activeEl = document.activeElement;
+    const inputHasFocus = activeEl &&
+      this.el.contains(activeEl) &&
+      (activeEl.matches("[data-optimistic-input], [data-optimistic-field]"));
+
+    // Always update DOM to reflect current state
     this.updateDOM();
+
+    // If input is focused, re-read from state to ensure input value matches
+    // (LiveView may have morphed the input value to server state)
+    if (inputHasFocus) {
+      const fieldPath = activeEl.dataset.optimisticInput || activeEl.dataset.optimisticField;
+      if (fieldPath && fieldPath.includes(".")) {
+        const [rootField, ...pathParts] = fieldPath.split(".");
+        let val = this.state[rootField];
+        for (const part of pathParts) {
+          val = val?.[part];
+        }
+        if (val !== undefined && activeEl.value !== val) {
+          // Restore the optimistic value if server morphed it away
+          activeEl.value = val;
+        }
+      } else if (fieldPath) {
+        const val = this.state[fieldPath];
+        if (val !== undefined && activeEl.value !== val) {
+          activeEl.value = val;
+        }
+      }
+    }
   },
 
   destroyed() {
