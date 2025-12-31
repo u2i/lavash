@@ -60,6 +60,7 @@ defmodule DemoWeb.FormValidationDemoLive do
     String.length(String.trim(@params["email"] || "")) > 0 or
     String.length(String.trim(@params["age"] || "")) > 0
   )
+  calculate :show_error_hint, rx(@has_any_input and not @form_valid)
 
   actions do
     action :update_field, [:field, :value] do
@@ -144,10 +145,10 @@ defmodule DemoWeb.FormValidationDemoLive do
               placeholder="Enter your name"
             />
             <div class="h-5 mt-1">
-              <p :if={@name_too_short} class="text-red-500 text-sm" data-optimistic-display="name_too_short">
+              <p class={"text-red-500 text-sm " <> if(@name_too_short, do: "", else: "hidden")} data-optimistic-visible="name_too_short">
                 Name must be at least 2 characters
               </p>
-              <p :if={@name_valid} class="text-green-500 text-sm" data-optimistic-display="name_valid">
+              <p class={"text-green-500 text-sm " <> if(@name_valid, do: "", else: "hidden")} data-optimistic-visible="name_valid">
                 ✓ Looks good!
               </p>
             </div>
@@ -174,10 +175,10 @@ defmodule DemoWeb.FormValidationDemoLive do
               placeholder="you@example.com"
             />
             <div class="h-5 mt-1">
-              <p :if={@email_invalid} class="text-red-500 text-sm" data-optimistic-display="email_invalid">
+              <p class={"text-red-500 text-sm " <> if(@email_invalid, do: "", else: "hidden")} data-optimistic-visible="email_invalid">
                 Please enter a valid email address
               </p>
-              <p :if={@email_valid} class="text-green-500 text-sm" data-optimistic-display="email_valid">
+              <p class={"text-green-500 text-sm " <> if(@email_valid, do: "", else: "hidden")} data-optimistic-visible="email_valid">
                 ✓ Valid email
               </p>
             </div>
@@ -206,10 +207,10 @@ defmodule DemoWeb.FormValidationDemoLive do
               placeholder="18"
             />
             <div class="h-5 mt-1">
-              <p :if={@age_under_18} class="text-red-500 text-sm" data-optimistic-display="age_under_18">
+              <p class={"text-red-500 text-sm " <> if(@age_under_18, do: "", else: "hidden")} data-optimistic-visible="age_under_18">
                 You must be 18 or older
               </p>
-              <p :if={@age_valid} class="text-green-500 text-sm" data-optimistic-display="age_valid">
+              <p class={"text-green-500 text-sm " <> if(@age_valid, do: "", else: "hidden")} data-optimistic-visible="age_valid">
                 ✓ Age verified
               </p>
             </div>
@@ -220,16 +221,18 @@ defmodule DemoWeb.FormValidationDemoLive do
             <button
               type="submit"
               disabled={not @form_valid}
+              data-optimistic-enabled="form_valid"
               class={"w-full py-3 px-4 rounded-lg font-semibold transition-colors " <>
                 if @form_valid do
                   "bg-blue-600 text-white hover:bg-blue-700 cursor-pointer"
                 else
                   "bg-gray-300 text-gray-500 cursor-not-allowed"
                 end}
+              data-optimistic-class-toggle="form_valid:bg-blue-600 text-white hover:bg-blue-700 cursor-pointer:bg-gray-300 text-gray-500 cursor-not-allowed"
             >
               Submit Registration
             </button>
-            <p :if={@has_any_input and not @form_valid} class="text-center text-sm text-gray-500 mt-2">
+            <p class={"text-center text-sm text-gray-500 mt-2 " <> if(@has_any_input and not @form_valid, do: "", else: "hidden")} data-optimistic-visible="show_error_hint">
               Please fix the errors above to continue
             </p>
           </div>
@@ -367,12 +370,17 @@ defmodule DemoWeb.FormValidationDemoLive do
                    (state.params?.age || '').trim().length > 0;
           },
 
+          // Derive: show_error_hint
+          show_error_hint(state) {
+            return state.has_any_input && !state.form_valid;
+          },
+
           // Metadata
           __derives__: [
             "name_value", "name_empty", "name_too_short", "name_valid",
             "email_value", "email_empty", "email_invalid", "email_valid",
             "age_value", "age_empty", "age_number", "age_under_18", "age_valid",
-            "form_valid", "has_any_input"
+            "form_valid", "has_any_input", "show_error_hint"
           ],
           __fields__: ["params", "submitted"],
           __graph__: {
@@ -390,7 +398,8 @@ defmodule DemoWeb.FormValidationDemoLive do
             "age_under_18": { "deps": ["params"] },
             "age_valid": { "deps": ["params"] },
             "form_valid": { "deps": ["name_valid", "email_valid", "age_valid"] },
-            "has_any_input": { "deps": ["params"] }
+            "has_any_input": { "deps": ["params"] },
+            "show_error_hint": { "deps": ["has_any_input", "form_valid"] }
           }
         };
       </script>

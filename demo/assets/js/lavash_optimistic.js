@@ -182,7 +182,8 @@ const LavashOptimistic = {
   },
 
   handleInput(e) {
-    const target = e.target.closest("[data-optimistic-field]");
+    // Support both data-optimistic-field and data-optimistic-input (for nested paths)
+    const target = e.target.closest("[data-optimistic-field], [data-optimistic-input]");
     if (!target) return;
 
     // Skip if input is inside a child component (has its own hook)
@@ -192,17 +193,41 @@ const LavashOptimistic = {
       return;
     }
 
-    const fieldName = target.dataset.optimisticField;
+    const fieldPath = target.dataset.optimisticField || target.dataset.optimisticInput;
     const value = target.type === "range" || target.type === "number"
       ? Number(target.value)
       : target.value;
 
-    // Directly update state and pending
-    this.state[fieldName] = value;
-    this.pending[fieldName] = value;
+    // Handle dotted path like "params.name" for nested map updates
+    if (fieldPath.includes(".")) {
+      const [rootField, ...pathParts] = fieldPath.split(".");
+      // Deep clone the current value
+      const currentVal = this.state[rootField] || {};
+      const newVal = { ...currentVal };
 
-    // Recompute derives and update DOM
-    this.recomputeDerives();
+      // Set the nested value
+      let obj = newVal;
+      for (let i = 0; i < pathParts.length - 1; i++) {
+        const part = pathParts[i];
+        obj[part] = { ...(obj[part] || {}) };
+        obj = obj[part];
+      }
+      obj[pathParts[pathParts.length - 1]] = value;
+
+      this.state[rootField] = newVal;
+      this.pending[rootField] = newVal;
+
+      // Recompute derives affected by the root field
+      this.recomputeDerives([rootField]);
+    } else {
+      // Simple field update
+      this.state[fieldPath] = value;
+      this.pending[fieldPath] = value;
+
+      // Recompute derives and update DOM
+      this.recomputeDerives([fieldPath]);
+    }
+
     this.updateDOM();
 
     // Sync URL fields immediately (optimistic URL update)
@@ -381,6 +406,43 @@ const LavashOptimistic = {
       if (value !== undefined) {
         el.textContent = value;
       }
+    });
+
+    // Update all elements with data-optimistic-visible attribute (show/hide based on boolean)
+    const visibleElements = this.el.querySelectorAll("[data-optimistic-visible]");
+    visibleElements.forEach(el => {
+      const fieldName = el.dataset.optimisticVisible;
+      const value = this.state[fieldName];
+      if (value) {
+        el.classList.remove("hidden");
+      } else {
+        el.classList.add("hidden");
+      }
+    });
+
+    // Update all elements with data-optimistic-enabled attribute (enable/disable based on boolean)
+    const enabledElements = this.el.querySelectorAll("[data-optimistic-enabled]");
+    enabledElements.forEach(el => {
+      const fieldName = el.dataset.optimisticEnabled;
+      const value = this.state[fieldName];
+      el.disabled = !value;
+    });
+
+    // Update all elements with data-optimistic-class-toggle attribute
+    // Format: "fieldName:trueClasses:falseClasses"
+    const classToggleElements = this.el.querySelectorAll("[data-optimistic-class-toggle]");
+    classToggleElements.forEach(el => {
+      const spec = el.dataset.optimisticClassToggle;
+      const [fieldName, trueClasses, falseClasses] = spec.split(":");
+      const value = this.state[fieldName];
+
+      // Remove all managed classes first
+      const allClasses = (trueClasses + " " + falseClasses).split(/\s+/).filter(c => c);
+      el.classList.remove(...allClasses);
+
+      // Add the appropriate classes
+      const classesToAdd = (value ? trueClasses : falseClasses).split(/\s+/).filter(c => c);
+      el.classList.add(...classesToAdd);
     });
 
     // Update all elements with data-optimistic-class attribute (class from map)
