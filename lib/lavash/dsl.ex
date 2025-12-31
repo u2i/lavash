@@ -341,7 +341,70 @@ defmodule Lavash.Dsl do
   }
 
   # ============================================
-  # Derive - computed values
+  # Calculate - reactive computed values (expression form)
+  # ============================================
+
+  @calculate_entity %Spark.Dsl.Entity{
+    name: :calculate,
+    describe: """
+    Declares a calculated field computed from state using a reactive expression.
+
+    Uses `rx()` to capture the expression, which is then transpiled to
+    JavaScript for client-side optimistic updates.
+
+    ## Examples
+
+        calculate :tag_count, rx(length(@tags))
+        calculate :can_add, rx(@max_tags == nil or length(@tags) < @max_tags)
+        calculate :doubled, rx(@count * 2)
+
+    For server-only calculations that can't be transpiled:
+
+        calculate :complex, rx(some_function(@data)), optimistic: false
+
+    For complex server-only computations, use the block-form `derive` instead.
+    """,
+    target: Lavash.Component.Calculate,
+    args: [:name, :rx],
+    schema: [
+      name: [
+        type: :atom,
+        required: true,
+        doc: "The name of the calculated field"
+      ],
+      rx: [
+        type: {:struct, Lavash.Rx},
+        required: true,
+        doc: "The reactive expression wrapped in rx()"
+      ],
+      optimistic: [
+        type: :boolean,
+        default: true,
+        doc: """
+        Whether to transpile to JavaScript for client-side updates.
+        Set to false for expressions that can't be transpiled.
+        """
+      ]
+    ]
+  }
+
+  @calculations_section %Spark.Dsl.Section{
+    name: :calculations,
+    top_level?: true,
+    describe: """
+    Calculated fields derived from state using reactive expressions.
+
+    Use `rx()` to wrap expressions that reference state via `@field` syntax.
+    Calculations are automatically recomputed when their dependencies change
+    and can be transpiled to JavaScript for optimistic client-side updates.
+
+    For complex server-only computations (async, Ash reads, etc.), use `derive` instead.
+    """,
+    entities: [@calculate_entity]
+  }
+
+  # ============================================
+  # Derive - computed values (block form, server-only)
   # ============================================
 
   @argument_entity %Spark.Dsl.Entity{
@@ -593,9 +656,10 @@ defmodule Lavash.Dsl do
       @states_section,
       @reads_section,
       @forms_section,
+      @calculations_section,
       @derives_section,
       @actions_section
     ],
     transformers: [],
-    imports: [Phoenix.Component, Lavash.DslHelpers, Lavash.Optimistic.Macros]
+    imports: [Phoenix.Component, Lavash.DslHelpers, Lavash.Rx]
 end

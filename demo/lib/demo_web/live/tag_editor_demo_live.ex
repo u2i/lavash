@@ -22,15 +22,17 @@ defmodule DemoWeb.TagEditorDemoLive do
   end
 
   # Optimistic calculation - transpiles to both Elixir and JavaScript
-  calculate :tag_count, length(@tags)
+  calculate :tag_count, rx(length(@tags))
 
   calculate :tag_summary,
-            if(length(@tags) == 0,
-              do: "No tags yet",
-              else: if(length(@tags) == 1, do: "1 tag", else: "#{length(@tags)} tags")
+            rx(
+              if(length(@tags) == 0,
+                do: "No tags yet",
+                else: if(length(@tags) == 1, do: "1 tag", else: "#{length(@tags)} tags")
+              )
             )
 
-  calculate :tags_display, Enum.join(@tags, ", ")
+  calculate :tags_display, rx(Enum.join(@tags, ", "))
 
   def render(assigns) do
     ~H"""
