@@ -266,16 +266,19 @@ defmodule Lavash.Graph do
       }
 
       # Generate validation fields from resource constraints
-      validation_fields = expand_form_validations(form, params_dep)
+      validation_fields = expand_form_validations(module, form, params_dep)
 
       [form_field | validation_fields]
     end)
   end
 
   # Generate validation calculation fields from Ash resource constraints
-  defp expand_form_validations(form, params_dep) do
+  defp expand_form_validations(module, form, params_dep) do
     resource = form.resource
     form_name = form.name
+
+    # Get any extend_errors declarations for this form
+    extend_errors_map = get_extend_errors_map(module)
 
     # Check if resource is available at compile time
     # (might not be if it's in a different app that isn't compiled yet)
@@ -302,12 +305,15 @@ defmodule Lavash.Graph do
         Enum.map(validations, fn validation ->
           field_name = :"#{form_name}_#{validation.field}_errors"
 
+          # Check if there are custom errors to extend this field
+          custom_errors = Map.get(extend_errors_map, field_name, [])
+
           %Lavash.Derived.Field{
             name: field_name,
             depends_on: [params_dep],
             async: false,
             optimistic: true,
-            compute: build_errors_compute(validation, params_dep)
+            compute: build_errors_compute(validation, params_dep, custom_errors)
           }
         end)
 
@@ -401,12 +407,19 @@ defmodule Lavash.Graph do
   end
 
   # Build a compute function for an errors field
-  defp build_errors_compute(validation, params_dep) do
+  defp build_errors_compute(validation, params_dep, custom_errors \\ []) do
     field = validation.field
     field_str = to_string(field)
     type = validation.type
     required = validation.required
     constraints = validation.constraints
+
+    # Store custom error conditions (Lavash.Rx structs) and messages
+    # We evaluate the AST at runtime like calculate does
+    custom_error_specs =
+      Enum.map(custom_errors, fn error ->
+        {error.condition.ast, error.message}
+      end)
 
     fn deps ->
       params = Map.get(deps, params_dep, %{})
@@ -433,7 +446,20 @@ defmodule Lavash.Graph do
           errors
         end
 
-      Enum.reverse(errors)
+      # Add custom errors where condition evaluates to true
+      # The condition should return true when the error should be shown (i.e., field is invalid)
+      custom_error_messages =
+        Enum.flat_map(custom_error_specs, fn {ast, message} ->
+          # Evaluate the AST with state bound to deps, like calculate does
+          {result, _binding} = Code.eval_quoted(ast, [state: deps], __ENV__)
+          if result do
+            [message]
+          else
+            []
+          end
+        end)
+
+      Enum.reverse(errors) ++ custom_error_messages
     end
   end
 
@@ -569,6 +595,21 @@ defmodule Lavash.Graph do
       {:prop, name} -> name
       name when is_atom(name) -> name
       nil -> nil
+    end
+  end
+
+  # Get extend_errors declarations as a map from field name to list of errors
+  defp get_extend_errors_map(module) do
+    try do
+      if function_exported?(module, :__lavash__, 1) do
+        module.__lavash__(:extend_errors)
+        |> Enum.map(fn ext -> {ext.field, ext.errors} end)
+        |> Map.new()
+      else
+        %{}
+      end
+    rescue
+      _ -> %{}
     end
   end
 

@@ -656,4 +656,83 @@ defmodule Lavash.LiveView.Helpers do
     </p>
     """
   end
+
+  @doc """
+  Renders a form error summary with optimistic updates.
+
+  This component displays a summary of all form errors at the top of the form.
+  Only shown after form submission if there are errors. The JS hook
+  dynamically populates this with all field errors.
+
+  ## Examples
+
+      # Basic usage - shows all errors for the registration form
+      <.error_summary form={:registration} />
+
+      # With custom class
+      <.error_summary form={:registration} class="bg-red-50 border border-red-200 p-4 rounded-lg" />
+  """
+  attr :form, :atom, required: true, doc: "The form name (e.g., :registration)"
+  attr :class, :string, default: "bg-red-50 border border-red-200 p-4 rounded-lg text-red-600 text-sm mb-4", doc: "CSS class for the summary container"
+  attr :rest, :global, doc: "Additional HTML attributes"
+
+  def error_summary(assigns) do
+    assigns = assign(assigns, :form_name, to_string(assigns.form))
+
+    # Hidden initially - JS will show when form is submitted with errors
+    ~H"""
+    <div
+      class={[@class, "hidden"]}
+      data-optimistic-error-summary={@form_name}
+      {@rest}
+    >
+      <%!-- Content is managed by JS after form submission --%>
+    </div>
+    """
+  end
+
+  @doc """
+  Renders a form field status indicator with optimistic updates.
+
+  This component displays a small icon inside an input field indicating
+  the validation state (valid, invalid, or neutral). Use this inside
+  an input wrapper with `relative` positioning.
+
+  ## Examples
+
+      # Basic usage inside a positioned wrapper
+      <div class="relative">
+        <input type="text" ... />
+        <.field_status form={:registration} field={:name} valid={@registration_name_valid} />
+      </div>
+
+      # The indicator is positioned at the right side of the input
+  """
+  attr :form, :atom, required: true, doc: "The form name (e.g., :registration)"
+  attr :field, :atom, required: true, doc: "The field name (e.g., :name)"
+  attr :valid, :boolean, required: true, doc: "Whether the field is valid (client validation)"
+  attr :valid_field, :string, default: nil, doc: "Custom valid field name for JS"
+  attr :class, :string, default: "absolute right-3 top-1/2 -translate-y-1/2 text-lg pointer-events-none", doc: "CSS class for positioning"
+  attr :rest, :global, doc: "Additional HTML attributes"
+
+  def field_status(assigns) do
+    valid_field = assigns.valid_field || "#{assigns.form}_#{assigns.field}_valid"
+    show_errors_field = "#{assigns.form}_#{assigns.field}_show_errors"
+
+    assigns =
+      assigns
+      |> assign(:valid_field, valid_field)
+      |> assign(:show_errors_field, show_errors_field)
+
+    ~H"""
+    <span
+      class={@class}
+      data-optimistic-field-status={@valid_field}
+      data-optimistic-show-errors={@show_errors_field}
+      {@rest}
+    >
+      <%!-- Content is managed by JS: ✓ (valid), ✗ (invalid), or empty (neutral) --%>
+    </span>
+    """
+  end
 end

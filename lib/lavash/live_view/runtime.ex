@@ -279,6 +279,93 @@ defmodule Lavash.LiveView.Runtime do
   end
 
   def handle_event(module, event, params, socket) do
+    # Check for form validation events (validate_<form_name>)
+    case parse_validation_event(module, event) do
+      {:validate, form, form_name} ->
+        handle_validation_event(socket, form, form_name, params)
+
+      :not_validation ->
+        handle_action_event(module, event, params, socket)
+    end
+  end
+
+  # Check if this is a validation event for one of our forms
+  defp parse_validation_event(module, event) do
+    forms = module.__lavash__(:forms)
+
+    Enum.find_value(forms, :not_validation, fn form ->
+      if event == "validate_#{form.name}" do
+        {:validate, form, form.name}
+      end
+    end)
+  end
+
+  # Handle field validation request from client
+  defp handle_validation_event(socket, form, form_name, params) do
+    field_name = params["field"]
+    value = params["value"]
+    request_id = params["_validation_request_id"]
+
+    # Convert field name to atom for Ash
+    field = String.to_existing_atom(field_name)
+
+    # Build a changeset to validate the field
+    resource = form.resource
+
+    # Get the action to use for validation (use form.create for create forms)
+    action_name = form.create || :create
+
+    # Get the domain from the resource
+    domain =
+      if function_exported?(resource, :spark_dsl_config, 0) do
+        resource.spark_dsl_config()[:domain]
+      else
+        nil
+      end
+
+    # Build changeset with the field value
+    params_map = %{to_string(field) => value}
+
+    errors =
+      try do
+        changeset =
+          resource
+          |> Ash.Changeset.for_create(action_name, params_map, domain: domain)
+
+        # Extract errors for this specific field
+        changeset.errors
+        |> Enum.filter(fn error ->
+          case error do
+            %{field: ^field} -> true
+            %{field: field_atom} when is_atom(field_atom) ->
+              to_string(field_atom) == to_string(field)
+            _ -> false
+          end
+        end)
+        |> Enum.map(fn error ->
+          case error do
+            %{message: msg} when is_binary(msg) -> msg
+            %{message: {msg, _opts}} -> msg
+            _ -> "Invalid value"
+          end
+        end)
+      rescue
+        _ -> []
+      end
+
+    # Push the validation result back to client
+    socket =
+      Phoenix.LiveView.push_event(socket, "validation_result", %{
+        form: to_string(form_name),
+        field: field_name,
+        errors: errors,
+        _validation_request_id: request_id
+      })
+
+    {:noreply, socket}
+  end
+
+  defp handle_action_event(module, event, params, socket) do
     # Capture old state for subscription updates
     old_state = LSocket.state(socket)
 

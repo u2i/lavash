@@ -45,11 +45,17 @@ const LavashOptimistic = {
     this.urlFields = JSON.parse(this.el.dataset.lavashUrlFields || "[]");
 
     // Form field state tracking (client-side only)
-    // Maps field path -> { touched: boolean }
+    // Maps field path -> { touched: boolean, serverErrors: [], validationRequestId: number }
     this.fieldState = {};
 
     // Form submitted state (for showing all errors)
     this.formSubmitted = false;
+
+    // Server validation debounce timers: field path -> timeout ID
+    this.validationTimers = {};
+
+    // Incremented for each validation request, used to detect stale responses
+    this.validationRequestId = 0;
 
     // Load generated functions from inline JSON script tag
     this.loadGeneratedFunctions();
@@ -80,6 +86,9 @@ const LavashOptimistic = {
 
     // Track form submit for formSubmitted state
     this.el.addEventListener("submit", this.handleFormSubmit.bind(this), true);
+
+    // Listen for server validation responses
+    this.handleEvent("validation_result", (payload) => this.handleValidationResult(payload));
   },
 
   /**
@@ -220,7 +229,7 @@ const LavashOptimistic = {
 
     // Mark field as touched
     if (!this.fieldState[fieldPath]) {
-      this.fieldState[fieldPath] = {};
+      this.fieldState[fieldPath] = { serverErrors: [] };
     }
     this.fieldState[fieldPath].touched = true;
 
@@ -235,6 +244,9 @@ const LavashOptimistic = {
       const formName = paramsField.replace(/_params$/, "");
       const showErrorsKey = `${formName}_${fieldName}_show_errors`;
       this.recomputeDerives([showErrorsKey]);
+
+      // Trigger server validation if client validation passes
+      this.triggerServerValidation(fieldPath, formName, fieldName, /* immediate */ true);
     }
 
     this.updateDOM();
@@ -249,19 +261,139 @@ const LavashOptimistic = {
       this.fieldState[path].touched = true;
     }
 
-    // Also mark fields from synced inputs that may not have been touched
+    // Collect all synced inputs and mark them as touched
     const syncedInputs = this.el.querySelectorAll("[data-synced], [data-optimistic-field], [data-optimistic-input]");
+    const inputElements = [];
     syncedInputs.forEach(input => {
       const fieldPath = input.dataset.synced || input.dataset.optimisticField || input.dataset.optimisticInput;
       if (fieldPath) {
         if (!this.fieldState[fieldPath]) {
-          this.fieldState[fieldPath] = {};
+          this.fieldState[fieldPath] = { serverErrors: [] };
         }
         this.fieldState[fieldPath].touched = true;
         this.updateShowErrors(fieldPath);
+        inputElements.push({ input, fieldPath });
       }
     });
 
+    this.updateDOM();
+
+    // Check if form is valid - if not, prevent submission and focus first invalid field
+    // Find the first invalid field and focus it
+    for (const { input, fieldPath } of inputElements) {
+      // Derive form name and field name from path
+      const parts = fieldPath.split(".");
+      if (parts.length >= 2) {
+        const paramsField = parts[0];
+        const fieldName = parts.slice(1).join("_");
+        const formName = paramsField.replace(/_params$/, "");
+        const validField = `${formName}_${fieldName}_valid`;
+        const clientValid = this.state[validField] ?? true;
+        const serverErrors = this.fieldState[fieldPath]?.serverErrors || [];
+
+        // Field is invalid if client validation fails or has server errors
+        if (!clientValid || serverErrors.length > 0) {
+          // Focus this field and prevent form submission
+          e.preventDefault();
+          input.focus();
+
+          // Scroll error summary into view if present
+          const errorSummary = this.el.querySelector("[data-optimistic-error-summary]");
+          if (errorSummary) {
+            errorSummary.scrollIntoView({ behavior: "smooth", block: "nearest" });
+          }
+
+          return;
+        }
+      }
+    }
+  },
+
+  /**
+   * Trigger server-side validation for a field.
+   * Only sends if client validation passes.
+   *
+   * @param {string} fieldPath - e.g., "registration_params.name"
+   * @param {string} formName - e.g., "registration"
+   * @param {string} fieldName - e.g., "name"
+   * @param {boolean} immediate - if true, skip debounce (used for blur)
+   */
+  triggerServerValidation(fieldPath, formName, fieldName, immediate = false) {
+    // Check if client validation passes for this field
+    const validField = `${formName}_${fieldName}_valid`;
+    const clientValid = this.state[validField] ?? true;
+
+    if (!clientValid) {
+      // Client validation failed, don't bother server
+      // Clear any pending timer
+      if (this.validationTimers[fieldPath]) {
+        clearTimeout(this.validationTimers[fieldPath]);
+        delete this.validationTimers[fieldPath];
+      }
+      return;
+    }
+
+    // Clear any pending timer for this field
+    if (this.validationTimers[fieldPath]) {
+      clearTimeout(this.validationTimers[fieldPath]);
+    }
+
+    const sendValidation = () => {
+      // Increment request ID to track staleness
+      this.validationRequestId++;
+      const requestId = this.validationRequestId;
+
+      // Store the request ID for this field to detect stale responses
+      if (!this.fieldState[fieldPath]) {
+        this.fieldState[fieldPath] = { serverErrors: [] };
+      }
+      this.fieldState[fieldPath].validationRequestId = requestId;
+
+      // Send validation event to server
+      // The event name follows convention: validate_<form>
+      const params = this.state[`${formName}_params`] || {};
+      this.pushEvent(`validate_${formName}`, {
+        field: fieldName,
+        value: params[fieldName],
+        _validation_request_id: requestId
+      });
+    };
+
+    if (immediate) {
+      sendValidation();
+    } else {
+      // Debounce for 500ms when typing
+      this.validationTimers[fieldPath] = setTimeout(sendValidation, 500);
+    }
+  },
+
+  /**
+   * Handle server validation response.
+   * Ignores stale responses based on request ID.
+   *
+   * @param {Object} payload - { form: string, field: string, errors: string[], _validation_request_id: number }
+   */
+  handleValidationResult(payload) {
+    const { form: formName, field: fieldName, errors, _validation_request_id: requestId } = payload;
+    const paramsField = `${formName}_params`;
+    const fieldPath = `${paramsField}.${fieldName}`;
+
+    // Check if this response is stale
+    const fieldState = this.fieldState[fieldPath];
+    if (fieldState && fieldState.validationRequestId !== undefined) {
+      if (requestId < fieldState.validationRequestId) {
+        // Stale response - ignore it
+        return;
+      }
+    }
+
+    // Store server errors
+    if (!this.fieldState[fieldPath]) {
+      this.fieldState[fieldPath] = { serverErrors: [] };
+    }
+    this.fieldState[fieldPath].serverErrors = errors || [];
+
+    // Update DOM to show server errors
     this.updateDOM();
   },
 
@@ -319,6 +451,11 @@ const LavashOptimistic = {
     // Bump client version for stale patch rejection
     this.clientVersion++;
 
+    // Clear server errors on edit (user is fixing the issue)
+    if (this.fieldState[fieldPath]) {
+      this.fieldState[fieldPath].serverErrors = [];
+    }
+
     // Determine root field for derive recomputation
     const dotIndex = fieldPath.indexOf(".");
     const rootField = dotIndex > 0 ? fieldPath.substring(0, dotIndex) : fieldPath;
@@ -330,6 +467,20 @@ const LavashOptimistic = {
 
     // Sync URL fields immediately (optimistic URL update)
     this.syncUrl();
+
+    // Schedule debounced server validation (if field is touched or form submitted)
+    const parts = fieldPath.split(".");
+    if (parts.length >= 2) {
+      const paramsField = parts[0];
+      const fieldName = parts.slice(1).join("_");
+      const formName = paramsField.replace(/_params$/, "");
+
+      // Only trigger server validation if field is already touched or form was submitted
+      const touched = this.fieldState[fieldPath]?.touched || false;
+      if (touched || this.formSubmitted) {
+        this.triggerServerValidation(fieldPath, formName, fieldName, /* immediate */ false);
+      }
+    }
   },
 
   /**
@@ -602,19 +753,38 @@ const LavashOptimistic = {
     const errorElements = this.el.querySelectorAll("[data-optimistic-errors]");
     errorElements.forEach(el => {
       const errorsField = el.dataset.optimisticErrors; // e.g., "registration_name_errors"
-      const errors = this.state[errorsField] || [];
+      const clientErrors = this.state[errorsField] || [];
 
-      // Derive show_errors field name from errors field
+      // Derive show_errors field name and field path from errors field
       // "registration_name_errors" -> "registration_name_show_errors"
       const showErrorsField = errorsField.replace(/_errors$/, "_show_errors");
       const showErrors = this.state[showErrorsField] ?? false;
+
+      // Get server errors for this field
+      // errorsField is like "registration_name_errors"
+      // We need to derive the field path "registration_params.name"
+      const match = errorsField.match(/^(.+)_(.+)_errors$/);
+      let serverErrors = [];
+      if (match) {
+        const [, formName, fieldName] = match;
+        const fieldPath = `${formName}_params.${fieldName}`;
+        serverErrors = this.fieldState[fieldPath]?.serverErrors || [];
+      }
+
+      // Combine client and server errors (client errors first, deduplicated)
+      const allErrors = [...clientErrors];
+      for (const err of serverErrors) {
+        if (!allErrors.includes(err)) {
+          allErrors.push(err);
+        }
+      }
 
       // Clear existing error content
       el.innerHTML = "";
 
       // Only render errors if showErrors is true and there are errors
-      if (showErrors && errors.length > 0) {
-        errors.forEach(error => {
+      if (showErrors && allErrors.length > 0) {
+        allErrors.forEach(error => {
           const p = document.createElement("p");
           p.className = "text-red-500 text-sm";
           p.textContent = error;
@@ -626,7 +796,73 @@ const LavashOptimistic = {
       }
     });
 
-    // Update success indicators - only show if field is touched/submitted AND valid
+    // Update error summary element (shows all errors when form is submitted)
+    const errorSummaryElements = this.el.querySelectorAll("[data-optimistic-error-summary]");
+    errorSummaryElements.forEach(el => {
+      const formName = el.dataset.optimisticErrorSummary; // e.g., "registration"
+
+      // Only show if form has been submitted
+      if (!this.formSubmitted) {
+        el.classList.add("hidden");
+        el.innerHTML = "";
+        return;
+      }
+
+      // Collect all errors for this form
+      const allErrors = [];
+
+      // Find all error fields for this form
+      for (const key of Object.keys(this.state)) {
+        if (key.startsWith(`${formName}_`) && key.endsWith("_errors")) {
+          const fieldErrors = this.state[key] || [];
+          const fieldName = key.replace(`${formName}_`, "").replace(/_errors$/, "");
+
+          // Also check for server errors
+          const fieldPath = `${formName}_params.${fieldName}`;
+          const serverErrors = this.fieldState[fieldPath]?.serverErrors || [];
+
+          // Combine and dedupe
+          const combined = [...fieldErrors];
+          for (const err of serverErrors) {
+            if (!combined.includes(err)) {
+              combined.push(err);
+            }
+          }
+
+          if (combined.length > 0) {
+            allErrors.push({ field: fieldName, errors: combined });
+          }
+        }
+      }
+
+      // Clear and rebuild content
+      el.innerHTML = "";
+
+      if (allErrors.length > 0) {
+        const title = document.createElement("p");
+        title.className = "font-semibold text-red-700 mb-2";
+        title.textContent = "Please fix the following errors:";
+        el.appendChild(title);
+
+        const ul = document.createElement("ul");
+        ul.className = "list-disc list-inside space-y-1";
+
+        for (const { field, errors } of allErrors) {
+          for (const error of errors) {
+            const li = document.createElement("li");
+            li.textContent = `${this.humanizeFieldName(field)}: ${error}`;
+            ul.appendChild(li);
+          }
+        }
+
+        el.appendChild(ul);
+        el.classList.remove("hidden");
+      } else {
+        el.classList.add("hidden");
+      }
+    });
+
+    // Update success indicators - only show if touched/submitted AND valid AND no server errors
     const successElements = this.el.querySelectorAll("[data-optimistic-success]");
     successElements.forEach(el => {
       const validField = el.dataset.optimisticSuccess; // e.g., "registration_name_valid" or "email_valid"
@@ -637,11 +873,54 @@ const LavashOptimistic = {
         validField.replace(/_valid$/, "_show_errors");
       const showErrors = this.state[showErrorsField] ?? false;
 
-      // Show success only if touched/submitted AND valid
-      if (showErrors && isValid) {
+      // Check for server errors
+      // validField is like "registration_name_valid" or "email_valid"
+      // For standard form fields, derive field path: "registration_params.name"
+      let hasServerErrors = false;
+      const formFieldMatch = validField.match(/^(.+)_(.+)_valid$/);
+      if (formFieldMatch) {
+        const [, formName, fieldName] = formFieldMatch;
+        const fieldPath = `${formName}_params.${fieldName}`;
+        hasServerErrors = (this.fieldState[fieldPath]?.serverErrors || []).length > 0;
+      }
+
+      // Show success only if touched/submitted AND valid AND no server errors
+      if (showErrors && isValid && !hasServerErrors) {
         el.classList.remove("hidden");
       } else {
         el.classList.add("hidden");
+      }
+    });
+
+    // Update field status indicators (✓ valid, ✗ invalid, empty neutral)
+    const statusElements = this.el.querySelectorAll("[data-optimistic-field-status]");
+    statusElements.forEach(el => {
+      const validField = el.dataset.optimisticFieldStatus; // e.g., "registration_name_valid"
+      const showErrorsField = el.dataset.optimisticShowErrors ||
+        validField.replace(/_valid$/, "_show_errors");
+
+      const isValid = this.state[validField] ?? true;
+      const showErrors = this.state[showErrorsField] ?? false;
+
+      // Check for server errors
+      let hasServerErrors = false;
+      const formFieldMatch = validField.match(/^(.+)_(.+)_valid$/);
+      if (formFieldMatch) {
+        const [, formName, fieldName] = formFieldMatch;
+        const fieldPath = `${formName}_params.${fieldName}`;
+        hasServerErrors = (this.fieldState[fieldPath]?.serverErrors || []).length > 0;
+      }
+
+      // Only show status if field has been touched/submitted
+      if (!showErrors) {
+        el.textContent = "";
+        el.className = el.className.replace(/text-(green|red)-\d+/g, "").trim();
+      } else if (isValid && !hasServerErrors) {
+        el.textContent = "✓";
+        el.className = el.className.replace(/text-(green|red)-\d+/g, "").trim() + " text-green-500";
+      } else {
+        el.textContent = "✗";
+        el.className = el.className.replace(/text-(green|red)-\d+/g, "").trim() + " text-red-500";
       }
     });
 
@@ -658,6 +937,14 @@ const LavashOptimistic = {
         hook.refreshFromParent(this);
       }
     });
+  },
+
+  // Convert snake_case field name to Title Case
+  humanizeFieldName(name) {
+    return name
+      .split("_")
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ");
   },
 
   // Sync URL fields to browser URL without triggering navigation

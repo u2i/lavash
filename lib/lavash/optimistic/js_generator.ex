@@ -76,7 +76,8 @@ defmodule Lavash.Optimistic.JsGenerator do
       to_string(name)
     end)
     form_validation_derive_names = Enum.map(form_validations, fn {name, _, _} -> to_string(name) end)
-    form_error_derive_names = Enum.map(form_errors, fn {name, _, _} -> to_string(name) end)
+    # form_errors tuples have 4 elements: {name, params_field, validation, custom_errors}
+    form_error_derive_names = Enum.map(form_errors, fn {name, _, _, _} -> to_string(name) end)
     derive_names = explicit_derive_names ++ multi_select_derive_names ++ toggle_derive_names ++ calculation_derive_names ++ form_validation_derive_names ++ form_error_derive_names
 
     # Add optimistic field names
@@ -152,14 +153,15 @@ defmodule Lavash.Optimistic.JsGenerator do
       end)
 
     # Form error derives depend on params field (same as validations)
+    # 4-tuple format: {name, params_field, validation, custom_errors}
     form_error_entries =
       Enum.map(form_errors, fn
-        {name, _params_field, {:combined, form_name, field_names}} ->
+        {name, _params_field, {:combined, form_name, field_names}, _custom_errors} ->
           # Combined errors depends on individual field errors
           deps = Enum.map(field_names, fn field -> "#{form_name}_#{field}_errors" end)
           {to_string(name), %{deps: deps}}
 
-        {name, params_field, _validation} ->
+        {name, params_field, _validation, _custom_errors} ->
           # Individual field errors depends on params
           {to_string(name), %{deps: [to_string(params_field)]}}
       end)
@@ -553,10 +555,13 @@ defmodule Lavash.Optimistic.JsGenerator do
   end
 
   # Get form error derives from module's forms
-  # Returns list of {derive_name, params_field, validation} tuples for _errors fields
+  # Returns list of {derive_name, params_field, validation, custom_errors} tuples for _errors fields
   defp get_form_errors(module) do
     try do
       forms = module.__lavash__(:forms)
+
+      # Get extend_errors declarations as a map
+      extend_errors_map = get_extend_errors_map(module)
 
       Enum.flat_map(forms, fn form ->
         resource = form.resource
@@ -567,17 +572,18 @@ defmodule Lavash.Optimistic.JsGenerator do
              function_exported?(resource, :spark_dsl_config, 0) do
           validations = Lavash.Form.ConstraintTranspiler.extract_validations(resource)
 
-          # Generate per-field error derives
+          # Generate per-field error derives with custom errors
           field_derives =
             Enum.map(validations, fn validation ->
               derive_name = :"#{form_name}_#{validation.field}_errors"
-              {derive_name, params_field, validation}
+              custom_errors = Map.get(extend_errors_map, derive_name, [])
+              {derive_name, params_field, validation, custom_errors}
             end)
 
           # Generate overall form_errors derive if we have field validations
           if length(validations) > 0 do
             field_names = Enum.map(validations, & &1.field)
-            form_errors = {:"#{form_name}_errors", params_field, {:combined, form_name, field_names}}
+            form_errors = {:"#{form_name}_errors", params_field, {:combined, form_name, field_names}, []}
             field_derives ++ [form_errors]
           else
             field_derives
@@ -588,6 +594,21 @@ defmodule Lavash.Optimistic.JsGenerator do
       end)
     rescue
       _ -> []
+    end
+  end
+
+  # Get extend_errors declarations as a map from field name to list of errors
+  defp get_extend_errors_map(module) do
+    try do
+      if function_exported?(module, :__lavash__, 1) do
+        module.__lavash__(:extend_errors)
+        |> Enum.map(fn ext -> {ext.field, ext.errors} end)
+        |> Map.new()
+      else
+        %{}
+      end
+    rescue
+      _ -> %{}
     end
   end
 
@@ -701,7 +722,7 @@ defmodule Lavash.Optimistic.JsGenerator do
   end
 
   # Generate JS for form field error derives
-  defp generate_form_errors_js({name, _params_field, {:combined, form_name, field_names}}) do
+  defp generate_form_errors_js({name, _params_field, {:combined, form_name, field_names}, _custom_errors}) do
     # Combined errors - concatenate all individual field error arrays
     arrays =
       field_names
@@ -715,7 +736,7 @@ defmodule Lavash.Optimistic.JsGenerator do
     """
   end
 
-  defp generate_form_errors_js({name, params_field, validation}) do
+  defp generate_form_errors_js({name, params_field, validation, custom_errors}) do
     field = validation.field
     field_str = to_string(field)
     required = validation.required
@@ -749,6 +770,18 @@ defmodule Lavash.Optimistic.JsGenerator do
         _ ->
           error_checks
       end
+
+    # Add custom error checks from extend_errors
+    # These use rx() expressions that are transpiled to JS
+    error_checks =
+      Enum.reduce(custom_errors, error_checks, fn error, acc ->
+        # Transpile the rx condition to JS - condition returns true when error should show
+        js_condition = Lavash.Template.elixir_to_js(error.condition.source)
+        msg = error.message
+        # Note: for custom errors, check is true when the field is VALID, so we negate the condition
+        check = "{check: !(#{js_condition}), msg: #{Jason.encode!(msg)}}"
+        [check | acc]
+      end)
 
     checks_array = "[" <> Enum.join(Enum.reverse(error_checks), ", ") <> "]"
 

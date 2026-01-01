@@ -341,6 +341,71 @@ defmodule Lavash.Dsl do
   }
 
   # ============================================
+  # Extend Errors - custom error extensions for form fields
+  # ============================================
+
+  @error_entity %Spark.Dsl.Entity{
+    name: :error,
+    target: Lavash.ExtendErrors.Error,
+    args: [:condition, :message],
+    schema: [
+      condition: [
+        type: {:struct, Lavash.Rx},
+        required: true,
+        doc: "Reactive expression that evaluates to true when the error should show"
+      ],
+      message: [
+        type: :string,
+        required: true,
+        doc: "The error message to display"
+      ]
+    ]
+  }
+
+  @extend_errors_entity %Spark.Dsl.Entity{
+    name: :extend_errors,
+    describe: """
+    Extends auto-generated form field errors with custom validation checks.
+
+    Use this to add validation rules beyond what Ash resource constraints provide.
+    Custom errors are merged with Ash-generated errors and visibility is handled
+    automatically based on the field's touched/submitted state.
+
+    ## Examples
+
+        extend_errors :registration_email_errors do
+          error rx(not String.contains?(@registration_params["email"] || "", "@")), "Must contain @"
+        end
+
+    Multiple errors can be added:
+
+        extend_errors :registration_password_errors do
+          error rx(not String.match?(@registration_params["password"] || "", ~r/[A-Z]/)), "Must contain uppercase"
+          error rx(not String.match?(@registration_params["password"] || "", ~r/[0-9]/)), "Must contain number"
+        end
+    """,
+    target: Lavash.ExtendErrors,
+    args: [:field],
+    entities: [
+      errors: [@error_entity]
+    ],
+    schema: [
+      field: [
+        type: :atom,
+        required: true,
+        doc: "The errors field to extend (e.g., :registration_email_errors)"
+      ]
+    ]
+  }
+
+  @extend_errors_section %Spark.Dsl.Section{
+    name: :extend_errors_declarations,
+    top_level?: true,
+    describe: "Custom error extensions for form fields beyond Ash constraints.",
+    entities: [@extend_errors_entity]
+  }
+
+  # ============================================
   # Calculate - reactive computed values (expression form)
   # ============================================
 
@@ -666,6 +731,7 @@ defmodule Lavash.Dsl do
       @states_section,
       @reads_section,
       @forms_section,
+      @extend_errors_section,
       @calculations_section,
       @derives_section,
       @actions_section
