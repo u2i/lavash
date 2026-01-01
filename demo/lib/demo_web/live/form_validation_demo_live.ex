@@ -34,6 +34,10 @@ defmodule DemoWeb.FormValidationDemoLive do
   # Email needs custom validation for @ symbol (not in Ash constraints)
   calculate :email_has_at, rx(String.contains?(@registration_params["email"] || "", "@"))
   calculate :email_valid, rx(@registration_email_valid and @email_has_at)
+  # Show custom @ error only when touched/submitted AND invalid
+  calculate :email_at_error_visible, rx(
+    @registration_email_show_errors and not @email_empty and not @email_has_at
+  )
 
   # For visual feedback: determine if fields are empty vs invalid
   calculate :name_empty, rx(
@@ -146,12 +150,13 @@ defmodule DemoWeb.FormValidationDemoLive do
               placeholder="you@example.com"
             />
             <div class="h-5 mt-1">
-              <%!-- Custom error for email format (not from Ash) --%>
-              <p :if={not @email_empty and not @email_has_at} class="text-red-500 text-sm" data-optimistic-visible="email_invalid">
+              <%!-- Custom error for email format (not from Ash) - respects touched state --%>
+              <p class="text-red-500 text-sm hidden" data-optimistic-visible="email_at_error_visible">
                 Must contain @
               </p>
+              <%!-- Show Ash errors only when @ is present (custom error takes precedence) --%>
               <.field_errors :if={@email_has_at or @email_empty} form={:registration} field={:email} errors={@registration_email_errors} />
-              <.field_success form={:registration} field={:email} valid={@email_valid} message="Valid email" />
+              <.field_success form={:registration} field={:email} valid={@email_valid} valid_field="email_valid" message="Valid email" />
             </div>
           </div>
 

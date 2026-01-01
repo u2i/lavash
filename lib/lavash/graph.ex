@@ -311,6 +311,21 @@ defmodule Lavash.Graph do
           }
         end)
 
+      # Generate a _show_errors field for each attribute
+      # These are always false on server - JS manages them based on touched/submitted state
+      field_show_errors_fields =
+        Enum.map(validations, fn validation ->
+          field_name = :"#{form_name}_#{validation.field}_show_errors"
+
+          %Lavash.Derived.Field{
+            name: field_name,
+            depends_on: [],
+            async: false,
+            optimistic: true,
+            compute: fn _deps -> false end
+          }
+        end)
+
       # Generate an overall _valid field that combines all field validations
       if length(validations) > 0 do
         field_names = Enum.map(validations, & &1.field)
@@ -339,9 +354,9 @@ defmodule Lavash.Graph do
           end
         }
 
-        field_valid_fields ++ field_errors_fields ++ [form_valid_field, form_errors_field]
+        field_valid_fields ++ field_errors_fields ++ field_show_errors_fields ++ [form_valid_field, form_errors_field]
       else
-        field_valid_fields ++ field_errors_fields
+        field_valid_fields ++ field_errors_fields ++ field_show_errors_fields
       end
     else
       []

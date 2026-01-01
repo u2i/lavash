@@ -44,6 +44,13 @@ const LavashOptimistic = {
     // URL fields that should be synced to the browser URL
     this.urlFields = JSON.parse(this.el.dataset.lavashUrlFields || "[]");
 
+    // Form field state tracking (client-side only)
+    // Maps field path -> { touched: boolean }
+    this.fieldState = {};
+
+    // Form submitted state (for showing all errors)
+    this.formSubmitted = false;
+
     // Load generated functions from inline JSON script tag
     this.loadGeneratedFunctions();
 
@@ -67,6 +74,12 @@ const LavashOptimistic = {
 
     // Intercept input/change on elements with data-optimistic-field or data-synced
     this.el.addEventListener("input", this.handleInput.bind(this), true);
+
+    // Track blur events for touched state
+    this.el.addEventListener("blur", this.handleBlur.bind(this), true);
+
+    // Track form submit for formSubmitted state
+    this.el.addEventListener("submit", this.handleFormSubmit.bind(this), true);
   },
 
   /**
@@ -195,6 +208,85 @@ const LavashOptimistic = {
     }, 0);
 
     // Let the normal phx-click propagate to the server
+  },
+
+  handleBlur(e) {
+    // Track touched state when user leaves a synced field
+    const target = e.target.closest("[data-synced], [data-optimistic-field], [data-optimistic-input]");
+    if (!target) return;
+
+    const fieldPath = target.dataset.synced || target.dataset.optimisticField || target.dataset.optimisticInput;
+    if (!fieldPath) return;
+
+    // Mark field as touched
+    if (!this.fieldState[fieldPath]) {
+      this.fieldState[fieldPath] = {};
+    }
+    this.fieldState[fieldPath].touched = true;
+
+    // Update show_errors state
+    this.updateShowErrors(fieldPath);
+
+    // Recompute derives that depend on show_errors (e.g., email_at_error_visible)
+    const parts = fieldPath.split(".");
+    if (parts.length >= 2) {
+      const paramsField = parts[0];
+      const fieldName = parts.slice(1).join("_");
+      const formName = paramsField.replace(/_params$/, "");
+      const showErrorsKey = `${formName}_${fieldName}_show_errors`;
+      this.recomputeDerives([showErrorsKey]);
+    }
+
+    this.updateDOM();
+  },
+
+  handleFormSubmit(e) {
+    // Mark form as submitted - this shows all errors
+    this.formSubmitted = true;
+
+    // Mark all fields as touched
+    for (const path of Object.keys(this.fieldState)) {
+      this.fieldState[path].touched = true;
+    }
+
+    // Also mark fields from synced inputs that may not have been touched
+    const syncedInputs = this.el.querySelectorAll("[data-synced], [data-optimistic-field], [data-optimistic-input]");
+    syncedInputs.forEach(input => {
+      const fieldPath = input.dataset.synced || input.dataset.optimisticField || input.dataset.optimisticInput;
+      if (fieldPath) {
+        if (!this.fieldState[fieldPath]) {
+          this.fieldState[fieldPath] = {};
+        }
+        this.fieldState[fieldPath].touched = true;
+        this.updateShowErrors(fieldPath);
+      }
+    });
+
+    this.updateDOM();
+  },
+
+  /**
+   * Update *_show_errors state for a field based on touched/submitted status.
+   */
+  updateShowErrors(fieldPath) {
+    // Extract form name and field name from path like "registration_params.name"
+    // The show_errors field would be "registration_name_show_errors"
+    const parts = fieldPath.split(".");
+    if (parts.length < 2) return;
+
+    const paramsField = parts[0]; // e.g., "registration_params"
+    const fieldName = parts.slice(1).join("_"); // e.g., "name" or "nested_field"
+
+    // Derive form name from params field (remove "_params" suffix)
+    const formName = paramsField.replace(/_params$/, "");
+
+    // Compute show_errors: touched || formSubmitted
+    const touched = this.fieldState[fieldPath]?.touched || false;
+    const showErrors = touched || this.formSubmitted;
+
+    // Update state
+    const showErrorsKey = `${formName}_${fieldName}_show_errors`;
+    this.state[showErrorsKey] = showErrors;
   },
 
   handleInput(e) {
@@ -505,6 +597,54 @@ const LavashOptimistic = {
       }
     });
 
+    // Update all elements with data-optimistic-errors attribute
+    // Only show errors if the corresponding show_errors field is true (touched || submitted)
+    const errorElements = this.el.querySelectorAll("[data-optimistic-errors]");
+    errorElements.forEach(el => {
+      const errorsField = el.dataset.optimisticErrors; // e.g., "registration_name_errors"
+      const errors = this.state[errorsField] || [];
+
+      // Derive show_errors field name from errors field
+      // "registration_name_errors" -> "registration_name_show_errors"
+      const showErrorsField = errorsField.replace(/_errors$/, "_show_errors");
+      const showErrors = this.state[showErrorsField] ?? false;
+
+      // Clear existing error content
+      el.innerHTML = "";
+
+      // Only render errors if showErrors is true and there are errors
+      if (showErrors && errors.length > 0) {
+        errors.forEach(error => {
+          const p = document.createElement("p");
+          p.className = "text-red-500 text-sm";
+          p.textContent = error;
+          el.appendChild(p);
+        });
+        el.classList.remove("hidden");
+      } else {
+        el.classList.add("hidden");
+      }
+    });
+
+    // Update success indicators - only show if field is touched/submitted AND valid
+    const successElements = this.el.querySelectorAll("[data-optimistic-success]");
+    successElements.forEach(el => {
+      const validField = el.dataset.optimisticSuccess; // e.g., "registration_name_valid" or "email_valid"
+      const isValid = this.state[validField] ?? false;
+
+      // Use explicit show_errors field if provided, otherwise derive from valid field
+      const showErrorsField = el.dataset.optimisticShowErrors ||
+        validField.replace(/_valid$/, "_show_errors");
+      const showErrors = this.state[showErrorsField] ?? false;
+
+      // Show success only if touched/submitted AND valid
+      if (showErrors && isValid) {
+        el.classList.remove("hidden");
+      } else {
+        el.classList.add("hidden");
+      }
+    });
+
     // Notify bound children to refresh from parent state
     this.notifyChildren();
   },
@@ -643,6 +783,9 @@ const LavashOptimistic = {
 
   destroyed() {
     this.el.removeEventListener("click", this.handleClick.bind(this), true);
+    this.el.removeEventListener("input", this.handleInput.bind(this), true);
+    this.el.removeEventListener("blur", this.handleBlur.bind(this), true);
+    this.el.removeEventListener("submit", this.handleFormSubmit.bind(this), true);
   }
 };
 

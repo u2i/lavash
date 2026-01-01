@@ -91,36 +91,35 @@ defmodule Lavash.LiveView.Helpers do
         Map.put(acc, derive.name, value)
       end)
 
+    # Add auto-generated form validation fields BEFORE calculations
+    # Because calculations may reference *_show_errors fields
+    state_map = add_form_validation_fields(state_map, forms)
+
     # Add calculations - compute them from state
     # Handle both legacy 4-tuple and new 7-tuple formats
     # Only include optimistic calculations (optimistic: true)
-    state_map =
-      Enum.reduce(calculations, state_map, fn calc, acc ->
-        {name, _source, ast, _deps, optimistic} =
-          case calc do
-            {name, source, ast, deps} ->
-              {name, source, ast, deps, true}
+    Enum.reduce(calculations, state_map, fn calc, acc ->
+      {name, _source, ast, _deps, optimistic} =
+        case calc do
+          {name, source, ast, deps} ->
+            {name, source, ast, deps, true}
 
-            {name, source, ast, deps, opt, _async, _reads} ->
-              {name, source, ast, deps, opt}
-          end
-
-        # Skip non-optimistic calculations
-        if not optimistic do
-          acc
-        else
-          try do
-            {result, _binding} = Code.eval_quoted(ast, [state: acc], __ENV__)
-            Map.put(acc, name, result)
-          rescue
-            _ -> acc
-          end
+          {name, source, ast, deps, opt, _async, _reads} ->
+            {name, source, ast, deps, opt}
         end
-      end)
 
-    # Add auto-generated form validation fields
-    # These are created by graph.ex expand_forms but also needed in optimistic_state
-    add_form_validation_fields(state_map, forms)
+      # Skip non-optimistic calculations
+      if not optimistic do
+        acc
+      else
+        try do
+          {result, _binding} = Code.eval_quoted(ast, [state: acc], __ENV__)
+          Map.put(acc, name, result)
+        rescue
+          _ -> acc
+        end
+      end
+    end)
   end
 
   # Add auto-generated form validation fields to the state map
@@ -134,7 +133,7 @@ defmodule Lavash.LiveView.Helpers do
       if Code.ensure_loaded?(resource) and function_exported?(resource, :spark_dsl_config, 0) do
         validations = Lavash.Form.ConstraintTranspiler.extract_validations(resource)
 
-        # Add individual field validations and errors
+        # Add individual field validations, errors, and show_errors
         acc =
           Enum.reduce(validations, acc, fn validation, inner_acc ->
             params = Map.get(inner_acc, params_field, %{})
@@ -147,7 +146,11 @@ defmodule Lavash.LiveView.Helpers do
             # Add _errors field (list of error messages)
             errors_field = :"#{form_name}_#{validation.field}_errors"
             errors = compute_errors(validation, params)
-            Map.put(inner_acc, errors_field, errors)
+            inner_acc = Map.put(inner_acc, errors_field, errors)
+
+            # Add _show_errors field (false initially - set by JS on blur/submit)
+            show_errors_field = :"#{form_name}_#{validation.field}_show_errors"
+            Map.put(inner_acc, show_errors_field, false)
           end)
 
         # Add combined form validation and errors
@@ -581,7 +584,7 @@ defmodule Lavash.LiveView.Helpers do
   Renders form field errors with optimistic updates.
 
   This component displays error messages from auto-generated `*_errors` fields.
-  It updates instantly on client-side and shows errors only when field has input.
+  Errors are only shown after the field has been touched (blur) or form submitted.
 
   ## Examples
 
@@ -601,11 +604,10 @@ defmodule Lavash.LiveView.Helpers do
     errors_field = "#{assigns.form}_#{assigns.field}_errors"
     assigns = assign(assigns, :errors_field, errors_field)
 
+    # Errors are hidden initially - JS will show them when touched/submitted
     ~H"""
-    <div data-optimistic-errors={@errors_field} {@rest}>
-      <p :for={error <- @errors} class={@class}>
-        {error}
-      </p>
+    <div data-optimistic-errors={@errors_field} class="hidden" {@rest}>
+      <%!-- Content is managed by JS based on touched/submitted state --%>
     </div>
     """
   end
@@ -614,7 +616,7 @@ defmodule Lavash.LiveView.Helpers do
   Renders form field success indicator with optimistic updates.
 
   This component displays a success message when the field is valid.
-  It updates instantly on client-side.
+  Only shown after the field has been touched (blur) or form submitted.
 
   ## Examples
 
@@ -627,18 +629,27 @@ defmodule Lavash.LiveView.Helpers do
   attr :form, :atom, required: true, doc: "The form name (e.g., :registration)"
   attr :field, :atom, required: true, doc: "The field name (e.g., :name)"
   attr :valid, :boolean, required: true, doc: "The valid state from assigns"
+  attr :valid_field, :string, default: nil, doc: "Custom valid field name for JS (defaults to form_field_valid)"
   attr :message, :string, default: "Looks good!", doc: "Success message to display"
   attr :class, :string, default: "text-green-500 text-sm", doc: "CSS class for success message"
   attr :rest, :global, doc: "Additional HTML attributes"
 
   def field_success(assigns) do
-    valid_field = "#{assigns.form}_#{assigns.field}_valid"
-    assigns = assign(assigns, :valid_field, valid_field)
+    # Use custom valid_field if provided, otherwise derive from form/field
+    valid_field = assigns.valid_field || "#{assigns.form}_#{assigns.field}_valid"
+    # show_errors is always derived from form/field (the touched state of the actual field)
+    show_errors_field = "#{assigns.form}_#{assigns.field}_show_errors"
+    assigns =
+      assigns
+      |> assign(:optimistic_valid_field, valid_field)
+      |> assign(:optimistic_show_errors_field, show_errors_field)
 
+    # Hidden initially - JS will show when touched/submitted AND valid
     ~H"""
     <p
-      class={[@class, if(@valid, do: "", else: "hidden")]}
-      data-optimistic-visible={@valid_field}
+      class={[@class, "hidden"]}
+      data-optimistic-success={@optimistic_valid_field}
+      data-optimistic-show-errors={@optimistic_show_errors_field}
       {@rest}
     >
       {"✓ " <> @message}
