@@ -50,8 +50,6 @@ const colocatedHooks = {
   LavashOptimistic
 }
 
-console.log("[app.js] Registered hooks:", Object.keys(colocatedHooks));
-
 // Lavash state - survives reconnects, lost on page refresh
 let lavashState = {
   // Page-level state (LiveView)
@@ -74,22 +72,24 @@ window.addEventListener("phx:_lavash_component_sync", (e) => {
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 
-const liveSocket = new LiveSocket("/live", Socket, {
+// Note: LavashOptimistic uses getPendingCount() as a method (not a getter) because
+// Phoenix LiveView's ViewHook constructor evaluates all enumerable properties,
+// which would fail if a getter references uninitialized state like this.store
+const liveSocketOpts = {
   longPollFallbackMs: 2500,
   params: () => ({ _csrf_token: csrfToken, _lavash_state: lavashState }),
   hooks: colocatedHooks,
   dom: {
-    // Preserve optimistic DOM when hooks have pending actions
     onBeforeElUpdated(from, to) {
-      // If this element has a Lavash hook with pending actions, preserve its DOM
       const hook = from.__lavash_hook__;
-      if (hook && hook.pendingCount > 0) {
-        // Copy current DOM into the incoming element so LiveView applies preserved content
+      if (hook && hook.getPendingCount() > 0) {
         to.innerHTML = from.innerHTML;
       }
     }
   }
-})
+};
+
+const liveSocket = new LiveSocket("/live", Socket, liveSocketOpts);
 
 // Show progress bar on live navigation and form submits
 topbar.config({barColors: {0: "#29d"}, shadowColor: "rgba(0, 0, 0, .3)"})

@@ -71,9 +71,13 @@ const LavashOptimistic = {
 
   /**
    * Get pending count for onBeforeElUpdated DOM preservation check.
+   * NOTE: This must be a method (not a getter) because Phoenix LiveView's
+   * ViewHook constructor iterates over object properties with for...in
+   * and evaluates all values including getters. At that point, this.store
+   * is undefined, which would cause an error.
    */
-  get pendingCount() {
-    return this.store.getPendingPaths().length;
+  getPendingCount() {
+    return this.store ? this.store.getPendingPaths().length : 0;
   },
 
   loadGeneratedFunctions() {
@@ -210,16 +214,15 @@ const LavashOptimistic = {
     // For form inputs, keep as string to match Elixir params behavior
     const value = target.value;
 
-    console.log("[Lavash] handleInput:", fieldPath, "=", value);
+    // Get or create a SyncedVar for this path (for version/pending tracking)
+    // Use undefined as initial value - will be set properly on first setOptimistic
+    const syncedVar = this.store.get(fieldPath);
 
-    // Get or create a SyncedVar for this exact path
-    const syncedVar = this.store.get(fieldPath, value, (newVal, oldVal, source) => {
-      // Update state when SyncedVar changes
-      this.setStateAtPath(fieldPath, newVal);
-    });
-
-    // Update the SyncedVar
+    // Mark as optimistically updated (this bumps version for pending tracking)
     syncedVar.setOptimistic(value);
+
+    // Update state - this is the source of truth for derives
+    this.setStateAtPath(fieldPath, value);
 
     // Bump client version for stale patch rejection
     this.clientVersion++;
@@ -364,17 +367,12 @@ const LavashOptimistic = {
     // Topologically sort affected derives
     const sorted = this.topologicalSort(affected);
 
-    console.log("[Lavash] recomputeGraph: changedFields=", changedFields, "affected=", affected.slice(0, 5), "sorted=", sorted.slice(0, 5));
-
     // Recompute in dependency order
     for (const name of sorted) {
       const fn = this.fns[name];
       if (fn) {
         try {
           const result = fn(this.state);
-          if (name === "name_valid" || name === "params") {
-            console.log("[Lavash] recomputed", name, "=", result);
-          }
           this.state[name] = result;
         } catch (err) {
           console.error("[Lavash] Error computing", name, err);
@@ -460,7 +458,6 @@ const LavashOptimistic = {
     visibleElements.forEach(el => {
       const fieldName = el.dataset.optimisticVisible;
       const value = this.state[fieldName];
-      console.log("[Lavash] updateDOM visibility:", fieldName, "=", value, "-> hidden:", !value);
       if (value) {
         el.classList.remove("hidden");
       } else {
@@ -515,10 +512,8 @@ const LavashOptimistic = {
   notifyChildren() {
     // Find all child hooks that bind to this parent
     const children = this.el.querySelectorAll("[phx-hook]");
-    console.log("notifyChildren: found", children.length, "children with phx-hook");
     children.forEach(el => {
       const hook = el.__lavash_hook__;
-      console.log("  child:", el.id, "hook:", !!hook, "refreshFromParent:", !!hook?.refreshFromParent);
       if (hook?.refreshFromParent) {
         hook.refreshFromParent(this);
       }
@@ -587,8 +582,6 @@ const LavashOptimistic = {
     const newServerVersion = parseInt(this.el.dataset.lavashVersion || "0", 10);
     const serverState = JSON.parse(this.el.dataset.lavashState || "{}");
 
-    console.log("[Lavash] updated() - server:", newServerVersion, "client:", this.clientVersion, "pending:", this.store.getPendingPaths());
-
     // Update SyncedVars from server state (flattened paths)
     // serverUpdate only updates vars that are not pending
     this.store.serverUpdate(serverState);
@@ -607,8 +600,6 @@ const LavashOptimistic = {
 
     // Recompute derives based on current state
     this.recomputeDerives();
-
-    console.log("[Lavash] After recompute - name_valid:", this.state.name_valid, "params:", this.state.params);
 
     // Update DOM after server patch
     this.updateDOM();
