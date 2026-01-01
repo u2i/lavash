@@ -297,6 +297,20 @@ defmodule Lavash.Graph do
           }
         end)
 
+      # Generate a _errors field for each attribute
+      field_errors_fields =
+        Enum.map(validations, fn validation ->
+          field_name = :"#{form_name}_#{validation.field}_errors"
+
+          %Lavash.Derived.Field{
+            name: field_name,
+            depends_on: [params_dep],
+            async: false,
+            optimistic: true,
+            compute: build_errors_compute(validation, params_dep)
+          }
+        end)
+
       # Generate an overall _valid field that combines all field validations
       if length(validations) > 0 do
         field_names = Enum.map(validations, & &1.field)
@@ -313,9 +327,21 @@ defmodule Lavash.Graph do
           end
         }
 
-        field_valid_fields ++ [form_valid_field]
+        # Generate an overall _errors field that combines all field errors
+        form_errors_field = %Lavash.Derived.Field{
+          name: :"#{form_name}_errors",
+          depends_on: Enum.map(field_names, &:"#{form_name}_#{&1}_errors"),
+          async: false,
+          optimistic: true,
+          compute: fn deps ->
+            field_names
+            |> Enum.flat_map(&(deps[:"#{form_name}_#{&1}_errors"] || []))
+          end
+        }
+
+        field_valid_fields ++ field_errors_fields ++ [form_valid_field, form_errors_field]
       else
-        field_valid_fields
+        field_valid_fields ++ field_errors_fields
       end
     else
       []
@@ -358,6 +384,121 @@ defmodule Lavash.Graph do
       present and constraints_valid
     end
   end
+
+  # Build a compute function for an errors field
+  defp build_errors_compute(validation, params_dep) do
+    field = validation.field
+    field_str = to_string(field)
+    type = validation.type
+    required = validation.required
+    constraints = validation.constraints
+
+    fn deps ->
+      params = Map.get(deps, params_dep, %{})
+      value = Map.get(params, field_str)
+
+      # Don't show errors if field is empty (unless required)
+      is_empty = is_nil(value) or String.length(String.trim(to_string(value))) == 0
+
+      errors = []
+
+      # Required check
+      errors =
+        if required and is_empty do
+          [Lavash.Form.ConstraintTranspiler.error_message(:required, nil) | errors]
+        else
+          errors
+        end
+
+      # Only check other constraints if field is not empty
+      errors =
+        if not is_empty do
+          errors ++ collect_constraint_errors(type, value, constraints)
+        else
+          errors
+        end
+
+      Enum.reverse(errors)
+    end
+  end
+
+  defp collect_constraint_errors(:string, value, constraints) do
+    value_str = to_string(value || "")
+    trimmed = String.trim(value_str)
+    len = String.length(trimmed)
+    errors = []
+
+    errors =
+      case Map.get(constraints, :min_length) do
+        nil -> errors
+        min ->
+          if len < min do
+            [Lavash.Form.ConstraintTranspiler.error_message(:min_length, min) | errors]
+          else
+            errors
+          end
+      end
+
+    errors =
+      case Map.get(constraints, :max_length) do
+        nil -> errors
+        max ->
+          if len > max do
+            [Lavash.Form.ConstraintTranspiler.error_message(:max_length, max) | errors]
+          else
+            errors
+          end
+      end
+
+    errors =
+      case Map.get(constraints, :match) do
+        nil -> errors
+        regex ->
+          if String.match?(value_str, regex) do
+            errors
+          else
+            [Lavash.Form.ConstraintTranspiler.error_message(:match, regex) | errors]
+          end
+      end
+
+    errors
+  end
+
+  defp collect_constraint_errors(:integer, value, constraints) do
+    case Integer.parse(to_string(value || "0")) do
+      {num, ""} ->
+        errors = []
+
+        errors =
+          case Map.get(constraints, :min) do
+            nil -> errors
+            min ->
+              if num < min do
+                [Lavash.Form.ConstraintTranspiler.error_message(:min, min) | errors]
+              else
+                errors
+              end
+          end
+
+        errors =
+          case Map.get(constraints, :max) do
+            nil -> errors
+            max ->
+              if num > max do
+                [Lavash.Form.ConstraintTranspiler.error_message(:max, max) | errors]
+              else
+                errors
+              end
+          end
+
+        errors
+
+      _ ->
+        [Lavash.Form.ConstraintTranspiler.error_message(:match, nil)]
+    end
+  end
+
+  defp collect_constraint_errors(_, _, _), do: []
 
   defp check_string_constraints(value, constraints) do
     value = String.trim(value || "")

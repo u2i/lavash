@@ -134,23 +134,39 @@ defmodule Lavash.LiveView.Helpers do
       if Code.ensure_loaded?(resource) and function_exported?(resource, :spark_dsl_config, 0) do
         validations = Lavash.Form.ConstraintTranspiler.extract_validations(resource)
 
-        # Add individual field validations
+        # Add individual field validations and errors
         acc =
           Enum.reduce(validations, acc, fn validation, inner_acc ->
-            field_name = :"#{form_name}_#{validation.field}_valid"
             params = Map.get(inner_acc, params_field, %{})
-            result = compute_validation(validation, params)
-            Map.put(inner_acc, field_name, result)
+
+            # Add _valid field
+            valid_field = :"#{form_name}_#{validation.field}_valid"
+            is_valid = compute_validation(validation, params)
+            inner_acc = Map.put(inner_acc, valid_field, is_valid)
+
+            # Add _errors field (list of error messages)
+            errors_field = :"#{form_name}_#{validation.field}_errors"
+            errors = compute_errors(validation, params)
+            Map.put(inner_acc, errors_field, errors)
           end)
 
-        # Add combined form validation
+        # Add combined form validation and errors
         if length(validations) > 0 do
           field_names = Enum.map(validations, & &1.field)
+
           all_valid =
             Enum.all?(field_names, fn field ->
               Map.get(acc, :"#{form_name}_#{field}_valid", false)
             end)
-          Map.put(acc, :"#{form_name}_valid", all_valid)
+
+          all_errors =
+            Enum.flat_map(field_names, fn field ->
+              Map.get(acc, :"#{form_name}_#{field}_errors", [])
+            end)
+
+          acc
+          |> Map.put(:"#{form_name}_valid", all_valid)
+          |> Map.put(:"#{form_name}_errors", all_errors)
         else
           acc
         end
@@ -158,6 +174,124 @@ defmodule Lavash.LiveView.Helpers do
         acc
       end
     end)
+  end
+
+  # Compute error messages for a field based on which constraints fail
+  defp compute_errors(validation, params) do
+    field = validation.field
+    field_str = to_string(field)
+    value = Map.get(params, field_str)
+
+    # Don't show errors if field is empty (unless required)
+    is_empty = is_nil(value) or String.length(String.trim(to_string(value))) == 0
+
+    errors = []
+
+    # Required check
+    errors =
+      if validation.required and is_empty do
+        [Lavash.Form.ConstraintTranspiler.error_message(:required, nil) | errors]
+      else
+        errors
+      end
+
+    # Only check other constraints if field is not empty
+    errors =
+      if not is_empty do
+        errors ++ check_constraint_errors(validation, value)
+      else
+        errors
+      end
+
+    Enum.reverse(errors)
+  end
+
+  defp check_constraint_errors(validation, value) do
+    case validation.type do
+      :string -> check_string_errors(value, validation.constraints)
+      :integer -> check_integer_errors(value, validation.constraints)
+      _ -> []
+    end
+  end
+
+  defp check_string_errors(value, constraints) do
+    value_str = to_string(value || "")
+    trimmed = String.trim(value_str)
+    len = String.length(trimmed)
+    errors = []
+
+    errors =
+      case Map.get(constraints, :min_length) do
+        nil -> errors
+        min ->
+          if len < min do
+            [Lavash.Form.ConstraintTranspiler.error_message(:min_length, min) | errors]
+          else
+            errors
+          end
+      end
+
+    errors =
+      case Map.get(constraints, :max_length) do
+        nil -> errors
+        max ->
+          if len > max do
+            [Lavash.Form.ConstraintTranspiler.error_message(:max_length, max) | errors]
+          else
+            errors
+          end
+      end
+
+    errors =
+      case Map.get(constraints, :match) do
+        nil -> errors
+        regex ->
+          if String.match?(value_str, regex) do
+            errors
+          else
+            [Lavash.Form.ConstraintTranspiler.error_message(:match, regex) | errors]
+          end
+      end
+
+    errors
+  end
+
+  defp check_integer_errors(value, constraints) do
+    parsed =
+      case value do
+        nil -> 0
+        "" -> 0
+        v when is_integer(v) -> v
+        v -> String.to_integer(to_string(v))
+      end
+
+    errors = []
+
+    errors =
+      case Map.get(constraints, :min) do
+        nil -> errors
+        min ->
+          if parsed < min do
+            [Lavash.Form.ConstraintTranspiler.error_message(:min, min) | errors]
+          else
+            errors
+          end
+      end
+
+    errors =
+      case Map.get(constraints, :max) do
+        nil -> errors
+        max ->
+          if parsed > max do
+            [Lavash.Form.ConstraintTranspiler.error_message(:max, max) | errors]
+          else
+            errors
+          end
+      end
+
+    errors
+  rescue
+    _ -> [Lavash.Form.ConstraintTranspiler.error_message(:match, nil)]
   end
 
   # Compute a single validation field's value
@@ -441,5 +575,74 @@ defmodule Lavash.LiveView.Helpers do
     |> String.replace("_", " ")
     |> String.split(" ")
     |> Enum.map_join(" ", &String.capitalize/1)
+  end
+
+  @doc """
+  Renders form field errors with optimistic updates.
+
+  This component displays error messages from auto-generated `*_errors` fields.
+  It updates instantly on client-side and shows errors only when field has input.
+
+  ## Examples
+
+      # Basic usage - shows errors from registration_name_errors
+      <.field_errors form={:registration} field={:name} errors={@registration_name_errors} />
+
+      # With custom class
+      <.field_errors form={:registration} field={:age} errors={@registration_age_errors} class="text-sm text-red-500" />
+  """
+  attr :form, :atom, required: true, doc: "The form name (e.g., :registration)"
+  attr :field, :atom, required: true, doc: "The field name (e.g., :name)"
+  attr :errors, :list, required: true, doc: "The errors list from assigns (e.g., @registration_name_errors)"
+  attr :class, :string, default: "text-red-500 text-sm", doc: "CSS class for error messages"
+  attr :rest, :global, doc: "Additional HTML attributes"
+
+  def field_errors(assigns) do
+    errors_field = "#{assigns.form}_#{assigns.field}_errors"
+    assigns = assign(assigns, :errors_field, errors_field)
+
+    ~H"""
+    <div data-optimistic-errors={@errors_field} {@rest}>
+      <p :for={error <- @errors} class={@class}>
+        {error}
+      </p>
+    </div>
+    """
+  end
+
+  @doc """
+  Renders form field success indicator with optimistic updates.
+
+  This component displays a success message when the field is valid.
+  It updates instantly on client-side.
+
+  ## Examples
+
+      # Basic usage
+      <.field_success form={:registration} field={:name} valid={@registration_name_valid} />
+
+      # With custom message
+      <.field_success form={:registration} field={:email} valid={@registration_email_valid} message="Valid email!" />
+  """
+  attr :form, :atom, required: true, doc: "The form name (e.g., :registration)"
+  attr :field, :atom, required: true, doc: "The field name (e.g., :name)"
+  attr :valid, :boolean, required: true, doc: "The valid state from assigns"
+  attr :message, :string, default: "Looks good!", doc: "Success message to display"
+  attr :class, :string, default: "text-green-500 text-sm", doc: "CSS class for success message"
+  attr :rest, :global, doc: "Additional HTML attributes"
+
+  def field_success(assigns) do
+    valid_field = "#{assigns.form}_#{assigns.field}_valid"
+    assigns = assign(assigns, :valid_field, valid_field)
+
+    ~H"""
+    <p
+      class={[@class, if(@valid, do: "", else: "hidden")]}
+      data-optimistic-visible={@valid_field}
+      {@rest}
+    >
+      {"✓ " <> @message}
+    </p>
+    """
   end
 end

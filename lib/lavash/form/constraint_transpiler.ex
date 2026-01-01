@@ -215,4 +215,71 @@ defmodule Lavash.Form.ConstraintTranspiler do
   def error_message(:min, min), do: "must be at least #{min}"
   def error_message(:max, max), do: "must be at most #{max}"
   def error_message(:match, _), do: "is invalid"
+
+  @doc """
+  Returns all error checks with their messages for a validation.
+
+  Each check is a tuple of {check_type, constraint_value, error_message}.
+  Used to generate error list calculations.
+  """
+  def error_checks(validation) do
+    checks = []
+
+    # Required check
+    checks =
+      if validation.required do
+        [{:required, nil, error_message(:required, nil)} | checks]
+      else
+        checks
+      end
+
+    # Type-specific constraints
+    checks = checks ++ constraint_error_checks(validation.type, validation.constraints)
+
+    Enum.reverse(checks)
+  end
+
+  defp constraint_error_checks(:string, constraints) do
+    checks = []
+
+    checks =
+      case Map.get(constraints, :min_length) do
+        nil -> checks
+        min -> [{:min_length, min, error_message(:min_length, min)} | checks]
+      end
+
+    checks =
+      case Map.get(constraints, :max_length) do
+        nil -> checks
+        max -> [{:max_length, max, error_message(:max_length, max)} | checks]
+      end
+
+    checks =
+      case Map.get(constraints, :match) do
+        nil -> checks
+        regex -> [{:match, regex, error_message(:match, regex)} | checks]
+      end
+
+    checks
+  end
+
+  defp constraint_error_checks(:integer, constraints) do
+    checks = []
+
+    checks =
+      case Map.get(constraints, :min) do
+        nil -> checks
+        min -> [{:min, min, error_message(:min, min)} | checks]
+      end
+
+    checks =
+      case Map.get(constraints, :max) do
+        nil -> checks
+        max -> [{:max, max, error_message(:max, max)} | checks]
+      end
+
+    checks
+  end
+
+  defp constraint_error_checks(_, _), do: []
 end

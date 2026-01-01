@@ -77,13 +77,17 @@ defmodule Lavash.Assigns do
     read_fields = safe_get(module, :reads) |> Enum.map(& &1.name)
     form_fields = safe_get(module, :forms) |> Enum.map(& &1.name)
 
+    # Form validation fields (auto-generated from Ash resource constraints)
+    form_validation_fields = collect_form_validation_field_names(module)
+
     # Component-specific fields
     prop_fields = safe_get(module, :props) |> Enum.map(& &1.name)
 
     url_fields ++
       ephemeral_fields ++
       socket_fields ++
-      derived_fields ++ calculation_fields ++ read_fields ++ form_fields ++ prop_fields
+      derived_fields ++ calculation_fields ++ read_fields ++ form_fields ++
+      form_validation_fields ++ prop_fields
   end
 
   # Safely get entities, returning empty list if not defined
@@ -93,6 +97,38 @@ defmodule Lavash.Assigns do
     rescue
       _ -> []
     end
+  end
+
+  # Collect auto-generated form validation field names from Ash resource constraints
+  # These include: form_field_valid, form_field_errors, form_valid, form_errors
+  defp collect_form_validation_field_names(module) do
+    forms = safe_get(module, :forms)
+
+    Enum.flat_map(forms, fn form ->
+      resource = form.resource
+      form_name = form.name
+
+      if Code.ensure_loaded?(resource) and function_exported?(resource, :spark_dsl_config, 0) do
+        validations = Lavash.Form.ConstraintTranspiler.extract_validations(resource)
+        field_names = Enum.map(validations, & &1.field)
+
+        # Generate field-specific validation names
+        field_valid_names = Enum.map(field_names, &:"#{form_name}_#{&1}_valid")
+        field_errors_names = Enum.map(field_names, &:"#{form_name}_#{&1}_errors")
+
+        # Generate combined form-level names
+        form_level_names =
+          if length(validations) > 0 do
+            [:"#{form_name}_valid", :"#{form_name}_errors"]
+          else
+            []
+          end
+
+        field_valid_names ++ field_errors_names ++ form_level_names
+      else
+        []
+      end
+    end)
   end
 
   # Get calculation field names from __lavash_calculations__

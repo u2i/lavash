@@ -5,66 +5,51 @@ defmodule DemoWeb.FormValidationDemoLive do
   This demonstrates:
   - Ash form DSL with `form :registration, Demo.Forms.Registration`
   - Auto-generated client-side validation from Ash resource constraints
+  - Auto-generated error messages from Ash constraints
   - Real-time validation feedback without server round-trips
   - Form submission to Ash resource with ETS data layer
 
   The `form` DSL automatically generates:
   - `registration_name_valid`, `registration_email_valid`, `registration_age_valid`
-  - `registration_valid` (combined)
+  - `registration_name_errors`, `registration_email_errors`, `registration_age_errors`
+  - `registration_valid`, `registration_errors` (combined)
   These are derived from Ash resource constraints (min_length, min, allow_nil?, etc.)
   """
   use Lavash.LiveView
   import Lavash.Rx
+  import Lavash.LiveView.Helpers, only: [field_errors: 1, field_success: 1]
 
   alias Demo.Forms.Registration
 
   # Form params - Lavash automatically populates this from form events
-  # The form DSL expects :<form_name>_params state field
   state :registration_params, :map, from: :ephemeral, default: %{}, optimistic: true
   state :submitted, :boolean, from: :ephemeral, default: false, optimistic: true
 
   # Ash form for server-side validation and submission
-  # This auto-generates: registration_name_valid, registration_email_valid,
-  # registration_age_valid, and registration_valid from Ash constraints
+  # Auto-generates: registration_*_valid, registration_*_errors from Ash constraints
   form :registration, Registration do
     create :register
   end
 
-  # Additional UI-specific calculations (not derivable from Ash constraints)
-  # These show error states that are more nuanced than just valid/invalid
+  # Email needs custom validation for @ symbol (not in Ash constraints)
+  calculate :email_has_at, rx(String.contains?(@registration_params["email"] || "", "@"))
+  calculate :email_valid, rx(@registration_email_valid and @email_has_at)
 
-  # Name: show "too short" only after they've started typing
+  # For visual feedback: determine if fields are empty vs invalid
   calculate :name_empty, rx(
     is_nil(@registration_params["name"]) or
     String.length(String.trim(@registration_params["name"] || "")) == 0
   )
-  calculate :name_too_short, rx(
-    not @name_empty and not @registration_name_valid
-  )
-  # Alias for template compatibility
-  calculate :name_valid, rx(@registration_name_valid)
-
-  # Email: show "invalid" only after they've started typing
-  # Note: Ash only has required constraint, email format check is custom
   calculate :email_empty, rx(
     is_nil(@registration_params["email"]) or
     String.length(String.trim(@registration_params["email"] || "")) == 0
   )
-  calculate :email_has_at, rx(String.contains?(@registration_params["email"] || "", "@"))
-  calculate :email_invalid, rx(not @email_empty and not @email_has_at)
-  # Override the auto-generated one to include @ check
-  calculate :email_valid, rx(@registration_email_valid and @email_has_at)
-
-  # Age: show "under 18" only after they've entered something
   calculate :age_empty, rx(
     is_nil(@registration_params["age"]) or
     String.length(String.trim(@registration_params["age"] || "")) == 0
   )
-  calculate :age_under_18, rx(not @age_empty and not @registration_age_valid)
-  # Alias for template compatibility
-  calculate :age_valid, rx(@registration_age_valid)
 
-  # Overall form validity (uses our custom email_valid)
+  # Form validity - uses custom email_valid
   calculate :form_valid, rx(@registration_name_valid and @email_valid and @registration_age_valid)
   calculate :has_any_input, rx(not @name_empty or not @email_empty or not @age_empty)
   calculate :show_error_hint, rx(@has_any_input and not @form_valid)
@@ -88,18 +73,12 @@ defmodule DemoWeb.FormValidationDemoLive do
     end
   end
 
-  # Note: No manual handle_event needed!
-  # Lavash runtime handles:
-  # - "validate" events: apply_form_bindings updates :registration_params automatically
-  # - "save" event: triggers the :save action which runs `submit :registration`
-  # - "reset" event: triggers the :reset action
-
   def render(assigns) do
     ~H"""
     <div id="form-validation-demo" class="max-w-lg mx-auto mt-10 p-6 bg-white rounded-lg shadow-lg">
       <h1 class="text-2xl font-bold text-center mb-2">Ash Form Validation</h1>
       <p class="text-gray-500 text-center mb-6 text-sm">
-        Ash resource validations + client-side rx() calculations
+        Auto-generated validation from Ash resource constraints
       </p>
 
       <%= if @submitted do %>
@@ -119,7 +98,7 @@ defmodule DemoWeb.FormValidationDemoLive do
           </button>
         </div>
       <% else %>
-        <.form for={@registration} phx-change="validate" phx-submit="save" class="space-y-6">
+        <.form for={@registration} phx-submit="save" class="space-y-6">
           <%!-- Name Field --%>
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">
@@ -134,21 +113,15 @@ defmodule DemoWeb.FormValidationDemoLive do
               data-1p-ignore
               class={"w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 " <>
                 cond do
-                  @name_valid -> "border-green-300 focus:ring-green-500"
+                  @registration_name_valid -> "border-green-300 focus:ring-green-500"
                   @name_empty -> "border-gray-300 focus:ring-blue-500"
                   true -> "border-red-300 focus:ring-red-500"
                 end}
               placeholder="Enter your name"
             />
             <div class="h-5 mt-1">
-              <p class={"text-red-500 text-sm " <> if(@name_too_short, do: "", else: "hidden")} data-optimistic-visible="name_too_short">
-                Name must be at least 2 characters
-              </p>
-              <p class={"text-green-500 text-sm " <> if(@name_valid, do: "", else: "hidden")} data-optimistic-visible="name_valid">
-                ✓ Looks good!
-              </p>
-              <%!-- Ash validation errors --%>
-              <.field_errors :if={@registration[:name].errors != []} errors={@registration[:name].errors} />
+              <.field_errors form={:registration} field={:name} errors={@registration_name_errors} />
+              <.field_success form={:registration} field={:name} valid={@registration_name_valid} />
             </div>
           </div>
 
@@ -173,13 +146,12 @@ defmodule DemoWeb.FormValidationDemoLive do
               placeholder="you@example.com"
             />
             <div class="h-5 mt-1">
-              <p class={"text-red-500 text-sm " <> if(@email_invalid, do: "", else: "hidden")} data-optimistic-visible="email_invalid">
-                Please enter a valid email address
+              <%!-- Custom error for email format (not from Ash) --%>
+              <p :if={not @email_empty and not @email_has_at} class="text-red-500 text-sm" data-optimistic-visible="email_invalid">
+                Must contain @
               </p>
-              <p class={"text-green-500 text-sm " <> if(@email_valid, do: "", else: "hidden")} data-optimistic-visible="email_valid">
-                ✓ Valid email
-              </p>
-              <.field_errors :if={@registration[:email].errors != []} errors={@registration[:email].errors} />
+              <.field_errors :if={@email_has_at or @email_empty} form={:registration} field={:email} errors={@registration_email_errors} />
+              <.field_success form={:registration} field={:email} valid={@email_valid} message="Valid email" />
             </div>
           </div>
 
@@ -199,20 +171,15 @@ defmodule DemoWeb.FormValidationDemoLive do
               max="150"
               class={"w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 " <>
                 cond do
-                  @age_valid -> "border-green-300 focus:ring-green-500"
+                  @registration_age_valid -> "border-green-300 focus:ring-green-500"
                   @age_empty -> "border-gray-300 focus:ring-blue-500"
                   true -> "border-red-300 focus:ring-red-500"
                 end}
               placeholder="18"
             />
             <div class="h-5 mt-1">
-              <p class={"text-red-500 text-sm " <> if(@age_under_18, do: "", else: "hidden")} data-optimistic-visible="age_under_18">
-                You must be 18 or older
-              </p>
-              <p class={"text-green-500 text-sm " <> if(@age_valid, do: "", else: "hidden")} data-optimistic-visible="age_valid">
-                ✓ Age verified
-              </p>
-              <.field_errors :if={@registration[:age].errors != []} errors={@registration[:age].errors} />
+              <.field_errors form={:registration} field={:age} errors={@registration_age_errors} />
+              <.field_success form={:registration} field={:age} valid={@registration_age_valid} message="Age verified" />
             </div>
           </div>
 
@@ -243,9 +210,9 @@ defmodule DemoWeb.FormValidationDemoLive do
         <h3 class="font-semibold text-gray-700 mb-2">How it works</h3>
         <ul class="text-sm text-gray-600 space-y-1">
           <li>• Ash resource with <code class="bg-gray-200 px-1 rounded">constraints</code> (min_length, min, allow_nil?)</li>
-          <li>• <code class="bg-gray-200 px-1 rounded">form :registration, Registration</code> auto-generates validation fields</li>
-          <li>• <code class="bg-gray-200 px-1 rounded">registration_*_valid</code> derived from Ash constraints</li>
-          <li>• Custom <code class="bg-gray-200 px-1 rounded">rx()</code> for UI states (empty, too_short, under_18)</li>
+          <li>• <code class="bg-gray-200 px-1 rounded">form :registration, Registration</code> auto-generates fields</li>
+          <li>• <code class="bg-gray-200 px-1 rounded">registration_*_valid</code> and <code class="bg-gray-200 px-1 rounded">registration_*_errors</code> from constraints</li>
+          <li>• Error messages derived from Ash constraint values</li>
           <li>• Client validates instantly, server validates on submit</li>
         </ul>
       </div>
@@ -258,21 +225,4 @@ defmodule DemoWeb.FormValidationDemoLive do
     </div>
     """
   end
-
-  defp field_errors(assigns) do
-    ~H"""
-    <span :for={error <- @errors} class="text-red-500 text-sm">
-      {translate_error(error)}
-    </span>
-    """
-  end
-
-  defp translate_error({msg, opts}) when is_list(opts) do
-    Enum.reduce(opts, msg, fn {key, value}, acc ->
-      String.replace(acc, "%{#{key}}", fn _ -> to_string(value) end)
-    end)
-  end
-
-  defp translate_error({msg, _opts}), do: to_string(msg)
-  defp translate_error(msg) when is_binary(msg), do: msg
 end
