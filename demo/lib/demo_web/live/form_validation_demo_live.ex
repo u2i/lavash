@@ -48,24 +48,8 @@ defmodule DemoWeb.FormValidationDemoLive do
   calculate :email_has_at, rx(String.contains?(@registration_params["email"] || "", "@"))
   calculate :email_valid, rx(@registration_email_valid and @email_has_at)
 
-  # For visual feedback: determine if fields are empty vs invalid
-  calculate :name_empty, rx(
-    is_nil(@registration_params["name"]) or
-    String.length(String.trim(@registration_params["name"] || "")) == 0
-  )
-  calculate :email_empty, rx(
-    is_nil(@registration_params["email"]) or
-    String.length(String.trim(@registration_params["email"] || "")) == 0
-  )
-  calculate :age_empty, rx(
-    is_nil(@registration_params["age"]) or
-    String.length(String.trim(@registration_params["age"] || "")) == 0
-  )
-
   # Form validity - uses custom email_valid
   calculate :form_valid, rx(@registration_name_valid and @email_valid and @registration_age_valid)
-  calculate :has_any_input, rx(not @name_empty or not @email_empty or not @age_empty)
-  calculate :show_error_hint, rx(@has_any_input and not @form_valid)
 
   actions do
     action :save do
@@ -130,8 +114,8 @@ defmodule DemoWeb.FormValidationDemoLive do
                 data-1p-ignore
                 class={"w-full px-3 py-2 pr-10 border rounded-lg focus:outline-none focus:ring-2 " <>
                   cond do
+                    not @registration_name_show_errors -> "border-gray-300 focus:ring-blue-500"
                     @registration_name_valid -> "border-green-300 focus:ring-green-500"
-                    @name_empty -> "border-gray-300 focus:ring-blue-500"
                     true -> "border-red-300 focus:ring-red-500"
                   end}
                 placeholder="Enter your name"
@@ -159,8 +143,8 @@ defmodule DemoWeb.FormValidationDemoLive do
                 data-1p-ignore
                 class={"w-full px-3 py-2 pr-10 border rounded-lg focus:outline-none focus:ring-2 " <>
                   cond do
+                    not @registration_email_show_errors -> "border-gray-300 focus:ring-blue-500"
                     @email_valid -> "border-green-300 focus:ring-green-500"
-                    @email_empty -> "border-gray-300 focus:ring-blue-500"
                     true -> "border-red-300 focus:ring-red-500"
                   end}
                 placeholder="you@example.com"
@@ -191,8 +175,8 @@ defmodule DemoWeb.FormValidationDemoLive do
                 max="150"
                 class={"w-full px-3 py-2 pr-10 border rounded-lg focus:outline-none focus:ring-2 " <>
                   cond do
+                    not @registration_age_show_errors -> "border-gray-300 focus:ring-blue-500"
                     @registration_age_valid -> "border-green-300 focus:ring-green-500"
-                    @age_empty -> "border-gray-300 focus:ring-blue-500"
                     true -> "border-red-300 focus:ring-red-500"
                   end}
                 placeholder="18"
