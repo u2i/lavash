@@ -220,10 +220,11 @@ defmodule Lavash.Graph do
   end
 
   # Expand form entities into derived-like field structs
+  # Also generates validation calculations from Ash resource constraints
   defp expand_forms(module) do
     forms = module.__lavash__(:forms)
 
-    Enum.map(forms, fn form ->
+    Enum.flat_map(forms, fn form ->
       # Extract dependencies from data and params options
       data_dep = extract_dependency(form.data)
 
@@ -247,7 +248,8 @@ defmodule Lavash.Graph do
       update_action = form.update || :update
       form_name = to_string(form.name)
 
-      %Lavash.Derived.Field{
+      # The form field itself
+      form_field = %Lavash.Derived.Field{
         name: form.name,
         depends_on: depends_on,
         async: false,
@@ -262,7 +264,145 @@ defmodule Lavash.Graph do
           )
         end
       }
+
+      # Generate validation fields from resource constraints
+      validation_fields = expand_form_validations(form, params_dep)
+
+      [form_field | validation_fields]
     end)
+  end
+
+  # Generate validation calculation fields from Ash resource constraints
+  defp expand_form_validations(form, params_dep) do
+    resource = form.resource
+    form_name = form.name
+
+    # Check if resource is available at compile time
+    # (might not be if it's in a different app that isn't compiled yet)
+    if Code.ensure_loaded?(resource) and
+         function_exported?(resource, :spark_dsl_config, 0) do
+      validations = Lavash.Form.ConstraintTranspiler.extract_validations(resource)
+
+      # Generate a _valid field for each attribute
+      field_valid_fields =
+        Enum.map(validations, fn validation ->
+          field_name = :"#{form_name}_#{validation.field}_valid"
+
+          %Lavash.Derived.Field{
+            name: field_name,
+            depends_on: [params_dep],
+            async: false,
+            optimistic: true,
+            compute: build_validation_compute(validation, params_dep)
+          }
+        end)
+
+      # Generate an overall _valid field that combines all field validations
+      if length(validations) > 0 do
+        field_names = Enum.map(validations, & &1.field)
+
+        form_valid_field = %Lavash.Derived.Field{
+          name: :"#{form_name}_valid",
+          depends_on: Enum.map(field_names, &:"#{form_name}_#{&1}_valid"),
+          async: false,
+          optimistic: true,
+          compute: fn deps ->
+            field_names
+            |> Enum.map(&deps[:"#{form_name}_#{&1}_valid"])
+            |> Enum.all?()
+          end
+        }
+
+        field_valid_fields ++ [form_valid_field]
+      else
+        field_valid_fields
+      end
+    else
+      []
+    end
+  end
+
+  # Build a compute function for a validation field
+  defp build_validation_compute(validation, params_dep) do
+    field = validation.field
+    field_str = to_string(field)
+    type = validation.type
+    required = validation.required
+    constraints = validation.constraints
+
+    fn deps ->
+      params = Map.get(deps, params_dep, %{})
+      value = Map.get(params, field_str)
+
+      # Check required
+      present =
+        if required do
+          not is_nil(value) and String.length(String.trim(value || "")) > 0
+        else
+          true
+        end
+
+      # Check type-specific constraints
+      constraints_valid =
+        case type do
+          :string ->
+            check_string_constraints(value, constraints)
+
+          :integer ->
+            check_integer_constraints(value, constraints)
+
+          _ ->
+            true
+        end
+
+      present and constraints_valid
+    end
+  end
+
+  defp check_string_constraints(value, constraints) do
+    value = String.trim(value || "")
+
+    min_ok =
+      case Map.get(constraints, :min_length) do
+        nil -> true
+        min -> String.length(value) >= min
+      end
+
+    max_ok =
+      case Map.get(constraints, :max_length) do
+        nil -> true
+        max -> String.length(value) <= max
+      end
+
+    match_ok =
+      case Map.get(constraints, :match) do
+        nil -> true
+        regex -> String.match?(value, regex)
+      end
+
+    min_ok and max_ok and match_ok
+  end
+
+  defp check_integer_constraints(value, constraints) do
+    case Integer.parse(value || "0") do
+      {num, ""} ->
+        min_ok =
+          case Map.get(constraints, :min) do
+            nil -> true
+            min -> num >= min
+          end
+
+        max_ok =
+          case Map.get(constraints, :max) do
+            nil -> true
+            max -> num <= max
+          end
+
+        min_ok and max_ok
+
+      _ ->
+        false
+    end
   end
 
   # Extract the field name from state(:x), result(:x), or prop(:x) tuples

@@ -94,28 +94,146 @@ defmodule Lavash.LiveView.Helpers do
     # Add calculations - compute them from state
     # Handle both legacy 4-tuple and new 7-tuple formats
     # Only include optimistic calculations (optimistic: true)
-    Enum.reduce(calculations, state_map, fn calc, acc ->
-      {name, _source, ast, _deps, optimistic} =
-        case calc do
-          {name, source, ast, deps} ->
-            {name, source, ast, deps, true}
+    state_map =
+      Enum.reduce(calculations, state_map, fn calc, acc ->
+        {name, _source, ast, _deps, optimistic} =
+          case calc do
+            {name, source, ast, deps} ->
+              {name, source, ast, deps, true}
 
-          {name, source, ast, deps, opt, _async, _reads} ->
-            {name, source, ast, deps, opt}
+            {name, source, ast, deps, opt, _async, _reads} ->
+              {name, source, ast, deps, opt}
+          end
+
+        # Skip non-optimistic calculations
+        if not optimistic do
+          acc
+        else
+          try do
+            {result, _binding} = Code.eval_quoted(ast, [state: acc], __ENV__)
+            Map.put(acc, name, result)
+          rescue
+            _ -> acc
+          end
         end
+      end)
 
-      # Skip non-optimistic calculations
-      if not optimistic do
-        acc
+    # Add auto-generated form validation fields
+    # These are created by graph.ex expand_forms but also needed in optimistic_state
+    add_form_validation_fields(state_map, forms)
+  end
+
+  # Add auto-generated form validation fields to the state map
+  defp add_form_validation_fields(state_map, forms) do
+    Enum.reduce(forms, state_map, fn form, acc ->
+      resource = form.resource
+      form_name = form.name
+      params_field = :"#{form_name}_params"
+
+      # Check if resource has transpilable constraints
+      if Code.ensure_loaded?(resource) and function_exported?(resource, :spark_dsl_config, 0) do
+        validations = Lavash.Form.ConstraintTranspiler.extract_validations(resource)
+
+        # Add individual field validations
+        acc =
+          Enum.reduce(validations, acc, fn validation, inner_acc ->
+            field_name = :"#{form_name}_#{validation.field}_valid"
+            params = Map.get(inner_acc, params_field, %{})
+            result = compute_validation(validation, params)
+            Map.put(inner_acc, field_name, result)
+          end)
+
+        # Add combined form validation
+        if length(validations) > 0 do
+          field_names = Enum.map(validations, & &1.field)
+          all_valid =
+            Enum.all?(field_names, fn field ->
+              Map.get(acc, :"#{form_name}_#{field}_valid", false)
+            end)
+          Map.put(acc, :"#{form_name}_valid", all_valid)
+        else
+          acc
+        end
       else
-        try do
-          {result, _binding} = Code.eval_quoted(ast, [state: acc], __ENV__)
-          Map.put(acc, name, result)
-        rescue
-          _ -> acc
-        end
+        acc
       end
     end)
+  end
+
+  # Compute a single validation field's value
+  defp compute_validation(validation, params) do
+    field = validation.field
+    field_str = to_string(field)
+    value = Map.get(params, field_str)
+
+    # Required check
+    required_ok =
+      if validation.required do
+        not is_nil(value) and String.length(String.trim(to_string(value))) > 0
+      else
+        true
+      end
+
+    # Type-specific constraint checks
+    constraint_ok =
+      case validation.type do
+        :string -> check_string_constraints(value, validation.constraints)
+        :integer -> check_integer_constraints(value, validation.constraints)
+        _ -> true
+      end
+
+    required_ok and constraint_ok
+  end
+
+  defp check_string_constraints(value, constraints) do
+    value_str = to_string(value || "")
+    trimmed = String.trim(value_str)
+
+    min_ok =
+      case Map.get(constraints, :min_length) do
+        nil -> true
+        min -> String.length(trimmed) >= min
+      end
+
+    max_ok =
+      case Map.get(constraints, :max_length) do
+        nil -> true
+        max -> String.length(trimmed) <= max
+      end
+
+    match_ok =
+      case Map.get(constraints, :match) do
+        nil -> true
+        regex -> String.match?(value_str, regex)
+      end
+
+    min_ok and max_ok and match_ok
+  end
+
+  defp check_integer_constraints(value, constraints) do
+    parsed =
+      case value do
+        nil -> 0
+        "" -> 0
+        v when is_integer(v) -> v
+        v -> String.to_integer(to_string(v))
+      end
+
+    min_ok =
+      case Map.get(constraints, :min) do
+        nil -> true
+        min -> parsed >= min
+      end
+
+    max_ok =
+      case Map.get(constraints, :max) do
+        nil -> true
+        max -> parsed <= max
+      end
+
+    min_ok and max_ok
+  rescue
+    _ -> false
   end
 
   defp get_calculations(module) do

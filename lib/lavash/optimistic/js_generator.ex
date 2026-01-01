@@ -44,6 +44,7 @@ defmodule Lavash.Optimistic.JsGenerator do
     multi_selects = get_multi_selects(module)
     toggles = get_toggles(module)
     calculations = get_calculations(module)
+    form_validations = get_form_validations(module)
 
     action_fns = Enum.map(actions, &generate_action_js/1) |> Enum.filter(& &1)
 
@@ -58,8 +59,11 @@ defmodule Lavash.Optimistic.JsGenerator do
     # Generate JS for calculate macro derives
     calculation_fns = Enum.map(calculations, &generate_calculation_js/1) |> Enum.filter(& &1)
 
+    # Generate JS for form validation derives
+    form_validation_fns = Enum.map(form_validations, &generate_form_validation_js/1)
+
     # Build the JS object
-    fns = action_fns ++ multi_select_action_fns ++ multi_select_derive_fns ++ toggle_action_fns ++ toggle_derive_fns ++ calculation_fns
+    fns = action_fns ++ multi_select_action_fns ++ multi_select_derive_fns ++ toggle_action_fns ++ toggle_derive_fns ++ calculation_fns ++ form_validation_fns
 
     # Add derives metadata for the hook (includes explicit and auto-generated)
     explicit_derive_names = Enum.map(derives, & &1.name) |> Enum.map(&to_string/1)
@@ -69,14 +73,15 @@ defmodule Lavash.Optimistic.JsGenerator do
       {name, _, _, _} = normalize_calculation(calc)
       to_string(name)
     end)
-    derive_names = explicit_derive_names ++ multi_select_derive_names ++ toggle_derive_names ++ calculation_derive_names
+    form_validation_derive_names = Enum.map(form_validations, fn {name, _, _} -> to_string(name) end)
+    derive_names = explicit_derive_names ++ multi_select_derive_names ++ toggle_derive_names ++ calculation_derive_names ++ form_validation_derive_names
 
     # Add optimistic field names
     field_names = Enum.map(optimistic_fields, & &1.name) |> Enum.map(&to_string/1)
 
     # Build graph metadata for each derive
     # Format: { name: { deps: [...], fn: function }, ... }
-    graph_entries = build_graph_entries(derives, multi_selects, toggles, calculations)
+    graph_entries = build_graph_entries(derives, multi_selects, toggles, calculations, form_validations)
 
     if fns == [] and derive_names == [] do
       nil
@@ -98,7 +103,7 @@ defmodule Lavash.Optimistic.JsGenerator do
   end
 
   # Build graph entries with dependency information for each derive
-  defp build_graph_entries(derives, multi_selects, toggles, calculations) do
+  defp build_graph_entries(derives, multi_selects, toggles, calculations, form_validations) do
     # Explicit derives from DSL
     explicit_entries =
       Enum.map(derives, fn derive ->
@@ -129,7 +134,21 @@ defmodule Lavash.Optimistic.JsGenerator do
         {to_string(name), %{deps: normalized_deps}}
       end)
 
-    (explicit_entries ++ multi_select_entries ++ toggle_entries ++ calculation_entries)
+    # Form validation derives depend on their params field
+    # Combined form validation derives depend on individual field validations
+    form_validation_entries =
+      Enum.map(form_validations, fn
+        {name, _params_field, {:combined, form_name, field_names}} ->
+          # Combined validation depends on individual field validations
+          deps = Enum.map(field_names, fn field -> "#{form_name}_#{field}_valid" end)
+          {to_string(name), %{deps: deps}}
+
+        {name, params_field, _validation} ->
+          # Individual field validation depends on params
+          {to_string(name), %{deps: [to_string(params_field)]}}
+      end)
+
+    (explicit_entries ++ multi_select_entries ++ toggle_entries ++ calculation_entries ++ form_validation_entries)
     |> Map.new()
   end
 
@@ -472,5 +491,157 @@ defmodule Lavash.Optimistic.JsGenerator do
         return state.#{field} ? ACTIVE : INACTIVE;
       }
     """
+  end
+
+  # ============================================
+  # Form validation support
+  # ============================================
+
+  # Get form validations from module's forms and Ash resource constraints
+  # Returns list of {derive_name, params_field, validation} tuples
+  defp get_form_validations(module) do
+    try do
+      forms = module.__lavash__(:forms)
+
+      Enum.flat_map(forms, fn form ->
+        resource = form.resource
+        form_name = form.name
+        params_field = :"#{form_name}_params"
+
+        if Code.ensure_loaded?(resource) and
+             function_exported?(resource, :spark_dsl_config, 0) do
+          validations = Lavash.Form.ConstraintTranspiler.extract_validations(resource)
+
+          # Generate per-field validation derives
+          field_derives =
+            Enum.map(validations, fn validation ->
+              derive_name = :"#{form_name}_#{validation.field}_valid"
+              {derive_name, params_field, validation}
+            end)
+
+          # Generate overall form_valid derive if we have field validations
+          if length(validations) > 0 do
+            field_names = Enum.map(validations, & &1.field)
+            form_valid = {:"#{form_name}_valid", params_field, {:combined, form_name, field_names}}
+            field_derives ++ [form_valid]
+          else
+            field_derives
+          end
+        else
+          []
+        end
+      end)
+    rescue
+      _ -> []
+    end
+  end
+
+  # Generate JS for a form field validation derive
+  defp generate_form_validation_js({name, _params_field, {:combined, form_name, field_names}}) do
+    # Combined form validity - AND all individual field validations
+    checks =
+      field_names
+      |> Enum.map(fn field -> "state.#{form_name}_#{field}_valid" end)
+      |> Enum.join(" && ")
+
+    """
+      #{name}(state) {
+        return #{checks};
+      }
+    """
+  end
+
+  defp generate_form_validation_js({name, params_field, validation}) do
+    field = validation.field
+    field_str = to_string(field)
+    required = validation.required
+    type = validation.type
+    constraints = validation.constraints
+
+    # Build JS validation expression
+    value_expr = "state.#{params_field}?.[#{Jason.encode!(field_str)}]"
+
+    checks = []
+
+    # Required check: not null/undefined and not empty after trim
+    checks =
+      if required do
+        check = "(#{value_expr} != null && String(#{value_expr}).trim().length > 0)"
+        [check | checks]
+      else
+        checks
+      end
+
+    # Type-specific constraint checks
+    checks =
+      case type do
+        :string ->
+          build_string_constraint_checks(value_expr, constraints, checks)
+
+        :integer ->
+          build_integer_constraint_checks(value_expr, constraints, checks)
+
+        _ ->
+          checks
+      end
+
+    # Combine all checks with &&
+    expr =
+      case checks do
+        [] -> "true"
+        [single] -> single
+        multiple -> Enum.join(Enum.reverse(multiple), " && ")
+      end
+
+    """
+      #{name}(state) {
+        return #{expr};
+      }
+    """
+  end
+
+  defp build_string_constraint_checks(value_expr, constraints, checks) do
+    checks =
+      case Map.get(constraints, :min_length) do
+        nil -> checks
+        min -> ["(String(#{value_expr} || '').trim().length >= #{min})" | checks]
+      end
+
+    checks =
+      case Map.get(constraints, :max_length) do
+        nil -> checks
+        max -> ["(String(#{value_expr} || '').trim().length <= #{max})" | checks]
+      end
+
+    checks =
+      case Map.get(constraints, :match) do
+        nil ->
+          checks
+
+        regex ->
+          # Convert Elixir regex to JS regex pattern
+          pattern = Regex.source(regex)
+          ["(#{Jason.encode!(pattern)}).match(#{value_expr} || '')" | checks]
+      end
+
+    checks
+  end
+
+  defp build_integer_constraint_checks(value_expr, constraints, checks) do
+    parsed = "parseInt(#{value_expr} || '0', 10)"
+
+    checks =
+      case Map.get(constraints, :min) do
+        nil -> checks
+        min -> ["(#{parsed} >= #{min})" | checks]
+      end
+
+    checks =
+      case Map.get(constraints, :max) do
+        nil -> checks
+        max -> ["(#{parsed} <= #{max})" | checks]
+      end
+
+    checks
   end
 end

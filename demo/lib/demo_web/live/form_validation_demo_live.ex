@@ -4,9 +4,14 @@ defmodule DemoWeb.FormValidationDemoLive do
 
   This demonstrates:
   - Ash form DSL with `form :registration, Demo.Forms.Registration`
-  - Client-side validation via `rx()` calculations (transpiled to JS)
+  - Auto-generated client-side validation from Ash resource constraints
   - Real-time validation feedback without server round-trips
   - Form submission to Ash resource with ETS data layer
+
+  The `form` DSL automatically generates:
+  - `registration_name_valid`, `registration_email_valid`, `registration_age_valid`
+  - `registration_valid` (combined)
+  These are derived from Ash resource constraints (min_length, min, allow_nil?, etc.)
   """
   use Lavash.LiveView
   import Lavash.Rx
@@ -19,55 +24,49 @@ defmodule DemoWeb.FormValidationDemoLive do
   state :submitted, :boolean, from: :ephemeral, default: false, optimistic: true
 
   # Ash form for server-side validation and submission
+  # This auto-generates: registration_name_valid, registration_email_valid,
+  # registration_age_valid, and registration_valid from Ash constraints
   form :registration, Registration do
     create :register
   end
 
-  # Client-side validations using rx() - transpiled to JavaScript
-  # These mirror the Ash resource validations for instant feedback
+  # Additional UI-specific calculations (not derivable from Ash constraints)
+  # These show error states that are more nuanced than just valid/invalid
 
-  # Name validation (min 2 chars - matches Ash constraint)
-  calculate :name_value, rx(@registration_params["name"] || "")
-  calculate :name_empty, rx(is_nil(@registration_params["name"]) or String.length(String.trim(@registration_params["name"] || "")) == 0)
-  calculate :name_too_short, rx(not is_nil(@registration_params["name"]) and String.length(String.trim(@registration_params["name"] || "")) > 0 and String.length(String.trim(@registration_params["name"] || "")) < 2)
-  calculate :name_valid, rx(String.length(String.trim(@registration_params["name"] || "")) >= 2)
+  # Name: show "too short" only after they've started typing
+  calculate :name_empty, rx(
+    is_nil(@registration_params["name"]) or
+    String.length(String.trim(@registration_params["name"] || "")) == 0
+  )
+  calculate :name_too_short, rx(
+    not @name_empty and not @registration_name_valid
+  )
+  # Alias for template compatibility
+  calculate :name_valid, rx(@registration_name_valid)
 
-  # Email validation (must contain @ - matches Ash validation)
-  calculate :email_value, rx(@registration_params["email"] || "")
-  calculate :email_empty, rx(is_nil(@registration_params["email"]) or String.length(String.trim(@registration_params["email"] || "")) == 0)
-  calculate :email_invalid, rx(
-    not is_nil(@registration_params["email"]) and
-    String.length(String.trim(@registration_params["email"] || "")) > 0 and
-    not String.contains?(@registration_params["email"] || "", "@")
+  # Email: show "invalid" only after they've started typing
+  # Note: Ash only has required constraint, email format check is custom
+  calculate :email_empty, rx(
+    is_nil(@registration_params["email"]) or
+    String.length(String.trim(@registration_params["email"] || "")) == 0
   )
-  calculate :email_valid, rx(String.contains?(@registration_params["email"] || "", "@"))
+  calculate :email_has_at, rx(String.contains?(@registration_params["email"] || "", "@"))
+  calculate :email_invalid, rx(not @email_empty and not @email_has_at)
+  # Override the auto-generated one to include @ check
+  calculate :email_valid, rx(@registration_email_valid and @email_has_at)
 
-  # Age validation (must be 18+ - matches Ash constraint)
-  calculate :age_value, rx(@registration_params["age"] || "")
-  calculate :age_empty, rx(is_nil(@registration_params["age"]) or String.length(String.trim(@registration_params["age"] || "")) == 0)
-  calculate :age_number, rx(
-    if is_nil(@registration_params["age"]) or String.length(String.trim(@registration_params["age"] || "")) == 0,
-      do: nil,
-      else: String.to_integer(@registration_params["age"] || "0")
+  # Age: show "under 18" only after they've entered something
+  calculate :age_empty, rx(
+    is_nil(@registration_params["age"]) or
+    String.length(String.trim(@registration_params["age"] || "")) == 0
   )
-  calculate :age_under_18, rx(
-    not is_nil(@registration_params["age"]) and
-    String.length(String.trim(@registration_params["age"] || "")) > 0 and
-    String.to_integer(@registration_params["age"] || "0") < 18
-  )
-  calculate :age_valid, rx(
-    not is_nil(@registration_params["age"]) and
-    String.length(String.trim(@registration_params["age"] || "")) > 0 and
-    String.to_integer(@registration_params["age"] || "0") >= 18
-  )
+  calculate :age_under_18, rx(not @age_empty and not @registration_age_valid)
+  # Alias for template compatibility
+  calculate :age_valid, rx(@registration_age_valid)
 
-  # Overall form validity
-  calculate :form_valid, rx(@name_valid and @email_valid and @age_valid)
-  calculate :has_any_input, rx(
-    String.length(String.trim(@registration_params["name"] || "")) > 0 or
-    String.length(String.trim(@registration_params["email"] || "")) > 0 or
-    String.length(String.trim(@registration_params["age"] || "")) > 0
-  )
+  # Overall form validity (uses our custom email_valid)
+  calculate :form_valid, rx(@registration_name_valid and @email_valid and @registration_age_valid)
+  calculate :has_any_input, rx(not @name_empty or not @email_empty or not @age_empty)
   calculate :show_error_hint, rx(@has_any_input and not @form_valid)
 
   actions do
@@ -243,11 +242,11 @@ defmodule DemoWeb.FormValidationDemoLive do
       <div class="mt-8 p-4 bg-gray-50 rounded-lg">
         <h3 class="font-semibold text-gray-700 mb-2">How it works</h3>
         <ul class="text-sm text-gray-600 space-y-1">
-          <li>• Ash resource with <code class="bg-gray-200 px-1 rounded">constraints</code> and <code class="bg-gray-200 px-1 rounded">validations</code></li>
-          <li>• <code class="bg-gray-200 px-1 rounded">form :registration, Registration</code> creates AshPhoenix.Form</li>
-          <li>• <code class="bg-gray-200 px-1 rounded">rx()</code> calculations mirror Ash validations for client-side</li>
+          <li>• Ash resource with <code class="bg-gray-200 px-1 rounded">constraints</code> (min_length, min, allow_nil?)</li>
+          <li>• <code class="bg-gray-200 px-1 rounded">form :registration, Registration</code> auto-generates validation fields</li>
+          <li>• <code class="bg-gray-200 px-1 rounded">registration_*_valid</code> derived from Ash constraints</li>
+          <li>• Custom <code class="bg-gray-200 px-1 rounded">rx()</code> for UI states (empty, too_short, under_18)</li>
           <li>• Client validates instantly, server validates on submit</li>
-          <li>• ETS data layer - forms stored in memory (not persisted)</li>
         </ul>
       </div>
 
