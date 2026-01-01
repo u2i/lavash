@@ -33,16 +33,15 @@ import {hooks as lavashHooks} from "phoenix-colocated/lavash"
 // Colocated JS (non-hook exports) from this app - import directly by module
 import counterOptimistic from "phoenix-colocated/demo/DemoWeb.CounterLive/46_tigxgsumzfejan3k2k4c4n3r4m.js"
 import storefrontOptimistic from "phoenix-colocated/demo/DemoWeb.Storefront.ProductsLive/115_tigxgsumzfejan3k2k4c4n3r4m.js"
-import formValidationOptimistic from "phoenix-colocated/demo/DemoWeb.FormValidationDemoLive/102_tigxgsumzfejan3k2k4c4n3r4m.js"
 // Lavash optimistic hook for URL sync
 import {LavashOptimistic} from "./lavash_optimistic"
 
 // Register optimistic functions from colocated JS
+// Note: FormValidationDemoLive uses auto-generated JS from calculate/rx() - no manual registration needed
 window.Lavash = window.Lavash || {};
 window.Lavash.optimistic = window.Lavash.optimistic || {};
 window.Lavash.optimistic["DemoWeb.CounterLive"] = counterOptimistic;
 window.Lavash.optimistic["DemoWeb.Storefront.ProductsLive"] = storefrontOptimistic;
-window.Lavash.optimistic["DemoWeb.FormValidationDemoLive"] = formValidationOptimistic;
 
 // Merge hooks from Lavash library and app-specific hooks
 const colocatedHooks = {
@@ -81,9 +80,17 @@ const liveSocketOpts = {
   hooks: colocatedHooks,
   dom: {
     onBeforeElUpdated(from, to) {
-      const hook = from.__lavash_hook__;
-      if (hook && hook.getPendingCount() > 0) {
-        to.innerHTML = from.innerHTML;
+      // For inputs with data-synced, check if they have pending changes
+      // and preserve the value attribute if so
+      if (from.matches && from.matches("[data-synced]")) {
+        const fieldPath = from.dataset.synced;
+        // Find the hook instance by walking up to the lavash root
+        const hookEl = from.closest("[phx-hook='LavashOptimistic']");
+        const hook = hookEl?.__lavash_hook__;
+        if (hook && hook.store && hook.store.isPending(fieldPath)) {
+          // Preserve the input value - don't let server overwrite it
+          to.value = from.value;
+        }
       }
     }
   }

@@ -161,6 +161,13 @@ export class SyncedVarStore {
   }
 
   /**
+   * Check if a specific path has pending changes.
+   */
+  isPending(path) {
+    return this.vars[path]?.isPending ?? false;
+  }
+
+  /**
    * Build a nested state object from all SyncedVar values.
    * e.g., {"params.name": "Alice", "params.age": "25"} -> {params: {name: "Alice", age: "25"}}
    */
