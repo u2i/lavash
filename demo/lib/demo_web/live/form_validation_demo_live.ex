@@ -200,8 +200,14 @@ defmodule DemoWeb.FormValidationDemoLive do
           <button
             type="submit"
             disabled={not @form_valid}
-            class={"btn w-full " <> if(@form_valid, do: "btn-primary", else: "btn-disabled")}
-            data-lavash-toggle="form_valid|btn-primary|btn-disabled"
+            data-lavash-enabled="form_valid"
+            class={"w-full py-3 px-4 rounded-lg font-semibold transition-colors " <>
+              if @form_valid do
+                "bg-primary text-primary-content hover:opacity-90"
+              else
+                "bg-base-300 text-base-content opacity-50 cursor-not-allowed"
+              end}
+            data-lavash-toggle="form_valid|bg-primary text-primary-content hover:opacity-90|bg-base-300 text-base-content opacity-50 cursor-not-allowed"
           >
             Register
           </button>
