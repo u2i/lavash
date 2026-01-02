@@ -81,8 +81,8 @@ defmodule DemoWeb.ProductEditLive do
               name={form[:name].name}
               value={form[:name].value}
               class={[
-                "w-full px-3 py-2 border rounded-md",
-                form[:name].errors != [] && "border-red-500"
+                "input input-bordered w-full",
+                form[:name].errors != [] && "input-error"
               ]}
             />
             <.error :for={error <- form[:name].errors}>{translate_error(error)}</.error>
@@ -95,8 +95,8 @@ defmodule DemoWeb.ProductEditLive do
               name={form[:category].name}
               value={form[:category].value}
               class={[
-                "w-full px-3 py-2 border rounded-md",
-                form[:category].errors != [] && "border-red-500"
+                "input input-bordered w-full",
+                form[:category].errors != [] && "input-error"
               ]}
             />
             <.error :for={error <- form[:category].errors}>{translate_error(error)}</.error>
@@ -110,8 +110,8 @@ defmodule DemoWeb.ProductEditLive do
               name={form[:price].name}
               value={form[:price].value}
               class={[
-                "w-full px-3 py-2 border rounded-md",
-                form[:price].errors != [] && "border-red-500"
+                "input input-bordered w-full",
+                form[:price].errors != [] && "input-error"
               ]}
             />
             <.error :for={error <- form[:price].errors}>{translate_error(error)}</.error>
@@ -126,7 +126,7 @@ defmodule DemoWeb.ProductEditLive do
               max="5"
               name={form[:rating].name}
               value={form[:rating].value}
-              class="w-full px-3 py-2 border rounded-md"
+              class="input input-bordered w-full"
             />
           </div>
 
@@ -136,7 +136,7 @@ defmodule DemoWeb.ProductEditLive do
               name={form[:in_stock].name}
               value="true"
               checked={form[:in_stock].value == true}
-              class="rounded border-gray-300"
+              class="checkbox"
             />
             <label class="text-sm font-medium text-gray-700">In Stock</label>
           </div>
@@ -145,11 +145,7 @@ defmodule DemoWeb.ProductEditLive do
             <button
               type="submit"
               disabled={@submitting}
-              class={[
-                "px-4 py-2 rounded-md text-white font-medium",
-                @submitting && "bg-gray-400 cursor-not-allowed",
-                !@submitting && "bg-indigo-600 hover:bg-indigo-700"
-              ]}
+              class={["btn btn-primary", @submitting && "btn-disabled"]}
             >
               {cond do
                 @submitting -> "Saving..."
@@ -157,10 +153,7 @@ defmodule DemoWeb.ProductEditLive do
                 true -> "Save Changes"
               end}
             </button>
-            <a
-              href="/products"
-              class="px-4 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50"
-            >
+            <a href="/products" class="btn btn-outline">
               Cancel
             </a>
           </div>
@@ -199,7 +192,7 @@ defmodule DemoWeb.ProductEditLive do
 
   defp error(assigns) do
     ~H"""
-    <p class="text-red-600 text-sm mt-1">{render_slot(@inner_block)}</p>
+    <p class="text-error text-sm mt-1">{render_slot(@inner_block)}</p>
     """
   end
 end

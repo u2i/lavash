@@ -87,17 +87,17 @@ defmodule DemoWeb.FormValidationDemoLive do
     </p>
 
     <%= if @submitted do %>
-      <div class="bg-green-50 border border-green-200 rounded-lg p-6 text-center">
-        <div class="text-green-600 text-5xl mb-4">✓</div>
-        <h2 class="text-xl font-semibold text-green-800 mb-2">Registration Complete!</h2>
-        <div class="text-gray-600 space-y-1">
+      <div class="alert alert-success flex-col text-center">
+        <div class="text-5xl mb-4">✓</div>
+        <h2 class="text-xl font-semibold mb-2">Registration Complete!</h2>
+        <div class="space-y-1">
           <p><strong>Name:</strong> {@registration_params["name"]}</p>
           <p><strong>Email:</strong> {@registration_params["email"]}</p>
           <p><strong>Age:</strong> {@registration_params["age"]}</p>
         </div>
         <button
           phx-click="reset"
-          class="mt-4 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+          class="btn btn-success mt-4"
         >
           Start Over
         </button>
@@ -110,7 +110,7 @@ defmodule DemoWeb.FormValidationDemoLive do
         <%!-- Name Field - auto-injected: data-lavash-bind, data-lavash-form, data-lavash-field --%>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">
-            Name <span class="text-red-500">*</span>
+            Name <span class="text-error">*</span>
           </label>
           <div class="relative">
             <input
@@ -119,11 +119,11 @@ defmodule DemoWeb.FormValidationDemoLive do
               value={@registration[:name].value || ""}
               autocomplete="off"
               data-1p-ignore
-              class={"w-full px-3 py-2 pr-10 border rounded-lg focus:outline-none focus:ring-2 " <>
+              class={"input input-bordered w-full pr-10 " <>
                 cond do
-                  !assigns[:registration_name_show_errors] -> "border-gray-300 focus:ring-blue-500"
-                  @registration_name_valid -> "border-green-300 focus:ring-green-500"
-                  true -> "border-red-300 focus:ring-red-500"
+                  !assigns[:registration_name_show_errors] -> ""
+                  @registration_name_valid -> "input-success"
+                  true -> "input-error"
                 end}
               placeholder="Enter your name"
             />
@@ -138,7 +138,7 @@ defmodule DemoWeb.FormValidationDemoLive do
         <%!-- Email Field - auto-injected: bind/form/field; manual: data-lavash-valid override --%>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">
-            Email <span class="text-red-500">*</span>
+            Email <span class="text-error">*</span>
           </label>
           <div class="relative">
             <input
@@ -148,11 +148,11 @@ defmodule DemoWeb.FormValidationDemoLive do
               data-lavash-valid="email_valid"
               autocomplete="off"
               data-1p-ignore
-              class={"w-full px-3 py-2 pr-10 border rounded-lg focus:outline-none focus:ring-2 " <>
+              class={"input input-bordered w-full pr-10 " <>
                 cond do
-                  !assigns[:registration_email_show_errors] -> "border-gray-300 focus:ring-blue-500"
-                  @email_valid -> "border-green-300 focus:ring-green-500"
-                  true -> "border-red-300 focus:ring-red-500"
+                  !assigns[:registration_email_show_errors] -> ""
+                  @email_valid -> "input-success"
+                  true -> "input-error"
                 end}
               placeholder="you@example.com"
             />
@@ -168,7 +168,7 @@ defmodule DemoWeb.FormValidationDemoLive do
         <%!-- Age Field - auto-injected: data-lavash-bind, data-lavash-form, data-lavash-field --%>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">
-            Age <span class="text-red-500">*</span>
+            Age <span class="text-error">*</span>
           </label>
           <div class="relative">
             <input
@@ -179,11 +179,11 @@ defmodule DemoWeb.FormValidationDemoLive do
               data-1p-ignore
               min="0"
               max="150"
-              class={"w-full px-3 py-2 pr-10 border rounded-lg focus:outline-none focus:ring-2 " <>
+              class={"input input-bordered w-full pr-10 " <>
                 cond do
-                  !assigns[:registration_age_show_errors] -> "border-gray-300 focus:ring-blue-500"
-                  @registration_age_valid -> "border-green-300 focus:ring-green-500"
-                  true -> "border-red-300 focus:ring-red-500"
+                  !assigns[:registration_age_show_errors] -> ""
+                  @registration_age_valid -> "input-success"
+                  true -> "input-error"
                 end}
               placeholder="18"
             />
@@ -200,13 +200,8 @@ defmodule DemoWeb.FormValidationDemoLive do
           <button
             type="submit"
             disabled={not @form_valid}
-            class={"w-full py-3 px-4 rounded-lg font-semibold transition-colors " <>
-              if @form_valid do
-                "bg-blue-600 text-white hover:bg-blue-700 cursor-pointer"
-              else
-                "bg-gray-300 text-gray-500 cursor-not-allowed"
-              end}
-            data-lavash-toggle="form_valid|bg-blue-600 text-white hover:bg-blue-700 cursor-pointer|bg-gray-300 text-gray-500 cursor-not-allowed"
+            class={"btn w-full " <> if(@form_valid, do: "btn-primary", else: "btn-disabled")}
+            data-lavash-toggle="form_valid|btn-primary|btn-disabled"
           >
             Register
           </button>

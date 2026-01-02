@@ -135,7 +135,7 @@ defmodule DemoWeb.ProductsSocketLive do
           <button
             :if={@has_filters}
             phx-click="clear_filters"
-            class="text-sm text-red-600 hover:text-red-800"
+            class="btn btn-ghost btn-xs text-error"
           >
             Clear all
           </button>
@@ -250,9 +250,9 @@ defmodule DemoWeb.ProductsSocketLive do
             <div class="flex items-start justify-between">
               <h3 class="font-medium text-gray-900">{product.name}</h3>
               <span class={[
-                "text-xs px-2 py-1 rounded-full",
-                product.in_stock && "bg-green-100 text-green-800",
-                !product.in_stock && "bg-red-100 text-red-800"
+                "badge badge-sm",
+                product.in_stock && "badge-success",
+                !product.in_stock && "badge-error"
               ]}>
                 {if product.in_stock, do: "In Stock", else: "Out of Stock"}
               </span>

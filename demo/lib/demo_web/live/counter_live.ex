@@ -60,13 +60,13 @@ defmodule DemoWeb.CounterLive do
     <div class="flex justify-center gap-4 mb-6">
       <button
         phx-click="decrement"
-        class="px-6 py-3 bg-red-500 text-white rounded-lg hover:bg-red-600 text-xl font-bold"
+        class="btn btn-error btn-lg text-xl font-bold"
       >
         -
       </button>
       <button
         phx-click="increment"
-        class="px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 text-xl font-bold"
+        class="btn btn-success btn-lg text-xl font-bold"
       >
         +
       </button>

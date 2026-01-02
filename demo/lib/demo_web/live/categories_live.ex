@@ -79,7 +79,7 @@ defmodule DemoWeb.CategoriesLive do
               <button
                 phx-click="open_edit"
                 phx-value-id={category.id}
-                class="text-indigo-600 hover:text-indigo-900 mr-4"
+                class="btn btn-ghost btn-xs text-primary"
               >
                 Edit
               </button>
@@ -87,7 +87,7 @@ defmodule DemoWeb.CategoriesLive do
                 phx-click="delete"
                 phx-value-id={category.id}
                 data-confirm="Are you sure you want to delete this category?"
-                class="text-red-600 hover:text-red-900"
+                class="btn btn-ghost btn-xs text-error"
               >
                 Delete
               </button>

@@ -114,9 +114,9 @@ defmodule DemoWeb.ToggleDemoLive do
               <div class="flex justify-between">
                 <span class="text-gray-600">feature_enabled:</span>
                 <code class={[
-                  "px-2 py-0.5 rounded text-xs",
-                  @feature_enabled && "bg-green-100 text-green-800",
-                  !@feature_enabled && "bg-gray-100 text-gray-600"
+                  "badge badge-sm",
+                  @feature_enabled && "badge-success",
+                  !@feature_enabled && "badge-ghost"
                 ]}>
                   {to_string(@feature_enabled)}
                 </code>
@@ -124,9 +124,9 @@ defmodule DemoWeb.ToggleDemoLive do
               <div class="flex justify-between">
                 <span class="text-gray-600">dark_mode:</span>
                 <code class={[
-                  "px-2 py-0.5 rounded text-xs",
-                  @dark_mode && "bg-green-100 text-green-800",
-                  !@dark_mode && "bg-gray-100 text-gray-600"
+                  "badge badge-sm",
+                  @dark_mode && "badge-success",
+                  !@dark_mode && "badge-ghost"
                 ]}>
                   {to_string(@dark_mode)}
                 </code>
@@ -134,9 +134,9 @@ defmodule DemoWeb.ToggleDemoLive do
               <div class="flex justify-between">
                 <span class="text-gray-600">notifications:</span>
                 <code class={[
-                  "px-2 py-0.5 rounded text-xs",
-                  @notifications && "bg-green-100 text-green-800",
-                  !@notifications && "bg-gray-100 text-gray-600"
+                  "badge badge-sm",
+                  @notifications && "badge-success",
+                  !@notifications && "badge-ghost"
                 ]}>
                   {to_string(@notifications)}
                 </code>
@@ -152,21 +152,23 @@ defmodule DemoWeb.ToggleDemoLive do
     </div>
 
     <!-- Architecture explanation -->
-    <div class="mt-8 bg-green-50 p-6 rounded-lg">
-      <h2 class="font-semibold mb-3">Architecture: SyncedVar</h2>
-      <div class="text-sm text-green-800">
-        <p class="mb-2">
-          Each toggle uses a <code class="bg-green-100 px-1 rounded">SyncedVar</code> instance to track:
-        </p>
-        <ul class="list-disc list-inside space-y-1 ml-2">
-          <li><code>value</code> - the optimistic client value</li>
-          <li><code>confirmedValue</code> - last server-confirmed value</li>
-          <li><code>version</code> / <code>confirmedVersion</code> - for detecting stale patches</li>
-        </ul>
-        <p class="mt-3">
-          When you toggle rapidly, <code>setOptimistic()</code> bumps the version.
-          Server patches are only accepted via <code>serverSet()</code> if no operations are pending.
-        </p>
+    <div class="mt-8 alert alert-info">
+      <div>
+        <h2 class="font-semibold mb-3">Architecture: SyncedVar</h2>
+        <div class="text-sm">
+          <p class="mb-2">
+            Each toggle uses a <code class="bg-base-200 px-1 rounded">SyncedVar</code> instance to track:
+          </p>
+          <ul class="list-disc list-inside space-y-1 ml-2">
+            <li><code>value</code> - the optimistic client value</li>
+            <li><code>confirmedValue</code> - last server-confirmed value</li>
+            <li><code>version</code> / <code>confirmedVersion</code> - for detecting stale patches</li>
+          </ul>
+          <p class="mt-3">
+            When you toggle rapidly, <code>setOptimistic()</code> bumps the version.
+            Server patches are only accepted via <code>serverSet()</code> if no operations are pending.
+          </p>
+        </div>
       </div>
     </div>
   </div>
