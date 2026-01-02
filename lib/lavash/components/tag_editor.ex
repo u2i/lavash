@@ -54,7 +54,7 @@ defmodule Lavash.Components.TagEditor do
     run: fn tags, tag -> Enum.reject(tags, &(&1 == tag)) end
 
   # Template with auto-injected data-lavash-state-field from optimistic_actions
-  client_template """
+  template """
   <div class="flex flex-wrap gap-2 items-center">
     <span
       :for={tag <- @tags}

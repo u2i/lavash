@@ -31,9 +31,18 @@ defmodule Lavash.LiveComponent.Compiler do
     end)
 
     # Get template source (if provided via DSL)
-    template_source = case templates do
-      [%{source: source} | _] -> source
-      _ -> nil
+    {template_source, deprecated_name} = case templates do
+      [%{source: source, deprecated_name: deprecated} | _] -> {source, deprecated}
+      [%{source: source} | _] -> {source, nil}
+      _ -> {nil, nil}
+    end
+
+    # Emit deprecation warning if client_template was used
+    if deprecated_name == :client_template do
+      IO.warn(
+        "client_template is deprecated, use template instead",
+        Macro.Env.stacktrace(env)
+      )
     end
 
     # Generate hook name from module

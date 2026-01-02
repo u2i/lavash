@@ -208,7 +208,23 @@ defmodule Lavash.LiveComponent.Dsl do
   # ============================================
 
   @template_entity %Spark.Dsl.Entity{
-    name: :client_template,
+    name: :template,
+    describe: """
+    Declares the HEEx template for this LiveComponent.
+
+    The template is compiled to both HEEx (for server-side rendering) and JavaScript
+    (for client-side SyncedVar updates). The framework generates the render/1 function
+    automatically and injects data-synced-* attributes.
+
+    ## Example
+
+        template \"""
+        <div>
+          <span data-synced-value="tags">{@tags}</span>
+          <input data-lavash-action="add" />
+        </div>
+        \"""
+    """,
     target: Lavash.Component.Template,
     args: [:source],
     schema: [
@@ -220,11 +236,31 @@ defmodule Lavash.LiveComponent.Dsl do
     ]
   }
 
+  # Deprecated: Use `template` instead
+  @client_template_entity %Spark.Dsl.Entity{
+    name: :client_template,
+    target: Lavash.Component.Template,
+    args: [:source],
+    schema: [
+      source: [
+        type: :string,
+        required: true,
+        doc: "The HEEx template source (deprecated: use `template` instead)"
+      ],
+      deprecated_name: [
+        type: :atom,
+        default: :client_template,
+        hide: true,
+        doc: "Internal: tracks deprecated entity name"
+      ]
+    ]
+  }
+
   @template_section %Spark.Dsl.Section{
     name: :template,
     top_level?: true,
     describe: "The component template, compiled to both HEEx and JS with auto-generated data-synced-* attributes.",
-    entities: [@template_entity]
+    entities: [@template_entity, @client_template_entity]
   }
 
   # ============================================

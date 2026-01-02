@@ -35,9 +35,18 @@ defmodule Lavash.ClientComponent.Compiler do
       %{name: name, field: field, run_source: run_source, validate_source: validate_source, max: max}
     end)
 
-    template_source = case templates do
-      [%{source: source} | _] -> source
-      _ -> nil
+    {template_source, deprecated_name} = case templates do
+      [%{source: source, deprecated_name: deprecated} | _] -> {source, deprecated}
+      [%{source: source} | _] -> {source, nil}
+      _ -> {nil, nil}
+    end
+
+    # Emit deprecation warning if client_template was used
+    if deprecated_name == :client_template do
+      IO.warn(
+        "client_template is deprecated, use template instead",
+        Macro.Env.stacktrace(env)
+      )
     end
 
     # Build metadata for template transformation

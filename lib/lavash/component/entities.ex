@@ -247,7 +247,7 @@ defmodule Lavash.Component.Template do
   to generate both server-side HEEx rendering and client-side
   JavaScript for optimistic updates.
   """
-  defstruct [:source, __spark_metadata__: nil]
+  defstruct [:source, :deprecated_name, __spark_metadata__: nil]
 end
 
 defmodule Lavash.Component.Calculate do

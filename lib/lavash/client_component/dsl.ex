@@ -282,7 +282,23 @@ defmodule Lavash.ClientComponent.Dsl do
   # ============================================
 
   @template_entity %Spark.Dsl.Entity{
-    name: :client_template,
+    name: :template,
+    describe: """
+    Declares the HEEx template for this ClientComponent.
+
+    The template is compiled to both HEEx (for server-side rendering) and JavaScript
+    (for client-side optimistic updates). The framework generates the render/1 function
+    automatically.
+
+    ## Example
+
+        template \"""
+        <div>
+          <span :for={tag <- @tags}>{tag}</span>
+          <input data-lavash-action="add" />
+        </div>
+        \"""
+    """,
     target: Lavash.Component.Template,
     args: [:source],
     schema: [
@@ -294,11 +310,31 @@ defmodule Lavash.ClientComponent.Dsl do
     ]
   }
 
+  # Deprecated: Use `template` instead
+  @client_template_entity %Spark.Dsl.Entity{
+    name: :client_template,
+    target: Lavash.Component.Template,
+    args: [:source],
+    schema: [
+      source: [
+        type: :string,
+        required: true,
+        doc: "The HEEx template source (deprecated: use `template` instead)"
+      ],
+      deprecated_name: [
+        type: :atom,
+        default: :client_template,
+        hide: true,
+        doc: "Internal: tracks deprecated entity name"
+      ]
+    ]
+  }
+
   @template_section %Spark.Dsl.Section{
     name: :template,
     top_level?: true,
     describe: "The component template, compiled to both HEEx and JS.",
-    entities: [@template_entity]
+    entities: [@template_entity, @client_template_entity]
   }
 
   # ============================================

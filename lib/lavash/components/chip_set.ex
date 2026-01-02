@@ -65,7 +65,7 @@ defmodule Lavash.Components.ChipSet do
     end
 
   # Template with auto-injected data-lavash-state-field from optimistic_action
-  client_template """
+  template """
   <div class="flex flex-wrap gap-2">
     <button
       :for={value <- @values}

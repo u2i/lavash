@@ -7,6 +7,28 @@ defmodule Lavash.LiveView.Compiler do
     has_on_mount = Module.defines?(env.module, {:on_mount, 1})
     has_render = Module.defines?(env.module, {:render, 1})
 
+    # Check for template DSL entity
+    templates = Spark.Dsl.Extension.get_entities(env.module, [:template_section]) || []
+
+    template_source =
+      case templates do
+        [%{source: source} | _] -> source
+        _ -> nil
+      end
+
+    # Error if both template DSL and render/1 are defined
+    if template_source && has_render do
+      raise CompileError,
+        file: env.file,
+        line: env.line,
+        description: """
+        Cannot define both `template` and `render/1` in the same LiveView.
+
+        When using the `template` DSL, the framework generates the render/1 function automatically.
+        Remove your `def render(assigns)` function, or use `~L` sigil inside render/1 instead of the `template` DSL.
+        """
+    end
+
     mount_callback =
       if has_on_mount do
         quote do
@@ -25,28 +47,33 @@ defmodule Lavash.LiveView.Compiler do
         end
       end
 
-    # If user defined render/1 and has optimistic fields, wrap it
-    render_wrapper =
-      if has_render do
-        quote do
-          # Override render to wrap with optimistic state
-          defoverridable render: 1
+    # Generate render from template DSL, or wrap user-defined render
+    render_code =
+      cond do
+        template_source ->
+          # Generate render/1 from template DSL
+          generate_render_from_template(template_source, env)
 
-          @impl Phoenix.LiveView
-          def render(assigns) do
-            # Use super/1 to call the original user-defined render
-            inner_content = super(assigns)
-            Lavash.LiveView.Runtime.wrap_render(__MODULE__, assigns, inner_content)
+        has_render ->
+          # Wrap user-defined render with optimistic state
+          quote do
+            defoverridable render: 1
+
+            @impl Phoenix.LiveView
+            def render(assigns) do
+              inner_content = super(assigns)
+              Lavash.LiveView.Runtime.wrap_render(__MODULE__, assigns, inner_content)
+            end
           end
-        end
-      else
-        quote do
-        end
+
+        true ->
+          quote do
+          end
       end
 
     quote do
       unquote(mount_callback)
-      unquote(render_wrapper)
+      unquote(render_code)
 
       @impl Phoenix.LiveView
       def handle_params(params, uri, socket) do
@@ -154,6 +181,65 @@ defmodule Lavash.LiveView.Compiler do
       # Expose optimistic actions from the optimistic_action macro
       def __lavash_optimistic_actions__ do
         @__lavash_optimistic_actions__ || []
+      end
+    end
+  end
+
+  # ============================================
+  # Template rendering from DSL
+  # ============================================
+
+  @doc """
+  Generate render/1 function from template DSL.
+
+  This transforms the template with Lavash.Template.Transformer to inject
+  data-lavash-* attributes, then compiles the HEEx and wraps the result
+  with optimistic state handling.
+  """
+  def generate_render_from_template(template_source, env) do
+    module = env.module
+
+    # Get metadata for template transformation
+    metadata = Lavash.Sigil.get_compile_time_metadata(module)
+
+    # Transform template to inject data-lavash-* attributes
+    transformed_template =
+      if metadata do
+        Lavash.Template.Transformer.transform(template_source, module, metadata: metadata)
+      else
+        template_source
+      end
+
+    quote do
+      # Store the transformed template source for the render macro
+      @__lavash_template_source__ unquote(transformed_template)
+
+      @doc false
+      defmacro __lavash_render_template__(assigns_var) do
+        template = Module.get_attribute(__MODULE__, :__lavash_template_source__)
+
+        opts = [
+          engine: Phoenix.LiveView.TagEngine,
+          caller: __CALLER__,
+          source: template,
+          tag_handler: Phoenix.LiveView.HTMLEngine
+        ]
+
+        ast = EEx.compile_string(template, opts)
+
+        quote do
+          var!(assigns) = unquote(assigns_var)
+          unquote(ast)
+        end
+      end
+
+      @impl Phoenix.LiveView
+      def render(var!(assigns)) do
+        # Render the template
+        inner_content = __lavash_render_template__(var!(assigns))
+
+        # Wrap with optimistic state (same as user-defined render)
+        Lavash.LiveView.Runtime.wrap_render(__MODULE__, var!(assigns), inner_content)
       end
     end
   end

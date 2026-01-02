@@ -55,7 +55,7 @@ defmodule Lavash.Components.SyncedToggle do
     run: fn value, _arg -> !value end
 
   # Template with natural syntax - l-action and class={@calc} are auto-transformed
-  client_template """
+  template """
   <div class="inline-flex items-center gap-2">
     <button
       type="button"

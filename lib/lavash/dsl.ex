@@ -723,6 +723,70 @@ defmodule Lavash.Dsl do
   }
 
   # ============================================
+  # Template - HEEx template for render/1
+  # ============================================
+
+  @template_entity %Spark.Dsl.Entity{
+    name: :template,
+    describe: """
+    Declares the HEEx template for this LiveView.
+
+    When using `template`, the framework generates the `render/1` function automatically.
+    You cannot define your own `render/1` when using `template`.
+
+    The template is transformed at compile time to inject `data-lavash-*` attributes
+    for optimistic updates based on declared state and actions.
+
+    ## Example
+
+        defmodule MyApp.CounterLive do
+          use Lavash.LiveView
+
+          state :count, :integer, from: :url, default: 0, optimistic: true
+
+          actions do
+            action :increment do
+              update :count, &(&1 + 1)
+            end
+          end
+
+          template \"""
+          <div>
+            <span>{@count}</span>
+            <button phx-click="increment">+</button>
+          </div>
+          \"""
+        end
+
+    ## Alternative
+
+    You can also use the `~L` sigil in a custom `render/1` function for more control:
+
+        def render(assigns) do
+          ~L\"""
+          <div>{@count}</div>
+          \"""
+        end
+    """,
+    target: Lavash.Component.Template,
+    args: [:source],
+    schema: [
+      source: [
+        type: :string,
+        required: true,
+        doc: "The HEEx template source"
+      ]
+    ]
+  }
+
+  @template_section %Spark.Dsl.Section{
+    name: :template_section,
+    top_level?: true,
+    describe: "Template for the LiveView. Generates the render/1 function.",
+    entities: [@template_entity]
+  }
+
+  # ============================================
   # Extension setup
   # ============================================
 
@@ -734,7 +798,8 @@ defmodule Lavash.Dsl do
       @extend_errors_section,
       @calculations_section,
       @derives_section,
-      @actions_section
+      @actions_section,
+      @template_section
     ],
     transformers: [],
     imports: [Phoenix.Component, Lavash.DslHelpers, Lavash.Rx]
