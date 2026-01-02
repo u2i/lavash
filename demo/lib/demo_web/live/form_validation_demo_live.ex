@@ -114,7 +114,7 @@ defmodule DemoWeb.FormValidationDemoLive do
                 data-1p-ignore
                 class={"w-full px-3 py-2 pr-10 border rounded-lg focus:outline-none focus:ring-2 " <>
                   cond do
-                    not @registration_name_show_errors -> "border-gray-300 focus:ring-blue-500"
+                    !assigns[:registration_name_show_errors] -> "border-gray-300 focus:ring-blue-500"
                     @registration_name_valid -> "border-green-300 focus:ring-green-500"
                     true -> "border-red-300 focus:ring-red-500"
                   end}
@@ -139,11 +139,12 @@ defmodule DemoWeb.FormValidationDemoLive do
                 name={@registration[:email].name}
                 value={@registration[:email].value || ""}
                 data-synced="registration_params.email"
+                data-optimistic-valid-field="email_valid"
                 autocomplete="off"
                 data-1p-ignore
                 class={"w-full px-3 py-2 pr-10 border rounded-lg focus:outline-none focus:ring-2 " <>
                   cond do
-                    not @registration_email_show_errors -> "border-gray-300 focus:ring-blue-500"
+                    !assigns[:registration_email_show_errors] -> "border-gray-300 focus:ring-blue-500"
                     @email_valid -> "border-green-300 focus:ring-green-500"
                     true -> "border-red-300 focus:ring-red-500"
                   end}
@@ -175,7 +176,7 @@ defmodule DemoWeb.FormValidationDemoLive do
                 max="150"
                 class={"w-full px-3 py-2 pr-10 border rounded-lg focus:outline-none focus:ring-2 " <>
                   cond do
-                    not @registration_age_show_errors -> "border-gray-300 focus:ring-blue-500"
+                    !assigns[:registration_age_show_errors] -> "border-gray-300 focus:ring-blue-500"
                     @registration_age_valid -> "border-green-300 focus:ring-green-500"
                     true -> "border-red-300 focus:ring-red-500"
                   end}
@@ -201,13 +202,10 @@ defmodule DemoWeb.FormValidationDemoLive do
                 else
                   "bg-gray-300 text-gray-500 cursor-not-allowed"
                 end}
-              data-optimistic-class-toggle="form_valid:bg-blue-600 text-white hover:bg-blue-700 cursor-pointer:bg-gray-300 text-gray-500 cursor-not-allowed"
+              data-optimistic-class-toggle="form_valid|bg-blue-600 text-white hover:bg-blue-700 cursor-pointer|bg-gray-300 text-gray-500 cursor-not-allowed"
             >
               Register
             </button>
-            <p class={"text-center text-sm text-gray-500 mt-2 " <> if(@has_any_input and not @form_valid, do: "", else: "hidden")} data-optimistic-visible="show_error_hint">
-              Please fix the errors above to continue
-            </p>
           </div>
         </.form>
       <% end %>

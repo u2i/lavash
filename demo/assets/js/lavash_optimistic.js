@@ -717,11 +717,11 @@ const LavashOptimistic = {
     });
 
     // Update all elements with data-optimistic-class-toggle attribute
-    // Format: "fieldName:trueClasses:falseClasses"
+    // Format: "fieldName|trueClasses|falseClasses" (uses | to avoid conflict with Tailwind's :)
     const classToggleElements = this.el.querySelectorAll("[data-optimistic-class-toggle]");
     classToggleElements.forEach(el => {
       const spec = el.dataset.optimisticClassToggle;
-      const [fieldName, trueClasses, falseClasses] = spec.split(":");
+      const [fieldName, trueClasses, falseClasses] = spec.split("|");
       const value = this.state[fieldName];
 
       // Remove all managed classes first
@@ -921,6 +921,49 @@ const LavashOptimistic = {
       } else {
         el.textContent = "✗";
         el.className = el.className.replace(/text-(green|red)-\d+/g, "").trim() + " text-red-500";
+      }
+    });
+
+    // Update input border colors based on validation state
+    // Find all synced inputs and update their border/ring classes
+    const syncedInputs = this.el.querySelectorAll("[data-synced]");
+    syncedInputs.forEach(input => {
+      const fieldPath = input.dataset.synced; // e.g., "registration_params.name"
+      const parts = fieldPath.split(".");
+      if (parts.length < 2) return;
+
+      const paramsField = parts[0];
+      const fieldName = parts.slice(1).join("_");
+      const formName = paramsField.replace(/_params$/, "");
+
+      // Check show_errors state
+      const showErrorsField = `${formName}_${fieldName}_show_errors`;
+      const showErrors = this.state[showErrorsField] ?? false;
+
+      // Check validity - use custom valid field if specified, otherwise standard
+      const customValidField = input.dataset.optimisticValidField;
+      const validField = customValidField || `${formName}_${fieldName}_valid`;
+      const isValid = this.state[validField] ?? true;
+
+      // Check for server errors
+      const hasServerErrors = (this.fieldState[fieldPath]?.serverErrors || []).length > 0;
+
+      // Remove existing border/ring color classes
+      const borderClasses = ["border-gray-300", "border-green-300", "border-red-300"];
+      const ringClasses = ["focus:ring-blue-500", "focus:ring-green-500", "focus:ring-red-500"];
+      borderClasses.forEach(c => input.classList.remove(c));
+      ringClasses.forEach(c => input.classList.remove(c));
+
+      // Apply appropriate classes based on state
+      if (!showErrors) {
+        // Neutral state - gray border, blue ring
+        input.classList.add("border-gray-300", "focus:ring-blue-500");
+      } else if (isValid && !hasServerErrors) {
+        // Valid state - green border and ring
+        input.classList.add("border-green-300", "focus:ring-green-500");
+      } else {
+        // Invalid state - red border and ring
+        input.classList.add("border-red-300", "focus:ring-red-500");
       }
     });
 
