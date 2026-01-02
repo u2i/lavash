@@ -40,6 +40,34 @@ defmodule Lavash.ClientComponent.Compiler do
       _ -> nil
     end
 
+    # Build metadata for template transformation
+    # Note: We build it manually here since module isn't compiled yet
+    optimistic_actions_map =
+      action_tuples
+      |> Enum.map(fn {name, field, _run, _validate, _max} -> {name, %{field: field}} end)
+      |> Map.new()
+
+    # Transform template to inject data-lavash-* attributes
+    template_source =
+      if template_source do
+        metadata = %{
+          context: :client_component,
+          optimistic_fields: %{},  # ClientComponent uses bindings, not state fields
+          optimistic_derives: %{},
+          calculations: Enum.map(calculations, fn {name, _, _, _} -> {name, %{optimistic: true}} end) |> Map.new(),
+          forms: %{},
+          actions: %{},
+          optimistic_actions: optimistic_actions_map
+        }
+
+        Lavash.Template.Transformer.transform(template_source, env.module,
+          context: :client_component,
+          metadata: metadata
+        )
+      else
+        nil
+      end
+
     # Generate hook name from module
     module_name = env.module |> Module.split() |> List.last()
     hook_name = ".#{module_name}"

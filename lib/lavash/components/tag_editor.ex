@@ -53,6 +53,7 @@ defmodule Lavash.Components.TagEditor do
   optimistic_action :remove, :tags,
     run: fn tags, tag -> Enum.reject(tags, &(&1 == tag)) end
 
+  # Template with auto-injected data-lavash-state-field from optimistic_actions
   client_template """
   <div class="flex flex-wrap gap-2 items-center">
     <span
@@ -64,7 +65,6 @@ defmodule Lavash.Components.TagEditor do
         type="button"
         class="hover:text-blue-600 text-blue-400"
         data-lavash-action="remove"
-        data-lavash-state-field="tags"
         data-lavash-value={tag}
       >×</button>
     </span>
@@ -74,7 +74,6 @@ defmodule Lavash.Components.TagEditor do
       placeholder={@placeholder}
       class={@input_class}
       data-lavash-action="add"
-      data-lavash-state-field="tags"
     />
     <span :if={@max_tags} class="text-xs text-gray-400">
       (<span data-lavash-display="tag_count">{@tag_count}</span>/{@max_tags})

@@ -54,6 +54,9 @@ defmodule Lavash.LiveView do
 
       import Lavash.LiveView.Helpers
       import Lavash.Optimistic.Macros, only: [optimistic_action: 3]
+
+      # Import ~L sigil for auto-attribute injection in templates
+      import Lavash.Sigil, only: [sigil_L: 2]
     end
   end
 end
