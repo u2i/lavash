@@ -70,8 +70,17 @@ defmodule DemoWeb.FormValidationDemoLive do
     end
   end
 
+  # Using ~L sigil for auto-injection of data-lavash-* attributes
+  # The transformer will add:
+  # - data-lavash-bind, data-lavash-form, data-lavash-field on form inputs
+  # - data-lavash-action on buttons with phx-click matching declared actions
+  # - data-lavash-enabled on elements with disabled={not @bool_field}
+  #
+  # Note: Some attributes still need to be manual:
+  # - data-lavash-valid="email_valid" (overrides default field name)
+  # - data-lavash-toggle (complex class switching)
   def render(assigns) do
-    ~H"""
+    ~L"""
     <div id="form-validation-demo" class="max-w-lg mx-auto mt-10 p-6 bg-white rounded-lg shadow-lg">
       <h1 class="text-2xl font-bold text-center mb-2">Ash Form Validation</h1>
       <p class="text-gray-500 text-center mb-6 text-sm">
@@ -99,7 +108,7 @@ defmodule DemoWeb.FormValidationDemoLive do
           <%!-- Error Summary (shown after form submission with errors) --%>
           <.error_summary form={:registration} />
 
-          <%!-- Name Field --%>
+          <%!-- Name Field - auto-injected: data-lavash-bind, data-lavash-form, data-lavash-field --%>
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">
               Name <span class="text-red-500">*</span>
@@ -109,9 +118,6 @@ defmodule DemoWeb.FormValidationDemoLive do
                 type="text"
                 name={@registration[:name].name}
                 value={@registration[:name].value || ""}
-                data-lavash-bind="registration_params.name"
-                data-lavash-form="registration"
-                data-lavash-field="name"
                 autocomplete="off"
                 data-1p-ignore
                 class={"w-full px-3 py-2 pr-10 border rounded-lg focus:outline-none focus:ring-2 " <>
@@ -130,7 +136,7 @@ defmodule DemoWeb.FormValidationDemoLive do
             </div>
           </div>
 
-          <%!-- Email Field --%>
+          <%!-- Email Field - auto-injected: bind/form/field; manual: data-lavash-valid override --%>
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">
               Email <span class="text-red-500">*</span>
@@ -140,9 +146,6 @@ defmodule DemoWeb.FormValidationDemoLive do
                 type="text"
                 name={@registration[:email].name}
                 value={@registration[:email].value || ""}
-                data-lavash-bind="registration_params.email"
-                data-lavash-form="registration"
-                data-lavash-field="email"
                 data-lavash-valid="email_valid"
                 autocomplete="off"
                 data-1p-ignore
@@ -163,7 +166,7 @@ defmodule DemoWeb.FormValidationDemoLive do
             </div>
           </div>
 
-          <%!-- Age Field --%>
+          <%!-- Age Field - auto-injected: data-lavash-bind, data-lavash-form, data-lavash-field --%>
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">
               Age <span class="text-red-500">*</span>
@@ -173,9 +176,6 @@ defmodule DemoWeb.FormValidationDemoLive do
                 type="number"
                 name={@registration[:age].name}
                 value={@registration[:age].value || ""}
-                data-lavash-bind="registration_params.age"
-                data-lavash-form="registration"
-                data-lavash-field="age"
                 autocomplete="off"
                 data-1p-ignore
                 min="0"
@@ -196,12 +196,11 @@ defmodule DemoWeb.FormValidationDemoLive do
             </div>
           </div>
 
-          <%!-- Submit Button --%>
+          <%!-- Submit Button - auto-injected: data-lavash-enabled --%>
           <div class="pt-4">
             <button
               type="submit"
               disabled={not @form_valid}
-              data-lavash-enabled="form_valid"
               class={"w-full py-3 px-4 rounded-lg font-semibold transition-colors " <>
                 if @form_valid do
                   "bg-blue-600 text-white hover:bg-blue-700 cursor-pointer"

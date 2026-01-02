@@ -78,19 +78,19 @@ defmodule Lavash.Sigil do
         _ -> template
       end
 
-    # Delegate to Phoenix's ~H sigil with the (possibly) transformed template
+    # Build transformed AST and pass to Phoenix's ~H sigil directly (no escape!)
+    transformed_ast = {:<<>>, meta, [transformed]}
+
     quote do
       require Phoenix.Component
-      Phoenix.Component.sigil_H(
-        {:<<>>, unquote(Macro.escape(meta)), [unquote(transformed)]},
-        unquote(modifiers)
-      )
+      Phoenix.Component.sigil_H(unquote(transformed_ast), unquote(modifiers))
     end
   end
 
+  @doc false
   # Build metadata from module attributes during compilation
   # This is a best-effort approach since not all metadata may be available
-  defp get_compile_time_metadata(module) do
+  def get_compile_time_metadata(module) do
     try do
       # Try to get states from Spark DSL
       states = Spark.Dsl.Extension.get_entities(module, [:states]) || []

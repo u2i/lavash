@@ -59,7 +59,7 @@ defmodule DemoWeb.ProductsLive do
   end
 
   def render(assigns) do
-    ~H"""
+    ~L"""
     <div class="max-w-6xl mx-auto p-6">
       <div class="flex items-center justify-between mb-6">
         <div>

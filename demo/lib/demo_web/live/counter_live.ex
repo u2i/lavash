@@ -42,8 +42,12 @@ defmodule DemoWeb.CounterLive do
     end
   end
 
+  # Using ~L sigil for auto-injection of data-lavash-* attributes
+  # The transformer will add:
+  # - data-lavash-action on buttons with phx-click matching declared actions
+  # - data-lavash-value from phx-value-* attributes
   def render(assigns) do
-    ~H"""
+    ~L"""
     <div id="counter" class="max-w-md mx-auto mt-10 p-6 bg-white rounded-lg shadow-lg">
       <h1 class="text-2xl font-bold text-center mb-6">Lavash Counter Demo</h1>
 
@@ -57,14 +61,12 @@ defmodule DemoWeb.CounterLive do
       <div class="flex justify-center gap-4 mb-6">
         <button
           phx-click="decrement"
-          data-lavash-action="decrement"
           class="px-6 py-3 bg-red-500 text-white rounded-lg hover:bg-red-600 text-xl font-bold"
         >
           -
         </button>
         <button
           phx-click="increment"
-          data-lavash-action="increment"
           class="px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 text-xl font-bold"
         >
           +
@@ -118,8 +120,6 @@ defmodule DemoWeb.CounterLive do
         <button
           phx-click="set_count"
           phx-value-amount="100"
-          data-lavash-action="set_count"
-          data-lavash-value="100"
           class="px-4 py-2 bg-indigo-100 text-indigo-700 rounded hover:bg-indigo-200"
         >
           Set to 100
