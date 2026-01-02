@@ -57,14 +57,14 @@ defmodule DemoWeb.CounterLive do
       <div class="flex justify-center gap-4 mb-6">
         <button
           phx-click="decrement"
-          data-optimistic="decrement"
+          data-lavash-action="decrement"
           class="px-6 py-3 bg-red-500 text-white rounded-lg hover:bg-red-600 text-xl font-bold"
         >
           -
         </button>
         <button
           phx-click="increment"
-          data-optimistic="increment"
+          data-lavash-action="increment"
           class="px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 text-xl font-bold"
         >
           +
@@ -81,7 +81,7 @@ defmodule DemoWeb.CounterLive do
               min="1"
               max="10"
               value={@multiplier}
-              data-optimistic-field="multiplier"
+              data-lavash-bind="multiplier"
               class="w-32"
             />
           </form>
@@ -95,7 +95,7 @@ defmodule DemoWeb.CounterLive do
 
         <div class="flex items-center justify-between">
           <span class="text-gray-600"><.o field={:count} value={@count} />! =</span>
-          <span data-optimistic-display="fact" class="font-mono font-bold text-lg">
+          <span data-lavash-display="fact" class="font-mono font-bold text-lg">
             <%= case @fact do %>
               <% %Phoenix.LiveView.AsyncResult{loading: loading} when loading != nil -> %>
                 <span class="text-gray-400 animate-pulse">computing...</span>
@@ -118,8 +118,8 @@ defmodule DemoWeb.CounterLive do
         <button
           phx-click="set_count"
           phx-value-amount="100"
-          data-optimistic="set_count"
-          data-optimistic-value="100"
+          data-lavash-action="set_count"
+          data-lavash-value="100"
           class="px-4 py-2 bg-indigo-100 text-indigo-700 rounded hover:bg-indigo-200"
         >
           Set to 100

@@ -70,9 +70,9 @@ defmodule Lavash.Components.ChipSet do
       :for={value <- @values}
       type="button"
       class={if value in (@selected || []), do: @active_class, else: @inactive_class}
-      data-optimistic="toggle"
-      data-optimistic-field="selected"
-      data-optimistic-value={value}
+      data-lavash-action="toggle"
+      data-lavash-state-field="selected"
+      data-lavash-value={value}
     >
       {Map.get(@labels || %{}, value, humanize(value))}
     </button>

@@ -353,7 +353,7 @@ defmodule Lavash.ClientComponent.Compiler do
       handleInput(e) {
         // Stop input events from propagating to parent hooks
         // This prevents parent LiveView from overwriting state.tags with string input value
-        const target = e.target.closest("[data-optimistic-field]");
+        const target = e.target.closest("[data-lavash-state-field]");
         if (target) {
           e.stopPropagation();
         }
@@ -362,8 +362,8 @@ defmodule Lavash.ClientComponent.Compiler do
       handleKeydown(e) {
         if (e.key !== "Enter") return;
         const input = e.target;
-        const action = input.dataset.optimistic;
-        const field = input.dataset.optimisticField;
+        const action = input.dataset.lavashAction;
+        const field = input.dataset.lavashStateField;
         if (action !== "add" || !field) return;
 
         e.preventDefault();
@@ -379,7 +379,7 @@ defmodule Lavash.ClientComponent.Compiler do
         this.updateDOM();
         this.syncParentUrl();
 
-        const newInput = this.el.querySelector(`[data-optimistic="add"][data-optimistic-field="${field}"]`);
+        const newInput = this.el.querySelector(`[data-lavash-action="add"][data-lavash-state-field="${field}"]`);
         if (newInput) newInput.value = "";
 
         const phxEvent = `${action}_${field.replace(/s$/, '')}`;
@@ -389,12 +389,12 @@ defmodule Lavash.ClientComponent.Compiler do
       },
 
       handleClick(e) {
-        const target = e.target.closest("[data-optimistic]");
+        const target = e.target.closest("[data-lavash-action]");
         if (!target) return;
 
-        const action = target.dataset.optimistic;
-        const field = target.dataset.optimisticField;
-        const value = target.dataset.optimisticValue;
+        const action = target.dataset.lavashAction;
+        const field = target.dataset.lavashStateField;
+        const value = target.dataset.lavashValue;
 
         if (action === "add" && !value) return;
 

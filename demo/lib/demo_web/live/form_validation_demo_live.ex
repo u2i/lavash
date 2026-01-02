@@ -109,7 +109,9 @@ defmodule DemoWeb.FormValidationDemoLive do
                 type="text"
                 name={@registration[:name].name}
                 value={@registration[:name].value || ""}
-                data-synced="registration_params.name"
+                data-lavash-bind="registration_params.name"
+                data-lavash-form="registration"
+                data-lavash-field="name"
                 autocomplete="off"
                 data-1p-ignore
                 class={"w-full px-3 py-2 pr-10 border rounded-lg focus:outline-none focus:ring-2 " <>
@@ -138,8 +140,10 @@ defmodule DemoWeb.FormValidationDemoLive do
                 type="text"
                 name={@registration[:email].name}
                 value={@registration[:email].value || ""}
-                data-synced="registration_params.email"
-                data-optimistic-valid-field="email_valid"
+                data-lavash-bind="registration_params.email"
+                data-lavash-form="registration"
+                data-lavash-field="email"
+                data-lavash-valid="email_valid"
                 autocomplete="off"
                 data-1p-ignore
                 class={"w-full px-3 py-2 pr-10 border rounded-lg focus:outline-none focus:ring-2 " <>
@@ -169,7 +173,9 @@ defmodule DemoWeb.FormValidationDemoLive do
                 type="number"
                 name={@registration[:age].name}
                 value={@registration[:age].value || ""}
-                data-synced="registration_params.age"
+                data-lavash-bind="registration_params.age"
+                data-lavash-form="registration"
+                data-lavash-field="age"
                 autocomplete="off"
                 data-1p-ignore
                 min="0"
@@ -195,14 +201,14 @@ defmodule DemoWeb.FormValidationDemoLive do
             <button
               type="submit"
               disabled={not @form_valid}
-              data-optimistic-enabled="form_valid"
+              data-lavash-enabled="form_valid"
               class={"w-full py-3 px-4 rounded-lg font-semibold transition-colors " <>
                 if @form_valid do
                   "bg-blue-600 text-white hover:bg-blue-700 cursor-pointer"
                 else
                   "bg-gray-300 text-gray-500 cursor-not-allowed"
                 end}
-              data-optimistic-class-toggle="form_valid|bg-blue-600 text-white hover:bg-blue-700 cursor-pointer|bg-gray-300 text-gray-500 cursor-not-allowed"
+              data-lavash-toggle="form_valid|bg-blue-600 text-white hover:bg-blue-700 cursor-pointer|bg-gray-300 text-gray-500 cursor-not-allowed"
             >
               Register
             </button>

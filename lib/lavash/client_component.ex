@@ -45,17 +45,17 @@ defmodule Lavash.ClientComponent do
             {tag}
             <button
               type="button"
-              data-optimistic="remove"
-              data-optimistic-field="tags"
-              data-optimistic-value={tag}
+              data-lavash-action="remove"
+              data-lavash-state-field="tags"
+              data-lavash-value={tag}
             >×</button>
           </span>
           <input
             :if={@can_add}
             type="text"
             placeholder={@placeholder}
-            data-optimistic="add"
-            data-optimistic-field="tags"
+            data-lavash-action="add"
+            data-lavash-state-field="tags"
           />
         </div>
         \"\"\"

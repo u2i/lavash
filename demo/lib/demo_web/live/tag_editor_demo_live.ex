@@ -107,14 +107,14 @@ defmodule DemoWeb.TagEditorDemoLive do
 
             <div>
               <span class="text-gray-600">Tags (optimistic):</span>
-              <span data-optimistic-display="tags_display" class="ml-2 font-medium">
+              <span data-lavash-display="tags_display" class="ml-2 font-medium">
                 {@tags_display}
               </span>
             </div>
 
             <div>
               <span class="text-gray-600">Tag summary (optimistic):</span>
-              <span data-optimistic-display="tag_summary" class="ml-2 font-medium">
+              <span data-lavash-display="tag_summary" class="ml-2 font-medium">
                 {@tag_summary}
               </span>
             </div>

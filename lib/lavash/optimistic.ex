@@ -2,6 +2,13 @@ defmodule Lavash.Optimistic do
   @moduledoc """
   Optimistic updates for Lavash LiveViews.
 
+  > #### Deprecated {: .warning}
+  >
+  > This module provides an alternative API that is not actively used.
+  > The main implementation uses `LavashOptimistic` hook with separate data attributes
+  > (`data-lavash-state`, `data-lavash-version`, etc.). See `Lavash.LiveView.Runtime`
+  > for the active implementation.
+
   This module provides infrastructure for running actions and derives on the client
   before server confirmation, giving instant UI feedback.
 
@@ -33,16 +40,16 @@ defmodule Lavash.Optimistic do
       import Lavash.LiveView.Helpers
 
       # Trigger optimistic action on click
-      <button phx-click="increment" data-optimistic="increment">+</button>
+      <button phx-click="increment" data-lavash-action="increment">+</button>
 
       # Display optimistic state (use <.o> to avoid field/value duplication)
       <.o field={:count} value={@count} />
 
       # Or use raw data attribute
-      <div data-optimistic-display="count">{@count}</div>
+      <div data-lavash-display="count">{@count}</div>
 
       # Optimistic input binding
-      <input data-optimistic-field="multiplier" phx-change="set_multiplier" />
+      <input data-lavash-bind="multiplier" phx-change="set_multiplier" />
       ```
 
   3. Register the hook in your `app.js`:
@@ -187,9 +194,9 @@ defmodule Lavash.Optimistic do
 
       // Update DOM elements that display state/derives
       updateDOM() {
-        // Find elements with data-lavash-field and update their text content
-        this.el.querySelectorAll("[data-lavash-field]").forEach(el => {
-          const field = el.dataset.lavashField;
+        // Find elements with data-lavash-display and update their text content
+        this.el.querySelectorAll("[data-lavash-display]").forEach(el => {
+          const field = el.dataset.lavashDisplay;
           const value = this.state[field] ?? this.derives[field];
           if (value !== undefined) {
             el.textContent = value;

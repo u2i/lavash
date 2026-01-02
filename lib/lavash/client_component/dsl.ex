@@ -44,9 +44,9 @@ defmodule Lavash.ClientComponent.Dsl do
         <div>
           <span :for={tag <- @tags}>
             {tag}
-            <button data-optimistic="remove" data-optimistic-field="tags" data-optimistic-value={tag}>×</button>
+            <button data-lavash-action="remove" data-lavash-state-field="tags" data-lavash-value={tag}>×</button>
           </span>
-          <input :if={@can_add} data-optimistic="add" data-optimistic-field="tags" />
+          <input :if={@can_add} data-lavash-action="add" data-lavash-state-field="tags" />
         </div>
         \"\"\"
       end

@@ -63,9 +63,9 @@ defmodule Lavash.Components.TagEditor do
       <button
         type="button"
         class="hover:text-blue-600 text-blue-400"
-        data-optimistic="remove"
-        data-optimistic-field="tags"
-        data-optimistic-value={tag}
+        data-lavash-action="remove"
+        data-lavash-state-field="tags"
+        data-lavash-value={tag}
       >×</button>
     </span>
     <input
@@ -73,11 +73,11 @@ defmodule Lavash.Components.TagEditor do
       type="text"
       placeholder={@placeholder}
       class={@input_class}
-      data-optimistic="add"
-      data-optimistic-field="tags"
+      data-lavash-action="add"
+      data-lavash-state-field="tags"
     />
     <span :if={@max_tags} class="text-xs text-gray-400">
-      (<span data-optimistic-display="tag_count">{@tag_count}</span>/{@max_tags})
+      (<span data-lavash-display="tag_count">{@tag_count}</span>/{@max_tags})
     </span>
   </div>
   """

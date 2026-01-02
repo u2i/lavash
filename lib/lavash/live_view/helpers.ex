@@ -394,27 +394,27 @@ defmodule Lavash.LiveView.Helpers do
 
   This component eliminates the duplication of specifying both the field name
   and value when displaying optimistic state. It generates a wrapper element
-  with the appropriate `data-optimistic-display` attribute.
+  with the appropriate `data-lavash-display` attribute.
 
   ## Examples
 
       # Simple usage - renders a span
       <.o field={:count} value={@count} />
-      # Outputs: <span data-optimistic-display="count">5</span>
+      # Outputs: <span data-lavash-display="count">5</span>
 
       # With custom tag
       <.o field={:count} value={@count} tag="div" />
-      # Outputs: <div data-optimistic-display="count">5</div>
+      # Outputs: <div data-lavash-display="count">5</div>
 
       # With additional attributes
       <.o field={:doubled} value={@doubled} class="text-xl font-bold" />
-      # Outputs: <span data-optimistic-display="doubled" class="text-xl font-bold">10</span>
+      # Outputs: <span data-lavash-display="doubled" class="text-xl font-bold">10</span>
 
       # With inner block for custom content (value still used for optimistic updates)
       <.o field={:count} value={@count}>
         Count: {@count}
       </.o>
-      # Outputs: <span data-optimistic-display="count">Count: 5</span>
+      # Outputs: <span data-lavash-display="count">Count: 5</span>
   """
   attr :field, :atom, required: true, doc: "The state/derive field name"
   attr :value, :any, required: true, doc: "The current value from assigns"
@@ -426,12 +426,61 @@ defmodule Lavash.LiveView.Helpers do
     assigns = assign(assigns, :field_name, to_string(assigns.field))
 
     ~H"""
-    <.dynamic_tag name={@tag} data-optimistic-display={@field_name} {@rest}>
+    <.dynamic_tag name={@tag} data-lavash-display={@field_name} {@rest}>
       <%= if @inner_block != [] do %>
         {render_slot(@inner_block)}
       <% else %>
         {@value}
       <% end %>
+    </.dynamic_tag>
+    """
+  end
+
+  @doc """
+  Renders an element with conditional visibility based on boolean state.
+
+  This component generates a wrapper element with `data-lavash-visible` attribute,
+  which the JS hook uses to show/hide the element by toggling the `hidden` class.
+
+  ## Examples
+
+      # Simple usage - visible when @is_logged_in is true
+      <.visible field={:is_logged_in} when={@is_logged_in}>
+        Welcome back!
+      </.visible>
+      # Outputs: <div data-lavash-visible="is_logged_in">Welcome back!</div>
+
+      # With custom tag
+      <.visible field={:has_errors} when={@has_errors} tag="span">
+        There are errors
+      </.visible>
+      # Outputs: <span data-lavash-visible="has_errors">There are errors</span>
+
+      # With additional attributes
+      <.visible field={:show_advanced} when={@show_advanced} class="mt-4 p-4 bg-gray-100">
+        Advanced settings...
+      </.visible>
+
+      # Initially hidden (server render matches client behavior)
+      <.visible field={:show_details} when={false}>
+        Details content
+      </.visible>
+      # Outputs: <div data-lavash-visible="show_details" class="hidden">Details content</div>
+  """
+  attr :field, :atom, required: true, doc: "The boolean state field name"
+  attr :when, :boolean, required: true, doc: "The current boolean value from assigns"
+  attr :tag, :string, default: "div", doc: "The HTML tag to use (default: div)"
+  attr :rest, :global, doc: "Additional HTML attributes"
+  slot :inner_block, required: true, doc: "Content to show/hide"
+
+  def visible(assigns) do
+    assigns = assign(assigns, :field_name, to_string(assigns.field))
+    # Add hidden class if value is falsy (for server-rendered consistency)
+    assigns = assign(assigns, :hidden_class, if(assigns.when, do: nil, else: "hidden"))
+
+    ~H"""
+    <.dynamic_tag name={@tag} data-lavash-visible={@field_name} class={@hidden_class} {@rest}>
+      {render_slot(@inner_block)}
     </.dynamic_tag>
     """
   end
@@ -523,9 +572,9 @@ defmodule Lavash.LiveView.Helpers do
         class={@chips[value]}
         phx-click={@action_name}
         phx-value-val={value}
-        data-optimistic={@action_name}
-        data-optimistic-value={value}
-        data-optimistic-class={"#{@derive_name}.#{value}"}
+        data-lavash-action={@action_name}
+        data-lavash-value={value}
+        data-lavash-class={"#{@derive_name}.#{value}"}
       >
         {Map.get(@labels, value, humanize(value))}
       </button>
@@ -564,8 +613,8 @@ defmodule Lavash.LiveView.Helpers do
       type="button"
       class={@chip}
       phx-click={@action_name}
-      data-optimistic={@action_name}
-      data-optimistic-class={@derive_name}
+      data-lavash-action={@action_name}
+      data-lavash-class={@derive_name}
       {@rest}
     >
       {@display_label}
@@ -602,11 +651,24 @@ defmodule Lavash.LiveView.Helpers do
 
   def field_errors(assigns) do
     errors_field = "#{assigns.form}_#{assigns.field}_errors"
-    assigns = assign(assigns, :errors_field, errors_field)
+    form_name = to_string(assigns.form)
+    field_name = to_string(assigns.field)
+
+    assigns =
+      assigns
+      |> assign(:errors_field, errors_field)
+      |> assign(:form_name, form_name)
+      |> assign(:field_name, field_name)
 
     # Errors are hidden initially - JS will show them when touched/submitted
     ~H"""
-    <div data-optimistic-errors={@errors_field} class="hidden" {@rest}>
+    <div
+      data-lavash-errors={@errors_field}
+      data-lavash-form={@form_name}
+      data-lavash-field={@field_name}
+      class="hidden"
+      {@rest}
+    >
       <%!-- Content is managed by JS based on touched/submitted state --%>
     </div>
     """
@@ -639,17 +701,24 @@ defmodule Lavash.LiveView.Helpers do
     valid_field = assigns.valid_field || "#{assigns.form}_#{assigns.field}_valid"
     # show_errors is always derived from form/field (the touched state of the actual field)
     show_errors_field = "#{assigns.form}_#{assigns.field}_show_errors"
+    form_name = to_string(assigns.form)
+    field_name = to_string(assigns.field)
+
     assigns =
       assigns
-      |> assign(:optimistic_valid_field, valid_field)
-      |> assign(:optimistic_show_errors_field, show_errors_field)
+      |> assign(:lavash_valid_field, valid_field)
+      |> assign(:lavash_show_errors_field, show_errors_field)
+      |> assign(:form_name, form_name)
+      |> assign(:field_name, field_name)
 
     # Hidden initially - JS will show when touched/submitted AND valid
     ~H"""
     <p
       class={[@class, "hidden"]}
-      data-optimistic-success={@optimistic_valid_field}
-      data-optimistic-show-errors={@optimistic_show_errors_field}
+      data-lavash-success={@lavash_valid_field}
+      data-lavash-show-errors={@lavash_show_errors_field}
+      data-lavash-form={@form_name}
+      data-lavash-field={@field_name}
       {@rest}
     >
       {"✓ " <> @message}
@@ -683,7 +752,7 @@ defmodule Lavash.LiveView.Helpers do
     ~H"""
     <div
       class={[@class, "hidden"]}
-      data-optimistic-error-summary={@form_name}
+      data-lavash-error-summary={@form_name}
       {@rest}
     >
       <%!-- Content is managed by JS after form submission --%>
@@ -718,17 +787,23 @@ defmodule Lavash.LiveView.Helpers do
   def field_status(assigns) do
     valid_field = assigns.valid_field || "#{assigns.form}_#{assigns.field}_valid"
     show_errors_field = "#{assigns.form}_#{assigns.field}_show_errors"
+    form_name = to_string(assigns.form)
+    field_name = to_string(assigns.field)
 
     assigns =
       assigns
       |> assign(:valid_field, valid_field)
       |> assign(:show_errors_field, show_errors_field)
+      |> assign(:form_name, form_name)
+      |> assign(:field_name, field_name)
 
     ~H"""
     <span
       class={@class}
-      data-optimistic-field-status={@valid_field}
-      data-optimistic-show-errors={@show_errors_field}
+      data-lavash-status={@valid_field}
+      data-lavash-show-errors={@show_errors_field}
+      data-lavash-form={@form_name}
+      data-lavash-field={@field_name}
       {@rest}
     >
       <%!-- Content is managed by JS: ✓ (valid), ✗ (invalid), or empty (neutral) --%>
