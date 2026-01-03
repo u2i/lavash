@@ -605,6 +605,42 @@ defmodule Lavash.Template do
     "(#{ast_to_js(str)}.includes(#{ast_to_js(substring)}))"
   end
 
+  # String.starts_with?(str, prefix) -> str.startsWith(prefix)
+  defp ast_to_js({{:., _, [{:__aliases__, _, [:String]}, :starts_with?]}, _, [str, prefix]}) do
+    "(#{ast_to_js(str)}.startsWith(#{ast_to_js(prefix)}))"
+  end
+
+  # String.ends_with?(str, suffix) -> str.endsWith(suffix)
+  defp ast_to_js({{:., _, [{:__aliases__, _, [:String]}, :ends_with?]}, _, [str, suffix]}) do
+    "(#{ast_to_js(str)}.endsWith(#{ast_to_js(suffix)}))"
+  end
+
+  # String.replace(str, pattern, replacement) with regex -> str.replace(regex, replacement)
+  defp ast_to_js({{:., _, [{:__aliases__, _, [:String]}, :replace]}, _, [str, {:sigil_r, _, [{:<<>>, _, [pattern]}, _opts]}, replacement]}) do
+    # Convert Elixir regex to JS regex with global flag
+    "(#{ast_to_js(str)}.replace(/#{pattern}/g, #{ast_to_js(replacement)}))"
+  end
+
+  # String.replace(str, pattern, replacement) with string pattern
+  defp ast_to_js({{:., _, [{:__aliases__, _, [:String]}, :replace]}, _, [str, pattern, replacement]}) when is_binary(pattern) do
+    # For string patterns, we need to escape regex special chars and use global replacement
+    escaped_pattern = Regex.escape(pattern)
+    "(#{ast_to_js(str)}.replace(/#{escaped_pattern}/g, #{ast_to_js(replacement)}))"
+  end
+
+  # String.slice(str, start, length) -> str.slice(start, start + length)
+  defp ast_to_js({{:., _, [{:__aliases__, _, [:String]}, :slice]}, _, [str, start, len]}) when is_integer(start) and is_integer(len) do
+    "(#{ast_to_js(str)}.slice(#{start}, #{start + len}))"
+  end
+
+  # String.slice(str, start, length) with dynamic values
+  defp ast_to_js({{:., _, [{:__aliases__, _, [:String]}, :slice]}, _, [str, start, len]}) do
+    str_js = ast_to_js(str)
+    start_js = ast_to_js(start)
+    len_js = ast_to_js(len)
+    "(#{str_js}.slice(#{start_js}, #{start_js} + #{len_js}))"
+  end
+
   # get_in(map, [keys]) -> nested access
   defp ast_to_js({:get_in, _, [map, keys]}) when is_list(keys) do
     base = ast_to_js(map)
@@ -799,9 +835,12 @@ defmodule Lavash.Template do
     end
   end
 
-  # Fallback - return as comment for debugging
+  # Fallback - return undefined for untranspilable expressions
+  # (comments with special chars like {: can break some JS parsers)
   defp ast_to_js(other) do
-    "/* unknown: #{inspect(other)} */"
+    # Use a safe string representation instead of raw inspect which might contain problematic chars
+    safe_repr = inspect(other) |> String.replace(~r/[{}:\[\]]/, "_")
+    "(undefined /* untranspilable: #{safe_repr} */)"
   end
 
   @doc """
@@ -874,7 +913,7 @@ defmodule Lavash.Template do
 
   # Supported String functions
   defp validate_ast({{:., _, [{:__aliases__, _, [:String]}, func]}, _, args})
-       when func in [:length, :to_float, :to_integer, :trim, :match?, :contains?] do
+       when func in [:length, :to_float, :to_integer, :trim, :match?, :contains?, :starts_with?, :ends_with?, :replace, :slice] do
     validate_all_args(args)
   end
 

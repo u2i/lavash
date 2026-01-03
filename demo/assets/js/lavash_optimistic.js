@@ -136,16 +136,14 @@ const LavashOptimistic = {
     const scriptEl = this.el.querySelector("#lavash-optimistic-fns");
     if (scriptEl) {
       try {
-        // Parse the JSON and eval to get functions
-        // The content is a JS object literal, so we need to eval it
+        // Parse the JS object literal using eval
         const fnCode = scriptEl.textContent.trim();
         if (fnCode) {
-          // Use Function constructor to evaluate the object literal
-          const fnObj = new Function(`return ${fnCode}`)();
-          this.fns = fnObj;
-          this.deriveNames = fnObj.__derives__ || [];
-          this.fieldNames = fnObj.__fields__ || [];
-          this.graph = fnObj.__graph__ || {};
+          const fnObj = eval(`(${fnCode})`);
+          this.fns = fnObj || {};
+          this.deriveNames = fnObj?.__derives__ || [];
+          this.fieldNames = fnObj?.__fields__ || [];
+          this.graph = fnObj?.__graph__ || {};
         } else {
           this.fns = {};
           this.deriveNames = [];
@@ -470,7 +468,9 @@ const LavashOptimistic = {
 
   handleInput(e) {
     const target = e.target.closest("[data-lavash-bind]");
-    if (!target) return;
+    if (!target) {
+      return;
+    }
 
     // Skip if input is inside a child component (has its own hook)
     // Child components handle their own inputs and sync to parent via syncParentUrl()
@@ -659,7 +659,7 @@ const LavashOptimistic = {
           const result = fn(this.state);
           this.state[name] = result;
         } catch (err) {
-          console.error("[Lavash] Error computing", name, err);
+          // Silently ignore derive computation errors
         }
       }
     }
@@ -1015,22 +1015,25 @@ const LavashOptimistic = {
       // Check for server errors
       const hasServerErrors = (this.fieldState[fieldPath]?.serverErrors || []).length > 0;
 
-      // Remove existing border/ring color classes
-      const borderClasses = ["border-gray-300", "border-green-300", "border-red-300"];
-      const ringClasses = ["focus:ring-blue-500", "focus:ring-green-500", "focus:ring-red-500"];
-      borderClasses.forEach(c => input.classList.remove(c));
-      ringClasses.forEach(c => input.classList.remove(c));
+      // Remove existing validation state classes (DaisyUI semantic + Tailwind fallback)
+      const validationClasses = [
+        // DaisyUI semantic classes
+        "input-success", "input-error",
+        // Tailwind fallback classes
+        "border-gray-300", "border-green-300", "border-red-300",
+        "focus:ring-blue-500", "focus:ring-green-500", "focus:ring-red-500"
+      ];
+      validationClasses.forEach(c => input.classList.remove(c));
 
       // Apply appropriate classes based on state
       if (!showErrors) {
-        // Neutral state - gray border, blue ring
-        input.classList.add("border-gray-300", "focus:ring-blue-500");
+        // Neutral state - no validation classes
       } else if (isValid && !hasServerErrors) {
-        // Valid state - green border and ring
-        input.classList.add("border-green-300", "focus:ring-green-500");
+        // Valid state - use DaisyUI semantic class
+        input.classList.add("input-success");
       } else {
-        // Invalid state - red border and ring
-        input.classList.add("border-red-300", "focus:ring-red-500");
+        // Invalid state - use DaisyUI semantic class
+        input.classList.add("input-error");
       }
     });
 
