@@ -76,8 +76,8 @@ defmodule Lavash.Optimistic.JsGenerator do
       to_string(name)
     end)
     form_validation_derive_names = Enum.map(form_validations, fn {name, _, _} -> to_string(name) end)
-    # form_errors tuples have 4 elements: {name, params_field, validation, custom_errors}
-    form_error_derive_names = Enum.map(form_errors, fn {name, _, _, _} -> to_string(name) end)
+    # form_errors tuples have 5 elements: {name, params_field, validation, custom_errors, ash_validations}
+    form_error_derive_names = Enum.map(form_errors, fn {name, _, _, _, _} -> to_string(name) end)
     derive_names = explicit_derive_names ++ multi_select_derive_names ++ toggle_derive_names ++ calculation_derive_names ++ form_validation_derive_names ++ form_error_derive_names
 
     # Add optimistic field names
@@ -154,15 +154,15 @@ defmodule Lavash.Optimistic.JsGenerator do
       end)
 
     # Form error derives depend on params field (same as validations)
-    # 4-tuple format: {name, params_field, validation, custom_errors}
+    # 5-tuple format: {name, params_field, validation, custom_errors, ash_validations}
     form_error_entries =
       Enum.map(form_errors, fn
-        {name, _params_field, {:combined, form_name, field_names}, _custom_errors} ->
+        {name, _params_field, {:combined, form_name, field_names}, _custom_errors, _ash_validations} ->
           # Combined errors depends on individual field errors
           deps = Enum.map(field_names, fn field -> "#{form_name}_#{field}_errors" end)
           {to_string(name), %{deps: deps}}
 
-        {name, params_field, _validation, _custom_errors} ->
+        {name, params_field, _validation, _custom_errors, _ash_validations} ->
           # Individual field errors depends on params
           {to_string(name), %{deps: [to_string(params_field)]}}
       end)
@@ -556,7 +556,7 @@ defmodule Lavash.Optimistic.JsGenerator do
   end
 
   # Get form error derives from module's forms
-  # Returns list of {derive_name, params_field, validation, custom_errors} tuples for _errors fields
+  # Returns list of {derive_name, params_field, validation, custom_errors, ash_validations} tuples for _errors fields
   defp get_form_errors(module) do
     try do
       forms = module.__lavash__(:forms)
@@ -568,23 +568,28 @@ defmodule Lavash.Optimistic.JsGenerator do
         resource = form.resource
         form_name = form.name
         params_field = :"#{form_name}_params"
+        create_action = form.create || :create
 
         if Code.ensure_loaded?(resource) and
              function_exported?(resource, :spark_dsl_config, 0) do
           validations = Lavash.Form.ConstraintTranspiler.extract_validations(resource)
 
-          # Generate per-field error derives with custom errors
+          # Also get Ash validations with custom messages
+          ash_validations = Lavash.Form.ValidationTranspiler.extract_validations_for_action(resource, create_action)
+
+          # Generate per-field error derives with custom errors and ash validations
           field_derives =
             Enum.map(validations, fn validation ->
               derive_name = :"#{form_name}_#{validation.field}_errors"
               custom_errors = Map.get(extend_errors_map, derive_name, [])
-              {derive_name, params_field, validation, custom_errors}
+              field_ash_validations = Map.get(ash_validations, validation.field, [])
+              {derive_name, params_field, validation, custom_errors, field_ash_validations}
             end)
 
           # Generate overall form_errors derive if we have field validations
           if length(validations) > 0 do
             field_names = Enum.map(validations, & &1.field)
-            form_errors = {:"#{form_name}_errors", params_field, {:combined, form_name, field_names}, []}
+            form_errors = {:"#{form_name}_errors", params_field, {:combined, form_name, field_names}, [], []}
             field_derives ++ [form_errors]
           else
             field_derives
@@ -723,7 +728,7 @@ defmodule Lavash.Optimistic.JsGenerator do
   end
 
   # Generate JS for form field error derives
-  defp generate_form_errors_js({name, _params_field, {:combined, form_name, field_names}, _custom_errors}) do
+  defp generate_form_errors_js({name, _params_field, {:combined, form_name, field_names}, _custom_errors, _ash_validations}) do
     # Combined errors - concatenate all individual field error arrays
     arrays =
       field_names
@@ -737,7 +742,7 @@ defmodule Lavash.Optimistic.JsGenerator do
     """
   end
 
-  defp generate_form_errors_js({name, params_field, validation, custom_errors}) do
+  defp generate_form_errors_js({name, params_field, validation, custom_errors, ash_validations}) do
     field = validation.field
     field_str = to_string(field)
     required = validation.required
@@ -746,13 +751,17 @@ defmodule Lavash.Optimistic.JsGenerator do
 
     value_expr = "state.#{params_field}?.[#{Jason.encode!(field_str)}]"
 
+    # Build a lookup of custom messages from Ash validations
+    # %{:required => "Enter a card number", :min_length => "Card number too short", ...}
+    ash_messages = build_ash_message_lookup(ash_validations)
+
     # Build error checks - each returns error message if check fails
     error_checks = []
 
     # Required check
     error_checks =
       if required do
-        msg = Lavash.Form.ConstraintTranspiler.error_message(:required, nil)
+        msg = Map.get(ash_messages, :required) || Lavash.Form.ConstraintTranspiler.error_message(:required, nil)
         check = "{check: #{value_expr} != null && String(#{value_expr}).trim().length > 0, msg: #{Jason.encode!(msg)}}"
         [check | error_checks]
       else
@@ -763,10 +772,10 @@ defmodule Lavash.Optimistic.JsGenerator do
     error_checks =
       case type do
         :string ->
-          build_string_error_checks(value_expr, constraints, error_checks)
+          build_string_error_checks(value_expr, constraints, error_checks, ash_messages)
 
         :integer ->
-          build_integer_error_checks(value_expr, constraints, error_checks)
+          build_integer_error_checks(value_expr, constraints, error_checks, ash_messages)
 
         _ ->
           error_checks
@@ -811,14 +820,17 @@ defmodule Lavash.Optimistic.JsGenerator do
     """
   end
 
-  defp build_string_error_checks(value_expr, constraints, checks) do
+  defp build_string_error_checks(value_expr, constraints, checks, ash_messages) do
     checks =
       case Map.get(constraints, :min_length) do
         nil ->
           checks
 
         min ->
-          msg = Lavash.Form.ConstraintTranspiler.error_message(:min_length, min)
+          # Look for min_length or length_between message from Ash validations
+          msg = Map.get(ash_messages, :min_length) ||
+                Map.get(ash_messages, :length_between) ||
+                Lavash.Form.ConstraintTranspiler.error_message(:min_length, min)
           check = "{check: String(#{value_expr} || '').trim().length >= #{min}, msg: #{Jason.encode!(msg)}}"
           [check | checks]
       end
@@ -829,7 +841,10 @@ defmodule Lavash.Optimistic.JsGenerator do
           checks
 
         max ->
-          msg = Lavash.Form.ConstraintTranspiler.error_message(:max_length, max)
+          # Look for max_length or length_between message from Ash validations
+          msg = Map.get(ash_messages, :max_length) ||
+                Map.get(ash_messages, :length_between) ||
+                Lavash.Form.ConstraintTranspiler.error_message(:max_length, max)
           check = "{check: String(#{value_expr} || '').trim().length <= #{max}, msg: #{Jason.encode!(msg)}}"
           [check | checks]
       end
@@ -841,7 +856,8 @@ defmodule Lavash.Optimistic.JsGenerator do
 
         regex ->
           pattern = Regex.source(regex)
-          msg = Lavash.Form.ConstraintTranspiler.error_message(:match, regex)
+          msg = Map.get(ash_messages, :match) ||
+                Lavash.Form.ConstraintTranspiler.error_message(:match, regex)
           check = "{check: new RegExp(#{Jason.encode!(pattern)}).test(#{value_expr} || ''), msg: #{Jason.encode!(msg)}}"
           [check | checks]
       end
@@ -849,7 +865,7 @@ defmodule Lavash.Optimistic.JsGenerator do
     checks
   end
 
-  defp build_integer_error_checks(value_expr, constraints, checks) do
+  defp build_integer_error_checks(value_expr, constraints, checks, ash_messages) do
     parsed = "parseInt(#{value_expr} || '0', 10)"
 
     checks =
@@ -858,7 +874,9 @@ defmodule Lavash.Optimistic.JsGenerator do
           checks
 
         min ->
-          msg = Lavash.Form.ConstraintTranspiler.error_message(:min, min)
+          msg = Map.get(ash_messages, :min) ||
+                Map.get(ash_messages, :numericality) ||
+                Lavash.Form.ConstraintTranspiler.error_message(:min, min)
           check = "{check: #{parsed} >= #{min}, msg: #{Jason.encode!(msg)}}"
           [check | checks]
       end
@@ -869,11 +887,28 @@ defmodule Lavash.Optimistic.JsGenerator do
           checks
 
         max ->
-          msg = Lavash.Form.ConstraintTranspiler.error_message(:max, max)
+          msg = Map.get(ash_messages, :max) ||
+                Map.get(ash_messages, :numericality) ||
+                Lavash.Form.ConstraintTranspiler.error_message(:max, max)
           check = "{check: #{parsed} <= #{max}, msg: #{Jason.encode!(msg)}}"
           [check | checks]
       end
 
     checks
+  end
+
+  # Build a lookup map from ash_validations list to their messages
+  # e.g. [%{type: :required, message: "Enter a card number"}, ...]
+  # => %{:required => "Enter a card number", ...}
+  defp build_ash_message_lookup(ash_validations) do
+    Enum.reduce(ash_validations, %{}, fn spec, acc ->
+      if spec.message do
+        # Get the resolved message using ValidationTranspiler
+        message = Lavash.Form.ValidationTranspiler.get_message(spec)
+        Map.put(acc, spec.type, message)
+      else
+        acc
+      end
+    end)
   end
 end

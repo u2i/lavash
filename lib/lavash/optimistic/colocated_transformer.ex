@@ -360,10 +360,14 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
         resource = form.resource
         form_name = form.name
         params_field = :"#{form_name}_params"
+        create_action = form.create || :create
 
         if Code.ensure_loaded?(resource) and
              function_exported?(resource, :spark_dsl_config, 0) do
           validations = Lavash.Form.ConstraintTranspiler.extract_validations(resource)
+
+          # Get Ash validations with custom messages
+          ash_validations = Lavash.Form.ValidationTranspiler.extract_validations_for_action(resource, create_action)
 
           # Generate per-field validation and error derives
           {field_v_fns, field_e_fns, field_v_derives, field_e_derives} =
@@ -372,9 +376,10 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
               v_name = :"#{form_name}_#{validation.field}_valid"
               e_name = :"#{form_name}_#{validation.field}_errors"
               custom_errors = Map.get(extend_errors_map, e_name, [])
+              field_ash_validations = Map.get(ash_validations, validation.field, [])
 
               v_fn = generate_field_validation_js(v_name, params_field, validation)
-              e_fn = generate_field_errors_js(e_name, params_field, validation, custom_errors)
+              e_fn = generate_field_errors_js(e_name, params_field, validation, custom_errors, field_ash_validations)
 
               {[v_fn | vf], [e_fn | ef], [to_string(v_name) | vd], [to_string(e_name) | ed]}
             end)
@@ -467,7 +472,7 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
     """
   end
 
-  defp generate_field_errors_js(name, params_field, validation, custom_errors) do
+  defp generate_field_errors_js(name, params_field, validation, custom_errors, ash_validations) do
     field = validation.field
     field_str = to_string(field)
     required = validation.required
@@ -476,11 +481,15 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
 
     value_expr = "state.#{params_field}?.[#{Jason.encode!(field_str)}]"
 
+    # Build lookup for custom messages from Ash validations
+    ash_messages = build_ash_message_lookup(ash_validations)
+
     error_checks = []
 
     error_checks =
       if required do
-        msg = Lavash.Form.ConstraintTranspiler.error_message(:required, nil)
+        msg = Map.get(ash_messages, :required) ||
+              Lavash.Form.ConstraintTranspiler.error_message(:required, nil)
 
         check =
           "{check: #{value_expr} != null && String(#{value_expr}).trim().length > 0, msg: #{Jason.encode!(msg)}}"
@@ -492,8 +501,8 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
 
     error_checks =
       case type do
-        :string -> build_string_error_checks(value_expr, constraints, error_checks)
-        :integer -> build_integer_error_checks(value_expr, constraints, error_checks)
+        :string -> build_string_error_checks(value_expr, constraints, error_checks, ash_messages)
+        :integer -> build_integer_error_checks(value_expr, constraints, error_checks, ash_messages)
         _ -> error_checks
       end
 
@@ -560,14 +569,16 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
     checks
   end
 
-  defp build_string_error_checks(value_expr, constraints, checks) do
+  defp build_string_error_checks(value_expr, constraints, checks, ash_messages) do
     checks =
       case Map.get(constraints, :min_length) do
         nil ->
           checks
 
         min ->
-          msg = Lavash.Form.ConstraintTranspiler.error_message(:min_length, min)
+          msg = Map.get(ash_messages, :min_length) ||
+                Map.get(ash_messages, :length_between) ||
+                Lavash.Form.ConstraintTranspiler.error_message(:min_length, min)
 
           check =
             "{check: String(#{value_expr} || '').trim().length >= #{min}, msg: #{Jason.encode!(msg)}}"
@@ -581,7 +592,9 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
           checks
 
         max ->
-          msg = Lavash.Form.ConstraintTranspiler.error_message(:max_length, max)
+          msg = Map.get(ash_messages, :max_length) ||
+                Map.get(ash_messages, :length_between) ||
+                Lavash.Form.ConstraintTranspiler.error_message(:max_length, max)
 
           check =
             "{check: String(#{value_expr} || '').trim().length <= #{max}, msg: #{Jason.encode!(msg)}}"
@@ -592,7 +605,7 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
     checks
   end
 
-  defp build_integer_error_checks(value_expr, constraints, checks) do
+  defp build_integer_error_checks(value_expr, constraints, checks, ash_messages) do
     parsed = "parseInt(#{value_expr} || '0', 10)"
 
     checks =
@@ -601,7 +614,9 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
           checks
 
         min ->
-          msg = Lavash.Form.ConstraintTranspiler.error_message(:min, min)
+          msg = Map.get(ash_messages, :min) ||
+                Map.get(ash_messages, :numericality) ||
+                Lavash.Form.ConstraintTranspiler.error_message(:min, min)
           check = "{check: #{parsed} >= #{min}, msg: #{Jason.encode!(msg)}}"
           [check | checks]
       end
@@ -612,12 +627,26 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
           checks
 
         max ->
-          msg = Lavash.Form.ConstraintTranspiler.error_message(:max, max)
+          msg = Map.get(ash_messages, :max) ||
+                Map.get(ash_messages, :numericality) ||
+                Lavash.Form.ConstraintTranspiler.error_message(:max, max)
           check = "{check: #{parsed} <= #{max}, msg: #{Jason.encode!(msg)}}"
           [check | checks]
       end
 
     checks
+  end
+
+  # Build a lookup map from ash_validations list to their messages
+  defp build_ash_message_lookup(ash_validations) do
+    Enum.reduce(ash_validations, %{}, fn spec, acc ->
+      if spec.message do
+        message = Lavash.Form.ValidationTranspiler.get_message(spec)
+        Map.put(acc, spec.type, message)
+      else
+        acc
+      end
+    end)
   end
 
   defp build_graph_entries(multi_selects, toggles, calculations, forms) do

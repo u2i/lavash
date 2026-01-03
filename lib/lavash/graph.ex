@@ -276,6 +276,7 @@ defmodule Lavash.Graph do
   defp expand_form_validations(module, form, params_dep) do
     resource = form.resource
     form_name = form.name
+    create_action = form.create
 
     # Get any extend_errors declarations for this form
     extend_errors_map = get_extend_errors_map(module)
@@ -284,7 +285,12 @@ defmodule Lavash.Graph do
     # (might not be if it's in a different app that isn't compiled yet)
     if Code.ensure_loaded?(resource) and
          function_exported?(resource, :spark_dsl_config, 0) do
+      # Get constraint-based validations (from attribute type constraints)
       validations = Lavash.Form.ConstraintTranspiler.extract_validations(resource)
+
+      # Get Ash validations with custom messages (from validations do block)
+      # These override the default constraint messages when available
+      ash_validations = Lavash.Form.ValidationTranspiler.extract_validations_for_action(resource, create_action)
 
       # Generate a _valid field for each attribute
       field_valid_fields =
@@ -308,12 +314,15 @@ defmodule Lavash.Graph do
           # Check if there are custom errors to extend this field
           custom_errors = Map.get(extend_errors_map, field_name, [])
 
+          # Get Ash validation messages for this field (overrides constraint messages)
+          field_ash_validations = Map.get(ash_validations, validation.field, [])
+
           %Lavash.Derived.Field{
             name: field_name,
             depends_on: [params_dep],
             async: false,
             optimistic: true,
-            compute: build_errors_compute(validation, params_dep, custom_errors)
+            compute: build_errors_compute(validation, params_dep, custom_errors, field_ash_validations)
           }
         end)
 
@@ -407,12 +416,17 @@ defmodule Lavash.Graph do
   end
 
   # Build a compute function for an errors field
-  defp build_errors_compute(validation, params_dep, custom_errors \\ []) do
+  # ash_validations: list of validation specs from ValidationTranspiler (with custom messages)
+  defp build_errors_compute(validation, params_dep, custom_errors \\ [], ash_validations \\ []) do
     field = validation.field
     field_str = to_string(field)
     type = validation.type
     required = validation.required
     constraints = validation.constraints
+
+    # Build a message lookup from Ash validations
+    # Maps validation type to custom message
+    ash_messages = build_ash_message_lookup(ash_validations)
 
     # Store custom error conditions (Lavash.Rx structs) and messages
     # Messages can be static strings or dynamic Lavash.Rx structs
@@ -435,10 +449,12 @@ defmodule Lavash.Graph do
 
       errors = []
 
-      # Required check
+      # Required check - use Ash message if available
       errors =
         if required and is_empty do
-          [Lavash.Form.ConstraintTranspiler.error_message(:required, nil) | errors]
+          msg = Map.get(ash_messages, :required) ||
+                Lavash.Form.ConstraintTranspiler.error_message(:required, nil)
+          [msg | errors]
         else
           errors
         end
@@ -446,7 +462,7 @@ defmodule Lavash.Graph do
       # Only check other constraints if field is not empty
       errors =
         if not is_empty do
-          errors ++ collect_constraint_errors(type, value, constraints)
+          errors ++ collect_constraint_errors(type, value, constraints, ash_messages)
         else
           errors
         end
@@ -475,32 +491,65 @@ defmodule Lavash.Graph do
     end
   end
 
-  defp collect_constraint_errors(:string, value, constraints) do
+  # Build a lookup map from Ash validation type to custom message
+  defp build_ash_message_lookup(ash_validations) do
+    Enum.reduce(ash_validations, %{}, fn spec, acc ->
+      if spec.message do
+        # Map validation types to lookup keys
+        key = case spec.type do
+          :required -> :required
+          :min_length -> :min_length
+          :max_length -> :max_length
+          :length_between -> :length_between  # has both min and max
+          :exact_length -> :exact_length
+          :match -> :match
+          :numericality -> :numericality
+          other -> other
+        end
+        Map.put(acc, key, spec.message)
+      else
+        acc
+      end
+    end)
+  end
+
+  defp collect_constraint_errors(:string, value, constraints, ash_messages) do
     value_str = to_string(value || "")
     trimmed = String.trim(value_str)
     len = String.length(trimmed)
     errors = []
 
-    errors =
-      case Map.get(constraints, :min_length) do
-        nil -> errors
-        min ->
-          if len < min do
-            [Lavash.Form.ConstraintTranspiler.error_message(:min_length, min) | errors]
-          else
-            errors
-          end
-      end
+    min_constraint = Map.get(constraints, :min_length)
+    max_constraint = Map.get(constraints, :max_length)
 
+    # Check if we have both min and max constraints - use length_between message if available
     errors =
-      case Map.get(constraints, :max_length) do
-        nil -> errors
-        max ->
-          if len > max do
-            [Lavash.Form.ConstraintTranspiler.error_message(:max_length, max) | errors]
-          else
-            errors
-          end
+      cond do
+        min_constraint && max_constraint && len < min_constraint ->
+          # Check for length_between message first, then fall back to min_length
+          msg = Map.get(ash_messages, :length_between) ||
+                Map.get(ash_messages, :min_length) ||
+                Lavash.Form.ConstraintTranspiler.error_message(:min_length, min_constraint)
+          [msg | errors]
+
+        min_constraint && max_constraint && len > max_constraint ->
+          msg = Map.get(ash_messages, :length_between) ||
+                Map.get(ash_messages, :max_length) ||
+                Lavash.Form.ConstraintTranspiler.error_message(:max_length, max_constraint)
+          [msg | errors]
+
+        min_constraint && !max_constraint && len < min_constraint ->
+          msg = Map.get(ash_messages, :min_length) ||
+                Lavash.Form.ConstraintTranspiler.error_message(:min_length, min_constraint)
+          [msg | errors]
+
+        max_constraint && !min_constraint && len > max_constraint ->
+          msg = Map.get(ash_messages, :max_length) ||
+                Lavash.Form.ConstraintTranspiler.error_message(:max_length, max_constraint)
+          [msg | errors]
+
+        true ->
+          errors
       end
 
     errors =
@@ -510,14 +559,16 @@ defmodule Lavash.Graph do
           if String.match?(value_str, regex) do
             errors
           else
-            [Lavash.Form.ConstraintTranspiler.error_message(:match, regex) | errors]
+            msg = Map.get(ash_messages, :match) ||
+                  Lavash.Form.ConstraintTranspiler.error_message(:match, regex)
+            [msg | errors]
           end
       end
 
     errors
   end
 
-  defp collect_constraint_errors(:integer, value, constraints) do
+  defp collect_constraint_errors(:integer, value, constraints, ash_messages) do
     case Integer.parse(to_string(value || "0")) do
       {num, ""} ->
         errors = []
@@ -527,7 +578,9 @@ defmodule Lavash.Graph do
             nil -> errors
             min ->
               if num < min do
-                [Lavash.Form.ConstraintTranspiler.error_message(:min, min) | errors]
+                msg = Map.get(ash_messages, :min) ||
+                      Lavash.Form.ConstraintTranspiler.error_message(:min, min)
+                [msg | errors]
               else
                 errors
               end
@@ -538,7 +591,9 @@ defmodule Lavash.Graph do
             nil -> errors
             max ->
               if num > max do
-                [Lavash.Form.ConstraintTranspiler.error_message(:max, max) | errors]
+                msg = Map.get(ash_messages, :max) ||
+                      Lavash.Form.ConstraintTranspiler.error_message(:max, max)
+                [msg | errors]
               else
                 errors
               end
@@ -547,11 +602,13 @@ defmodule Lavash.Graph do
         errors
 
       _ ->
-        [Lavash.Form.ConstraintTranspiler.error_message(:match, nil)]
+        msg = Map.get(ash_messages, :match) ||
+              Lavash.Form.ConstraintTranspiler.error_message(:match, nil)
+        [msg]
     end
   end
 
-  defp collect_constraint_errors(_, _, _), do: []
+  defp collect_constraint_errors(_, _, _, _), do: []
 
   defp check_string_constraints(value, constraints) do
     value = String.trim(value || "")

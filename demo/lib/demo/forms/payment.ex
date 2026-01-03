@@ -49,4 +49,23 @@ defmodule Demo.Forms.Payment do
       accept [:card_number, :expiry, :cvv, :name]
     end
   end
+
+  validations do
+    validate present(:card_number), message: "Enter a card number"
+    validate present(:expiry), message: "Enter an expiration date"
+    validate present(:cvv), message: "Enter the security code"
+    validate present(:name), message: "Enter the name on your card"
+
+    validate string_length(:card_number, min: 15, max: 16),
+      message: "Card number should be 15-16 digits"
+
+    validate string_length(:expiry, min: 4, max: 5),
+      message: "Enter a valid expiration (MM/YY)"
+
+    validate string_length(:cvv, min: 3, max: 4),
+      message: "CVV should be 3-4 digits"
+
+    validate string_length(:name, min: 2),
+      message: "Enter your full name"
+  end
 end
