@@ -30,18 +30,15 @@ window.morphdom = morphdom
 import "./synced_var.js"
 // Colocated hooks from Lavash library
 import {hooks as lavashHooks} from "phoenix-colocated/lavash"
-// Colocated JS (non-hook exports) from this app - import directly by module
-import counterOptimistic from "phoenix-colocated/demo/DemoWeb.CounterLive/46_tigxgsumzfejan3k2k4c4n3r4m.js"
-import storefrontOptimistic from "phoenix-colocated/demo/DemoWeb.Storefront.ProductsLive/115_tigxgsumzfejan3k2k4c4n3r4m.js"
+// Lavash optimistic functions - auto-generated at compile time
+import lavashOptimisticFns from "./lavash-optimistic/index.js"
 // Lavash optimistic hook for URL sync
 import {LavashOptimistic} from "./lavash_optimistic"
 
-// Register optimistic functions from colocated JS
-// Note: FormValidationDemoLive uses auto-generated JS from calculate/rx() - no manual registration needed
+// Register optimistic functions from compile-time generation
+// Functions are keyed by module name (e.g., "DemoWeb.CheckoutDemoLive")
 window.Lavash = window.Lavash || {};
-window.Lavash.optimistic = window.Lavash.optimistic || {};
-window.Lavash.optimistic["DemoWeb.CounterLive"] = counterOptimistic;
-window.Lavash.optimistic["DemoWeb.Storefront.ProductsLive"] = storefrontOptimistic;
+window.Lavash.optimistic = lavashOptimisticFns;
 
 // Merge hooks from Lavash library and app-specific hooks
 const colocatedHooks = {

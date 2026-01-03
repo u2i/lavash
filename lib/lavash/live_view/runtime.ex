@@ -50,8 +50,9 @@ defmodule Lavash.LiveView.Runtime do
             0
         end
 
-      # Generate optimistic functions from DSL
-      generated_js = Lavash.Optimistic.JsGenerator.generate(module)
+      # Optimistic functions are now extracted to colocated JS files at compile time
+      # by Lavash.Optimistic.ColocatedTransformer, no need to embed them here
+      has_optimistic_js = optimistic_fields != [] or optimistic_derives != []
 
       # Get URL field names for client-side URL sync
       url_field_names =
@@ -66,65 +67,33 @@ defmodule Lavash.LiveView.Runtime do
 
       # Build wrapper as a Rendered struct so LiveView can diff it properly
       # The static parts are the wrapper div, dynamic parts include the inner content
-      if generated_js do
-        # Include generated JS as inline script
-        # The JS is already safe (we generated it), so just use it directly as iodata
-        # Script content doesn't need HTML escaping since it's interpreted as JS, not HTML
-
-        %Phoenix.LiveView.Rendered{
-          static: [
-            ~s(<div id="lavash-optimistic-root" phx-hook="LavashOptimistic" data-lavash-module="),
-            ~s(" data-lavash-state="),
-            ~s(" data-lavash-version="),
-            ~s(" data-lavash-url-fields="),
-            ~s(">),
-            ~s(<script type="application/json" id="lavash-optimistic-fns">),
-            ~s(</script></div>)
-          ],
-          dynamic: fn _ ->
-            [
-              escaped_module,
-              escaped_json,
-              version_str,
-              escaped_url_fields,
-              inner_content,
-              generated_js
-            ]
-          end,
-          # IMPORTANT: fingerprint must NOT include dynamic values (state, version) that change
-          # on every update. Including them causes LiveView to treat this as a completely new
-          # template, wiping out the component registry and breaking CID-based event targeting.
-          # Only include structural information that defines the template shape.
-          fingerprint: :erlang.phash2({module_name, url_field_names, generated_js}),
-          root: true
-        }
-      else
-        %Phoenix.LiveView.Rendered{
-          static: [
-            ~s(<div id="lavash-optimistic-root" phx-hook="LavashOptimistic" data-lavash-module="),
-            ~s(" data-lavash-state="),
-            ~s(" data-lavash-version="),
-            ~s(" data-lavash-url-fields="),
-            ~s(">),
-            ~s(</div>)
-          ],
-          dynamic: fn _ ->
-            [
-              escaped_module,
-              escaped_json,
-              version_str,
-              escaped_url_fields,
-              inner_content
-            ]
-          end,
-          # IMPORTANT: fingerprint must NOT include dynamic values (state, version) that change
-          # on every update. Including them causes LiveView to treat this as a completely new
-          # template, wiping out the component registry and breaking CID-based event targeting.
-          # Only include structural information that defines the template shape.
-          fingerprint: :erlang.phash2({module_name, url_field_names}),
-          root: true
-        }
-      end
+      # Note: Optimistic functions are now loaded from colocated JS files (imported in app.js)
+      # instead of being embedded as JSON and eval'd at runtime
+      %Phoenix.LiveView.Rendered{
+        static: [
+          ~s(<div id="lavash-optimistic-root" phx-hook="LavashOptimistic" data-lavash-module="),
+          ~s(" data-lavash-state="),
+          ~s(" data-lavash-version="),
+          ~s(" data-lavash-url-fields="),
+          ~s(">),
+          ~s(</div>)
+        ],
+        dynamic: fn _ ->
+          [
+            escaped_module,
+            escaped_json,
+            version_str,
+            escaped_url_fields,
+            inner_content
+          ]
+        end,
+        # IMPORTANT: fingerprint must NOT include dynamic values (state, version) that change
+        # on every update. Including them causes LiveView to treat this as a completely new
+        # template, wiping out the component registry and breaking CID-based event targeting.
+        # Only include structural information that defines the template shape.
+        fingerprint: :erlang.phash2({module_name, url_field_names, has_optimistic_js}),
+        root: true
+      }
     end
   end
 

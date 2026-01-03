@@ -95,13 +95,14 @@ defmodule Lavash.Optimistic.JsGenerator do
       fields_str = Jason.encode!(field_names)
       graph_str = Jason.encode!(graph_entries)
 
+      # Generate ES module format for colocated JS extraction
       """
-      {
+      export default {
       #{fns_str}#{if fns_str != "", do: ",", else: ""}
       __derives__: #{derives_str},
       __fields__: #{fields_str},
       __graph__: #{graph_str}
-      }
+      };
       """
     end
   end
@@ -773,13 +774,24 @@ defmodule Lavash.Optimistic.JsGenerator do
 
     # Add custom error checks from extend_errors
     # These use rx() expressions that are transpiled to JS
+    # Messages can be static strings or dynamic rx() expressions
     error_checks =
       Enum.reduce(custom_errors, error_checks, fn error, acc ->
         # Transpile the rx condition to JS - condition returns true when error should show
         js_condition = Lavash.Template.elixir_to_js(error.condition.source)
-        msg = error.message
+
+        # Handle both static string messages and dynamic rx() messages
+        msg_js = case error.message do
+          %Lavash.Rx{source: source} ->
+            # Dynamic message - transpile the expression
+            "(#{Lavash.Template.elixir_to_js(source)})"
+          static_string when is_binary(static_string) ->
+            # Static message - JSON encode
+            Jason.encode!(static_string)
+        end
+
         # Note: for custom errors, check is true when the field is VALID, so we negate the condition
-        check = "{check: !(#{js_condition}), msg: #{Jason.encode!(msg)}}"
+        check = "{check: !(#{js_condition}), msg: #{msg_js}}"
         [check | acc]
       end)
 

@@ -132,37 +132,14 @@ const LavashOptimistic = {
   },
 
   loadGeneratedFunctions() {
-    // Look for the generated functions script tag
-    const scriptEl = this.el.querySelector("#lavash-optimistic-fns");
-    if (scriptEl) {
-      try {
-        // Parse the JS object literal using eval
-        const fnCode = scriptEl.textContent.trim();
-        if (fnCode) {
-          const fnObj = eval(`(${fnCode})`);
-          this.fns = fnObj || {};
-          this.deriveNames = fnObj?.__derives__ || [];
-          this.fieldNames = fnObj?.__fields__ || [];
-          this.graph = fnObj?.__graph__ || {};
-        } else {
-          this.fns = {};
-          this.deriveNames = [];
-          this.fieldNames = [];
-          this.graph = {};
-        }
-      } catch (e) {
-        console.error("[LavashOptimistic] Error parsing generated functions:", e);
-        this.fns = {};
-        this.deriveNames = [];
-        this.fieldNames = [];
-        this.graph = {};
-      }
-    } else {
-      this.fns = {};
-      this.deriveNames = [];
-      this.fieldNames = [];
-      this.graph = {};
-    }
+    // Load functions from the registry (populated by colocated JS imports in app.js)
+    // Functions are keyed by module name (e.g., "DemoWeb.CheckoutDemoLive")
+    const fnObj = this.moduleName ? (window.Lavash.optimistic[this.moduleName] || {}) : {};
+
+    this.fns = fnObj;
+    this.deriveNames = fnObj.__derives__ || [];
+    this.fieldNames = fnObj.__fields__ || [];
+    this.graph = fnObj.__graph__ || {};
 
     // Execute any component-generated optimistic scripts (LiveView doesn't auto-execute inline scripts)
     this.executeComponentScripts();

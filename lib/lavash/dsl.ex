@@ -355,9 +355,17 @@ defmodule Lavash.Dsl do
         doc: "Reactive expression that evaluates to true when the error should show"
       ],
       message: [
-        type: :string,
+        type: {:or, [:string, {:struct, Lavash.Rx}]},
         required: true,
-        doc: "The error message to display"
+        doc: """
+        The error message to display. Can be a static string or a dynamic rx() expression.
+
+        Static message:
+            error rx(@value < 0), "Must be positive"
+
+        Dynamic message based on state:
+            error rx(@cvv_length != 3), rx(if(@is_amex, do: "Amex requires 4 digits", else: "Must be 3 digits"))
+        """
       ]
     ]
   }
@@ -801,6 +809,6 @@ defmodule Lavash.Dsl do
       @actions_section,
       @template_section
     ],
-    transformers: [],
+    transformers: [Lavash.Optimistic.ColocatedTransformer],
     imports: [Phoenix.Component, Lavash.DslHelpers, Lavash.Rx]
 end
