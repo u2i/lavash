@@ -457,5 +457,6 @@ defmodule Lavash.Component.Dsl do
       @derives_section,
       @actions_section
     ],
+    transformers: [Lavash.Optimistic.ColocatedTransformer],
     imports: [Phoenix.Component, Lavash.DslHelpers]
 end

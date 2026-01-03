@@ -349,6 +349,7 @@ defmodule Lavash.ClientComponent.Dsl do
       @optimistic_actions_section,
       @template_section
     ],
+    transformers: [Lavash.Optimistic.ColocatedTransformer],
     imports: [Lavash.Rx, Lavash.Optimistic.ActionMacro]
 end
 
