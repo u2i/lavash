@@ -21,3 +21,6 @@ lavash-*.tar
 
 # Temporary files, for example, from tests.
 /tmp/
+
+# Generated lavash-optimistic JS (for library components compiled in isolation)
+/assets/
