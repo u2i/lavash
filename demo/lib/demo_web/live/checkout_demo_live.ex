@@ -327,7 +327,7 @@ defmodule DemoWeb.CheckoutDemoLive do
                       <label class="floating-label w-full">
                         <input
                           type="text"
-                          data-lavash-form-field={@payment[:card_number]}
+                          field={@payment[:card_number]}
                           data-lavash-valid="card_number_valid"
                           autocomplete="cc-number"
                           inputmode="numeric"
@@ -353,7 +353,7 @@ defmodule DemoWeb.CheckoutDemoLive do
                         <label class="floating-label w-full">
                           <input
                             type="text"
-                            data-lavash-form-field={@payment[:expiry]}
+                            field={@payment[:expiry]}
                             data-lavash-valid="expiry_valid"
                             autocomplete="cc-exp"
                             inputmode="numeric"
@@ -379,7 +379,7 @@ defmodule DemoWeb.CheckoutDemoLive do
                         <label class="floating-label w-full">
                           <input
                             type="text"
-                            data-lavash-form-field={@payment[:cvv]}
+                            field={@payment[:cvv]}
                             data-lavash-valid="cvv_valid"
                             autocomplete="cc-csc"
                             inputmode="numeric"
@@ -406,7 +406,7 @@ defmodule DemoWeb.CheckoutDemoLive do
                       <label class="floating-label w-full">
                         <input
                           type="text"
-                          data-lavash-form-field={@payment[:name]}
+                          field={@payment[:name]}
                           autocomplete="cc-name"
                           placeholder="Name on card"
                           class={"input input-bordered w-full " <>

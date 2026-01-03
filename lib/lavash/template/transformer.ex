@@ -7,9 +7,9 @@ defmodule Lavash.Template.Transformer do
 
   ## Form Field Shorthand
 
-  Use `data-lavash-form-field={@form[:field]}` to inject all form-related attributes:
+  Use `field={@form[:field]}` to inject all form-related attributes (same syntax as Phoenix):
 
-      <input type="text" data-lavash-form-field={@payment[:card_number]} />
+      <input type="text" field={@payment[:card_number]} />
 
   Expands to:
 
@@ -24,7 +24,7 @@ defmodule Lavash.Template.Transformer do
 
   Override any generated attribute by specifying it explicitly:
 
-      <input data-lavash-form-field={@payment[:cvv]}
+      <input field={@payment[:cvv]}
              data-lavash-valid="cvv_valid" />  <!-- custom validation field -->
 
   ## Pattern Recognition
@@ -458,11 +458,11 @@ defmodule Lavash.Template.Transformer do
   # Pattern 1: Form inputs
   # Supports two patterns:
   # a) Explicit: name={@form[:field].name} - injects data-lavash-* attributes
-  # b) Shorthand: data-lavash-form-field={@form[:field]} - injects name, value, and all data-lavash-*
+  # b) Shorthand: field={@form[:field]} - injects name, value, and all data-lavash-* (Phoenix-style)
   defp maybe_inject_form_input(attrs, tag_info, metadata) do
     if tag_info.name in ["input", "textarea", "select"] do
-      # Check for shorthand pattern first: data-lavash-form-field={@form[:field]}
-      case get_attr(attrs, "data-lavash-form-field") do
+      # Check for shorthand pattern first: field={@form[:field]} (Phoenix-style)
+      case get_attr(attrs, "field") do
         {:expr, expr} ->
           case parse_form_field_access_expr(expr) do
             {:ok, form, field} when is_map_key(metadata.forms, form) ->
@@ -524,7 +524,7 @@ defmodule Lavash.Template.Transformer do
 
     # Remove the shorthand attribute and inject everything
     attrs
-    |> Enum.reject(fn {name, _} -> name == "data-lavash-form-field" end)
+    |> Enum.reject(fn {name, _} -> name == "field" end)
     |> add_attr_if_missing("name", {:expr, "@#{form_str}[:#{field_str}].name"})
     |> add_attr_if_missing("value", {:expr, "@#{form_str}[:#{field_str}].value || \"\""})
     |> add_attr_if_missing("data-lavash-bind", {:string, "#{form_str}_params.#{field_str}"})

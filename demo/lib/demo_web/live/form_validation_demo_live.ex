@@ -72,7 +72,7 @@ defmodule DemoWeb.FormValidationDemoLive do
 
   # Using template DSL with shorthand form field syntax
   #
-  # data-lavash-form-field={@form[:field]} expands to:
+  # field={@form[:field]} expands to:
   # - name={@form[:field].name}
   # - value={@form[:field].value || ""}
   # - data-lavash-bind="form_params.field"
@@ -117,7 +117,7 @@ defmodule DemoWeb.FormValidationDemoLive do
           <div class="relative">
             <input
               type="text"
-              data-lavash-form-field={@registration[:name]}
+              field={@registration[:name]}
               autocomplete="off"
               data-1p-ignore
               class={"input input-bordered w-full pr-10 " <>
@@ -144,7 +144,7 @@ defmodule DemoWeb.FormValidationDemoLive do
           <div class="relative">
             <input
               type="text"
-              data-lavash-form-field={@registration[:email]}
+              field={@registration[:email]}
               data-lavash-valid="email_valid"
               autocomplete="off"
               data-1p-ignore
@@ -173,7 +173,7 @@ defmodule DemoWeb.FormValidationDemoLive do
           <div class="relative">
             <input
               type="number"
-              data-lavash-form-field={@registration[:age]}
+              field={@registration[:age]}
               autocomplete="off"
               data-1p-ignore
               min="0"
