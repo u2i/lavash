@@ -415,10 +415,15 @@ defmodule Lavash.Graph do
     constraints = validation.constraints
 
     # Store custom error conditions (Lavash.Rx structs) and messages
+    # Messages can be static strings or dynamic Lavash.Rx structs
     # We evaluate the AST at runtime like calculate does
     custom_error_specs =
       Enum.map(custom_errors, fn error ->
-        {error.condition.ast, error.message}
+        message_spec = case error.message do
+          %Lavash.Rx{ast: ast} -> {:dynamic, ast}
+          static_string when is_binary(static_string) -> {:static, static_string}
+        end
+        {error.condition.ast, message_spec}
       end)
 
     fn deps ->
@@ -449,10 +454,17 @@ defmodule Lavash.Graph do
       # Add custom errors where condition evaluates to true
       # The condition should return true when the error should be shown (i.e., field is invalid)
       custom_error_messages =
-        Enum.flat_map(custom_error_specs, fn {ast, message} ->
-          # Evaluate the AST with state bound to deps, like calculate does
-          {result, _binding} = Code.eval_quoted(ast, [state: deps], __ENV__)
+        Enum.flat_map(custom_error_specs, fn {condition_ast, message_spec} ->
+          # Evaluate the condition AST with state bound to deps
+          {result, _binding} = Code.eval_quoted(condition_ast, [state: deps], __ENV__)
           if result do
+            # Evaluate the message - static string or dynamic expression
+            message = case message_spec do
+              {:static, msg} -> msg
+              {:dynamic, msg_ast} ->
+                {msg_result, _} = Code.eval_quoted(msg_ast, [state: deps], __ENV__)
+                msg_result
+            end
             [message]
           else
             []
