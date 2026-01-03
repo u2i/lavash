@@ -56,6 +56,11 @@ defmodule DemoWeb.DemosIndexLive do
               description="Client-side validation via transpiled rx() calculations. Instant feedback."
             />
             <.demo_card
+              href={~p"/demos/checkout"}
+              title="Checkout (Shopify-style)"
+              description="Full checkout form with card validation, Luhn check, and dynamic styling."
+            />
+            <.demo_card
               href={~p"/demos/products"}
               title="Products (URL State)"
               description="Product catalog with filters stored in URL. Shareable and bookmarkable."
