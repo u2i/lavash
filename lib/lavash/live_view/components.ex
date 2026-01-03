@@ -11,9 +11,8 @@ defmodule Lavash.LiveView.Components do
 
   The `input/1` component renders a complete form field with:
   - Floating label (default) or traditional label-above-input
-  - Optimistic validation styling (success/error classes)
+  - Optimistic validation styling (error classes when invalid)
   - Error messages with `data-lavash-errors`
-  - Success indicator with `data-lavash-success`
 
   ### Basic Usage
 
@@ -37,7 +36,6 @@ defmodule Lavash.LiveView.Components do
         valid={@field_valid}            # Validation state boolean
         valid_field="custom_valid"      # Custom valid field name for JS
         errors={@field_errors}          # Error list
-        success_message="Looks good!"   # Custom success message
         placeholder="Enter value"       # Input placeholder
         # ... any other HTML attributes passed through
       />
@@ -50,7 +48,7 @@ defmodule Lavash.LiveView.Components do
   """
 
   use Phoenix.Component
-  import Lavash.LiveView.Helpers, only: [field_errors: 1, field_success: 1]
+  import Lavash.LiveView.Helpers, only: [field_errors: 1]
 
   @doc """
   Renders a form input with floating label and optimistic validation.
@@ -91,10 +89,6 @@ defmodule Lavash.LiveView.Components do
   attr :show_errors, :boolean,
     default: nil,
     doc: "Whether to show errors. If nil, derives from form_field_show_errors assign"
-
-  attr :success_message, :string,
-    default: "Looks good!",
-    doc: "Success message to display when valid"
 
   attr :class, :string,
     default: nil,
@@ -144,7 +138,6 @@ defmodule Lavash.LiveView.Components do
   attr :valid_field, :string, default: nil
   attr :errors, :list, default: nil
   attr :show_errors, :boolean, default: nil
-  attr :success_message, :string, default: "Looks good!"
   attr :class, :string, default: nil
   attr :wrapper_class, :string, default: nil
   attr :floating, :boolean, default: true
@@ -182,7 +175,6 @@ defmodule Lavash.LiveView.Components do
   attr :errors, :list, default: nil
   attr :valid, :boolean, default: nil
   attr :lavash_valid_field, :string, required: true
-  attr :success_message, :string, default: "Looks good!"
   slot :inner_block, required: true
 
   defp field_wrapper(assigns) do
@@ -201,13 +193,6 @@ defmodule Lavash.LiveView.Components do
       <% end %>
       <div class="min-h-5 mt-1">
         <.field_errors form={@form_name} field={@field_name} errors={@errors || []} />
-        <.field_success
-          form={@form_name}
-          field={@field_name}
-          valid={@valid || false}
-          valid_field={@lavash_valid_field}
-          message={@success_message}
-        />
       </div>
     </div>
     """
@@ -232,9 +217,9 @@ defmodule Lavash.LiveView.Components do
   defp input_validation_class(assigns) do
     # show_errors must be explicitly passed for validation classes to apply
     # (prevents flash of error styling before user interaction)
+    # Only show error styling, not success (green can be distracting)
     cond do
       not (assigns.show_errors || false) -> ""
-      assigns.valid == true -> "input-success"
       assigns.valid == false -> "input-error"
       true -> ""
     end

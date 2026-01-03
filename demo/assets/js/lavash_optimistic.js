@@ -37,8 +37,7 @@
  * - data-lavash-class: Apply class from state map (e.g., "roast_chips.light")
  * - data-lavash-errors: Container for field error messages
  * - data-lavash-error-summary: Container for form error summary
- * - data-lavash-success: Success indicator (shown when valid and touched)
- * - data-lavash-status: Field status indicator (✓/✗)
+ * - data-lavash-status: Field status indicator (✗ when invalid)
  * - data-lavash-show-errors: Override which show_errors field to check for visibility
  * - data-lavash-preserve: Prevent morphdom from updating this element
  */
@@ -890,45 +889,7 @@ const LavashOptimistic = {
       }
     });
 
-    // Update success indicators - only show if touched/submitted AND valid AND no server errors
-    const successElements = this.el.querySelectorAll("[data-lavash-success]");
-    successElements.forEach(el => {
-      const validField = el.dataset.lavashSuccess; // e.g., "registration_name_valid" or "email_valid"
-      const isValid = this.state[validField] ?? false;
-
-      // Use explicit form/field if provided
-      const explicitForm = el.dataset.lavashForm;
-      const explicitField = el.dataset.lavashField;
-
-      // Use explicit show_errors field if provided, otherwise derive
-      const showErrorsField = el.dataset.lavashShowErrors ||
-        (explicitForm && explicitField ? `${explicitForm}_${explicitField}_show_errors` : validField.replace(/_valid$/, "_show_errors"));
-      const showErrors = this.state[showErrorsField] ?? false;
-
-      // Check for server errors
-      let hasServerErrors = false;
-      if (explicitForm && explicitField) {
-        const fieldPath = `${explicitForm}_params.${explicitField}`;
-        hasServerErrors = (this.fieldState[fieldPath]?.serverErrors || []).length > 0;
-      } else {
-        // Derive from validField: "registration_name_valid" -> form=registration, field=name
-        const formFieldMatch = validField.match(/^(.+)_(.+)_valid$/);
-        if (formFieldMatch) {
-          const [, formName, fieldName] = formFieldMatch;
-          const fieldPath = `${formName}_params.${fieldName}`;
-          hasServerErrors = (this.fieldState[fieldPath]?.serverErrors || []).length > 0;
-        }
-      }
-
-      // Show success only if touched/submitted AND valid AND no server errors
-      if (showErrors && isValid && !hasServerErrors) {
-        el.classList.remove("hidden");
-      } else {
-        el.classList.add("hidden");
-      }
-    });
-
-    // Update field status indicators (✓ valid, ✗ invalid, empty neutral)
+    // Update field status indicators (✗ when invalid, empty otherwise)
     const statusElements = this.el.querySelectorAll("[data-lavash-status]");
     statusElements.forEach(el => {
       const validField = el.dataset.lavashStatus; // e.g., "registration_name_valid"
@@ -957,16 +918,14 @@ const LavashOptimistic = {
         }
       }
 
-      // Only show status if field has been touched/submitted
-      if (!showErrors) {
+      // Only show status if field has been touched/submitted and is invalid
+      // (no success indicator - green checkmarks are distracting)
+      if (!showErrors || (isValid && !hasServerErrors)) {
         el.textContent = "";
-        el.className = el.className.replace(/text-(green|red)-\d+/g, "").trim();
-      } else if (isValid && !hasServerErrors) {
-        el.textContent = "✓";
-        el.className = el.className.replace(/text-(green|red)-\d+/g, "").trim() + " text-green-500";
+        el.className = el.className.replace(/text-red-\d+/g, "").trim();
       } else {
         el.textContent = "✗";
-        el.className = el.className.replace(/text-(green|red)-\d+/g, "").trim() + " text-red-500";
+        el.className = el.className.replace(/text-red-\d+/g, "").trim() + " text-red-500";
       }
     });
 
@@ -995,21 +954,15 @@ const LavashOptimistic = {
       // Remove existing validation state classes (DaisyUI semantic + Tailwind fallback)
       const validationClasses = [
         // DaisyUI semantic classes
-        "input-success", "input-error",
+        "input-error",
         // Tailwind fallback classes
-        "border-gray-300", "border-green-300", "border-red-300",
-        "focus:ring-blue-500", "focus:ring-green-500", "focus:ring-red-500"
+        "border-gray-300", "border-red-300",
+        "focus:ring-blue-500", "focus:ring-red-500"
       ];
       validationClasses.forEach(c => input.classList.remove(c));
 
-      // Apply appropriate classes based on state
-      if (!showErrors) {
-        // Neutral state - no validation classes
-      } else if (isValid && !hasServerErrors) {
-        // Valid state - use DaisyUI semantic class
-        input.classList.add("input-success");
-      } else {
-        // Invalid state - use DaisyUI semantic class
+      // Apply error class only when invalid (no success styling - green is distracting)
+      if (showErrors && !(isValid && !hasServerErrors)) {
         input.classList.add("input-error");
       }
     });
