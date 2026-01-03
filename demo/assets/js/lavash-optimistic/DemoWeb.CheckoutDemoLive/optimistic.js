@@ -11,44 +11,28 @@ export default {
     return (state.card_number_digits.length);
   }
 ,
-  card_starts_with_4(state) {
+  is_visa(state) {
     return (state.card_number_digits.startsWith("4"));
   }
 ,
-  card_starts_with_5(state) {
+  is_mastercard(state) {
     return (state.card_number_digits.startsWith("5"));
   }
 ,
-  card_starts_with_34(state) {
-    return (state.card_number_digits.startsWith("34"));
-  }
-,
-  card_starts_with_37(state) {
-    return (state.card_number_digits.startsWith("37"));
-  }
-,
-  card_starts_with_6011(state) {
-    return (state.card_number_digits.startsWith("6011"));
-  }
-,
-  is_visa(state) {
-    return state.card_starts_with_4;
-  }
-,
-  is_mastercard(state) {
-    return state.card_starts_with_5;
-  }
-,
   is_amex(state) {
-    return (state.card_starts_with_34 || state.card_starts_with_37);
+    return ((state.card_number_digits.startsWith("34")) || (state.card_number_digits.startsWith("37")));
   }
 ,
   is_discover(state) {
-    return state.card_starts_with_6011;
+    return (state.card_number_digits.startsWith("6011"));
   }
 ,
   has_card_type(state) {
     return (((state.is_visa || state.is_mastercard) || state.is_amex) || state.is_discover);
+  }
+,
+  card_type_display(state) {
+    return (state.is_visa ? "Visa" : (state.is_mastercard ? "Mastercard" : (state.is_amex ? "American Express" : (state.is_discover ? "Discover" : ""))));
   }
 ,
   show_visa(state) {
@@ -207,7 +191,7 @@ export default {
     return [...(state.payment_card_number_errors || []), ...(state.payment_expiry_errors || []), ...(state.payment_cvv_errors || []), ...(state.payment_name_errors || [])];
   }
 ,
-__derives__: ["card_number_raw","card_number_digits","card_number_length","card_starts_with_4","card_starts_with_5","card_starts_with_34","card_starts_with_37","card_starts_with_6011","is_visa","is_mastercard","is_amex","is_discover","has_card_type","show_visa","show_mastercard","show_amex","show_discover","expiry_raw","expiry_digits","expiry_month_str","expiry_has_month","expiry_month_int","expiry_month_valid","cvv_raw","cvv_length","cvv_valid_for_card_type","card_valid_for_type","card_number_valid","expiry_valid","cvv_valid","card_form_valid","is_card_payment","form_valid","total","total_display","subtotal_display","shipping_display","payment_name_valid","payment_cvv_valid","payment_expiry_valid","payment_card_number_valid","payment_valid","payment_name_errors","payment_cvv_errors","payment_expiry_errors","payment_card_number_errors","payment_errors"],
+__derives__: ["card_number_raw","card_number_digits","card_number_length","is_visa","is_mastercard","is_amex","is_discover","has_card_type","card_type_display","show_visa","show_mastercard","show_amex","show_discover","expiry_raw","expiry_digits","expiry_month_str","expiry_has_month","expiry_month_int","expiry_month_valid","cvv_raw","cvv_length","cvv_valid_for_card_type","card_valid_for_type","card_number_valid","expiry_valid","cvv_valid","card_form_valid","is_card_payment","form_valid","total","total_display","subtotal_display","shipping_display","payment_name_valid","payment_cvv_valid","payment_expiry_valid","payment_card_number_valid","payment_valid","payment_name_errors","payment_cvv_errors","payment_expiry_errors","payment_card_number_errors","payment_errors"],
 __fields__: [],
-__graph__: {"is_discover":{"deps":["card_starts_with_6011"]},"has_card_type":{"deps":["is_discover","is_amex","is_mastercard","is_visa"]},"show_amex":{"deps":["has_card_type","is_amex"]},"expiry_has_month":{"deps":["expiry_month_str"]},"show_visa":{"deps":["has_card_type","is_visa"]},"payment_card_number_errors":{"deps":["payment_params","card_number_length","card_valid_for_type","is_amex"]},"card_starts_with_34":{"deps":["card_number_digits"]},"card_starts_with_6011":{"deps":["card_number_digits"]},"expiry_raw":{"deps":["payment_params"]},"payment_cvv_errors":{"deps":["payment_params","cvv_length","cvv_valid_for_card_type","is_amex"]},"expiry_valid":{"deps":["expiry_month_valid","payment_expiry_valid"]},"expiry_digits":{"deps":["expiry_raw"]},"card_form_valid":{"deps":["payment_name_valid","cvv_valid","expiry_valid","card_number_valid"]},"card_starts_with_4":{"deps":["card_number_digits"]},"form_valid":{"deps":["card_form_valid","is_card_payment"]},"card_number_raw":{"deps":["payment_params"]},"card_number_digits":{"deps":["card_number_raw"]},"shipping_display":{"deps":["shipping"]},"show_discover":{"deps":["has_card_type","is_discover"]},"subtotal_display":{"deps":["subtotal"]},"cvv_valid_for_card_type":{"deps":["cvv_length","is_amex"]},"payment_name_valid":{"deps":["payment_params"]},"expiry_month_str":{"deps":["expiry_digits"]},"is_visa":{"deps":["card_starts_with_4"]},"card_starts_with_5":{"deps":["card_number_digits"]},"card_number_length":{"deps":["card_number_digits"]},"card_valid_for_type":{"deps":["card_number_length","is_amex"]},"show_mastercard":{"deps":["has_card_type","is_mastercard"]},"card_number_valid":{"deps":["card_valid_for_type","payment_card_number_valid"]},"payment_name_errors":{"deps":["payment_params"]},"expiry_month_valid":{"deps":["expiry_month_int"]},"payment_expiry_valid":{"deps":["payment_params"]},"payment_errors":{"deps":["payment_card_number_errors","payment_expiry_errors","payment_cvv_errors","payment_name_errors"]},"is_card_payment":{"deps":["payment_method"]},"cvv_valid":{"deps":["cvv_valid_for_card_type","payment_cvv_valid"]},"is_amex":{"deps":["card_starts_with_37","card_starts_with_34"]},"payment_card_number_valid":{"deps":["payment_params"]},"total":{"deps":["shipping","subtotal"]},"payment_expiry_errors":{"deps":["payment_params","expiry_digits","expiry_month_valid"]},"payment_valid":{"deps":["payment_card_number_valid","payment_expiry_valid","payment_cvv_valid","payment_name_valid"]},"cvv_raw":{"deps":["payment_params"]},"is_mastercard":{"deps":["card_starts_with_5"]},"total_display":{"deps":["total"]},"payment_cvv_valid":{"deps":["payment_params"]},"cvv_length":{"deps":["cvv_raw"]},"expiry_month_int":{"deps":["expiry_month_str","expiry_has_month"]},"card_starts_with_37":{"deps":["card_number_digits"]}}
+__graph__: {"is_discover":{"deps":["card_number_digits"]},"has_card_type":{"deps":["is_discover","is_amex","is_mastercard","is_visa"]},"show_amex":{"deps":["has_card_type","is_amex"]},"expiry_has_month":{"deps":["expiry_month_str"]},"show_visa":{"deps":["has_card_type","is_visa"]},"payment_card_number_errors":{"deps":["payment_params","card_number_length","card_valid_for_type","is_amex"]},"expiry_raw":{"deps":["payment_params"]},"payment_cvv_errors":{"deps":["payment_params","cvv_length","cvv_valid_for_card_type","is_amex"]},"expiry_valid":{"deps":["expiry_month_valid","payment_expiry_valid"]},"expiry_digits":{"deps":["expiry_raw"]},"card_form_valid":{"deps":["payment_name_valid","cvv_valid","expiry_valid","card_number_valid"]},"form_valid":{"deps":["card_form_valid","is_card_payment"]},"card_number_raw":{"deps":["payment_params"]},"card_number_digits":{"deps":["card_number_raw"]},"shipping_display":{"deps":["shipping"]},"show_discover":{"deps":["has_card_type","is_discover"]},"subtotal_display":{"deps":["subtotal"]},"cvv_valid_for_card_type":{"deps":["cvv_length","is_amex"]},"payment_name_valid":{"deps":["payment_params"]},"expiry_month_str":{"deps":["expiry_digits"]},"is_visa":{"deps":["card_number_digits"]},"card_number_length":{"deps":["card_number_digits"]},"card_valid_for_type":{"deps":["card_number_length","is_amex"]},"show_mastercard":{"deps":["has_card_type","is_mastercard"]},"card_number_valid":{"deps":["card_valid_for_type","payment_card_number_valid"]},"payment_name_errors":{"deps":["payment_params"]},"expiry_month_valid":{"deps":["expiry_month_int"]},"payment_expiry_valid":{"deps":["payment_params"]},"payment_errors":{"deps":["payment_card_number_errors","payment_expiry_errors","payment_cvv_errors","payment_name_errors"]},"is_card_payment":{"deps":["payment_method"]},"cvv_valid":{"deps":["cvv_valid_for_card_type","payment_cvv_valid"]},"is_amex":{"deps":["card_number_digits"]},"payment_card_number_valid":{"deps":["payment_params"]},"total":{"deps":["shipping","subtotal"]},"payment_expiry_errors":{"deps":["payment_params","expiry_digits","expiry_month_valid"]},"payment_valid":{"deps":["payment_card_number_valid","payment_expiry_valid","payment_cvv_valid","payment_name_valid"]},"cvv_raw":{"deps":["payment_params"]},"is_mastercard":{"deps":["card_number_digits"]},"total_display":{"deps":["total"]},"payment_cvv_valid":{"deps":["payment_params"]},"cvv_length":{"deps":["cvv_raw"]},"expiry_month_int":{"deps":["expiry_month_str","expiry_has_month"]},"card_type_display":{"deps":["is_discover","is_amex","is_mastercard","is_visa"]}}
 };

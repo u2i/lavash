@@ -54,19 +54,36 @@ defmodule DemoWeb.CheckoutDemoLive do
   calculate :card_number_length, rx(String.length(@card_number_digits))
 
   # Detect card type from first digit(s)
-  calculate :card_starts_with_4, rx(String.starts_with?(@card_number_digits, "4"))
-  calculate :card_starts_with_5, rx(String.starts_with?(@card_number_digits, "5"))
-  calculate :card_starts_with_34, rx(String.starts_with?(@card_number_digits, "34"))
-  calculate :card_starts_with_37, rx(String.starts_with?(@card_number_digits, "37"))
-  calculate :card_starts_with_6011, rx(String.starts_with?(@card_number_digits, "6011"))
-
-  calculate :is_visa, rx(@card_starts_with_4)
-  calculate :is_mastercard, rx(@card_starts_with_5)
-  calculate :is_amex, rx(@card_starts_with_34 or @card_starts_with_37)
-  calculate :is_discover, rx(@card_starts_with_6011)
+  calculate :is_visa, rx(String.starts_with?(@card_number_digits, "4"))
+  calculate :is_mastercard, rx(String.starts_with?(@card_number_digits, "5"))
+  calculate :is_amex, rx(String.starts_with?(@card_number_digits, "34") or String.starts_with?(@card_number_digits, "37"))
+  calculate :is_discover, rx(String.starts_with?(@card_number_digits, "6011"))
 
   # Card type display for badges - highlight detected type, dim others
   calculate :has_card_type, rx(@is_visa or @is_mastercard or @is_amex or @is_discover)
+
+  # Card type name for display (or empty if none detected)
+  calculate :card_type_display,
+    rx(
+      if @is_visa do
+        "Visa"
+      else
+        if @is_mastercard do
+          "Mastercard"
+        else
+          if @is_amex do
+            "American Express"
+          else
+            if @is_discover do
+              "Discover"
+            else
+              ""
+            end
+          end
+        end
+      end
+    )
+  # Show badge only if: it's the detected type, OR no type detected yet
   calculate :show_visa, rx(@is_visa or not @has_card_type)
   calculate :show_mastercard, rx(@is_mastercard or not @has_card_type)
   calculate :show_amex, rx(@is_amex or not @has_card_type)
@@ -300,20 +317,25 @@ defmodule DemoWeb.CheckoutDemoLive do
                     <span class="font-semibold">Credit card</span>
                     <span class="ml-auto flex items-center gap-1">
                       <span
-                        class="badge badge-outline badge-sm transition-opacity"
-                        data-lavash-toggle="show_visa|opacity-100|opacity-30"
+                        data-lavash-visible="has_card_type"
+                        data-lavash-display="card_type_display"
+                        class={"text-sm font-medium text-primary" <> unless @has_card_type, do: " hidden", else: ""}
+                      >{@card_type_display}</span>
+                      <span
+                        data-lavash-visible="show_visa"
+                        class={"badge badge-outline badge-sm" <> unless @show_visa, do: " hidden", else: ""}
                       >VISA</span>
                       <span
-                        class="badge badge-outline badge-sm transition-opacity"
-                        data-lavash-toggle="show_mastercard|opacity-100|opacity-30"
+                        data-lavash-visible="show_mastercard"
+                        class={"badge badge-outline badge-sm" <> unless @show_mastercard, do: " hidden", else: ""}
                       >MC</span>
                       <span
-                        class="badge badge-outline badge-sm transition-opacity"
-                        data-lavash-toggle="show_amex|opacity-100|opacity-30"
+                        data-lavash-visible="show_amex"
+                        class={"badge badge-outline badge-sm" <> unless @show_amex, do: " hidden", else: ""}
                       >AMEX</span>
                       <span
-                        class="badge badge-outline badge-sm transition-opacity"
-                        data-lavash-toggle="show_discover|opacity-100|opacity-30"
+                        data-lavash-visible="show_discover"
+                        class={"badge badge-outline badge-sm" <> unless @show_discover, do: " hidden", else: ""}
                       >DISC</span>
                     </span>
                   </div>
@@ -503,6 +525,18 @@ defmodule DemoWeb.CheckoutDemoLive do
                 </div>
               </div>
             </section>
+
+            <!-- Test Card Numbers -->
+            <div class="mt-4 p-4 bg-base-100 rounded-lg border border-base-300">
+              <h3 class="font-semibold text-base-content mb-2">Test Card Numbers</h3>
+              <ul class="text-sm text-base-content/70 space-y-1 font-mono">
+                <li><span class="text-base-content font-semibold">Visa:</span> 4242 4242 4242 4242</li>
+                <li><span class="text-base-content font-semibold">MC:</span> 5555 5555 5555 4444</li>
+                <li><span class="text-base-content font-semibold">Amex:</span> 3782 822463 10005</li>
+                <li><span class="text-base-content font-semibold">Disc:</span> 6011 1111 1111 1117</li>
+              </ul>
+              <p class="text-xs text-base-content/50 mt-2">Use any future date and any 3-4 digit CVV</p>
+            </div>
 
             <!-- How it works -->
             <div class="mt-4 p-4 bg-base-100 rounded-lg border border-base-300">
