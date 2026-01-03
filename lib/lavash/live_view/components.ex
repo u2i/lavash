@@ -199,7 +199,7 @@ defmodule Lavash.LiveView.Components do
         </label>
         {render_slot(@inner_block)}
       <% end %>
-      <div class="h-5 mt-1">
+      <div class="min-h-5 mt-1">
         <.field_errors form={@form_name} field={@field_name} errors={@errors || []} />
         <.field_success
           form={@form_name}

@@ -814,7 +814,7 @@ const LavashOptimistic = {
       if (showErrors && allErrors.length > 0) {
         allErrors.forEach(error => {
           const p = document.createElement("p");
-          p.className = "text-red-500 text-sm";
+          p.className = "text-error text-sm";
           p.textContent = error;
           el.appendChild(p);
         });
