@@ -13,7 +13,7 @@ defmodule DemoWeb.CheckoutDemoLive do
   """
   use Lavash.LiveView
   import Lavash.Rx
-  import Lavash.LiveView.Helpers, only: [field_errors: 1, field_success: 1]
+  import Lavash.LiveView.Components
 
   alias Demo.Forms.Payment
 
@@ -323,106 +323,54 @@ defmodule DemoWeb.CheckoutDemoLive do
                     class={"mt-4 space-y-3" <> if @payment_method != "card", do: " hidden", else: ""}
                   >
                     <!-- Card Number -->
-                    <div>
-                      <label class="floating-label w-full">
-                        <input
-                          type="text"
-                          field={@payment[:card_number]}
-                          data-lavash-valid="card_number_valid"
-                          autocomplete="cc-number"
-                          inputmode="numeric"
-                          placeholder="Card number"
-                          class={"input input-bordered w-full " <>
-                            cond do
-                              !assigns[:payment_card_number_show_errors] -> ""
-                              @card_number_valid -> "input-success"
-                              true -> "input-error"
-                            end}
-                        />
-                        <span>Card number</span>
-                      </label>
-                      <div class="h-5 mt-1">
-                        <.field_errors form={:payment} field={:card_number} errors={@payment_card_number_errors} />
-                        <.field_success form={:payment} field={:card_number} valid={@card_number_valid} valid_field="card_number_valid" />
-                      </div>
-                    </div>
+                    <.input
+                      field={@payment[:card_number]}
+                      label="Card number"
+                      valid={@card_number_valid}
+                      valid_field="card_number_valid"
+                      errors={@payment_card_number_errors}
+                      show_errors={assigns[:payment_card_number_show_errors]}
+                      autocomplete="cc-number"
+                      inputmode="numeric"
+                    />
 
                     <div class="grid grid-cols-2 gap-3">
                       <!-- Expiration -->
-                      <div>
-                        <label class="floating-label w-full">
-                          <input
-                            type="text"
-                            field={@payment[:expiry]}
-                            data-lavash-valid="expiry_valid"
-                            autocomplete="cc-exp"
-                            inputmode="numeric"
-                            placeholder="MM/YY"
-                            maxlength="5"
-                            class={"input input-bordered w-full " <>
-                              cond do
-                                !assigns[:payment_expiry_show_errors] -> ""
-                                @expiry_valid -> "input-success"
-                                true -> "input-error"
-                              end}
-                          />
-                          <span>Expiration (MM/YY)</span>
-                        </label>
-                        <div class="h-5 mt-1">
-                          <.field_errors form={:payment} field={:expiry} errors={@payment_expiry_errors} />
-                          <.field_success form={:payment} field={:expiry} valid={@expiry_valid} valid_field="expiry_valid" />
-                        </div>
-                      </div>
+                      <.input
+                        field={@payment[:expiry]}
+                        label="Expiration (MM/YY)"
+                        valid={@expiry_valid}
+                        valid_field="expiry_valid"
+                        errors={@payment_expiry_errors}
+                        show_errors={assigns[:payment_expiry_show_errors]}
+                        autocomplete="cc-exp"
+                        inputmode="numeric"
+                        maxlength="5"
+                      />
 
                       <!-- CVV -->
-                      <div>
-                        <label class="floating-label w-full">
-                          <input
-                            type="text"
-                            field={@payment[:cvv]}
-                            data-lavash-valid="cvv_valid"
-                            autocomplete="cc-csc"
-                            inputmode="numeric"
-                            placeholder="CVV"
-                            maxlength="4"
-                            class={"input input-bordered w-full " <>
-                              cond do
-                                !assigns[:payment_cvv_show_errors] -> ""
-                                @cvv_valid -> "input-success"
-                                true -> "input-error"
-                              end}
-                          />
-                          <span>Security code</span>
-                        </label>
-                        <div class="h-5 mt-1">
-                          <.field_errors form={:payment} field={:cvv} errors={@payment_cvv_errors} />
-                          <.field_success form={:payment} field={:cvv} valid={@cvv_valid} valid_field="cvv_valid" />
-                        </div>
-                      </div>
+                      <.input
+                        field={@payment[:cvv]}
+                        label="Security code"
+                        valid={@cvv_valid}
+                        valid_field="cvv_valid"
+                        errors={@payment_cvv_errors}
+                        show_errors={assigns[:payment_cvv_show_errors]}
+                        autocomplete="cc-csc"
+                        inputmode="numeric"
+                        maxlength="4"
+                      />
                     </div>
 
                     <!-- Name on card -->
-                    <div>
-                      <label class="floating-label w-full">
-                        <input
-                          type="text"
-                          field={@payment[:name]}
-                          autocomplete="cc-name"
-                          placeholder="Name on card"
-                          class={"input input-bordered w-full " <>
-                            cond do
-                              !assigns[:payment_name_show_errors] -> ""
-                              @payment_name_valid -> "input-success"
-                              true -> "input-error"
-                            end}
-                        />
-                        <span>Name on card</span>
-                      </label>
-                      <div class="h-5 mt-1">
-                        <.field_errors form={:payment} field={:name} errors={@payment_name_errors} />
-                        <.field_success form={:payment} field={:name} valid={@payment_name_valid} />
-                      </div>
-                    </div>
+                    <.input
+                      field={@payment[:name]}
+                      label="Name on card"
+                      valid={@payment_name_valid}
+                      errors={@payment_name_errors}
+                      show_errors={assigns[:payment_name_show_errors]}
+                      autocomplete="cc-name"
+                    />
 
                     <!-- Use shipping as billing -->
                     <label class="flex items-center gap-3 cursor-pointer pt-1">

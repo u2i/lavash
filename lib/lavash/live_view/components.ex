@@ -1,0 +1,238 @@
+defmodule Lavash.LiveView.Components do
+  @moduledoc """
+  Lavash form components with built-in optimistic updates.
+
+  These components combine Phoenix form patterns with Lavash's optimistic
+  validation system. Import them into your LiveView or component:
+
+      import Lavash.LiveView.Components
+
+  ## Input Component
+
+  The `input/1` component renders a complete form field with:
+  - Floating label
+  - Optimistic validation styling (success/error classes)
+  - Error messages with `data-lavash-errors`
+  - Success indicator with `data-lavash-success`
+
+  ### Basic Usage
+
+      <.input field={@payment[:card_number]} label="Card number" />
+
+  ### With Custom Validation Field
+
+  When using `extend_errors` or custom validation logic:
+
+      <.input field={@payment[:cvv]} label="CVV"
+              valid={@cvv_valid} valid_field="cvv_valid"
+              errors={@payment_cvv_errors} />
+
+  ### All Options
+
+      <.input
+        field={@form[:field]}           # Required: Phoenix.HTML.FormField
+        label="Field Label"             # Required: Label text
+        type="text"                     # Input type (default: "text")
+        valid={@field_valid}            # Validation state boolean
+        valid_field="custom_valid"      # Custom valid field name for JS
+        errors={@field_errors}          # Error list
+        success_message="Looks good!"   # Custom success message
+        placeholder="Enter value"       # Input placeholder
+        # ... any other HTML attributes passed through
+      />
+  """
+
+  use Phoenix.Component
+  import Lavash.LiveView.Helpers, only: [field_errors: 1, field_success: 1]
+
+  @doc """
+  Renders a form input with floating label and optimistic validation.
+
+  ## Examples
+
+      <.input field={@payment[:card_number]} label="Card number" />
+
+      <.input field={@payment[:cvv]} label="CVV"
+              valid={@cvv_valid} valid_field="cvv_valid"
+              errors={@payment_cvv_errors}
+              maxlength="4" inputmode="numeric" />
+  """
+  attr :field, Phoenix.HTML.FormField,
+    required: true,
+    doc: "The form field from `@form[:field]`"
+
+  attr :label, :string,
+    required: true,
+    doc: "The label text"
+
+  attr :type, :string,
+    default: "text",
+    doc: "The input type"
+
+  attr :valid, :boolean,
+    default: nil,
+    doc: "Validation state. If nil, derives from form_field_valid assign"
+
+  attr :valid_field, :string,
+    default: nil,
+    doc: "Custom valid field name for JS (e.g., 'cvv_valid' instead of 'payment_cvv_valid')"
+
+  attr :errors, :list,
+    default: nil,
+    doc: "Error list. If nil, derives from form_field_errors assign"
+
+  attr :show_errors, :boolean,
+    default: nil,
+    doc: "Whether to show errors. If nil, derives from form_field_show_errors assign"
+
+  attr :success_message, :string,
+    default: "Looks good!",
+    doc: "Success message to display when valid"
+
+  attr :class, :string,
+    default: nil,
+    doc: "Additional CSS classes for the input"
+
+  attr :wrapper_class, :string,
+    default: nil,
+    doc: "Additional CSS classes for the wrapper div"
+
+  attr :rest, :global,
+    include: ~w(autocomplete disabled form inputmode list maxlength minlength
+                pattern placeholder readonly required size step),
+    doc: "Additional HTML attributes for the input"
+
+  def input(assigns) do
+    # Extract form and field info
+    %Phoenix.HTML.FormField{field: field_name, form: form} = assigns.field
+    form_name = form.name
+
+    # Build default field names
+    form_str = to_string(form_name)
+    field_str = to_string(field_name)
+
+    # Use custom valid_field if provided, otherwise derive from form/field
+    valid_field = assigns.valid_field || "#{form_str}_#{field_str}_valid"
+
+    assigns =
+      assigns
+      |> assign(:form_name, form_name)
+      |> assign(:field_name, field_name)
+      |> assign(:form_str, form_str)
+      |> assign(:field_str, field_str)
+      |> assign(:lavash_valid_field, valid_field)
+
+    ~H"""
+    <div class={@wrapper_class}>
+      <label class="floating-label w-full">
+        <input
+          type={@type}
+          name={@field.name}
+          value={@field.value || ""}
+          data-lavash-bind={"#{@form_str}_params.#{@field_str}"}
+          data-lavash-form={@form_str}
+          data-lavash-field={@field_str}
+          data-lavash-valid={@lavash_valid_field}
+          class={[
+            "input input-bordered w-full",
+            input_validation_class(assigns),
+            @class
+          ]}
+          {@rest}
+        />
+        <span>{@label}</span>
+      </label>
+      <div class="h-5 mt-1">
+        <.field_errors form={@form_name} field={@field_name} errors={@errors || []} />
+        <.field_success
+          form={@form_name}
+          field={@field_name}
+          valid={@valid || false}
+          valid_field={@lavash_valid_field}
+          message={@success_message}
+        />
+      </div>
+    </div>
+    """
+  end
+
+  defp input_validation_class(assigns) do
+    # show_errors must be explicitly passed for validation classes to apply
+    # (prevents flash of error styling before user interaction)
+    cond do
+      not (assigns.show_errors || false) -> ""
+      assigns.valid == true -> "input-success"
+      assigns.valid == false -> "input-error"
+      true -> ""
+    end
+  end
+
+  @doc """
+  Renders a textarea with floating label and optimistic validation.
+
+  Same attributes as `input/1` but renders a textarea.
+  """
+  attr :field, Phoenix.HTML.FormField, required: true
+  attr :label, :string, required: true
+  attr :valid, :boolean, default: nil
+  attr :valid_field, :string, default: nil
+  attr :errors, :list, default: nil
+  attr :show_errors, :boolean, default: nil
+  attr :success_message, :string, default: "Looks good!"
+  attr :class, :string, default: nil
+  attr :wrapper_class, :string, default: nil
+  attr :rows, :integer, default: 3
+
+  attr :rest, :global,
+    include: ~w(autocomplete disabled form maxlength minlength placeholder readonly required),
+    doc: "Additional HTML attributes"
+
+  def textarea(assigns) do
+    %Phoenix.HTML.FormField{field: field_name, form: form} = assigns.field
+    form_name = form.name
+    form_str = to_string(form_name)
+    field_str = to_string(field_name)
+    valid_field = assigns.valid_field || "#{form_str}_#{field_str}_valid"
+
+    assigns =
+      assigns
+      |> assign(:form_name, form_name)
+      |> assign(:field_name, field_name)
+      |> assign(:form_str, form_str)
+      |> assign(:field_str, field_str)
+      |> assign(:lavash_valid_field, valid_field)
+      |> assign(:default_show_errors_field, "#{form_str}_#{field_str}_show_errors")
+
+    ~H"""
+    <div class={@wrapper_class}>
+      <label class="floating-label w-full">
+        <textarea
+          name={@field.name}
+          rows={@rows}
+          data-lavash-bind={"#{@form_str}_params.#{@field_str}"}
+          data-lavash-form={@form_str}
+          data-lavash-field={@field_str}
+          data-lavash-valid={@lavash_valid_field}
+          class={[
+            "textarea textarea-bordered w-full",
+            input_validation_class(assigns),
+            @class
+          ]}
+          {@rest}
+        >{@field.value || ""}</textarea>
+        <span>{@label}</span>
+      </label>
+      <div class="h-5 mt-1">
+        <.field_errors form={@form_name} field={@field_name} errors={@errors || []} />
+        <.field_success
+          form={@form_name}
+          field={@field_name}
+          valid={@valid || false}
+          valid_field={@lavash_valid_field}
+          message={@success_message}
+        />
+      </div>
+    </div>
+    """
+  end
+end
