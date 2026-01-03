@@ -10,7 +10,7 @@ defmodule Lavash.LiveView.Components do
   ## Input Component
 
   The `input/1` component renders a complete form field with:
-  - Floating label
+  - Floating label (default) or traditional label-above-input
   - Optimistic validation styling (success/error classes)
   - Error messages with `data-lavash-errors`
   - Success indicator with `data-lavash-success`
@@ -33,6 +33,7 @@ defmodule Lavash.LiveView.Components do
         field={@form[:field]}           # Required: Phoenix.HTML.FormField
         label="Field Label"             # Required: Label text
         type="text"                     # Input type (default: "text")
+        floating={true}                 # Floating label (default) or label above input
         valid={@field_valid}            # Validation state boolean
         valid_field="custom_valid"      # Custom valid field name for JS
         errors={@field_errors}          # Error list
@@ -40,6 +41,12 @@ defmodule Lavash.LiveView.Components do
         placeholder="Enter value"       # Input placeholder
         # ... any other HTML attributes passed through
       />
+
+  ### Non-floating Label
+
+  For traditional label-above-input layout:
+
+      <.input field={@form[:email]} label="Email" floating={false} />
   """
 
   use Phoenix.Component
@@ -97,74 +104,33 @@ defmodule Lavash.LiveView.Components do
     default: nil,
     doc: "Additional CSS classes for the wrapper div"
 
+  attr :floating, :boolean,
+    default: true,
+    doc: "Whether to use floating label style (default) or traditional label-above-input"
+
   attr :rest, :global,
     include: ~w(autocomplete disabled form inputmode list maxlength minlength
                 pattern placeholder readonly required size step),
     doc: "Additional HTML attributes for the input"
 
   def input(assigns) do
-    # Extract form and field info
-    %Phoenix.HTML.FormField{field: field_name, form: form} = assigns.field
-    form_name = form.name
-
-    # Build default field names
-    form_str = to_string(form_name)
-    field_str = to_string(field_name)
-
-    # Use custom valid_field if provided, otherwise derive from form/field
-    valid_field = assigns.valid_field || "#{form_str}_#{field_str}_valid"
-
-    assigns =
-      assigns
-      |> assign(:form_name, form_name)
-      |> assign(:field_name, field_name)
-      |> assign(:form_str, form_str)
-      |> assign(:field_str, field_str)
-      |> assign(:lavash_valid_field, valid_field)
+    assigns = prepare_field_assigns(assigns)
 
     ~H"""
-    <div class={@wrapper_class}>
-      <label class="floating-label w-full">
-        <input
-          type={@type}
-          name={@field.name}
-          value={@field.value || ""}
-          data-lavash-bind={"#{@form_str}_params.#{@field_str}"}
-          data-lavash-form={@form_str}
-          data-lavash-field={@field_str}
-          data-lavash-valid={@lavash_valid_field}
-          class={[
-            "input input-bordered w-full",
-            input_validation_class(assigns),
-            @class
-          ]}
-          {@rest}
-        />
-        <span>{@label}</span>
-      </label>
-      <div class="h-5 mt-1">
-        <.field_errors form={@form_name} field={@field_name} errors={@errors || []} />
-        <.field_success
-          form={@form_name}
-          field={@field_name}
-          valid={@valid || false}
-          valid_field={@lavash_valid_field}
-          message={@success_message}
-        />
-      </div>
-    </div>
+    <.field_wrapper {assigns}>
+      <input
+        type={@type}
+        name={@field.name}
+        value={@field.value || ""}
+        data-lavash-bind={"#{@form_str}_params.#{@field_str}"}
+        data-lavash-form={@form_str}
+        data-lavash-field={@field_str}
+        data-lavash-valid={@lavash_valid_field}
+        class={["input input-bordered w-full", input_validation_class(assigns), @class]}
+        {@rest}
+      />
+    </.field_wrapper>
     """
-  end
-
-  defp input_validation_class(assigns) do
-    # show_errors must be explicitly passed for validation classes to apply
-    # (prevents flash of error styling before user interaction)
-    cond do
-      not (assigns.show_errors || false) -> ""
-      assigns.valid == true -> "input-success"
-      assigns.valid == false -> "input-error"
-      true -> ""
-    end
   end
 
   @doc """
@@ -181,6 +147,7 @@ defmodule Lavash.LiveView.Components do
   attr :success_message, :string, default: "Looks good!"
   attr :class, :string, default: nil
   attr :wrapper_class, :string, default: nil
+  attr :floating, :boolean, default: true
   attr :rows, :integer, default: 3
 
   attr :rest, :global,
@@ -188,40 +155,50 @@ defmodule Lavash.LiveView.Components do
     doc: "Additional HTML attributes"
 
   def textarea(assigns) do
-    %Phoenix.HTML.FormField{field: field_name, form: form} = assigns.field
-    form_name = form.name
-    form_str = to_string(form_name)
-    field_str = to_string(field_name)
-    valid_field = assigns.valid_field || "#{form_str}_#{field_str}_valid"
-
-    assigns =
-      assigns
-      |> assign(:form_name, form_name)
-      |> assign(:field_name, field_name)
-      |> assign(:form_str, form_str)
-      |> assign(:field_str, field_str)
-      |> assign(:lavash_valid_field, valid_field)
-      |> assign(:default_show_errors_field, "#{form_str}_#{field_str}_show_errors")
+    assigns = prepare_field_assigns(assigns)
 
     ~H"""
+    <.field_wrapper {assigns}>
+      <textarea
+        name={@field.name}
+        rows={@rows}
+        data-lavash-bind={"#{@form_str}_params.#{@field_str}"}
+        data-lavash-form={@form_str}
+        data-lavash-field={@field_str}
+        data-lavash-valid={@lavash_valid_field}
+        class={["textarea textarea-bordered w-full", input_validation_class(assigns), @class]}
+        {@rest}
+      >{@field.value || ""}</textarea>
+    </.field_wrapper>
+    """
+  end
+
+  # Shared wrapper that handles floating vs non-floating labels
+  attr :label, :string, required: true
+  attr :floating, :boolean, required: true
+  attr :wrapper_class, :string, default: nil
+  attr :form_name, :any, required: true
+  attr :field_name, :atom, required: true
+  attr :errors, :list, default: nil
+  attr :valid, :boolean, default: nil
+  attr :lavash_valid_field, :string, required: true
+  attr :success_message, :string, default: "Looks good!"
+  slot :inner_block, required: true
+
+  defp field_wrapper(assigns) do
+    ~H"""
     <div class={@wrapper_class}>
-      <label class="floating-label w-full">
-        <textarea
-          name={@field.name}
-          rows={@rows}
-          data-lavash-bind={"#{@form_str}_params.#{@field_str}"}
-          data-lavash-form={@form_str}
-          data-lavash-field={@field_str}
-          data-lavash-valid={@lavash_valid_field}
-          class={[
-            "textarea textarea-bordered w-full",
-            input_validation_class(assigns),
-            @class
-          ]}
-          {@rest}
-        >{@field.value || ""}</textarea>
-        <span>{@label}</span>
-      </label>
+      <%= if @floating do %>
+        <label class="floating-label w-full">
+          {render_slot(@inner_block)}
+          <span>{@label}</span>
+        </label>
+      <% else %>
+        <label class="label">
+          <span class="label-text">{@label}</span>
+        </label>
+        {render_slot(@inner_block)}
+      <% end %>
       <div class="h-5 mt-1">
         <.field_errors form={@form_name} field={@field_name} errors={@errors || []} />
         <.field_success
@@ -234,5 +211,32 @@ defmodule Lavash.LiveView.Components do
       </div>
     </div>
     """
+  end
+
+  # Shared setup for field components
+  defp prepare_field_assigns(assigns) do
+    %Phoenix.HTML.FormField{field: field_name, form: form} = assigns.field
+    form_name = form.name
+    form_str = to_string(form_name)
+    field_str = to_string(field_name)
+    valid_field = assigns.valid_field || "#{form_str}_#{field_str}_valid"
+
+    assigns
+    |> assign(:form_name, form_name)
+    |> assign(:field_name, field_name)
+    |> assign(:form_str, form_str)
+    |> assign(:field_str, field_str)
+    |> assign(:lavash_valid_field, valid_field)
+  end
+
+  defp input_validation_class(assigns) do
+    # show_errors must be explicitly passed for validation classes to apply
+    # (prevents flash of error styling before user interaction)
+    cond do
+      not (assigns.show_errors || false) -> ""
+      assigns.valid == true -> "input-success"
+      assigns.valid == false -> "input-error"
+      true -> ""
+    end
   end
 end
