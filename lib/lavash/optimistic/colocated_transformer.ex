@@ -361,6 +361,7 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
         form_name = form.name
         params_field = :"#{form_name}_params"
         create_action = form.create || :create
+        skip_constraints = form.skip_constraints || []
 
         if Code.ensure_loaded?(resource) and
              function_exported?(resource, :spark_dsl_config, 0) do
@@ -378,8 +379,11 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
               custom_errors = Map.get(extend_errors_map, e_name, [])
               field_ash_validations = Map.get(ash_validations, validation.field, [])
 
-              v_fn = generate_field_validation_js(v_name, params_field, validation)
-              e_fn = generate_field_errors_js(e_name, params_field, validation, custom_errors, field_ash_validations)
+              # Check if this field should skip constraint-based validation
+              skip_field_constraints = validation.field in skip_constraints
+
+              v_fn = generate_field_validation_js(v_name, params_field, validation, skip_field_constraints)
+              e_fn = generate_field_errors_js(e_name, params_field, validation, custom_errors, field_ash_validations, skip_field_constraints)
 
               {[v_fn | vf], [e_fn | ef], [to_string(v_name) | vd], [to_string(e_name) | ed]}
             end)
@@ -432,7 +436,7 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
     {validation_fns, error_fns, validation_derives, error_derives}
   end
 
-  defp generate_field_validation_js(name, params_field, validation) do
+  defp generate_field_validation_js(name, params_field, validation, skip_constraints \\ false) do
     field = validation.field
     field_str = to_string(field)
     required = validation.required
@@ -443,6 +447,7 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
 
     checks = []
 
+    # Required check is always included (it's about presence, not constraints)
     checks =
       if required do
         check = "(#{value_expr} != null && String(#{value_expr}).trim().length > 0)"
@@ -451,11 +456,16 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
         checks
       end
 
+    # Type-specific constraint checks are skipped if skip_constraints is true
     checks =
-      case type do
-        :string -> build_string_constraint_checks(value_expr, constraints, checks)
-        :integer -> build_integer_constraint_checks(value_expr, constraints, checks)
-        _ -> checks
+      if skip_constraints do
+        checks
+      else
+        case type do
+          :string -> build_string_constraint_checks(value_expr, constraints, checks)
+          :integer -> build_integer_constraint_checks(value_expr, constraints, checks)
+          _ -> checks
+        end
       end
 
     expr =
@@ -472,7 +482,7 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
     """
   end
 
-  defp generate_field_errors_js(name, params_field, validation, custom_errors, ash_validations) do
+  defp generate_field_errors_js(name, params_field, validation, custom_errors, ash_validations, skip_constraints \\ false) do
     field = validation.field
     field_str = to_string(field)
     required = validation.required
@@ -486,6 +496,7 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
 
     error_checks = []
 
+    # Required check is always included (it's about presence, not constraints)
     error_checks =
       if required do
         msg = Map.get(ash_messages, :required) ||
@@ -499,11 +510,16 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
         error_checks
       end
 
+    # Type-specific constraint error checks are skipped if skip_constraints is true
     error_checks =
-      case type do
-        :string -> build_string_error_checks(value_expr, constraints, error_checks, ash_messages)
-        :integer -> build_integer_error_checks(value_expr, constraints, error_checks, ash_messages)
-        _ -> error_checks
+      if skip_constraints do
+        error_checks
+      else
+        case type do
+          :string -> build_string_error_checks(value_expr, constraints, error_checks, ash_messages)
+          :integer -> build_integer_error_checks(value_expr, constraints, error_checks, ash_messages)
+          _ -> error_checks
+        end
       end
 
     # Add custom error checks

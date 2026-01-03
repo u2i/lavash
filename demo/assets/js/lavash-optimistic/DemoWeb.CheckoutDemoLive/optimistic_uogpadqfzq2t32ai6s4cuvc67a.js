@@ -152,15 +152,15 @@ export default {
   }
 ,
   payment_cvv_valid(state) {
-    return (state.payment_params?.["cvv"] != null && String(state.payment_params?.["cvv"]).trim().length > 0) && (String(state.payment_params?.["cvv"] || '').trim().length >= 3) && (String(state.payment_params?.["cvv"] || '').trim().length <= 4);
+    return (state.payment_params?.["cvv"] != null && String(state.payment_params?.["cvv"]).trim().length > 0);
   }
 ,
   payment_expiry_valid(state) {
-    return (state.payment_params?.["expiry"] != null && String(state.payment_params?.["expiry"]).trim().length > 0) && (String(state.payment_params?.["expiry"] || '').trim().length >= 4) && (String(state.payment_params?.["expiry"] || '').trim().length <= 5);
+    return (state.payment_params?.["expiry"] != null && String(state.payment_params?.["expiry"]).trim().length > 0);
   }
 ,
   payment_card_number_valid(state) {
-    return (state.payment_params?.["card_number"] != null && String(state.payment_params?.["card_number"]).trim().length > 0) && (String(state.payment_params?.["card_number"] || '').trim().length >= 15) && (String(state.payment_params?.["card_number"] || '').trim().length <= 16);
+    return (state.payment_params?.["card_number"] != null && String(state.payment_params?.["card_number"]).trim().length > 0);
   }
 ,
   payment_valid(state) {
@@ -179,7 +179,7 @@ export default {
   payment_cvv_errors(state) {
     const v = state.payment_params?.["cvv"];
     const isEmpty = v == null || String(v).trim().length === 0;
-    const checks = [{check: state.payment_params?.["cvv"] != null && String(state.payment_params?.["cvv"]).trim().length > 0, msg: "Enter the security code"}, {check: String(state.payment_params?.["cvv"] || '').trim().length >= 3, msg: "CVV should be 3-4 digits"}, {check: String(state.payment_params?.["cvv"] || '').trim().length <= 4, msg: "CVV should be 3-4 digits"}, {check: !(((state.cvv_valid_for_card_type === false) && (state.cvv_length > 0))), msg: ((state.is_amex ? "Amex requires 4 digits" : "Must be 3 digits"))}];
+    const checks = [{check: state.payment_params?.["cvv"] != null && String(state.payment_params?.["cvv"]).trim().length > 0, msg: "Enter the security code"}, {check: !(((state.cvv_valid_for_card_type === false) && (state.cvv_length > 0))), msg: ((state.is_amex ? "Amex requires 4 digits" : "Must be 3 digits"))}];
     return checks
       .filter(c => !c.check && (true || !isEmpty))
       .map(c => c.msg);
@@ -188,7 +188,7 @@ export default {
   payment_expiry_errors(state) {
     const v = state.payment_params?.["expiry"];
     const isEmpty = v == null || String(v).trim().length === 0;
-    const checks = [{check: state.payment_params?.["expiry"] != null && String(state.payment_params?.["expiry"]).trim().length > 0, msg: "Enter an expiration date"}, {check: String(state.payment_params?.["expiry"] || '').trim().length >= 4, msg: "Enter a valid expiration (MM/YY)"}, {check: String(state.payment_params?.["expiry"] || '').trim().length <= 5, msg: "Enter a valid expiration (MM/YY)"}, {check: !(((state.expiry_month_valid === false) && ((state.expiry_digits.length) >= 2))), msg: "Month must be 01-12"}];
+    const checks = [{check: state.payment_params?.["expiry"] != null && String(state.payment_params?.["expiry"]).trim().length > 0, msg: "Enter an expiration date"}, {check: !(((state.expiry_month_valid === false) && ((state.expiry_digits.length) >= 2))), msg: "Month must be 01-12"}];
     return checks
       .filter(c => !c.check && (true || !isEmpty))
       .map(c => c.msg);
@@ -197,7 +197,7 @@ export default {
   payment_card_number_errors(state) {
     const v = state.payment_params?.["card_number"];
     const isEmpty = v == null || String(v).trim().length === 0;
-    const checks = [{check: state.payment_params?.["card_number"] != null && String(state.payment_params?.["card_number"]).trim().length > 0, msg: "Enter a card number"}, {check: String(state.payment_params?.["card_number"] || '').trim().length >= 15, msg: "Card number should be 15-16 digits"}, {check: String(state.payment_params?.["card_number"] || '').trim().length <= 16, msg: "Card number should be 15-16 digits"}, {check: !(((state.card_valid_for_type === false) && (state.card_number_length > 0))), msg: ((state.is_amex ? "Amex requires 15 digits" : "Must be 16 digits"))}];
+    const checks = [{check: state.payment_params?.["card_number"] != null && String(state.payment_params?.["card_number"]).trim().length > 0, msg: "Enter a card number"}, {check: !(((state.card_valid_for_type === false) && (state.card_number_length > 0))), msg: ((state.is_amex ? "Amex requires 15 digits" : "Must be 16 digits"))}];
     return checks
       .filter(c => !c.check && (true || !isEmpty))
       .map(c => c.msg);

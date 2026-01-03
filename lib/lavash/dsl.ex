@@ -329,6 +329,17 @@ defmodule Lavash.Dsl do
         type: :atom,
         default: :update,
         doc: "The update action name"
+      ],
+      skip_constraints: [
+        type: {:list, :atom},
+        default: [],
+        doc: """
+        Fields to skip constraint-based validation for in client-side optimistic updates.
+        Use when you want to handle validation entirely via extend_errors with custom logic.
+        The Ash resource constraints still apply server-side.
+
+        Example: skip_constraints [:card_number, :expiry, :cvv]
+        """
       ]
     ]
   }

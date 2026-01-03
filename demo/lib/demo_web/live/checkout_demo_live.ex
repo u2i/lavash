@@ -39,8 +39,10 @@ defmodule DemoWeb.CheckoutDemoLive do
   # ─────────────────────────────────────────────────────────────────
 
   # Auto-generates: payment_card_number_valid, payment_card_number_errors, etc.
+  # Skip constraints for fields that use extend_errors with card-type-specific messages
   form :payment, Payment do
     create :pay
+    skip_constraints [:card_number, :expiry, :cvv]
   end
 
   # ─────────────────────────────────────────────────────────────────

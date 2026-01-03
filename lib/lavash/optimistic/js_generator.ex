@@ -75,9 +75,9 @@ defmodule Lavash.Optimistic.JsGenerator do
       {name, _, _, _} = normalize_calculation(calc)
       to_string(name)
     end)
-    form_validation_derive_names = Enum.map(form_validations, fn {name, _, _} -> to_string(name) end)
-    # form_errors tuples have 5 elements: {name, params_field, validation, custom_errors, ash_validations}
-    form_error_derive_names = Enum.map(form_errors, fn {name, _, _, _, _} -> to_string(name) end)
+    form_validation_derive_names = Enum.map(form_validations, fn {name, _, _, _} -> to_string(name) end)
+    # form_errors tuples have 6 elements: {name, params_field, validation, custom_errors, ash_validations, skip_constraints}
+    form_error_derive_names = Enum.map(form_errors, fn {name, _, _, _, _, _} -> to_string(name) end)
     derive_names = explicit_derive_names ++ multi_select_derive_names ++ toggle_derive_names ++ calculation_derive_names ++ form_validation_derive_names ++ form_error_derive_names
 
     # Add optimistic field names
@@ -143,26 +143,26 @@ defmodule Lavash.Optimistic.JsGenerator do
     # Combined form validation derives depend on individual field validations
     form_validation_entries =
       Enum.map(form_validations, fn
-        {name, _params_field, {:combined, form_name, field_names}} ->
+        {name, _params_field, {:combined, form_name, field_names}, _skip} ->
           # Combined validation depends on individual field validations
           deps = Enum.map(field_names, fn field -> "#{form_name}_#{field}_valid" end)
           {to_string(name), %{deps: deps}}
 
-        {name, params_field, _validation} ->
+        {name, params_field, _validation, _skip} ->
           # Individual field validation depends on params
           {to_string(name), %{deps: [to_string(params_field)]}}
       end)
 
     # Form error derives depend on params field (same as validations)
-    # 5-tuple format: {name, params_field, validation, custom_errors, ash_validations}
+    # 6-tuple format: {name, params_field, validation, custom_errors, ash_validations, skip_constraints}
     form_error_entries =
       Enum.map(form_errors, fn
-        {name, _params_field, {:combined, form_name, field_names}, _custom_errors, _ash_validations} ->
+        {name, _params_field, {:combined, form_name, field_names}, _custom_errors, _ash_validations, _skip} ->
           # Combined errors depends on individual field errors
           deps = Enum.map(field_names, fn field -> "#{form_name}_#{field}_errors" end)
           {to_string(name), %{deps: deps}}
 
-        {name, params_field, _validation, _custom_errors, _ash_validations} ->
+        {name, params_field, _validation, _custom_errors, _ash_validations, _skip} ->
           # Individual field errors depends on params
           {to_string(name), %{deps: [to_string(params_field)]}}
       end)
@@ -517,7 +517,7 @@ defmodule Lavash.Optimistic.JsGenerator do
   # ============================================
 
   # Get form validations from module's forms and Ash resource constraints
-  # Returns list of {derive_name, params_field, validation} tuples
+  # Returns list of {derive_name, params_field, validation, skip_constraints} tuples
   defp get_form_validations(module) do
     try do
       forms = module.__lavash__(:forms)
@@ -526,6 +526,7 @@ defmodule Lavash.Optimistic.JsGenerator do
         resource = form.resource
         form_name = form.name
         params_field = :"#{form_name}_params"
+        skip_constraints = form.skip_constraints || []
 
         if Code.ensure_loaded?(resource) and
              function_exported?(resource, :spark_dsl_config, 0) do
@@ -535,13 +536,14 @@ defmodule Lavash.Optimistic.JsGenerator do
           field_derives =
             Enum.map(validations, fn validation ->
               derive_name = :"#{form_name}_#{validation.field}_valid"
-              {derive_name, params_field, validation}
+              skip_field = validation.field in skip_constraints
+              {derive_name, params_field, validation, skip_field}
             end)
 
           # Generate overall form_valid derive if we have field validations
           if length(validations) > 0 do
             field_names = Enum.map(validations, & &1.field)
-            form_valid = {:"#{form_name}_valid", params_field, {:combined, form_name, field_names}}
+            form_valid = {:"#{form_name}_valid", params_field, {:combined, form_name, field_names}, false}
             field_derives ++ [form_valid]
           else
             field_derives
@@ -556,7 +558,7 @@ defmodule Lavash.Optimistic.JsGenerator do
   end
 
   # Get form error derives from module's forms
-  # Returns list of {derive_name, params_field, validation, custom_errors, ash_validations} tuples for _errors fields
+  # Returns list of {derive_name, params_field, validation, custom_errors, ash_validations, skip_constraints} tuples for _errors fields
   defp get_form_errors(module) do
     try do
       forms = module.__lavash__(:forms)
@@ -569,6 +571,7 @@ defmodule Lavash.Optimistic.JsGenerator do
         form_name = form.name
         params_field = :"#{form_name}_params"
         create_action = form.create || :create
+        skip_constraints = form.skip_constraints || []
 
         if Code.ensure_loaded?(resource) and
              function_exported?(resource, :spark_dsl_config, 0) do
@@ -583,13 +586,14 @@ defmodule Lavash.Optimistic.JsGenerator do
               derive_name = :"#{form_name}_#{validation.field}_errors"
               custom_errors = Map.get(extend_errors_map, derive_name, [])
               field_ash_validations = Map.get(ash_validations, validation.field, [])
-              {derive_name, params_field, validation, custom_errors, field_ash_validations}
+              skip_field = validation.field in skip_constraints
+              {derive_name, params_field, validation, custom_errors, field_ash_validations, skip_field}
             end)
 
           # Generate overall form_errors derive if we have field validations
           if length(validations) > 0 do
             field_names = Enum.map(validations, & &1.field)
-            form_errors = {:"#{form_name}_errors", params_field, {:combined, form_name, field_names}, [], []}
+            form_errors = {:"#{form_name}_errors", params_field, {:combined, form_name, field_names}, [], [], false}
             field_derives ++ [form_errors]
           else
             field_derives
@@ -619,7 +623,7 @@ defmodule Lavash.Optimistic.JsGenerator do
   end
 
   # Generate JS for a form field validation derive
-  defp generate_form_validation_js({name, _params_field, {:combined, form_name, field_names}}) do
+  defp generate_form_validation_js({name, _params_field, {:combined, form_name, field_names}, _skip}) do
     # Combined form validity - AND all individual field validations
     checks =
       field_names
@@ -633,7 +637,7 @@ defmodule Lavash.Optimistic.JsGenerator do
     """
   end
 
-  defp generate_form_validation_js({name, params_field, validation}) do
+  defp generate_form_validation_js({name, params_field, validation, skip_constraints}) do
     field = validation.field
     field_str = to_string(field)
     required = validation.required
@@ -646,6 +650,7 @@ defmodule Lavash.Optimistic.JsGenerator do
     checks = []
 
     # Required check: not null/undefined and not empty after trim
+    # (always included - it's about presence, not constraints)
     checks =
       if required do
         check = "(#{value_expr} != null && String(#{value_expr}).trim().length > 0)"
@@ -654,17 +659,21 @@ defmodule Lavash.Optimistic.JsGenerator do
         checks
       end
 
-    # Type-specific constraint checks
+    # Type-specific constraint checks (skipped if skip_constraints is true)
     checks =
-      case type do
-        :string ->
-          build_string_constraint_checks(value_expr, constraints, checks)
+      if skip_constraints do
+        checks
+      else
+        case type do
+          :string ->
+            build_string_constraint_checks(value_expr, constraints, checks)
 
-        :integer ->
-          build_integer_constraint_checks(value_expr, constraints, checks)
+          :integer ->
+            build_integer_constraint_checks(value_expr, constraints, checks)
 
-        _ ->
-          checks
+          _ ->
+            checks
+        end
       end
 
     # Combine all checks with &&
@@ -728,7 +737,7 @@ defmodule Lavash.Optimistic.JsGenerator do
   end
 
   # Generate JS for form field error derives
-  defp generate_form_errors_js({name, _params_field, {:combined, form_name, field_names}, _custom_errors, _ash_validations}) do
+  defp generate_form_errors_js({name, _params_field, {:combined, form_name, field_names}, _custom_errors, _ash_validations, _skip}) do
     # Combined errors - concatenate all individual field error arrays
     arrays =
       field_names
@@ -742,7 +751,7 @@ defmodule Lavash.Optimistic.JsGenerator do
     """
   end
 
-  defp generate_form_errors_js({name, params_field, validation, custom_errors, ash_validations}) do
+  defp generate_form_errors_js({name, params_field, validation, custom_errors, ash_validations, skip_constraints}) do
     field = validation.field
     field_str = to_string(field)
     required = validation.required
@@ -758,7 +767,7 @@ defmodule Lavash.Optimistic.JsGenerator do
     # Build error checks - each returns error message if check fails
     error_checks = []
 
-    # Required check
+    # Required check (always included - it's about presence, not constraints)
     error_checks =
       if required do
         msg = Map.get(ash_messages, :required) || Lavash.Form.ConstraintTranspiler.error_message(:required, nil)
@@ -768,17 +777,21 @@ defmodule Lavash.Optimistic.JsGenerator do
         error_checks
       end
 
-    # Type-specific constraint checks
+    # Type-specific constraint checks (skipped if skip_constraints is true)
     error_checks =
-      case type do
-        :string ->
-          build_string_error_checks(value_expr, constraints, error_checks, ash_messages)
+      if skip_constraints do
+        error_checks
+      else
+        case type do
+          :string ->
+            build_string_error_checks(value_expr, constraints, error_checks, ash_messages)
 
-        :integer ->
-          build_integer_error_checks(value_expr, constraints, error_checks, ash_messages)
+          :integer ->
+            build_integer_error_checks(value_expr, constraints, error_checks, ash_messages)
 
-        _ ->
-          error_checks
+          _ ->
+            error_checks
+        end
       end
 
     # Add custom error checks from extend_errors

@@ -17,6 +17,8 @@ defmodule Demo.Forms.Payment do
   attributes do
     uuid_primary_key :id
 
+    # Card fields - constraints apply server-side, client-side uses extend_errors
+    # with card-type-specific messages via skip_constraints in the form DSL
     attribute :card_number, :string do
       allow_nil? false
       public? true
@@ -51,21 +53,19 @@ defmodule Demo.Forms.Payment do
   end
 
   validations do
+    # Required field messages (these override the generic "is required")
     validate present(:card_number), message: "Enter a card number"
     validate present(:expiry), message: "Enter an expiration date"
     validate present(:cvv), message: "Enter the security code"
     validate present(:name), message: "Enter the name on your card"
 
-    validate string_length(:card_number, min: 15, max: 16),
-      message: "Card number should be 15-16 digits"
-
-    validate string_length(:expiry, min: 4, max: 5),
-      message: "Enter a valid expiration (MM/YY)"
-
-    validate string_length(:cvv, min: 3, max: 4),
-      message: "CVV should be 3-4 digits"
-
+    # Name length - no card-type-specific override needed
     validate string_length(:name, min: 2),
       message: "Enter your full name"
+
+    # Note: card_number, expiry, and cvv constraints are applied server-side,
+    # but skipped client-side via `skip_constraints` in the form DSL.
+    # The LiveView uses extend_errors for card-type-specific messages
+    # (e.g., "Amex requires 15 digits" vs "Must be 16 digits")
   end
 end
