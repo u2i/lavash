@@ -130,21 +130,36 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
     target_dir = colocated_target_dir()
     module_dir = Path.join(target_dir, inspect(module))
 
-    # Create a stable filename based on content hash
-    hash =
-      :crypto.hash(:md5, js_code)
-      |> Base.encode32(case: :lower, padding: false)
-
-    filename = "optimistic_#{hash}.js"
+    # Use deterministic filename - one file per module
+    filename = "optimistic.js"
     file_path = Path.join(module_dir, filename)
 
     # Only write if directory exists or can be created
     if File.dir?(target_dir) or create_target_dir(target_dir) do
       File.mkdir_p!(module_dir)
+
+      # Clean up old hashed files (from previous versions)
+      cleanup_old_hashed_files(module_dir)
+
       File.write!(file_path, js_code)
 
       # Update the manifest with this module
       store_colocated_data(module, filename)
+    end
+  end
+
+  # Remove old optimistic_*.js files (hashed filenames from previous versions)
+  defp cleanup_old_hashed_files(module_dir) do
+    case File.ls(module_dir) do
+      {:ok, files} ->
+        files
+        |> Enum.filter(&String.starts_with?(&1, "optimistic_"))
+        |> Enum.each(fn old_file ->
+          File.rm(Path.join(module_dir, old_file))
+        end)
+
+      {:error, _} ->
+        :ok
     end
   end
 
@@ -198,20 +213,11 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
       |> Enum.map(fn module_name ->
         # Find the optimistic file for this module
         module_dir = Path.join(target_dir, module_name)
+        file_path = Path.join(module_dir, "optimistic.js")
 
-        filename =
-          if File.dir?(module_dir) do
-            case File.ls!(module_dir) |> Enum.find(&String.starts_with?(&1, "optimistic_")) do
-              nil -> nil
-              file -> file
-            end
-          else
-            nil
-          end
-
-        if filename do
+        if File.exists?(file_path) do
           import_name = "mod_" <> (:crypto.hash(:md5, module_name) |> Base.encode16(case: :lower) |> String.slice(0..7))
-          {module_name, filename, import_name}
+          {module_name, "optimistic.js", import_name}
         else
           nil
         end

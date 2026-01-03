@@ -30,7 +30,7 @@ export default {
   registration_age_errors(state) {
     const v = state.registration_params?.["age"];
     const isEmpty = v == null || String(v).trim().length === 0;
-    const checks = [{check: state.registration_params?.["age"] != null && String(state.registration_params?.["age"]).trim().length > 0, msg: "is required"}, {check: parseInt(state.registration_params?.["age"] || '0', 10) >= 18, msg: "must be at least 18"}];
+    const checks = [{check: state.registration_params?.["age"] != null && String(state.registration_params?.["age"]).trim().length > 0, msg: "Enter your age"}, {check: parseInt(state.registration_params?.["age"] || '0', 10) >= 18, msg: "must be at least 18"}];
     return checks
       .filter(c => !c.check && (true || !isEmpty))
       .map(c => c.msg);
@@ -39,7 +39,7 @@ export default {
   registration_email_errors(state) {
     const v = state.registration_params?.["email"];
     const isEmpty = v == null || String(v).trim().length === 0;
-    const checks = [{check: state.registration_params?.["email"] != null && String(state.registration_params?.["email"]).trim().length > 0, msg: "is required"}, {check: !(!((state.registration_params["email"] || "").includes("@"))), msg: "Must contain @"}];
+    const checks = [{check: state.registration_params?.["email"] != null && String(state.registration_params?.["email"]).trim().length > 0, msg: "Enter your email"}, {check: !(!((state.registration_params["email"] || "").includes("@"))), msg: "Must contain @"}];
     return checks
       .filter(c => !c.check && (true || !isEmpty))
       .map(c => c.msg);
@@ -48,7 +48,7 @@ export default {
   registration_name_errors(state) {
     const v = state.registration_params?.["name"];
     const isEmpty = v == null || String(v).trim().length === 0;
-    const checks = [{check: state.registration_params?.["name"] != null && String(state.registration_params?.["name"]).trim().length > 0, msg: "is required"}, {check: String(state.registration_params?.["name"] || '').trim().length >= 2, msg: "must be at least 2 characters"}];
+    const checks = [{check: state.registration_params?.["name"] != null && String(state.registration_params?.["name"]).trim().length > 0, msg: "Enter your name"}, {check: String(state.registration_params?.["name"] || '').trim().length >= 2, msg: "Name must be at least 2 characters"}];
     return checks
       .filter(c => !c.check && (true || !isEmpty))
       .map(c => c.msg);

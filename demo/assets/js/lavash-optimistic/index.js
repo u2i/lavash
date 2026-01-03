@@ -2,29 +2,23 @@
 // Do not edit manually - regenerated on each compile
 const registry = {};
 
-import mod_8ca59bed from "./DemoWeb.Admin.ProductEditLive/optimistic_aiu6dj2nqa75j4wl2bckpu23ze.js";
-import mod_6ffb215f from "./DemoWeb.Admin.ProductsLive/optimistic_fw7qqk3mbuffartqxiznoyjewe.js";
-import mod_cf43ff37 from "./DemoWeb.BindingsDemoLive/optimistic_whnwu3tmef4meeioj5feffilme.js";
-import mod_fde12dfc from "./DemoWeb.CategoryEditModal/optimistic_hbfvykcn5k3av5voj3p4vwzpku.js";
-import mod_d76b1ebb from "./DemoWeb.CheckoutDemoLive/optimistic_uogpadqfzq2t32ai6s4cuvc67a.js";
-import mod_21cc86d3 from "./DemoWeb.CounterLive/optimistic_tceg3qk7myrpsbd2qgbl5rpva4.js";
-import mod_d1b0d7c4 from "./DemoWeb.FormValidationDemoLive/optimistic_wnlurfyv52sf574oytovaequyu.js";
-import mod_11b4dcaa from "./DemoWeb.ProductEditLive/optimistic_aiu6dj2nqa75j4wl2bckpu23ze.js";
-import mod_3611892e from "./DemoWeb.ProductEditModal/optimistic_ajqljo4hhq3h5xgrm2x47rcx5q.js";
-import mod_f58f8e44 from "./DemoWeb.ProductsLive/optimistic_qfyrdlizij7lwqzjfpvg6376hu.js";
-import mod_3baeaa46 from "./DemoWeb.ProductsSocketLive/optimistic_2af6twgije2nd73jibdjzkybeu.js";
-import mod_852cd861 from "./DemoWeb.Storefront.ProductsLive/optimistic_i4iwlghunhawhmm25fluywrv54.js";
-import mod_84c52342 from "./DemoWeb.TagEditorDemoLive/optimistic_56rf7pekd6b5q5ylssisrkhhqa.js";
+import mod_6ffb215f from "./DemoWeb.Admin.ProductsLive/optimistic.js";
+import mod_cf43ff37 from "./DemoWeb.BindingsDemoLive/optimistic.js";
+import mod_fde12dfc from "./DemoWeb.CategoryEditModal/optimistic.js";
+import mod_d76b1ebb from "./DemoWeb.CheckoutDemoLive/optimistic.js";
+import mod_21cc86d3 from "./DemoWeb.CounterLive/optimistic.js";
+import mod_d1b0d7c4 from "./DemoWeb.FormValidationDemoLive/optimistic.js";
+import mod_f58f8e44 from "./DemoWeb.ProductsLive/optimistic.js";
+import mod_3baeaa46 from "./DemoWeb.ProductsSocketLive/optimistic.js";
+import mod_852cd861 from "./DemoWeb.Storefront.ProductsLive/optimistic.js";
+import mod_84c52342 from "./DemoWeb.TagEditorDemoLive/optimistic.js";
 
-registry["DemoWeb.Admin.ProductEditLive"] = mod_8ca59bed;
 registry["DemoWeb.Admin.ProductsLive"] = mod_6ffb215f;
 registry["DemoWeb.BindingsDemoLive"] = mod_cf43ff37;
 registry["DemoWeb.CategoryEditModal"] = mod_fde12dfc;
 registry["DemoWeb.CheckoutDemoLive"] = mod_d76b1ebb;
 registry["DemoWeb.CounterLive"] = mod_21cc86d3;
 registry["DemoWeb.FormValidationDemoLive"] = mod_d1b0d7c4;
-registry["DemoWeb.ProductEditLive"] = mod_11b4dcaa;
-registry["DemoWeb.ProductEditModal"] = mod_3611892e;
 registry["DemoWeb.ProductsLive"] = mod_f58f8e44;
 registry["DemoWeb.ProductsSocketLive"] = mod_3baeaa46;
 registry["DemoWeb.Storefront.ProductsLive"] = mod_852cd861;

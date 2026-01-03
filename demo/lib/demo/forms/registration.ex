@@ -49,4 +49,15 @@ defmodule Demo.Forms.Registration do
       accept [:name, :email, :age]
     end
   end
+
+  validations do
+    # Custom required field messages
+    validate present(:name), message: "Enter your name"
+    validate present(:email), message: "Enter your email"
+    validate present(:age), message: "Enter your age"
+
+    # Custom length/constraint messages
+    validate string_length(:name, min: 2), message: "Name must be at least 2 characters"
+    validate numericality(:age, greater_than_or_equal_to: 18), message: "Must be 18 or older"
+  end
 end
