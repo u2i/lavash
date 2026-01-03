@@ -5,6 +5,28 @@ defmodule Lavash.Template.Transformer do
   This module analyzes templates and automatically adds the appropriate data attributes
   based on the module's DSL declarations (state fields, forms, actions, derives, etc.).
 
+  ## Form Field Shorthand
+
+  Use `data-lavash-form-field={@form[:field]}` to inject all form-related attributes:
+
+      <input type="text" data-lavash-form-field={@payment[:card_number]} />
+
+  Expands to:
+
+      <input type="text"
+        name={@payment[:card_number].name}
+        value={@payment[:card_number].value || ""}
+        data-lavash-bind="payment_params.card_number"
+        data-lavash-form="payment"
+        data-lavash-field="card_number"
+        data-lavash-valid="payment_card_number_valid"
+      />
+
+  Override any generated attribute by specifying it explicitly:
+
+      <input data-lavash-form-field={@payment[:cvv]}
+             data-lavash-valid="cvv_valid" />  <!-- custom validation field -->
+
   ## Pattern Recognition
 
   The transformer recognizes these patterns and injects attributes:
@@ -434,9 +456,35 @@ defmodule Lavash.Template.Transformer do
   end
 
   # Pattern 1: Form inputs
+  # Supports two patterns:
+  # a) Explicit: name={@form[:field].name} - injects data-lavash-* attributes
+  # b) Shorthand: data-lavash-form-field={@form[:field]} - injects name, value, and all data-lavash-*
   defp maybe_inject_form_input(attrs, tag_info, metadata) do
-    if tag_info.name in ["input", "textarea", "select"] and
-       not has_attr?(attrs, "data-lavash-bind") do
+    if tag_info.name in ["input", "textarea", "select"] do
+      # Check for shorthand pattern first: data-lavash-form-field={@form[:field]}
+      case get_attr(attrs, "data-lavash-form-field") do
+        {:expr, expr} ->
+          case parse_form_field_access_expr(expr) do
+            {:ok, form, field} when is_map_key(metadata.forms, form) ->
+              inject_full_form_attrs(attrs, form, field, expr)
+
+            _ ->
+              # Fall through to explicit pattern
+              maybe_inject_form_input_explicit(attrs, tag_info, metadata)
+          end
+
+        _ ->
+          # Fall through to explicit pattern
+          maybe_inject_form_input_explicit(attrs, tag_info, metadata)
+      end
+    else
+      attrs
+    end
+  end
+
+  # Explicit pattern: name={@form[:field].name}
+  defp maybe_inject_form_input_explicit(attrs, _tag_info, metadata) do
+    if not has_attr?(attrs, "data-lavash-bind") do
       case get_attr(attrs, "name") do
         {:expr, expr} ->
           case parse_form_field_expr(expr) do
@@ -469,6 +517,22 @@ defmodule Lavash.Template.Transformer do
     end
   end
 
+  # Full injection for shorthand pattern - injects name, value, and all data-lavash-*
+  defp inject_full_form_attrs(attrs, form, field, _expr) do
+    form_str = to_string(form)
+    field_str = to_string(field)
+
+    # Remove the shorthand attribute and inject everything
+    attrs
+    |> Enum.reject(fn {name, _} -> name == "data-lavash-form-field" end)
+    |> add_attr_if_missing("name", {:expr, "@#{form_str}[:#{field_str}].name"})
+    |> add_attr_if_missing("value", {:expr, "@#{form_str}[:#{field_str}].value || \"\""})
+    |> add_attr_if_missing("data-lavash-bind", {:string, "#{form_str}_params.#{field_str}"})
+    |> add_attr_if_missing("data-lavash-form", {:string, form_str})
+    |> add_attr_if_missing("data-lavash-field", {:string, field_str})
+    |> add_attr_if_missing("data-lavash-valid", {:string, "#{form_str}_#{field_str}_valid"})
+  end
+
   defp inject_form_attrs(attrs, form, field) do
     form_str = to_string(form)
     field_str = to_string(field)
@@ -477,6 +541,7 @@ defmodule Lavash.Template.Transformer do
     |> add_attr_if_missing("data-lavash-bind", {:string, "#{form_str}_params.#{field_str}"})
     |> add_attr_if_missing("data-lavash-form", {:string, form_str})
     |> add_attr_if_missing("data-lavash-field", {:string, field_str})
+    |> add_attr_if_missing("data-lavash-valid", {:string, "#{form_str}_#{field_str}_valid"})
   end
 
   # Parse @form[:field].name pattern
@@ -495,6 +560,14 @@ defmodule Lavash.Template.Transformer do
   defp parse_form_field_string(name) do
     case Regex.run(~r/^(\w+)\[(\w+)\]$/, name) do
       [_, form, field] -> {:ok, form, field}
+      nil -> :error
+    end
+  end
+
+  # Parse @form[:field] pattern (for shorthand data-lavash-form-field={@form[:field]})
+  defp parse_form_field_access_expr(expr) do
+    case Regex.run(~r/@(\w+)\[:(\w+)\]$/, String.trim(expr)) do
+      [_, form, field] -> {:ok, String.to_atom(form), String.to_atom(field)}
       nil -> :error
     end
   end

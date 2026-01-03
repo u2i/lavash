@@ -4,6 +4,7 @@ defmodule DemoWeb.CheckoutDemoLive do
 
   Demonstrates:
   - Ash `form` DSL for auto-generated validation from resource constraints
+  - `data-lavash-form-field` shorthand for form input bindings
   - `data-lavash-toggle` for dynamic class switching on validation state
   - `data-lavash-enabled` for button enable/disable
   - `data-lavash-visible` for conditional section visibility
@@ -12,7 +13,7 @@ defmodule DemoWeb.CheckoutDemoLive do
   """
   use Lavash.LiveView
   import Lavash.Rx
-  import Lavash.LiveView.Helpers, only: [field_errors: 1, field_success: 1, field_status: 1]
+  import Lavash.LiveView.Helpers, only: [field_errors: 1, field_success: 1]
 
   alias Demo.Forms.Payment
 
@@ -326,11 +327,7 @@ defmodule DemoWeb.CheckoutDemoLive do
                       <label class="floating-label w-full">
                         <input
                           type="text"
-                          name={@payment[:card_number].name}
-                          value={@payment[:card_number].value || ""}
-                          data-lavash-bind="payment_params.card_number"
-                          data-lavash-form="payment"
-                          data-lavash-field="card_number"
+                          data-lavash-form-field={@payment[:card_number]}
                           data-lavash-valid="card_number_valid"
                           autocomplete="cc-number"
                           inputmode="numeric"
@@ -356,11 +353,7 @@ defmodule DemoWeb.CheckoutDemoLive do
                         <label class="floating-label w-full">
                           <input
                             type="text"
-                            name={@payment[:expiry].name}
-                            value={@payment[:expiry].value || ""}
-                            data-lavash-bind="payment_params.expiry"
-                            data-lavash-form="payment"
-                            data-lavash-field="expiry"
+                            data-lavash-form-field={@payment[:expiry]}
                             data-lavash-valid="expiry_valid"
                             autocomplete="cc-exp"
                             inputmode="numeric"
@@ -386,11 +379,7 @@ defmodule DemoWeb.CheckoutDemoLive do
                         <label class="floating-label w-full">
                           <input
                             type="text"
-                            name={@payment[:cvv].name}
-                            value={@payment[:cvv].value || ""}
-                            data-lavash-bind="payment_params.cvv"
-                            data-lavash-form="payment"
-                            data-lavash-field="cvv"
+                            data-lavash-form-field={@payment[:cvv]}
                             data-lavash-valid="cvv_valid"
                             autocomplete="cc-csc"
                             inputmode="numeric"
@@ -417,11 +406,7 @@ defmodule DemoWeb.CheckoutDemoLive do
                       <label class="floating-label w-full">
                         <input
                           type="text"
-                          name={@payment[:name].name}
-                          value={@payment[:name].value || ""}
-                          data-lavash-bind="payment_params.name"
-                          data-lavash-form="payment"
-                          data-lavash-field="name"
+                          data-lavash-form-field={@payment[:name]}
                           autocomplete="cc-name"
                           placeholder="Name on card"
                           class={"input input-bordered w-full " <>

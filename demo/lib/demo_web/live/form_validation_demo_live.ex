@@ -70,15 +70,17 @@ defmodule DemoWeb.FormValidationDemoLive do
     end
   end
 
-  # Using template DSL for auto-injection of data-lavash-* attributes
-  # The transformer will add:
-  # - data-lavash-bind, data-lavash-form, data-lavash-field on form inputs
-  # - data-lavash-action on buttons with phx-click matching declared actions
-  # - data-lavash-enabled on elements with disabled={not @bool_field}
+  # Using template DSL with shorthand form field syntax
   #
-  # Note: Some attributes still need to be manual:
-  # - data-lavash-valid="email_valid" (overrides default field name)
-  # - data-lavash-toggle (complex class switching)
+  # data-lavash-form-field={@form[:field]} expands to:
+  # - name={@form[:field].name}
+  # - value={@form[:field].value || ""}
+  # - data-lavash-bind="form_params.field"
+  # - data-lavash-form="form"
+  # - data-lavash-field="field"
+  # - data-lavash-valid="form_field_valid"
+  #
+  # Override any of these by specifying them explicitly after the shorthand.
   template """
   <div id="form-validation-demo" class="max-w-lg mx-auto mt-10 p-6 bg-white rounded-lg shadow-lg">
     <h1 class="text-2xl font-bold text-center mb-2">Ash Form Validation</h1>
@@ -107,7 +109,7 @@ defmodule DemoWeb.FormValidationDemoLive do
         <%!-- Error Summary (shown after form submission with errors) --%>
         <.error_summary form={:registration} />
 
-        <%!-- Name Field - auto-injected: data-lavash-bind, data-lavash-form, data-lavash-field --%>
+        <%!-- Name Field - shorthand: data-lavash-form-field injects name, value, bind, form, field, valid --%>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">
             Name <span class="text-error">*</span>
@@ -115,8 +117,7 @@ defmodule DemoWeb.FormValidationDemoLive do
           <div class="relative">
             <input
               type="text"
-              name={@registration[:name].name}
-              value={@registration[:name].value || ""}
+              data-lavash-form-field={@registration[:name]}
               autocomplete="off"
               data-1p-ignore
               class={"input input-bordered w-full pr-10 " <>
@@ -135,7 +136,7 @@ defmodule DemoWeb.FormValidationDemoLive do
           </div>
         </div>
 
-        <%!-- Email Field - auto-injected: bind/form/field; manual: data-lavash-valid override --%>
+        <%!-- Email Field - shorthand + manual override for custom validation --%>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">
             Email <span class="text-error">*</span>
@@ -143,8 +144,7 @@ defmodule DemoWeb.FormValidationDemoLive do
           <div class="relative">
             <input
               type="text"
-              name={@registration[:email].name}
-              value={@registration[:email].value || ""}
+              data-lavash-form-field={@registration[:email]}
               data-lavash-valid="email_valid"
               autocomplete="off"
               data-1p-ignore
@@ -165,7 +165,7 @@ defmodule DemoWeb.FormValidationDemoLive do
           </div>
         </div>
 
-        <%!-- Age Field - auto-injected: data-lavash-bind, data-lavash-form, data-lavash-field --%>
+        <%!-- Age Field - shorthand for all form bindings --%>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">
             Age <span class="text-error">*</span>
@@ -173,8 +173,7 @@ defmodule DemoWeb.FormValidationDemoLive do
           <div class="relative">
             <input
               type="number"
-              name={@registration[:age].name}
-              value={@registration[:age].value || ""}
+              data-lavash-form-field={@registration[:age]}
               autocomplete="off"
               data-1p-ignore
               min="0"
