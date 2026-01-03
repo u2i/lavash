@@ -23,7 +23,7 @@ defmodule DemoWeb.FormValidationDemoLive do
   """
   use Lavash.LiveView
   import Lavash.Rx
-  import Lavash.LiveView.Helpers, only: [field_errors: 1, field_success: 1, error_summary: 1, field_status: 1]
+  import Lavash.LiveView.Helpers, only: [field_errors: 1, error_summary: 1]
 
   alias Demo.Forms.Registration
 
@@ -44,7 +44,6 @@ defmodule DemoWeb.FormValidationDemoLive do
   end
 
   # Email validity now just uses the extended validation
-  # email_has_at is still needed for the input styling and success indicator
   calculate :email_has_at, rx(String.contains?(@registration_params["email"] || "", "@"))
   calculate :email_valid, rx(@registration_email_valid and @email_has_at)
 
@@ -121,18 +120,12 @@ defmodule DemoWeb.FormValidationDemoLive do
               autocomplete="off"
               data-1p-ignore
               class={"input input-bordered w-full pr-10 " <>
-                cond do
-                  !assigns[:registration_name_show_errors] -> ""
-                  @registration_name_valid -> "input-success"
-                  true -> "input-error"
-                end}
+                if assigns[:registration_name_show_errors] && !@registration_name_valid, do: "input-error", else: ""}
               placeholder="Enter your name"
             />
-            <.field_status form={:registration} field={:name} valid={@registration_name_valid} />
           </div>
           <div class="h-5 mt-1">
             <.field_errors form={:registration} field={:name} errors={@registration_name_errors} />
-            <.field_success form={:registration} field={:name} valid={@registration_name_valid} />
           </div>
         </div>
 
@@ -149,19 +142,13 @@ defmodule DemoWeb.FormValidationDemoLive do
               autocomplete="off"
               data-1p-ignore
               class={"input input-bordered w-full pr-10 " <>
-                cond do
-                  !assigns[:registration_email_show_errors] -> ""
-                  @email_valid -> "input-success"
-                  true -> "input-error"
-                end}
+                if assigns[:registration_email_show_errors] && !@email_valid, do: "input-error", else: ""}
               placeholder="you@example.com"
             />
-            <.field_status form={:registration} field={:email} valid={@email_valid} valid_field="email_valid" />
           </div>
           <div class="h-5 mt-1">
             <%!-- Now using extend_errors - custom @ error is merged into registration_email_errors --%>
             <.field_errors form={:registration} field={:email} errors={@registration_email_errors} />
-            <.field_success form={:registration} field={:email} valid={@email_valid} valid_field="email_valid" message="Valid email" />
           </div>
         </div>
 
@@ -179,18 +166,12 @@ defmodule DemoWeb.FormValidationDemoLive do
               min="0"
               max="150"
               class={"input input-bordered w-full pr-10 " <>
-                cond do
-                  !assigns[:registration_age_show_errors] -> ""
-                  @registration_age_valid -> "input-success"
-                  true -> "input-error"
-                end}
+                if assigns[:registration_age_show_errors] && !@registration_age_valid, do: "input-error", else: ""}
               placeholder="18"
             />
-            <.field_status form={:registration} field={:age} valid={@registration_age_valid} />
           </div>
           <div class="h-5 mt-1">
             <.field_errors form={:registration} field={:age} errors={@registration_age_errors} />
-            <.field_success form={:registration} field={:age} valid={@registration_age_valid} message="Age verified" />
           </div>
         </div>
 

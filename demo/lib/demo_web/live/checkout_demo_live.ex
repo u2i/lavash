@@ -104,8 +104,9 @@ defmodule DemoWeb.CheckoutDemoLive do
   calculate :card_valid_for_type, rx(if(@is_amex, do: @card_number_length == 15, else: @card_number_length == 16))
 
   # Card number: dynamic error message based on card type
+  # Only show error once user has typed at least 15 digits (minimum valid)
   extend_errors :payment_card_number_errors do
-    error rx(@card_valid_for_type == false and @card_number_length > 0),
+    error rx(@card_valid_for_type == false and @card_number_length >= 15),
       rx(if(@is_amex, do: "Amex requires 15 digits", else: "Must be 16 digits"))
   end
 

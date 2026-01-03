@@ -107,7 +107,7 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
           toggle_derive_names ++ calculation_derive_names ++ validation_derives ++ error_derives
 
       # Build graph entries
-      graph_entries = build_graph_entries(multi_selects, toggles, calculations, forms)
+      graph_entries = build_graph_entries(multi_selects, toggles, calculations, forms, extend_errors)
 
       fns_str = Enum.join(fns, ",\n")
       derives_str = Jason.encode!(derive_names)
@@ -671,7 +671,7 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
     end)
   end
 
-  defp build_graph_entries(multi_selects, toggles, calculations, forms) do
+  defp build_graph_entries(multi_selects, toggles, calculations, forms, extend_errors) do
     multi_select_entries =
       Enum.map(multi_selects, fn ms ->
         {"#{ms.name}_chips", %{deps: [to_string(ms.name)]}}
@@ -692,6 +692,30 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
         {to_string(calc.name), %{deps: deps}}
       end)
 
+    # Build a map of field_name => extra deps from extend_errors
+    extend_errors_deps =
+      extend_errors
+      |> Enum.map(fn ext ->
+        # Collect all deps from the error conditions and messages
+        deps =
+          ext.errors
+          |> Enum.flat_map(fn error ->
+            condition_deps = error.condition.deps |> Enum.map(&normalize_dep_to_string/1)
+
+            message_deps =
+              case error.message do
+                %Lavash.Rx{deps: deps} -> Enum.map(deps, &normalize_dep_to_string/1)
+                _ -> []
+              end
+
+            condition_deps ++ message_deps
+          end)
+          |> Enum.uniq()
+
+        {ext.field, deps}
+      end)
+      |> Map.new()
+
     form_entries =
       Enum.flat_map(forms, fn form ->
         form_name = form.name
@@ -709,7 +733,10 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
 
           field_e_entries =
             Enum.map(field_names, fn field ->
-              {"#{form_name}_#{field}_errors", %{deps: [params_field]}}
+              e_name = :"#{form_name}_#{field}_errors"
+              # Include deps from extend_errors if this field has custom errors
+              extra_deps = Map.get(extend_errors_deps, e_name, [])
+              {"#{form_name}_#{field}_errors", %{deps: [params_field | extra_deps] |> Enum.uniq()}}
             end)
 
           combined_v =

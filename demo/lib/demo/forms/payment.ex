@@ -57,11 +57,11 @@ defmodule Demo.Forms.Payment do
     validate present(:card_number), message: "Enter a card number"
     validate present(:expiry), message: "Enter an expiration date"
     validate present(:cvv), message: "Enter the security code"
-    validate present(:name), message: "Enter the name on your card"
+    validate present(:name), message: "Enter your name exactly as it's written on your card"
 
     # Name length - no card-type-specific override needed
     validate string_length(:name, min: 2),
-      message: "Enter your full name"
+      message: "Enter your name exactly as it's written on your card"
 
     # Note: card_number, expiry, and cvv constraints are applied server-side,
     # but skipped client-side via `skip_constraints` in the form DSL.
