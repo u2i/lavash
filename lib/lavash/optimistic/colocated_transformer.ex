@@ -50,8 +50,10 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
     multi_selects = Enum.filter(all_states, &match?(%Lavash.MultiSelect{}, &1))
     toggles = Enum.filter(all_states, &match?(%Lavash.Toggle{}, &1))
 
-    # Get calculations
-    calculations = Transformer.get_entities(dsl_state, [:calculations]) || []
+    # Get calculations (only those with optimistic: true)
+    calculations =
+      (Transformer.get_entities(dsl_state, [:calculations]) || [])
+      |> Enum.filter(& &1.optimistic)
 
     # Get forms for validation generation
     forms = Transformer.get_entities(dsl_state, [:forms]) || []

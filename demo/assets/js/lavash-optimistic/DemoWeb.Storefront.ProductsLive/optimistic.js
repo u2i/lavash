@@ -31,11 +31,7 @@ export default {
     return state.in_stock ? ACTIVE : INACTIVE;
   }
 ,
-  has_filters(state) {
-    return (((state.roast !== []) || (state.category !== [])) || state.in_stock);
-  }
-,
-__derives__: ["roast_chips","in_stock_chip","has_filters"],
+__derives__: ["roast_chips","in_stock_chip"],
 __fields__: [],
-__graph__: {"has_filters":{"deps":["in_stock","category","roast"]},"in_stock_chip":{"deps":["in_stock"]},"roast_chips":{"deps":["roast"]}}
+__graph__: {"in_stock_chip":{"deps":["in_stock"]},"roast_chips":{"deps":["roast"]}}
 };

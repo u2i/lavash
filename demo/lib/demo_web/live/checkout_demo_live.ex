@@ -159,10 +159,12 @@ defmodule DemoWeb.CheckoutDemoLive do
   # Computed Values
   # ─────────────────────────────────────────────────────────────────
 
-  calculate :total, rx(Decimal.add(@subtotal, @shipping))
-  calculate :total_display, rx("$" <> Decimal.to_string(@total))
-  calculate :subtotal_display, rx("$" <> Decimal.to_string(@subtotal))
-  calculate :shipping_display, rx("$" <> Decimal.to_string(@shipping))
+  # These use Decimal which can't be transpiled to JS, but since the source
+  # values (subtotal, shipping) are optimistic: false, we mark these as well
+  calculate :total, rx(Decimal.add(@subtotal, @shipping)), optimistic: false
+  calculate :total_display, rx("$" <> Decimal.to_string(@total)), optimistic: false
+  calculate :subtotal_display, rx("$" <> Decimal.to_string(@subtotal)), optimistic: false
+  calculate :shipping_display, rx("$" <> Decimal.to_string(@shipping)), optimistic: false
 
   # ─────────────────────────────────────────────────────────────────
   # Actions
