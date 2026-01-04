@@ -58,6 +58,7 @@ defmodule Lavash.MixProject do
       {:lazy_html, ">= 0.1.0", only: :test},
       {:jason, "~> 1.2"},
       {:bandit, "~> 1.5", only: :test},
+      {:deno_rider, "~> 0.2", only: :test},
       # Code quality
       {:excoveralls, "~> 0.18", only: :test},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
