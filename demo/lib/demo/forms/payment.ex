@@ -46,7 +46,6 @@ defmodule Demo.Forms.Payment do
     attribute :name, :string do
       allow_nil? false
       public? true
-      constraints min_length: 2
     end
   end
 
@@ -65,11 +64,7 @@ defmodule Demo.Forms.Payment do
     validate present(:card_number), message: "Enter a card number"
     validate present(:expiry), message: "Enter an expiration date"
     validate present(:cvv), message: "Enter the security code"
-    validate present(:name), message: "Enter your name exactly as it's written on your card"
-
-    # Name length
-    validate string_length(:name, min: 2),
-      message: "Enter your name exactly as it's written on your card"
+    validate present(:name), message: "Enter the name on your card"
   end
 end
 

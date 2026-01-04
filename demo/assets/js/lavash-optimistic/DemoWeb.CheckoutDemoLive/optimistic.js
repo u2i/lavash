@@ -140,7 +140,7 @@ export default {
   }
 ,
   payment_name_valid(state) {
-    return (state.payment_params?.["name"] != null && String(state.payment_params?.["name"]).trim().length > 0) && (String(state.payment_params?.["name"] || '').trim().length >= 2);
+    return (state.payment_params?.["name"] != null && String(state.payment_params?.["name"]).trim().length > 0);
   }
 ,
   payment_cvv_valid(state) {
@@ -162,7 +162,7 @@ export default {
   payment_name_errors(state) {
     const v = state.payment_params?.["name"];
     const isEmpty = v == null || String(v).trim().length === 0;
-    const checks = [{check: state.payment_params?.["name"] != null && String(state.payment_params?.["name"]).trim().length > 0, msg: "Enter your name exactly as it's written on your card"}, {check: String(state.payment_params?.["name"] || '').trim().length >= 2, msg: "Enter your name exactly as it's written on your card"}];
+    const checks = [{check: state.payment_params?.["name"] != null && String(state.payment_params?.["name"]).trim().length > 0, msg: "Enter the name on your card"}];
     return checks
       .filter(c => !c.check && (true || !isEmpty))
       .map(c => c.msg);
