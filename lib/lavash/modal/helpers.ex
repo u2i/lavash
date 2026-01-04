@@ -486,6 +486,14 @@ defmodule Lavash.Modal.Helpers do
               this.pushEventTo(this.el, this.setterAction, { ...p, value: null }, cb);
             });
           });
+
+          // Register with parent LavashOptimistic hook if present
+          // This allows the optimistic system to be aware of modal state
+          const parentRoot = this.el.closest("[phx-hook='LavashOptimistic']");
+          this._parentOptimisticHook = parentRoot?.__lavash_hook__;
+          if (this._parentOptimisticHook?.registerModalState) {
+            this._parentOptimisticHook.registerModalState(id, this.openField, this.openState);
+          }
         },
 
         _installDomCallback() {
@@ -891,6 +899,11 @@ defmodule Lavash.Modal.Helpers do
           // Remove from global registry
           if (window.__lavashModalInstances && this._mainContentId) {
             delete window.__lavashModalInstances[this._mainContentId];
+          }
+
+          // Unregister from parent LavashOptimistic hook
+          if (this._parentOptimisticHook?.unregisterModalState) {
+            this._parentOptimisticHook.unregisterModalState(this.el.id);
           }
         },
       };

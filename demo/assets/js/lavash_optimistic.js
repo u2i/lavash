@@ -1257,6 +1257,32 @@ const LavashOptimistic = {
     }
   },
 
+  /**
+   * Register a modal's SyncedVar for coordination with the optimistic system.
+   * Called by LavashModal hooks when they mount inside a LavashOptimistic root.
+   *
+   * @param {string} modalId - The modal element ID
+   * @param {string} openField - The field name controlling open state (e.g., "product_id")
+   * @param {SyncedVar} syncedVar - The modal's SyncedVar instance for open state
+   */
+  registerModalState(modalId, openField, syncedVar) {
+    this.modalStates = this.modalStates || {};
+    this.modalStates[modalId] = { openField, syncedVar };
+    console.debug(`[LavashOptimistic] Registered modal: ${modalId} (field: ${openField})`);
+  },
+
+  /**
+   * Unregister a modal when it's destroyed.
+   *
+   * @param {string} modalId - The modal element ID to unregister
+   */
+  unregisterModalState(modalId) {
+    if (this.modalStates) {
+      delete this.modalStates[modalId];
+      console.debug(`[LavashOptimistic] Unregistered modal: ${modalId}`);
+    }
+  },
+
   destroyed() {
     this.el.removeEventListener("click", this.handleClick.bind(this), true);
     this.el.removeEventListener("input", this.handleInput.bind(this), true);
