@@ -48,6 +48,83 @@ import { SyncedVar, SyncedVarStore } from "./synced_var.js";
 window.Lavash = window.Lavash || {};
 window.Lavash.optimistic = window.Lavash.optimistic || {};
 
+// Validators namespace for transpiled validation functions
+window.Lavash.Validators = window.Lavash.Validators || {};
+
+/**
+ * Validates a credit card number.
+ *
+ * Checks:
+ * 1. Card type detection from prefix (Visa, Mastercard, Amex, Discover)
+ * 2. Correct length for the detected card type
+ * 3. Luhn checksum validation
+ *
+ * @param {string} digits - Card number digits only (no spaces/dashes)
+ * @returns {boolean} - True if valid
+ */
+window.Lavash.Validators.validCardNumber = function(digits) {
+  if (typeof digits !== 'string' || !/^\d+$/.test(digits)) {
+    return false;
+  }
+
+  // Detect card type from prefix
+  let expectedLength;
+  if (digits.startsWith('34') || digits.startsWith('37')) {
+    // Amex
+    expectedLength = 15;
+  } else if (digits.startsWith('4')) {
+    // Visa
+    expectedLength = 16;
+  } else if (digits.startsWith('5')) {
+    // Mastercard
+    expectedLength = 16;
+  } else if (digits.startsWith('6011')) {
+    // Discover
+    expectedLength = 16;
+  } else {
+    // Unknown card type - assume 16
+    expectedLength = 16;
+  }
+
+  // Check length
+  if (digits.length !== expectedLength) {
+    return false;
+  }
+
+  // Luhn checksum
+  return window.Lavash.Validators.luhn(digits);
+};
+
+/**
+ * Luhn algorithm (mod 10 checksum) for card number validation.
+ *
+ * @param {string} digits - Numeric string to validate
+ * @returns {boolean} - True if passes Luhn check
+ */
+window.Lavash.Validators.luhn = function(digits) {
+  if (typeof digits !== 'string' || !/^\d+$/.test(digits)) {
+    return false;
+  }
+
+  let sum = 0;
+  const len = digits.length;
+
+  for (let i = 0; i < len; i++) {
+    let digit = parseInt(digits[len - 1 - i], 10);
+
+    if (i % 2 === 1) {
+      digit *= 2;
+      if (digit > 9) {
+        digit -= 9;
+      }
+    }
+
+    sum += digit;
+  }
+
+  return sum % 10 === 0;
+};
+
 // Helper to register custom optimistic functions for a module
 window.Lavash.registerOptimistic = function(moduleName, fns) {
   window.Lavash.optimistic[moduleName] = fns;
@@ -248,7 +325,7 @@ const LavashOptimistic = {
     this.recomputeDerives([showErrorsKey]);
 
     // Trigger server validation if client validation passes
-    this.triggerServerValidation(fieldPath, formName, fieldName, /* immediate */ true);
+    this.triggerServerValidation(fieldPath, formName, fieldName, /* immediate */ true, target);
 
     this.updateDOM();
   },
@@ -316,7 +393,9 @@ const LavashOptimistic = {
     for (const { input, fieldPath, formName, fieldName } of inputElements) {
       if (!formName || !fieldName) continue;
 
-      const validField = `${formName}_${fieldName}_valid`;
+      // Use custom valid field if specified on input, otherwise standard naming
+      const customValidField = input.dataset?.lavashValid;
+      const validField = customValidField || `${formName}_${fieldName}_valid`;
       const clientValid = this.state[validField] ?? true;
       const serverErrors = this.fieldState[fieldPath]?.serverErrors || [];
 
@@ -345,10 +424,13 @@ const LavashOptimistic = {
    * @param {string} formName - e.g., "registration"
    * @param {string} fieldName - e.g., "name"
    * @param {boolean} immediate - if true, skip debounce (used for blur)
+   * @param {HTMLElement} inputEl - optional input element to check for custom valid field
    */
-  triggerServerValidation(fieldPath, formName, fieldName, immediate = false) {
+  triggerServerValidation(fieldPath, formName, fieldName, immediate = false, inputEl = null) {
     // Check if client validation passes for this field
-    const validField = `${formName}_${fieldName}_valid`;
+    // Use custom valid field if specified on input, otherwise standard naming
+    const customValidField = inputEl?.dataset?.lavashValid;
+    const validField = customValidField || `${formName}_${fieldName}_valid`;
     const clientValid = this.state[validField] ?? true;
 
     if (!clientValid) {
@@ -457,7 +539,26 @@ const LavashOptimistic = {
 
     const fieldPath = target.dataset.lavashBind;
     // For form inputs, keep as string to match Elixir params behavior
-    const value = target.value;
+    let value = target.value;
+
+    // Apply input formatting if specified
+    const format = target.dataset.lavashFormat;
+    if (format) {
+      const formatted = this.formatInputValue(value, format);
+      if (formatted !== null) {
+        value = formatted.value;
+        // Update the input's displayed value with formatting
+        if (formatted.display !== target.value) {
+          const cursorPos = target.selectionStart;
+          const oldLen = target.value.length;
+          target.value = formatted.display;
+          // Adjust cursor position based on added/removed characters
+          const newLen = formatted.display.length;
+          const newPos = Math.min(cursorPos + (newLen - oldLen), newLen);
+          target.setSelectionRange(newPos, newPos);
+        }
+      }
+    }
 
     // Get or create a SyncedVar for this path (for version/pending tracking)
     // Use undefined as initial value - will be set properly on first setOptimistic
@@ -495,7 +596,7 @@ const LavashOptimistic = {
       // Only trigger server validation if field is already touched or form was submitted
       const touched = this.fieldState[fieldPath]?.touched || false;
       if (touched || this.formSubmitted) {
-        this.triggerServerValidation(fieldPath, formName, fieldName, /* immediate */ false);
+        this.triggerServerValidation(fieldPath, formName, fieldName, /* immediate */ false, target);
       }
     }
   },
@@ -635,7 +736,10 @@ const LavashOptimistic = {
           const result = fn(this.state);
           this.state[name] = result;
         } catch (err) {
-          // Silently ignore derive computation errors
+          // Log error in development for debugging
+          if (typeof console !== "undefined" && console.debug) {
+            console.debug(`[Lavash] Error computing derive ${name}:`, err.message);
+          }
         }
       }
     }
@@ -1108,6 +1212,48 @@ const LavashOptimistic = {
         // Leaf value with no pending - update state
         this.setStateAtPath(path, value);
       }
+    }
+  },
+
+  /**
+   * Format an input value based on the format type.
+   * Returns { value: rawValue, display: formattedDisplay } or null if no formatting needed.
+   *
+   * Supported formats:
+   * - "credit-card": Format as XXXX XXXX XXXX XXXX (spaces every 4 digits)
+   * - "expiry": Format as MM/YY (slash after 2 digits)
+   */
+  formatInputValue(rawValue, format) {
+    switch (format) {
+      case "credit-card": {
+        // Strip non-digits
+        const digits = rawValue.replace(/\D/g, "");
+        // Limit to 16 digits (or 19 for some card types, but 16 is standard)
+        const limited = digits.slice(0, 16);
+        // Format with spaces every 4 digits
+        const display = limited.match(/.{1,4}/g)?.join(" ") || "";
+        // Store the formatted value (with spaces) - validation strips non-digits anyway
+        return { value: display, display };
+      }
+
+      case "expiry": {
+        // Strip non-digits
+        const digits = rawValue.replace(/\D/g, "");
+        // Limit to 4 digits (MMYY)
+        const limited = digits.slice(0, 4);
+        // Format as MM/YY
+        let display;
+        if (limited.length <= 2) {
+          display = limited;
+        } else {
+          display = limited.slice(0, 2) + "/" + limited.slice(2);
+        }
+        // Store the formatted value (with slash)
+        return { value: display, display };
+      }
+
+      default:
+        return null;
     }
   },
 

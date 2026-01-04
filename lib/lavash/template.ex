@@ -563,6 +563,20 @@ defmodule Lavash.Template do
     "(#{js_val}.toString().replace(/_/g, ' ').replace(/^\\w/, c => c.toUpperCase()))"
   end
 
+  # valid_card_number?(digits) -> Lavash.Validators.validCardNumber(digits)
+  # This function is defined in the JS runtime and handles:
+  # 1. Card type detection from prefix
+  # 2. Length validation for card type
+  # 3. Luhn checksum
+  defp ast_to_js({:valid_card_number?, _, [digits]}) do
+    "Lavash.Validators.validCardNumber(#{ast_to_js(digits)})"
+  end
+
+  # Also support fully qualified: Lavash.Validators.valid_card_number?(digits)
+  defp ast_to_js({{:., _, [{:__aliases__, _, [:Lavash, :Validators]}, :valid_card_number?]}, _, [digits]}) do
+    "Lavash.Validators.validCardNumber(#{ast_to_js(digits)})"
+  end
+
   # length(list) -> list.length
   defp ast_to_js({:length, _, [list]}) do
     "(#{ast_to_js(list)}.length)"
@@ -639,6 +653,21 @@ defmodule Lavash.Template do
     start_js = ast_to_js(start)
     len_js = ast_to_js(len)
     "(#{str_js}.slice(#{start_js}, #{start_js} + #{len_js}))"
+  end
+
+  # String.chunk(str, size) or Lavash.String.chunk(str, size) -> split string into chunks
+  # Returns array of strings: "12345678" with size 4 -> ["1234", "5678"]
+  defp ast_to_js({{:., _, [{:__aliases__, _, modules}, :chunk]}, _, [str, size]})
+       when modules in [[:String], [:Lavash, :String]] and is_integer(size) do
+    "(#{ast_to_js(str)}.match(/.{1,#{size}}/g) || [])"
+  end
+
+  # String.chunk or Lavash.String.chunk with dynamic size
+  defp ast_to_js({{:., _, [{:__aliases__, _, modules}, :chunk]}, _, [str, size]})
+       when modules in [[:String], [:Lavash, :String]] do
+    str_js = ast_to_js(str)
+    size_js = ast_to_js(size)
+    "(#{str_js}.match(new RegExp('.{1,' + #{size_js} + '}', 'g')) || [])"
   end
 
   # get_in(map, [keys]) -> nested access
@@ -775,6 +804,27 @@ defmodule Lavash.Template do
     "(#{ast_to_js(left)} + #{ast_to_js(right)})"
   end
 
+  # Pipe operator: a |> f(b) -> f(a, b)
+  # We expand the pipe and then transpile the expanded form
+  defp ast_to_js({:|>, _, [left, right]}) do
+    expanded = Macro.unpipe({:|>, [], [left, right]})
+    # unpipe returns a list of {expr, pos} tuples - build the call chain
+    result = Enum.reduce(expanded, nil, fn
+      {expr, 0}, nil -> expr
+      {call, pos}, acc -> insert_pipe_arg(call, acc, pos)
+    end)
+    ast_to_js(result)
+  end
+
+  # Helper to insert piped value into a function call
+  defp insert_pipe_arg({func, meta, args}, value, pos) when is_list(args) do
+    {func, meta, List.insert_at(args, pos, value)}
+  end
+
+  defp insert_pipe_arg({func, meta, nil}, value, _pos) do
+    {func, meta, [value]}
+  end
+
   # List concatenation with ++ -> [...list1, ...list2]
   defp ast_to_js({:++, _, [left, right]}) do
     "[...#{ast_to_js(left)}, ...#{ast_to_js(right)}]"
@@ -900,6 +950,14 @@ defmodule Lavash.Template do
   # humanize/1
   defp validate_ast({:humanize, _, [arg]}), do: validate_ast(arg)
 
+  # valid_card_number?/1
+  defp validate_ast({:valid_card_number?, _, [arg]}), do: validate_ast(arg)
+
+  # Lavash.Validators.valid_card_number?/1
+  defp validate_ast({{:., _, [{:__aliases__, _, [:Lavash, :Validators]}, :valid_card_number?]}, _, args}) do
+    validate_all_args(args)
+  end
+
   # is_nil/1
   defp validate_ast({:is_nil, _, [arg]}), do: validate_ast(arg)
 
@@ -912,14 +970,15 @@ defmodule Lavash.Template do
   end
 
   # Supported String functions
-  defp validate_ast({{:., _, [{:__aliases__, _, [:String]}, func]}, _, args})
-       when func in [:length, :to_float, :to_integer, :trim, :match?, :contains?, :starts_with?, :ends_with?, :replace, :slice] do
+  defp validate_ast({{:., _, [{:__aliases__, _, modules}, func]}, _, args})
+       when modules in [[:String], [:Lavash, :String]] and
+            func in [:length, :to_float, :to_integer, :trim, :match?, :contains?, :starts_with?, :ends_with?, :replace, :slice, :chunk] do
     validate_all_args(args)
   end
 
   # Binary operators
   defp validate_ast({op, _, [left, right]})
-       when op in [:==, :!=, :&&, :||, :and, :or, :>, :<, :>=, :<=, :+, :-, :*, :/, :<>, :++, :in] do
+       when op in [:==, :!=, :&&, :||, :and, :or, :>, :<, :>=, :<=, :+, :-, :*, :/, :<>, :++, :in, :|>] do
     with :ok <- validate_ast(left),
          :ok <- validate_ast(right) do
       :ok

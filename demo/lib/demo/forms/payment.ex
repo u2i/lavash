@@ -5,6 +5,17 @@ defmodule Demo.Forms.Payment do
   Uses ETS data layer - forms are stored in memory during the session
   but not persisted to disk. This demonstrates Ash form validation
   for credit card fields.
+
+  ## Validation Messages
+
+  Each field has two possible error messages:
+  - Required: "Enter a/an X" (when empty)
+  - Invalid: "Enter a valid X" (when present but invalid)
+
+  Client-side validation uses `valid_card_number?/1` which checks:
+  - Card type detection from prefix
+  - Correct length for card type (15 for Amex, 16 for others)
+  - Luhn checksum
   """
   use Ash.Resource,
     domain: Demo.Forms,
@@ -17,24 +28,19 @@ defmodule Demo.Forms.Payment do
   attributes do
     uuid_primary_key :id
 
-    # Card fields - constraints apply server-side, client-side uses extend_errors
-    # with card-type-specific messages via skip_constraints in the form DSL
     attribute :card_number, :string do
       allow_nil? false
       public? true
-      constraints min_length: 15, max_length: 16
     end
 
     attribute :expiry, :string do
       allow_nil? false
       public? true
-      constraints min_length: 4, max_length: 5
     end
 
     attribute :cvv, :string do
       allow_nil? false
       public? true
-      constraints min_length: 3, max_length: 4
     end
 
     attribute :name, :string do
@@ -49,23 +55,21 @@ defmodule Demo.Forms.Payment do
 
     create :pay do
       accept [:card_number, :expiry, :cvv, :name]
+      # Client-side validation handles card number, expiry, and CVV via extend_errors
+      # Server-side only validates required fields (from validations block)
     end
   end
 
   validations do
-    # Required field messages (these override the generic "is required")
+    # Required field messages
     validate present(:card_number), message: "Enter a card number"
     validate present(:expiry), message: "Enter an expiration date"
     validate present(:cvv), message: "Enter the security code"
     validate present(:name), message: "Enter your name exactly as it's written on your card"
 
-    # Name length - no card-type-specific override needed
+    # Name length
     validate string_length(:name, min: 2),
       message: "Enter your name exactly as it's written on your card"
-
-    # Note: card_number, expiry, and cvv constraints are applied server-side,
-    # but skipped client-side via `skip_constraints` in the form DSL.
-    # The LiveView uses extend_errors for card-type-specific messages
-    # (e.g., "Amex requires 15 digits" vs "Must be 16 digits")
   end
 end
+

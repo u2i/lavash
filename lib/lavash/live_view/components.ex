@@ -102,6 +102,10 @@ defmodule Lavash.LiveView.Components do
     default: true,
     doc: "Whether to use floating label style (default) or traditional label-above-input"
 
+  attr :format, :string,
+    default: nil,
+    doc: "Input formatting: 'credit-card' (XXXX XXXX XXXX XXXX), 'expiry' (MM/YY)"
+
   attr :rest, :global,
     include: ~w(autocomplete disabled form inputmode list maxlength minlength
                 pattern placeholder readonly required size step),
@@ -120,6 +124,7 @@ defmodule Lavash.LiveView.Components do
         data-lavash-form={@form_str}
         data-lavash-field={@field_str}
         data-lavash-valid={@lavash_valid_field}
+        data-lavash-format={@format}
         class={["input input-bordered w-full", input_validation_class(assigns), @class]}
         {@rest}
       />

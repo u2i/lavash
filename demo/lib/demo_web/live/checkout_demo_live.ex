@@ -46,12 +46,15 @@ defmodule DemoWeb.CheckoutDemoLive do
   end
 
   # ─────────────────────────────────────────────────────────────────
-  # Card Type Detection (for badge highlighting and Amex-specific rules)
+  # Card Type Detection (for badge highlighting and CVV length rules)
   # ─────────────────────────────────────────────────────────────────
 
   calculate :card_number_raw, rx(@payment_params["card_number"] || "")
   calculate :card_number_digits, rx(String.replace(@card_number_raw, ~r/\D/, ""))
-  calculate :card_number_length, rx(String.length(@card_number_digits))
+
+  # Formatted card number display (4242 4242 4242 4242)
+  calculate :card_number_formatted,
+    rx(@card_number_digits |> String.chunk(4) |> Enum.join(" "))
 
   # Detect card type from first digit(s)
   calculate :is_visa, rx(String.starts_with?(@card_number_digits, "4"))
@@ -90,53 +93,54 @@ defmodule DemoWeb.CheckoutDemoLive do
   calculate :show_discover, rx(@is_discover or not @has_card_type)
 
   # ─────────────────────────────────────────────────────────────────
-  # Extended Validation - Custom errors beyond Ash constraints
+  # Validation
   # ─────────────────────────────────────────────────────────────────
 
-  # Expiration date: validate month is 01-12
+  # Card number: validates prefix, length for card type, and Luhn checksum
+  calculate :card_number_valid,
+    rx(@payment_card_number_valid && Lavash.Validators.valid_card_number?(@card_number_digits))
+
+  extend_errors :payment_card_number_errors do
+    error rx(!Lavash.Validators.valid_card_number?(@card_number_digits) && @payment_card_number_valid),
+      "Enter a valid card number"
+  end
+
+  # Expiration date: validate month is 01-12 and has 4 digits
   calculate :expiry_raw, rx(@payment_params["expiry"] || "")
   calculate :expiry_digits, rx(String.replace(@expiry_raw, ~r/\D/, ""))
   calculate :expiry_month_str, rx(String.slice(@expiry_digits, 0, 2))
   calculate :expiry_has_month, rx(String.length(@expiry_month_str) == 2)
   calculate :expiry_month_int, rx(if(@expiry_has_month, do: String.to_integer(@expiry_month_str), else: 0))
-  calculate :expiry_month_valid, rx(@expiry_month_int >= 1 and @expiry_month_int <= 12)
+  calculate :expiry_month_valid, rx(@expiry_month_int >= 1 && @expiry_month_int <= 12)
+  calculate :expiry_length_valid, rx(String.length(@expiry_digits) == 4)
+  calculate :expiry_valid, rx(@payment_expiry_valid && @expiry_month_valid && @expiry_length_valid)
 
   extend_errors :payment_expiry_errors do
-    error rx(@expiry_month_valid == false and String.length(@expiry_digits) >= 2), "Month must be 01-12"
+    error rx(!(@expiry_month_valid && @expiry_length_valid) && @payment_expiry_valid),
+      "Enter a valid expiration date"
   end
+
+  # Formatted expiry display (MM/YY)
+  calculate :expiry_formatted,
+    rx(@expiry_digits |> String.chunk(2) |> Enum.join("/"))
 
   # CVV: 4 digits for Amex, 3 for others
   calculate :cvv_raw, rx(@payment_params["cvv"] || "")
-  calculate :cvv_length, rx(String.length(String.replace(@cvv_raw, ~r/\D/, "")))
+  calculate :cvv_digits, rx(String.replace(@cvv_raw, ~r/\D/, ""))
+  calculate :cvv_length, rx(String.length(@cvv_digits))
   calculate :cvv_valid_for_card_type, rx(if(@is_amex, do: @cvv_length == 4, else: @cvv_length == 3))
+  calculate :cvv_valid, rx(@payment_cvv_valid && @cvv_valid_for_card_type)
 
-  # CVV: dynamic error message based on card type
-  # Use @cvv_valid_for_card_type == false (not `not`) to handle nil gracefully
   extend_errors :payment_cvv_errors do
-    error rx(@cvv_valid_for_card_type == false and @cvv_length > 0),
-      rx(if(@is_amex, do: "Amex requires 4 digits", else: "Must be 3 digits"))
+    error rx(!@cvv_valid_for_card_type && @payment_cvv_valid),
+      "Enter a valid security code"
   end
-
-  # Card number: 15 digits for Amex, 16 for others
-  calculate :card_valid_for_type, rx(if(@is_amex, do: @card_number_length == 15, else: @card_number_length == 16))
-
-  # Card number: dynamic error message based on card type
-  # Only show error once user has typed at least 15 digits (minimum valid)
-  extend_errors :payment_card_number_errors do
-    error rx(@card_valid_for_type == false and @card_number_length >= 15),
-      rx(if(@is_amex, do: "Amex requires 15 digits", else: "Must be 16 digits"))
-  end
-
-  # Override validity to include card-type-specific rules
-  calculate :card_number_valid, rx(@payment_card_number_valid and @card_valid_for_type)
-  calculate :expiry_valid, rx(@payment_expiry_valid and @expiry_month_valid)
-  calculate :cvv_valid, rx(@payment_cvv_valid and @cvv_valid_for_card_type)
 
   # ─────────────────────────────────────────────────────────────────
   # Combined Form Validity
   # ─────────────────────────────────────────────────────────────────
 
-  calculate :card_form_valid, rx(@card_number_valid and @expiry_valid and @cvv_valid and @payment_name_valid)
+  calculate :card_form_valid, rx(@card_number_valid && @expiry_valid && @cvv_valid && @payment_name_valid)
   calculate :is_card_payment, rx(@payment_method == "card")
   calculate :form_valid, rx(if(@is_card_payment, do: @card_form_valid, else: true))
 
@@ -357,6 +361,7 @@ defmodule DemoWeb.CheckoutDemoLive do
                       show_errors={assigns[:payment_card_number_show_errors]}
                       autocomplete="cc-number"
                       inputmode="numeric"
+                      format="credit-card"
                     />
 
                     <div class="grid grid-cols-2 gap-3">
@@ -371,6 +376,7 @@ defmodule DemoWeb.CheckoutDemoLive do
                         autocomplete="cc-exp"
                         inputmode="numeric"
                         maxlength="5"
+                        format="expiry"
                       />
 
                       <!-- CVV -->

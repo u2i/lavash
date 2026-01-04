@@ -317,9 +317,26 @@ defmodule Lavash.Graph do
           # Get Ash validation messages for this field (overrides constraint messages)
           field_ash_validations = Map.get(ash_validations, validation.field, [])
 
+          # Extract dependencies from custom error conditions
+          custom_error_deps =
+            Enum.flat_map(custom_errors, fn error ->
+              case error.condition do
+                %Lavash.Rx{deps: deps} when is_list(deps) ->
+                  # Convert path dependencies to just the root variable name
+                  Enum.map(deps, fn
+                    {:path, var_name, _path} -> var_name
+                    dep when is_atom(dep) -> dep
+                  end)
+
+                _ ->
+                  []
+              end
+            end)
+            |> Enum.uniq()
+
           %Lavash.Derived.Field{
             name: field_name,
-            depends_on: [params_dep],
+            depends_on: [params_dep | custom_error_deps],
             async: false,
             optimistic: true,
             compute: build_errors_compute(validation, params_dep, custom_errors, field_ash_validations)
