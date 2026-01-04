@@ -59,6 +59,10 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
     # Get extend_errors
     extend_errors = Transformer.get_entities(dsl_state, [:extend_errors_declarations]) || []
 
+    # Get defrx definitions from persisted state
+    # They are stored as {:lavash_defrx, name, arity} => {params, body_source}
+    defrx_map = get_defrx_map(dsl_state)
+
     # If nothing to generate, return nil
     if multi_selects == [] and toggles == [] and calculations == [] and forms == [] do
       nil
@@ -67,21 +71,39 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
       # We need to call it with the module so it can access __lavash__ functions
       # But since we're in a transformer, the module isn't compiled yet.
       # So we need to generate the JS ourselves from the DSL state.
-      generate_js_code(multi_selects, toggles, calculations, forms, extend_errors, module)
+      generate_js_code(multi_selects, toggles, calculations, forms, extend_errors, defrx_map, module)
     end
   end
 
-  defp generate_js_code(multi_selects, toggles, calculations, forms, extend_errors, _module) do
+  # Extract defrx definitions from module attributes via the env in persisted state
+  defp get_defrx_map(dsl_state) do
+    # The env is persisted by Spark and contains access to module attributes
+    env = Spark.Dsl.Transformer.get_persisted(dsl_state, :env)
+
+    if env do
+      # Get the lavash_defrx module attribute
+      # Format: {name, arity, params, body_ast, body_source}
+      defrx_list = Module.get_attribute(env.module, :lavash_defrx) || []
+
+      Enum.reduce(defrx_list, %{}, fn {name, arity, params, _body_ast, body_source}, acc ->
+        Map.put(acc, {name, arity}, {params, body_source})
+      end)
+    else
+      %{}
+    end
+  end
+
+  defp generate_js_code(multi_selects, toggles, calculations, forms, extend_errors, defrx_map, _module) do
     # Generate JS for each type
     multi_select_action_fns = Enum.map(multi_selects, &generate_multi_select_action_js/1)
     multi_select_derive_fns = Enum.map(multi_selects, &generate_multi_select_derive_js/1)
     toggle_action_fns = Enum.map(toggles, &generate_toggle_action_js/1)
     toggle_derive_fns = Enum.map(toggles, &generate_toggle_derive_js/1)
-    calculation_fns = Enum.map(calculations, &generate_calculation_js/1) |> Enum.filter(& &1)
+    calculation_fns = Enum.map(calculations, &generate_calculation_js(&1, defrx_map)) |> Enum.filter(& &1)
 
     # Generate form validation JS
     {form_validation_fns, form_error_fns, validation_derives, error_derives} =
-      generate_form_validation_js(forms, extend_errors)
+      generate_form_validation_js(forms, extend_errors, defrx_map)
 
     fns =
       multi_select_action_fns ++
@@ -340,12 +362,15 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
     """
   end
 
-  defp generate_calculation_js(calc) do
+  defp generate_calculation_js(calc, defrx_map) do
     name = calc.name
     source = calc.rx.source
 
+    # Expand any defrx calls in the source before transpiling
+    expanded_source = expand_defrx_in_source(source, defrx_map)
+
     # Use the existing elixir_to_js transpiler
-    js_expr = Lavash.Template.elixir_to_js(source)
+    js_expr = Lavash.Template.elixir_to_js(expanded_source)
 
     """
       #{name}(state) {
@@ -354,7 +379,83 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
     """
   end
 
-  defp generate_form_validation_js(forms, extend_errors) do
+  # Expand defrx function calls in the source string
+  defp expand_defrx_in_source(source, defrx) when map_size(defrx) == 0, do: source
+
+  defp expand_defrx_in_source(source, defrx) do
+    # Parse the source, expand defrx calls, and convert back to string
+    case Code.string_to_quoted(source) do
+      {:ok, ast} ->
+        expanded_ast = do_expand_defrx(ast, defrx)
+        Macro.to_string(expanded_ast)
+
+      {:error, _} ->
+        source
+    end
+  end
+
+  # Recursively expand defrx calls in AST
+  defp do_expand_defrx({name, meta, args}, defrx) when is_atom(name) and is_list(args) do
+    arity = length(args)
+    expanded_args = Enum.map(args, &do_expand_defrx(&1, defrx))
+
+    case Map.get(defrx, {name, arity}) do
+      {params, body_source} ->
+        # Parse the body source
+        case Code.string_to_quoted(body_source) do
+          {:ok, body_ast} ->
+            # Substitute params with args
+            substitutions = Enum.zip(params, expanded_args) |> Map.new()
+            substitute_defrx_vars(body_ast, substitutions)
+
+          {:error, _} ->
+            {name, meta, expanded_args}
+        end
+
+      nil ->
+        {name, meta, expanded_args}
+    end
+  end
+
+  defp do_expand_defrx({form, meta, args}, defrx) when is_list(args) do
+    {do_expand_defrx(form, defrx), meta, Enum.map(args, &do_expand_defrx(&1, defrx))}
+  end
+
+  defp do_expand_defrx({left, right}, defrx) do
+    {do_expand_defrx(left, defrx), do_expand_defrx(right, defrx)}
+  end
+
+  defp do_expand_defrx(list, defrx) when is_list(list) do
+    Enum.map(list, &do_expand_defrx(&1, defrx))
+  end
+
+  defp do_expand_defrx(other, _defrx), do: other
+
+  # Substitute variable references with their values
+  defp substitute_defrx_vars({var_name, meta, context}, substitutions)
+       when is_atom(var_name) and is_atom(context) do
+    case Map.get(substitutions, var_name) do
+      nil -> {var_name, meta, context}
+      value -> value
+    end
+  end
+
+  defp substitute_defrx_vars({form, meta, args}, substitutions) when is_list(args) do
+    {substitute_defrx_vars(form, substitutions), meta,
+     Enum.map(args, &substitute_defrx_vars(&1, substitutions))}
+  end
+
+  defp substitute_defrx_vars({left, right}, substitutions) do
+    {substitute_defrx_vars(left, substitutions), substitute_defrx_vars(right, substitutions)}
+  end
+
+  defp substitute_defrx_vars(list, substitutions) when is_list(list) do
+    Enum.map(list, &substitute_defrx_vars(&1, substitutions))
+  end
+
+  defp substitute_defrx_vars(other, _substitutions), do: other
+
+  defp generate_form_validation_js(forms, extend_errors, defrx_map) do
     # Build extend_errors map
     extend_errors_map =
       extend_errors
@@ -389,7 +490,7 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
               skip_field_constraints = validation.field in skip_constraints
 
               v_fn = generate_field_validation_js(v_name, params_field, validation, skip_field_constraints)
-              e_fn = generate_field_errors_js(e_name, params_field, validation, custom_errors, field_ash_validations, skip_field_constraints)
+              e_fn = generate_field_errors_js(e_name, params_field, validation, custom_errors, field_ash_validations, skip_field_constraints, defrx_map)
 
               {[v_fn | vf], [e_fn | ef], [to_string(v_name) | vd], [to_string(e_name) | ed]}
             end)
@@ -488,7 +589,7 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
     """
   end
 
-  defp generate_field_errors_js(name, params_field, validation, custom_errors, ash_validations, skip_constraints \\ false) do
+  defp generate_field_errors_js(name, params_field, validation, custom_errors, ash_validations, skip_constraints, defrx_map) do
     field = validation.field
     field_str = to_string(field)
     required = validation.required
@@ -528,15 +629,20 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
         end
       end
 
-    # Add custom error checks
+    # Add custom error checks - use defrx_map from DSL state for expansion
     error_checks =
       Enum.reduce(custom_errors, error_checks, fn error, acc ->
-        js_condition = Lavash.Template.elixir_to_js(error.condition.source)
+        expanded_condition = expand_defrx_in_source(error.condition.source, defrx_map)
+        js_condition = Lavash.Template.elixir_to_js(expanded_condition)
 
         msg_js =
           case error.message do
-            %Lavash.Rx{source: source} -> "(#{Lavash.Template.elixir_to_js(source)})"
-            static_string when is_binary(static_string) -> Jason.encode!(static_string)
+            %Lavash.Rx{source: source} ->
+              expanded_msg = expand_defrx_in_source(source, defrx_map)
+              "(#{Lavash.Template.elixir_to_js(expanded_msg)})"
+
+            static_string when is_binary(static_string) ->
+              Jason.encode!(static_string)
           end
 
         check = "{check: !(#{js_condition}), msg: #{msg_js}}"

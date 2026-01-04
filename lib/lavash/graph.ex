@@ -64,7 +64,9 @@ defmodule Lavash.Graph do
         optimistic: true,
         compute: fn deps_map ->
           # Build state map from deps_map for AST evaluation
-          {result, _binding} = Code.eval_quoted(ast, [state: deps_map], __ENV__)
+          # Create an env with the module so defrx functions are accessible
+          eval_env = %{__ENV__ | module: module}
+          {result, _binding} = Code.eval_quoted(ast, [state: deps_map], eval_env)
           result
         end
       }

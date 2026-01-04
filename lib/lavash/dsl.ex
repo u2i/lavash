@@ -820,6 +820,6 @@ defmodule Lavash.Dsl do
       @actions_section,
       @template_section
     ],
-    transformers: [Lavash.Optimistic.ColocatedTransformer],
+    transformers: [Lavash.Optimistic.DefrxExpander, Lavash.Optimistic.ColocatedTransformer],
     imports: [Phoenix.Component, Lavash.DslHelpers, Lavash.Rx]
 end

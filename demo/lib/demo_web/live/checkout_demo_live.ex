@@ -10,12 +10,30 @@ defmodule DemoWeb.CheckoutDemoLive do
   - `data-lavash-visible` for conditional section visibility
   - `data-lavash-display` for reactive text updates
   - `extend_errors` for custom validation messages beyond Ash constraints
+  - `defrx` for reusable reactive validation functions
   """
   use Lavash.LiveView
   import Lavash.Rx
   import Lavash.LiveView.Components
 
   alias Demo.Forms.Payment
+
+  # ─────────────────────────────────────────────────────────────────
+  # Reusable Reactive Functions
+  # ─────────────────────────────────────────────────────────────────
+
+  # Validates expiration date: MM must be 01-12 and total length must be 4 digits
+  # Using single expression syntax for JS transpilation
+  defrx valid_expiry?(digits) do
+    String.length(digits) == 4 &&
+      String.to_integer(String.slice(digits, 0, 2) || "0") >= 1 &&
+      String.to_integer(String.slice(digits, 0, 2) || "0") <= 12
+  end
+
+  # Validates CVV length based on card type (4 for Amex, 3 for others)
+  defrx valid_cvv?(digits, is_amex) do
+    if(is_amex, do: String.length(digits) == 4, else: String.length(digits) == 3)
+  end
 
   # ─────────────────────────────────────────────────────────────────
   # State
@@ -93,7 +111,7 @@ defmodule DemoWeb.CheckoutDemoLive do
   calculate :show_discover, rx(@is_discover or not @has_card_type)
 
   # ─────────────────────────────────────────────────────────────────
-  # Validation
+  # Validation (using defrx functions defined above)
   # ─────────────────────────────────────────────────────────────────
 
   # Card number: validates prefix, length for card type, and Luhn checksum
@@ -105,18 +123,13 @@ defmodule DemoWeb.CheckoutDemoLive do
       "Enter a valid card number"
   end
 
-  # Expiration date: validate month is 01-12 and has 4 digits
+  # Expiration date: extract digits and validate using defrx
   calculate :expiry_raw, rx(@payment_params["expiry"] || "")
   calculate :expiry_digits, rx(String.replace(@expiry_raw, ~r/\D/, ""))
-  calculate :expiry_month_str, rx(String.slice(@expiry_digits, 0, 2))
-  calculate :expiry_has_month, rx(String.length(@expiry_month_str) == 2)
-  calculate :expiry_month_int, rx(if(@expiry_has_month, do: String.to_integer(@expiry_month_str), else: 0))
-  calculate :expiry_month_valid, rx(@expiry_month_int >= 1 && @expiry_month_int <= 12)
-  calculate :expiry_length_valid, rx(String.length(@expiry_digits) == 4)
-  calculate :expiry_valid, rx(@payment_expiry_valid && @expiry_month_valid && @expiry_length_valid)
+  calculate :expiry_valid, rx(@payment_expiry_valid && valid_expiry?(@expiry_digits))
 
   extend_errors :payment_expiry_errors do
-    error rx(!(@expiry_month_valid && @expiry_length_valid) && @payment_expiry_valid),
+    error rx(!valid_expiry?(@expiry_digits) && @payment_expiry_valid),
       "Enter a valid expiration date"
   end
 
@@ -124,15 +137,13 @@ defmodule DemoWeb.CheckoutDemoLive do
   calculate :expiry_formatted,
     rx(@expiry_digits |> String.chunk(2) |> Enum.join("/"))
 
-  # CVV: 4 digits for Amex, 3 for others
+  # CVV: extract digits and validate using defrx
   calculate :cvv_raw, rx(@payment_params["cvv"] || "")
   calculate :cvv_digits, rx(String.replace(@cvv_raw, ~r/\D/, ""))
-  calculate :cvv_length, rx(String.length(@cvv_digits))
-  calculate :cvv_valid_for_card_type, rx(if(@is_amex, do: @cvv_length == 4, else: @cvv_length == 3))
-  calculate :cvv_valid, rx(@payment_cvv_valid && @cvv_valid_for_card_type)
+  calculate :cvv_valid, rx(@payment_cvv_valid && valid_cvv?(@cvv_digits, @is_amex))
 
   extend_errors :payment_cvv_errors do
-    error rx(!@cvv_valid_for_card_type && @payment_cvv_valid),
+    error rx(!valid_cvv?(@cvv_digits, @is_amex) && @payment_cvv_valid),
       "Enter a valid security code"
   end
 
