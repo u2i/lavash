@@ -1267,8 +1267,46 @@ const LavashOptimistic = {
    */
   registerModalState(modalId, openField, syncedVar) {
     this.modalStates = this.modalStates || {};
-    this.modalStates[modalId] = { openField, syncedVar };
+    this.modalStates[modalId] = { openField, syncedVar, state: 'closed' };
     console.debug(`[LavashOptimistic] Registered modal: ${modalId} (field: ${openField})`);
+  },
+
+  /**
+   * Called by modal when its state machine transitions.
+   * Allows parent to react to modal animation states.
+   *
+   * @param {string} modalId - The modal element ID
+   * @param {string} newState - The new state: 'closed', 'opening', 'open', 'closing'
+   */
+  onModalTransition(modalId, newState) {
+    if (!this.modalStates?.[modalId]) return;
+
+    const prev = this.modalStates[modalId].state;
+    this.modalStates[modalId].state = newState;
+    console.debug(`[LavashOptimistic] Modal ${modalId}: ${prev} -> ${newState}`);
+
+    // Could dispatch custom events or update local state here
+    // For now, just track the state for potential future use
+  },
+
+  /**
+   * Check if any registered modal is currently animating (opening or closing).
+   * Useful for coordinating UI updates that should wait for modal transitions.
+   */
+  isModalAnimating() {
+    if (!this.modalStates) return false;
+    return Object.values(this.modalStates).some(
+      m => m.state === 'opening' || m.state === 'closing'
+    );
+  },
+
+  /**
+   * Get the current state of a registered modal.
+   * @param {string} modalId - The modal element ID
+   * @returns {string|null} The modal state or null if not registered
+   */
+  getModalState(modalId) {
+    return this.modalStates?.[modalId]?.state ?? null;
   },
 
   /**

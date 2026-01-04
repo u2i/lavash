@@ -594,6 +594,26 @@ defmodule Lavash.Modal.Helpers do
           if (this.currentState) {
             this.currentState.onEnter(...entryArgs);
           }
+
+          // Notify parent LavashOptimistic hook of state transition
+          // Map internal states to simplified states for parent
+          const simplifiedState = this._getSimplifiedState(newState.name);
+          if (this._parentOptimisticHook?.onModalTransition) {
+            this._parentOptimisticHook.onModalTransition(this.el.id, simplifiedState);
+          }
+        },
+
+        // Map detailed internal states to simplified states for parent coordination
+        _getSimplifiedState(stateName) {
+          switch (stateName) {
+            case 'closed': return 'closed';
+            case 'opening':
+            case 'openingserverarrived': return 'opening';
+            case 'open': return 'open';
+            case 'closing':
+            case 'closingwaitingforserver': return 'closing';
+            default: return stateName;
+          }
         },
 
         processPanelEvent(eventName) {
