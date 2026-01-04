@@ -372,7 +372,7 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
     expanded_source = expand_defrx_in_source(source, defrx_map)
 
     # Use the existing elixir_to_js transpiler
-    js_expr = Lavash.Template.elixir_to_js(expanded_source)
+    js_expr = Lavash.Transpiler.to_js(expanded_source)
 
     """
       #{name}(state) {
@@ -635,13 +635,13 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
     error_checks =
       Enum.reduce(custom_errors, error_checks, fn error, acc ->
         expanded_condition = expand_defrx_in_source(error.condition.source, defrx_map)
-        js_condition = Lavash.Template.elixir_to_js(expanded_condition)
+        js_condition = Lavash.Transpiler.to_js(expanded_condition)
 
         msg_js =
           case error.message do
             %Lavash.Rx{source: source} ->
               expanded_msg = expand_defrx_in_source(source, defrx_map)
-              "(#{Lavash.Template.elixir_to_js(expanded_msg)})"
+              "(#{Lavash.Transpiler.to_js(expanded_msg)})"
 
             static_string when is_binary(static_string) ->
               Jason.encode!(static_string)

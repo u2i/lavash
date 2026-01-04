@@ -670,7 +670,7 @@ defmodule Lavash.ClientComponent.Compiler do
   end
 
   defp node_to_js_parts({:expr, code, _meta}, _ctx) do
-    js_expr = Lavash.Template.elixir_to_js(code)
+    js_expr = Lavash.Transpiler.to_js(code)
     ["${#{js_expr}}"]
   end
 
@@ -686,7 +686,7 @@ defmodule Lavash.ClientComponent.Compiler do
       nil ->
         case find_special_attr(attrs, :if) do
           {:if, if_expr} ->
-            condition_js = Lavash.Template.elixir_to_js(if_expr)
+            condition_js = Lavash.Transpiler.to_js(if_expr)
             attrs_without_if = reject_special_attr(attrs, :if)
             inner = render_element_wrapped(tag, attrs_without_if, children, meta, ctx)
             ["${#{condition_js} ? #{inner} : ''}"]
@@ -739,7 +739,7 @@ defmodule Lavash.ClientComponent.Compiler do
   end
 
   defp render_attr_to_js(name, {:expr, code, _}, _ctx) do
-    js_expr = Lavash.Template.elixir_to_js(code)
+    js_expr = Lavash.Transpiler.to_js(code)
     " #{name}=\"${#{js_expr}}\""
   end
 
@@ -763,7 +763,7 @@ defmodule Lavash.ClientComponent.Compiler do
   defp parse_for_to_js(code) do
     case Code.string_to_quoted(code) do
       {:ok, {:<-, _, [{var, _, _}, collection]}} when is_atom(var) ->
-        {to_string(var), Lavash.Template.elixir_to_js(Macro.to_string(collection))}
+        {to_string(var), Lavash.Transpiler.to_js(Macro.to_string(collection))}
       _ ->
         {"item", "[]"}
     end

@@ -410,7 +410,7 @@ defmodule Lavash.Optimistic.JsGenerator do
     {name, source, _ast, _deps} = normalize_calculation(calc)
 
     # Use the existing elixir_to_js transpiler
-    js_expr = Lavash.Template.elixir_to_js(source)
+    js_expr = Lavash.Transpiler.to_js(source)
 
     """
       #{name}(state) {
@@ -800,13 +800,13 @@ defmodule Lavash.Optimistic.JsGenerator do
     error_checks =
       Enum.reduce(custom_errors, error_checks, fn error, acc ->
         # Transpile the rx condition to JS - condition returns true when error should show
-        js_condition = Lavash.Template.elixir_to_js(error.condition.source)
+        js_condition = Lavash.Transpiler.to_js(error.condition.source)
 
         # Handle both static string messages and dynamic rx() messages
         msg_js = case error.message do
           %Lavash.Rx{source: source} ->
             # Dynamic message - transpile the expression
-            "(#{Lavash.Template.elixir_to_js(source)})"
+            "(#{Lavash.Transpiler.to_js(source)})"
           static_string when is_binary(static_string) ->
             # Static message - JSON encode
             Jason.encode!(static_string)

@@ -168,7 +168,7 @@ defmodule Lavash.Component.CompilerHelpers do
   def generate_calculation_js(calculations) do
     calculations
     |> Enum.map(fn {name, source, _transformed_expr, _deps} ->
-      js_expr = Lavash.Template.elixir_to_js(source)
+      js_expr = Lavash.Transpiler.to_js(source)
       "  #{name}(state) {\n    return #{js_expr};\n  },"
     end)
     |> Enum.join("\n")
@@ -194,7 +194,7 @@ defmodule Lavash.Component.CompilerHelpers do
   def fn_source_to_js_assignment(source, field) when is_binary(source) do
     case Code.string_to_quoted(source) do
       {:ok, {:fn, _, [{:->, _, [[{current_var, _, _}, {value_var, _, _}], body]}]}} ->
-        js_body = Lavash.Template.elixir_to_js(Macro.to_string(body))
+        js_body = Lavash.Transpiler.to_js(Macro.to_string(body))
         js_body = String.replace(js_body, to_string(current_var), "current")
         js_body = String.replace(js_body, to_string(value_var), "value")
         "this.state.#{field} = #{js_body};"
@@ -220,7 +220,7 @@ defmodule Lavash.Component.CompilerHelpers do
   def fn_source_to_js_bool(source) when is_binary(source) do
     case Code.string_to_quoted(source) do
       {:ok, {:fn, _, [{:->, _, [[{current_var, _, _}, {value_var, _, _}], body]}]}} ->
-        js_body = Lavash.Template.elixir_to_js(Macro.to_string(body))
+        js_body = Lavash.Transpiler.to_js(Macro.to_string(body))
         js_body = String.replace(js_body, to_string(current_var), "current")
         js_body = String.replace(js_body, to_string(value_var), "value")
         js_body
@@ -257,7 +257,7 @@ defmodule Lavash.Component.CompilerHelpers do
         # Try to parse more complex expressions using the full parser
         case Code.string_to_quoted(source) do
           {:ok, {:fn, _, [{:->, _, [[{current_var, _, _}, {_value_var, _, _}], body]}]}} ->
-            js_body = Lavash.Template.elixir_to_js(Macro.to_string(body))
+            js_body = Lavash.Transpiler.to_js(Macro.to_string(body))
             js_body = String.replace(js_body, to_string(current_var), "currentValue")
             "return #{js_body};"
 

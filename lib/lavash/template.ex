@@ -423,7 +423,7 @@ defmodule Lavash.Template do
   end
 
   defp generate_derive_js(%{type: :class, expr: {:expr, code, _}, context: context}) do
-    js_expr = elixir_to_js(code)
+    js_expr = Lavash.Transpiler.to_js(code)
 
     case context do
       %{for: %{var: var, collection: collection}} ->
@@ -456,7 +456,7 @@ defmodule Lavash.Template do
   end
 
   defp generate_derive_js(%{type: :text, expr: {:expr, code, _}, context: context}) do
-    js_expr = elixir_to_js(code)
+    js_expr = Lavash.Transpiler.to_js(code)
 
     case context do
       %{for: %{var: var, collection: collection}} ->
@@ -484,7 +484,7 @@ defmodule Lavash.Template do
   end
 
   defp generate_derive_js(%{type: type, expr: {:expr, code, _}}) do
-    js_expr = elixir_to_js(code)
+    js_expr = Lavash.Transpiler.to_js(code)
 
     """
       derive_#{type}(state) {
@@ -509,34 +509,6 @@ defmodule Lavash.Template do
     end
   end
 
-  @doc """
-  Translates Elixir expression code to JavaScript.
-
-  Delegates to `Lavash.Transpiler.to_js/1`. See that module for
-  detailed documentation of supported constructs.
-
-  ## Examples
-
-      iex> Lavash.Template.elixir_to_js("@count + 1")
-      "(state.count + 1)"
-  """
-  defdelegate elixir_to_js(code), to: Lavash.Transpiler, as: :to_js
-
-  @doc """
-  Validates that an Elixir expression can be transpiled to JavaScript.
-
-  Delegates to `Lavash.Transpiler.validate/1`. See that module for
-  detailed documentation.
-
-  ## Examples
-
-      iex> Lavash.Template.validate_transpilation("length(@tags)")
-      :ok
-
-      iex> Lavash.Template.validate_transpilation("Ash.read!(Product)")
-      {:error, "Ash.read!"}
-  """
-  defdelegate validate_transpilation(source), to: Lavash.Transpiler, as: :validate
 
   @doc """
   Debug helper to inspect tokenization and parsing.
@@ -632,7 +604,7 @@ defmodule Lavash.Template do
 
   # Expression node (like {humanize(v)} or {@field})
   defp node_to_js_parts({:expr, code, _meta}, _ctx) do
-    js_expr = elixir_to_js(code)
+    js_expr = Lavash.Transpiler.to_js(code)
     ["${#{js_expr}}"]
   end
 
@@ -657,7 +629,7 @@ defmodule Lavash.Template do
         case find_special_attr(attrs, :if) do
           {:if, if_expr} ->
             # Parse condition
-            condition_js = elixir_to_js(if_expr)
+            condition_js = Lavash.Transpiler.to_js(if_expr)
 
             # Remove :if from attrs and render normally
             attrs_without_if = reject_special_attr(attrs, :if)
@@ -718,7 +690,7 @@ defmodule Lavash.Template do
 
   # Expression attribute (like class={expr} or data-value={v})
   defp render_attr_to_js(name, {:expr, code, _}, _ctx) do
-    js_expr = elixir_to_js(code)
+    js_expr = Lavash.Transpiler.to_js(code)
     " #{name}=\"${#{js_expr}}\""
   end
 
