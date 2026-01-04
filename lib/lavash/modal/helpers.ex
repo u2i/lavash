@@ -121,73 +121,11 @@ defmodule Lavash.Modal.Helpers do
         </div>
       </div>
       <script :type={Phoenix.LiveView.ColocatedHook} name=".LavashModal">
-      // --- SyncedVar: Client-server state synchronization ---
-      // Models an eventually consistent variable with optimistic updates.
-      // Exposed globally as window.Lavash.SyncedVar for use by other hooks.
-      const SyncedVar = (() => {
-        // Return existing class if already defined (avoid duplication)
-        if (window.Lavash?.SyncedVar) return window.Lavash.SyncedVar;
-
-        class SyncedVar {
-          constructor(initialValue, onChange) {
-            this.value = initialValue;           // optimistic client value
-            this.confirmedValue = initialValue;  // last server-confirmed value
-            this.version = 0;
-            this.confirmedVersion = 0;
-            this.onChange = onChange;            // callback: (newValue, oldValue, source) => void
-          }
-
-          // Optimistically set value and push to server
-          // pushFn: (params, replyCallback) => void
-          set(newValue, pushFn, extraParams = {}) {
-            const oldValue = this.value;
-            if (newValue === oldValue) return;
-
-            this.version++;
-            const v = this.version;
-            this.value = newValue;
-
-            // Notify of optimistic change
-            this.onChange?.(newValue, oldValue, 'optimistic');
-
-            // Push to server with version tracking
-            pushFn?.({ ...extraParams, _version: v }, (reply) => {
-              if (v !== this.version) {
-                // Stale response - a newer operation has started
-                return;
-              }
-              this.confirmedVersion = v;
-              this.confirmedValue = newValue;
-              this.onChange?.(newValue, oldValue, 'confirmed');
-            });
-          }
-
-          // Server-initiated change (e.g., from form save)
-          // Only accepts if client has no pending operations
-          serverSet(newValue) {
-            if (this.confirmedVersion !== this.version) {
-              // Client has pending operations - ignore server change
-              return false;
-            }
-            const oldValue = this.value;
-            if (newValue === oldValue) return false;
-
-            this.value = newValue;
-            this.confirmedValue = newValue;
-            this.onChange?.(newValue, oldValue, 'server');
-            return true;
-          }
-
-          get isPending() {
-            return this.version !== this.confirmedVersion;
-          }
-        }
-
-        // Expose globally for other hooks
-        window.Lavash = window.Lavash || {};
-        window.Lavash.SyncedVar = SyncedVar;
-        return SyncedVar;
-      })()
+      // Use shared SyncedVar from global Lavash namespace (loaded via synced_var.js)
+      const SyncedVar = window.Lavash?.SyncedVar;
+      if (!SyncedVar) {
+        console.error("LavashModal: SyncedVar not found. Ensure synced_var.js loads before modal hooks.");
+      }
 
       // --- Base State Class ---
       class ModalState {
