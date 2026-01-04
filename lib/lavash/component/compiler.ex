@@ -54,6 +54,22 @@ defmodule Lavash.Component.Compiler do
         |> Enum.map(&Lavash.LiveView.Compiler.normalize_derived/1)
       end
 
+      def __lavash__(:calculations) do
+        Spark.Dsl.Extension.get_entities(__MODULE__, [:calculations])
+      end
+
+      # Expose calculations for Graph module
+      # Returns 7-tuples: {name, source, ast, deps, optimistic, async, reads}
+      def __lavash_calculations__ do
+        Spark.Dsl.Extension.get_entities(__MODULE__, [:calculations])
+        |> Enum.map(fn calc ->
+          {calc.name, calc.rx.source, calc.rx.ast, calc.rx.deps,
+           Map.get(calc, :optimistic, true),
+           Map.get(calc, :async, false),
+           Map.get(calc, :reads, [])}
+        end)
+      end
+
       def __lavash__(:actions) do
         declared_actions = Spark.Dsl.Extension.get_entities(__MODULE__, [:actions])
         setter_actions = Lavash.LiveView.Compiler.generate_setter_actions(__MODULE__)

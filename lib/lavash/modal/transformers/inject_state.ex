@@ -22,6 +22,7 @@ defmodule Lavash.Modal.Transformers.InjectState do
 
     dsl_state
     |> maybe_add_open_input(open_field)
+    |> add_is_open_calculation(open_field)
     |> add_or_merge_close_action(open_field)
     |> add_noop_action()
     |> merge_form_params_clear_into_open()
@@ -47,6 +48,40 @@ defmodule Lavash.Modal.Transformers.InjectState do
       }
 
       Transformer.add_entity(dsl_state, [:states], state_field)
+    end
+  end
+
+  # Add is_open calculation: rx(@open_field != nil)
+  # This provides a convenient boolean for templates instead of checking nil
+  defp add_is_open_calculation(dsl_state, open_field) do
+    existing_calculations = Transformer.get_entities(dsl_state, [:calculations]) || []
+
+    if Enum.any?(existing_calculations, &(&1.name == :is_open)) do
+      # User already defined is_open, don't override
+      dsl_state
+    else
+      # Build the rx struct for "@open_field != nil"
+      # The AST needs to reference the state variable via Map.get(state, :open_field)
+      state_var = Macro.var(:state, nil)
+
+      ast =
+        quote do
+          Map.get(unquote(state_var), unquote(open_field), nil) != nil
+        end
+
+      rx = %Lavash.Rx{
+        source: "@#{open_field} != nil",
+        ast: ast,
+        deps: [open_field]
+      }
+
+      calculation = %Lavash.Component.Calculate{
+        name: :is_open,
+        rx: rx,
+        optimistic: true
+      }
+
+      Transformer.add_entity(dsl_state, [:calculations], calculation)
     end
   end
 

@@ -445,6 +445,59 @@ defmodule Lavash.Component.Dsl do
   }
 
   # ============================================
+  # Calculate - reactive computed values
+  # ============================================
+
+  @calculate_entity %Spark.Dsl.Entity{
+    name: :calculate,
+    describe: """
+    Declares a calculated field computed from state using a reactive expression.
+
+    Uses `rx()` to capture the expression, which is then transpiled to
+    JavaScript for client-side optimistic updates.
+
+    ## Examples
+
+        calculate :is_open, rx(@product_id != nil)
+        calculate :tag_count, rx(length(@tags))
+    """,
+    target: Lavash.Component.Calculate,
+    args: [:name, :rx],
+    schema: [
+      name: [
+        type: :atom,
+        required: true,
+        doc: "The name of the calculated field"
+      ],
+      rx: [
+        type: {:struct, Lavash.Rx},
+        required: true,
+        doc: "The reactive expression wrapped in rx()"
+      ],
+      optimistic: [
+        type: :boolean,
+        default: true,
+        doc: """
+        Whether to transpile to JavaScript for client-side updates.
+        Set to false for expressions that can't be transpiled.
+        """
+      ]
+    ]
+  }
+
+  @calculations_section %Spark.Dsl.Section{
+    name: :calculations,
+    top_level?: true,
+    describe: """
+    Calculated fields derived from state using reactive expressions.
+
+    Use `rx()` to wrap expressions that reference state via `@field` syntax.
+    Calculations are automatically recomputed when their dependencies change.
+    """,
+    entities: [@calculate_entity]
+  }
+
+  # ============================================
   # Extension setup
   # ============================================
 
@@ -455,8 +508,9 @@ defmodule Lavash.Component.Dsl do
       @reads_section,
       @forms_section,
       @derives_section,
+      @calculations_section,
       @actions_section
     ],
     transformers: [Lavash.Optimistic.ColocatedTransformer],
-    imports: [Phoenix.Component, Lavash.DslHelpers]
+    imports: [Phoenix.Component, Lavash.DslHelpers, Lavash.Rx]
 end
