@@ -61,19 +61,22 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
     # Get extend_errors
     extend_errors = Transformer.get_entities(dsl_state, [:extend_errors_declarations]) || []
 
+    # Get animated field configs (persisted by ExpandAnimatedStates transformer)
+    animated_fields = Transformer.get_persisted(dsl_state, :lavash_animated_fields) || []
+
     # Get defrx definitions from persisted state
     # They are stored as {:lavash_defrx, name, arity} => {params, body_source}
     defrx_map = get_defrx_map(dsl_state)
 
     # If nothing to generate, return nil
-    if multi_selects == [] and toggles == [] and calculations == [] and forms == [] do
+    if multi_selects == [] and toggles == [] and calculations == [] and forms == [] and animated_fields == [] do
       nil
     else
       # Use JsGenerator's internal logic to generate JS
       # We need to call it with the module so it can access __lavash__ functions
       # But since we're in a transformer, the module isn't compiled yet.
       # So we need to generate the JS ourselves from the DSL state.
-      generate_js_code(multi_selects, toggles, calculations, forms, extend_errors, defrx_map, module)
+      generate_js_code(multi_selects, toggles, calculations, forms, extend_errors, animated_fields, defrx_map, module)
     end
   end
 
@@ -95,7 +98,7 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
     end
   end
 
-  defp generate_js_code(multi_selects, toggles, calculations, forms, extend_errors, defrx_map, _module) do
+  defp generate_js_code(multi_selects, toggles, calculations, forms, extend_errors, animated_fields, defrx_map, _module) do
     # Generate JS for each type
     multi_select_action_fns = Enum.map(multi_selects, &generate_multi_select_action_js/1)
     multi_select_derive_fns = Enum.map(multi_selects, &generate_multi_select_derive_js/1)
@@ -116,7 +119,8 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
         form_validation_fns ++
         form_error_fns
 
-    if fns == [] do
+    # Allow generating just animated metadata (for components with animated state)
+    if fns == [] and animated_fields == [] do
       nil
     else
       # Build derive names
@@ -133,20 +137,39 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
       # Build graph entries
       graph_entries = build_graph_entries(multi_selects, toggles, calculations, forms, extend_errors)
 
+      # Build animated field metadata for JS
+      # Format: [{ field: "open", phaseField: "open_phase", async: null, preserveDom: false, duration: 200 }, ...]
+      animated_metadata = build_animated_metadata(animated_fields)
+
       fns_str = Enum.join(fns, ",\n")
       derives_str = Jason.encode!(derive_names)
       fields_str = Jason.encode!([])
       graph_str = Jason.encode!(graph_entries)
+      animated_str = Jason.encode!(animated_metadata)
 
       """
       export default {
       #{fns_str}#{if fns_str != "", do: ",", else: ""}
       __derives__: #{derives_str},
       __fields__: #{fields_str},
-      __graph__: #{graph_str}
+      __graph__: #{graph_str},
+      __animated__: #{animated_str}
       };
       """
     end
+  end
+
+  # Build animated field metadata for JS consumption
+  defp build_animated_metadata(animated_fields) do
+    Enum.map(animated_fields, fn config ->
+      %{
+        field: to_string(config.field),
+        phaseField: to_string(config.phase_field),
+        async: config.async && to_string(config.async),
+        preserveDom: config.preserve_dom,
+        duration: config.duration
+      }
+    end)
   end
 
   # Write the JS file to the colocated directory

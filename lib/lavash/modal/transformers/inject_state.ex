@@ -3,25 +3,34 @@ defmodule Lavash.Modal.Transformers.InjectState do
   Transformer that injects modal state and actions into a Lavash Component.
 
   This transformer:
-  1. Adds the open_field as an ephemeral state field (if not already defined)
+  1. Adds the open_field as an animated ephemeral state field (if not already defined)
   2. Adds :close action that sets open_field to nil
   3. Adds :noop action for preventing backdrop click propagation
   4. Merges close behavior into any user-defined :close action
   5. Merges form params clearing into :open action (if exists)
+
+  The open_field uses `animated: true` which triggers ExpandAnimatedStates to add:
+  - `{open_field}_phase` state field
+  - `{open_field}_visible` calculation
+  - `{open_field}_animating` calculation
   """
 
   use Spark.Dsl.Transformer
   alias Spark.Dsl.Transformer
 
   def after?(_), do: false
+
+  # Run before GenerateRender
+  # ExpandAnimatedStates will run after us via its after?(InjectState) clause
   def before?(Lavash.Modal.Transformers.GenerateRender), do: true
   def before?(_), do: false
 
   def transform(dsl_state) do
     open_field = Transformer.get_option(dsl_state, [:modal], :open_field) || :open
+    async_assign = Transformer.get_option(dsl_state, [:modal], :async_assign)
 
     dsl_state
-    |> maybe_add_open_input(open_field)
+    |> maybe_add_open_input(open_field, async_assign)
     |> add_is_open_calculation(open_field)
     |> add_or_merge_close_action(open_field)
     |> add_noop_action()
@@ -29,22 +38,32 @@ defmodule Lavash.Modal.Transformers.InjectState do
     |> then(&{:ok, &1})
   end
 
-  # Add the open_field as ephemeral state if not already defined
+  # Add the open_field as animated ephemeral state if not already defined
   # Modal owns its own open/closed state; parent opens via invoke
-  # Marked as optimistic: true for client-side version tracking
-  defp maybe_add_open_input(dsl_state, open_field) do
+  # Uses animated: [...] for phase tracking and animation coordination
+  defp maybe_add_open_input(dsl_state, open_field, async_assign) do
     existing_states = Transformer.get_entities(dsl_state, [:states])
 
     if Enum.any?(existing_states, &(&1.name == open_field)) do
       # User already defined this state field, don't override
       dsl_state
     else
+      # Build animated options
+      # preserve_dom: true keeps the content visible during exit animation
+      animated_opts =
+        if async_assign do
+          [async: async_assign, preserve_dom: true, duration: 200]
+        else
+          [preserve_dom: true, duration: 200]
+        end
+
       state_field = %Lavash.StateField{
         name: open_field,
         type: :any,
         from: :ephemeral,
         default: nil,
-        optimistic: true
+        optimistic: true,
+        animated: animated_opts
       }
 
       Transformer.add_entity(dsl_state, [:states], state_field)

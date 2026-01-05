@@ -117,6 +117,27 @@ defmodule Lavash.Dsl do
         server request is in flight. Stale responses are automatically ignored.
         Useful for UI state like modal open/close that needs to feel instant.
         """
+      ],
+      animated: [
+        type: {:or, [:boolean, :keyword_list]},
+        default: false,
+        doc: """
+        Enable animated state transitions with phase tracking.
+
+        When true or a keyword list, generates additional state and calculations:
+        - `{field}_phase` - "idle" | "entering" | "loading" | "visible" | "exiting"
+        - `{field}_visible` - true when phase != "idle"
+        - `{field}_animating` - true during entering/exiting
+
+        Options (when keyword list):
+        - `async: :field_name` - coordinate with async data loading
+        - `preserve_dom: true` - keep DOM alive during exit animation (ghost element)
+        - `duration: 200` - fallback timeout in ms if transitionend doesn't fire
+
+        Example:
+            state :panel_open, :boolean, animated: true
+            state :product_id, :any, animated: [async: :product, preserve_dom: true]
+        """
       ]
     ]
   }
@@ -820,6 +841,10 @@ defmodule Lavash.Dsl do
       @actions_section,
       @template_section
     ],
-    transformers: [Lavash.Optimistic.DefrxExpander, Lavash.Optimistic.ColocatedTransformer],
+    transformers: [
+      Lavash.Optimistic.ExpandAnimatedStates,
+      Lavash.Optimistic.DefrxExpander,
+      Lavash.Optimistic.ColocatedTransformer
+    ],
     imports: [Phoenix.Component, Lavash.DslHelpers, Lavash.Rx]
 end

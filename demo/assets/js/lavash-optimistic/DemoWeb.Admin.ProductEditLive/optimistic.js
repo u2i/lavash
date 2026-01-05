@@ -61,5 +61,6 @@ export default {
 ,
 __derives__: ["form_updated_at_valid","form_inserted_at_valid","form_price_valid","form_name_valid","form_valid","form_updated_at_errors","form_inserted_at_errors","form_price_errors","form_name_errors","form_errors"],
 __fields__: [],
-__graph__: {"form_errors":{"deps":["form_name_errors","form_price_errors","form_inserted_at_errors","form_updated_at_errors"]},"form_inserted_at_errors":{"deps":["form_params"]},"form_inserted_at_valid":{"deps":["form_params"]},"form_name_errors":{"deps":["form_params"]},"form_name_valid":{"deps":["form_params"]},"form_price_errors":{"deps":["form_params"]},"form_price_valid":{"deps":["form_params"]},"form_updated_at_errors":{"deps":["form_params"]},"form_updated_at_valid":{"deps":["form_params"]},"form_valid":{"deps":["form_name_valid","form_price_valid","form_inserted_at_valid","form_updated_at_valid"]}}
+__graph__: {"form_errors":{"deps":["form_name_errors","form_price_errors","form_inserted_at_errors","form_updated_at_errors"]},"form_inserted_at_errors":{"deps":["form_params"]},"form_inserted_at_valid":{"deps":["form_params"]},"form_name_errors":{"deps":["form_params"]},"form_name_valid":{"deps":["form_params"]},"form_price_errors":{"deps":["form_params"]},"form_price_valid":{"deps":["form_params"]},"form_updated_at_errors":{"deps":["form_params"]},"form_updated_at_valid":{"deps":["form_params"]},"form_valid":{"deps":["form_name_valid","form_price_valid","form_inserted_at_valid","form_updated_at_valid"]}},
+__animated__: []
 };

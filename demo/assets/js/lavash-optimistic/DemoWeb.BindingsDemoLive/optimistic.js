@@ -13,5 +13,6 @@ export default {
 ,
 __derives__: ["selected_count","has_selection","summary_text"],
 __fields__: [],
-__graph__: {"has_selection":{"deps":["selected_count"]},"selected_count":{"deps":["roast"]},"summary_text":{"deps":["selected_count","has_selection"]}}
+__graph__: {"has_selection":{"deps":["selected_count"]},"selected_count":{"deps":["roast"]},"summary_text":{"deps":["selected_count","has_selection"]}},
+__animated__: []
 };

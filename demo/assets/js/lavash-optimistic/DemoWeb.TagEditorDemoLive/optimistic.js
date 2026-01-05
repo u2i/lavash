@@ -13,5 +13,6 @@ export default {
 ,
 __derives__: ["tag_count","tag_summary","tags_display"],
 __fields__: [],
-__graph__: {"tag_count":{"deps":["tags"]},"tag_summary":{"deps":["tags"]},"tags_display":{"deps":["tags"]}}
+__graph__: {"tag_count":{"deps":["tags"]},"tag_summary":{"deps":["tags"]},"tags_display":{"deps":["tags"]}},
+__animated__: []
 };

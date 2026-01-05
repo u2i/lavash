@@ -119,6 +119,23 @@ defmodule Lavash.Component.Dsl do
       default: [
         type: :any,
         doc: "Default value when not present"
+      ],
+      optimistic: [
+        type: :boolean,
+        default: false,
+        doc: "Enable optimistic updates with version tracking"
+      ],
+      animated: [
+        type: {:or, [:boolean, :keyword_list]},
+        default: false,
+        doc: """
+        Enable animated state transitions with phase tracking.
+
+        Options (when keyword list):
+        - `async: :field_name` - coordinate with async data loading
+        - `preserve_dom: true` - keep DOM alive during exit animation
+        - `duration: 200` - fallback timeout in ms
+        """
       ]
     ]
   }
@@ -511,6 +528,9 @@ defmodule Lavash.Component.Dsl do
       @calculations_section,
       @actions_section
     ],
-    transformers: [Lavash.Optimistic.ColocatedTransformer],
+    transformers: [
+      Lavash.Optimistic.ExpandAnimatedStates,
+      Lavash.Optimistic.ColocatedTransformer
+    ],
     imports: [Phoenix.Component, Lavash.DslHelpers, Lavash.Rx]
 end

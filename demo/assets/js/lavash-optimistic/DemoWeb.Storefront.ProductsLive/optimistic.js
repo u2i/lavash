@@ -33,5 +33,6 @@ export default {
 ,
 __derives__: ["roast_chips","in_stock_chip"],
 __fields__: [],
-__graph__: {"in_stock_chip":{"deps":["in_stock"]},"roast_chips":{"deps":["roast"]}}
+__graph__: {"in_stock_chip":{"deps":["in_stock"]},"roast_chips":{"deps":["roast"]}},
+__animated__: []
 };

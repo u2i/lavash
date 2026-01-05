@@ -5,5 +5,6 @@ export default {
 ,
 __derives__: ["doubled"],
 __fields__: [],
-__graph__: {"doubled":{"deps":["multiplier","count"]}}
+__graph__: {"doubled":{"deps":["multiplier","count"]}},
+__animated__: []
 };

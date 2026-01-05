@@ -43,6 +43,7 @@
  */
 
 import { SyncedVar, SyncedVarStore } from "./synced_var.js";
+import { AnimatedState } from "./animated_state.js";
 
 // Registry for optimistic function modules (for custom overrides)
 window.Lavash = window.Lavash || {};
@@ -194,6 +195,50 @@ const LavashOptimistic = {
 
     // Listen for server validation responses
     this.handleEvent("validation_result", (payload) => this.handleValidationResult(payload));
+
+    // Initialize animated state managers
+    this.initAnimatedFields();
+  },
+
+  /**
+   * Initialize AnimatedState managers for fields with animated: true.
+   * Reads configuration from __animated__ metadata in the generated optimistic module.
+   */
+  initAnimatedFields() {
+    this.animatedStates = {};
+
+    const animatedConfigs = this.fns.__animated__ || [];
+    for (const config of animatedConfigs) {
+      const animated = new AnimatedState(config, this);
+
+      // Initialize from current state value
+      const currentValue = this.state[config.field];
+      if (currentValue != null) {
+        // Already open - transition to appropriate phase
+        animated.syncedVar.setOptimistic(currentValue);
+      }
+
+      this.animatedStates[config.field] = animated;
+
+      console.debug(`[LavashOptimistic] Initialized animated field: ${config.field}`);
+    }
+  },
+
+  /**
+   * Get an animated state manager by field name.
+   */
+  getAnimatedState(field) {
+    return this.animatedStates?.[field];
+  },
+
+  /**
+   * Check if any animated fields are currently animating.
+   */
+  isAnyAnimating() {
+    if (!this.animatedStates) return false;
+    return Object.values(this.animatedStates).some(
+      a => a.getPhase() === "entering" || a.getPhase() === "exiting"
+    );
   },
 
   /**
@@ -682,6 +727,9 @@ const LavashOptimistic = {
         changedFields.push(key);
       }
 
+      // Notify animated states of value changes
+      this.notifyAnimatedStates(changedFields);
+
       // Recompute derives affected by the changed fields
       this.recomputeDerives(changedFields);
 
@@ -693,6 +741,37 @@ const LavashOptimistic = {
 
     } catch (err) {
       // Silently ignore client-side errors - server will be source of truth
+    }
+  },
+
+  /**
+   * Notify animated state managers when their fields change.
+   */
+  notifyAnimatedStates(changedFields) {
+    if (!this.animatedStates || !changedFields) return;
+
+    for (const field of changedFields) {
+      const animated = this.animatedStates[field];
+      if (animated) {
+        const oldValue = animated.syncedVar.getValue();
+        const newValue = this.state[field];
+        animated.syncedVar.setOptimistic(newValue);
+        animated.onValueChange(newValue, oldValue, 'optimistic');
+      }
+    }
+  },
+
+  /**
+   * Notify animated states that async data is ready.
+   * Called when a read/async field gets populated.
+   */
+  notifyAsyncReady(asyncField) {
+    if (!this.animatedStates) return;
+
+    for (const animated of Object.values(this.animatedStates)) {
+      if (animated.config.async === asyncField) {
+        animated.onAsyncDataReady();
+      }
     }
   },
 
@@ -1156,13 +1235,16 @@ const LavashOptimistic = {
     const newServerVersion = parseInt(this.el.dataset.lavashVersion || "0", 10);
     const serverState = JSON.parse(this.el.dataset.lavashState || "{}");
 
+    // Track which async fields got populated (for animated state coordination)
+    const asyncFieldsReady = this.detectAsyncFieldsReady(serverState);
+
     // Update SyncedVars from server state (flattened paths)
     // serverUpdate only updates vars that are not pending
     this.store.serverUpdate(serverState);
 
     // Also update our state object for fields without pending changes
     const pendingPaths = new Set(this.store.getPendingPaths());
-    this.mergeServerState(serverState, "", pendingPaths);
+    const changedFields = this.mergeServerState(serverState, "", pendingPaths);
 
     // Update version tracking
     if (newServerVersion >= this.clientVersion) {
@@ -1170,6 +1252,16 @@ const LavashOptimistic = {
       this.clientVersion = newServerVersion;
     } else {
       this.serverVersion = newServerVersion;
+    }
+
+    // Notify animated states of server-side value changes
+    if (changedFields && changedFields.length > 0) {
+      this.notifyAnimatedStatesServerUpdate(changedFields);
+    }
+
+    // Notify animated states that async data is ready
+    for (const asyncField of asyncFieldsReady) {
+      this.notifyAsyncReady(asyncField);
     }
 
     // Recompute derives based on current state
@@ -1196,23 +1288,87 @@ const LavashOptimistic = {
   },
 
   /**
-   * Merge server state into this.state, skipping paths that are pending.
+   * Detect which async fields went from null/undefined to having a value.
+   * Used to notify animated states that async data is ready.
    */
-  mergeServerState(obj, prefix, pendingPaths) {
+  detectAsyncFieldsReady(serverState) {
+    const ready = [];
+
+    // Check each animated field's async config
+    if (this.animatedStates) {
+      for (const animated of Object.values(this.animatedStates)) {
+        const asyncField = animated.config.async;
+        if (asyncField) {
+          const oldValue = this.state[asyncField];
+          const newValue = serverState[asyncField];
+
+          // If was null/undefined and now has value, async is ready
+          if ((oldValue == null) && (newValue != null)) {
+            ready.push(asyncField);
+          }
+        }
+      }
+    }
+
+    return ready;
+  },
+
+  /**
+   * Notify animated states of value changes from server updates.
+   */
+  notifyAnimatedStatesServerUpdate(changedFields) {
+    if (!this.animatedStates || !changedFields) return;
+
+    for (const field of changedFields) {
+      const animated = this.animatedStates[field];
+      if (animated) {
+        const oldValue = animated.syncedVar.getValue();
+        const newValue = this.state[field];
+
+        // Only notify if value actually changed
+        if (oldValue !== newValue) {
+          animated.syncedVar.serverUpdate(newValue);
+          animated.onValueChange(newValue, oldValue, 'server');
+        }
+      }
+    }
+  },
+
+  /**
+   * Merge server state into this.state, skipping paths that are pending.
+   * Returns array of top-level changed field names.
+   */
+  mergeServerState(obj, prefix, pendingPaths, changedFields = null) {
+    // Track changed fields at the top level only
+    const isTopLevel = prefix === "";
+    if (isTopLevel && changedFields === null) {
+      changedFields = [];
+    }
+
     for (const [key, value] of Object.entries(obj)) {
       const path = prefix ? `${prefix}.${key}` : key;
+      const topLevelField = prefix ? prefix.split(".")[0] : key;
 
       // Check if this exact path or any child path is pending
       const hasPendingChild = [...pendingPaths].some(p => p === path || p.startsWith(path + "."));
 
       if (value !== null && typeof value === "object" && !Array.isArray(value)) {
         // Recurse into nested objects
-        this.mergeServerState(value, path, pendingPaths);
+        this.mergeServerState(value, path, pendingPaths, changedFields);
       } else if (!hasPendingChild) {
         // Leaf value with no pending - update state
-        this.setStateAtPath(path, value);
+        const oldValue = this.getStateAtPath(path);
+        if (oldValue !== value) {
+          this.setStateAtPath(path, value);
+          // Track the top-level field that changed
+          if (changedFields && !changedFields.includes(topLevelField)) {
+            changedFields.push(topLevelField);
+          }
+        }
       }
     }
+
+    return isTopLevel ? changedFields : null;
   },
 
   /**
@@ -1326,6 +1482,14 @@ const LavashOptimistic = {
     this.el.removeEventListener("input", this.handleInput.bind(this), true);
     this.el.removeEventListener("blur", this.handleBlur.bind(this), true);
     this.el.removeEventListener("submit", this.handleFormSubmit.bind(this), true);
+
+    // Clean up animated state managers
+    if (this.animatedStates) {
+      for (const animated of Object.values(this.animatedStates)) {
+        animated.destroy();
+      }
+      this.animatedStates = {};
+    }
   }
 };
 
