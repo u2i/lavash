@@ -196,6 +196,12 @@ defmodule Lavash.Rx.TranspilerTest do
       assert Transpiler.to_js("Enum.reject(@items, fn x -> x == 0 end)") ==
                "(state.items.filter(x => !((x === 0))))"
     end
+
+    test "Enum.reject with capture shorthand" do
+      # Optimized shorthand produces cleaner output
+      assert Transpiler.to_js("Enum.reject(@items, &(&1 == 0))") ==
+               "(state.items.filter(x => x !== 0))"
+    end
   end
 
   describe "elixir_to_js/1 - Map functions" do
@@ -207,6 +213,17 @@ defmodule Lavash.Rx.TranspilerTest do
     test "Map.get with 3 args (default)" do
       assert Transpiler.to_js(~s|Map.get(@data, "key", "default")|) ==
                "(state.data[\"key\"] ?? \"default\")"
+    end
+
+    test "Map.get with atom key" do
+      # Atoms are converted to strings in JS
+      assert Transpiler.to_js("Map.get(@data, :foo)") ==
+               "state.data[\"foo\"]"
+    end
+
+    test "Map.get with state variable key" do
+      assert Transpiler.to_js("Map.get(@data, @key)") ==
+               "state.data[state.key]"
     end
   end
 
@@ -234,6 +251,19 @@ defmodule Lavash.Rx.TranspilerTest do
     test "valid_card_number?" do
       assert Transpiler.to_js("valid_card_number?(@digits)") ==
                "Lavash.Rx.Validators.validCardNumber(state.digits)"
+    end
+
+    test "get_in with string keys" do
+      assert Transpiler.to_js(~s|get_in(@data, ["user", "name"])|) ==
+               "(state.data[\"user\"][\"name\"])"
+    end
+  end
+
+  describe "elixir_to_js/1 - String.chunk" do
+    test "chunk with integer size" do
+      result = Transpiler.to_js("String.chunk(@digits, 4)")
+      assert result =~ "match"
+      assert result =~ ".{1,4}"
     end
   end
 
@@ -320,6 +350,28 @@ defmodule Lavash.Rx.TranspilerTest do
       result = Transpiler.to_js(code)
       assert result == "(state.a ? (state.b ? 1 : 2) : 0)"
     end
+
+    test "nil coalescing with ||" do
+      code = "@value || \"default\""
+      result = Transpiler.to_js(code)
+      assert result == "(state.value || \"default\")"
+    end
+
+    test "complex validation expression" do
+      code = "String.length(@email) > 0 and String.contains?(@email, \"@\")"
+      result = Transpiler.to_js(code)
+      assert result =~ "state.email.length"
+      assert result =~ "includes"
+      assert result =~ "&&"
+    end
+
+    test "nested map access with conditional" do
+      code = "if @user != nil, do: @user.name, else: \"Guest\""
+      result = Transpiler.to_js(code)
+      assert result =~ "state.user !== null"
+      assert result =~ "state.user.name"
+      assert result =~ "Guest"
+    end
   end
 
   describe "elixir_to_js/1 - untranspilable expressions" do
@@ -348,6 +400,57 @@ defmodule Lavash.Rx.TranspilerTest do
     test "returns error for unsupported function calls" do
       assert {:error, _} = Transpiler.validate("Ash.read!(Product)")
       assert {:error, _} = Transpiler.validate("Decimal.add(@a, @b)")
+    end
+  end
+
+  describe "elixir_to_js/1 - edge cases" do
+    test "empty string" do
+      assert Transpiler.to_js(~s|""|) == ~s|""|
+    end
+
+    test "empty list" do
+      assert Transpiler.to_js("[]") == "[]"
+    end
+
+    test "empty map" do
+      assert Transpiler.to_js("%{}") == "{}"
+    end
+
+    test "deeply nested state access" do
+      assert Transpiler.to_js("@user.profile.settings.theme") ==
+               "state.user.profile.settings.theme"
+    end
+
+    test "multiple pipes" do
+      code = "@text |> String.trim() |> String.length()"
+      result = Transpiler.to_js(code)
+      assert result =~ "trim()"
+      assert result =~ "length"
+    end
+
+    test "comparison with nil" do
+      assert Transpiler.to_js("@value == nil") ==
+               "(state.value === null)"
+    end
+
+    test "not equal to nil" do
+      assert Transpiler.to_js("@value != nil") ==
+               "(state.value !== null)"
+    end
+
+    test "double negation" do
+      assert Transpiler.to_js("not not @active") == "!!state.active"
+    end
+
+    test "list with mixed types" do
+      assert Transpiler.to_js(~s|[1, "two", true, nil]|) ==
+               ~s|[1, "two", true, null]|
+    end
+
+    test "map with string keys" do
+      result = Transpiler.to_js(~s|%{"name" => "test"}|)
+      assert result =~ "name"
+      assert result =~ "test"
     end
   end
 end
