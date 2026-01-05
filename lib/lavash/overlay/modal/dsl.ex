@@ -1,4 +1,4 @@
-defmodule Lavash.Modal.Dsl do
+defmodule Lavash.Overlay.Modal.Dsl do
   @moduledoc """
   Spark DSL extension for modal behavior.
 
@@ -11,7 +11,7 @@ defmodule Lavash.Modal.Dsl do
   ## Usage
 
       defmodule MyApp.EditModal do
-        use Lavash.Component, extensions: [Lavash.Modal.Dsl]
+        use Lavash.Component, extensions: [Lavash.Overlay.Modal.Dsl]
 
         modal do
           open_field :product_id  # nil = closed, non-nil = open with this ID
@@ -81,7 +81,7 @@ defmodule Lavash.Modal.Dsl do
     name: :render,
     describe:
       "The modal content template. Receives assigns with @form set to the unwrapped async data.",
-    target: Lavash.Modal.Render,
+    target: Lavash.Overlay.Modal.Render,
     args: [:template],
     schema: [
       template: [
@@ -95,7 +95,7 @@ defmodule Lavash.Modal.Dsl do
   @render_loading_entity %Spark.Dsl.Entity{
     name: :render_loading,
     describe: "Loading state template shown while async data loads",
-    target: Lavash.Modal.RenderLoading,
+    target: Lavash.Overlay.Modal.RenderLoading,
     args: [:template],
     schema: [
       template: [
@@ -116,7 +116,7 @@ defmodule Lavash.Modal.Dsl do
   use Spark.Dsl.Extension,
     sections: [@modal_section, @renders_section],
     transformers: [
-      Lavash.Modal.Transformers.InjectState,
-      Lavash.Modal.Transformers.GenerateRender
+      Lavash.Overlay.Modal.Transformers.InjectState,
+      Lavash.Overlay.Modal.Transformers.GenerateRender
     ]
 end

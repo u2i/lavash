@@ -2,10 +2,10 @@ defmodule DemoWeb.CategoryEditModal do
   @moduledoc """
   A Lavash Component for editing/creating a category in a modal.
   """
-  use Lavash.Component, extensions: [Lavash.Modal.Dsl]
+  use Lavash.Component, extensions: [Lavash.Overlay.Modal.Dsl]
 
   alias DemoWeb.CoreComponents
-  import Lavash.Modal.Helpers, only: [modal_close_button: 1]
+  import Lavash.Overlay.Modal.Helpers, only: [modal_close_button: 1]
 
   alias Demo.Catalog.Category
 

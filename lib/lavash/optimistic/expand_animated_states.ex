@@ -41,12 +41,12 @@ defmodule Lavash.Optimistic.ExpandAnimatedStates do
 
   # Run after Modal's InjectState (which adds animated state fields)
   # but before DefrxExpander and ColocatedTransformer
-  def after?(Lavash.Modal.Transformers.InjectState), do: true
+  def after?(Lavash.Overlay.Modal.Transformers.InjectState), do: true
   def after?(_), do: false
 
   def before?(Lavash.Optimistic.DefrxExpander), do: true
   def before?(Lavash.Optimistic.ColocatedTransformer), do: true
-  def before?(Lavash.Modal.Transformers.GenerateRender), do: true
+  def before?(Lavash.Overlay.Modal.Transformers.GenerateRender), do: true
   def before?(_), do: false
 
   @doc """

@@ -6,7 +6,7 @@ defmodule Lavash.Component.Compiler do
   # Track helpers.ex as an external resource so changes trigger recompilation
   # of all modules that use the modal DSL. Path.expand with __DIR__ gives us
   # the absolute path at compile time of this module (in lavash's lib dir).
-  @helpers_path Path.expand("../modal/helpers.ex", __DIR__)
+  @helpers_path Path.expand("../overlay/modal/helpers.ex", __DIR__)
 
   defmacro __before_compile__(env) do
     modal_render = Spark.Dsl.Extension.get_persisted(env.module, :modal_render_template)
@@ -129,7 +129,7 @@ defmodule Lavash.Component.Compiler do
       @external_resource unquote(helpers_path)
       @impl Phoenix.LiveComponent
       def render(var!(assigns)) do
-        import Lavash.Modal.Helpers
+        import Lavash.Overlay.Modal.Helpers
 
         open_field = unquote(open_field)
         open_value = Map.get(var!(assigns), open_field)
@@ -140,7 +140,7 @@ defmodule Lavash.Component.Compiler do
         async_assign_field = unquote(async_assign)
 
         # Default loading function
-        default_loading_fn = &Lavash.Modal.Helpers.default_loading/1
+        default_loading_fn = &Lavash.Overlay.Modal.Helpers.default_loading/1
 
         # Build modal ID from component ID
         modal_id = "#{Map.get(var!(assigns), :id, "modal")}-modal"
@@ -177,7 +177,7 @@ defmodule Lavash.Component.Compiler do
             <:loading>
               {@__modal_loading__.(assigns)}
             </:loading>
-            <Lavash.Modal.Helpers.modal_content
+            <Lavash.Overlay.Modal.Helpers.modal_content
               assigns={assigns}
               async_assign={@__modal_async_assign__}
               render={@__modal_render__}

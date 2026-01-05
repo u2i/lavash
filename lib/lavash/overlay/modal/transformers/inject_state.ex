@@ -1,4 +1,4 @@
-defmodule Lavash.Modal.Transformers.InjectState do
+defmodule Lavash.Overlay.Modal.Transformers.InjectState do
   @moduledoc """
   Transformer that injects modal state and actions into a Lavash Component.
 
@@ -22,7 +22,7 @@ defmodule Lavash.Modal.Transformers.InjectState do
 
   # Run before GenerateRender
   # ExpandAnimatedStates will run after us via its after?(InjectState) clause
-  def before?(Lavash.Modal.Transformers.GenerateRender), do: true
+  def before?(Lavash.Overlay.Modal.Transformers.GenerateRender), do: true
   def before?(_), do: false
 
   def transform(dsl_state) do

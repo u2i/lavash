@@ -102,10 +102,11 @@ defmodule Lavash.MixProject do
           Lavash.Optimistic,
           Lavash.Optimistic.JsGenerator
         ],
-        "Modal Plugin": [
-          Lavash.Modal,
-          Lavash.Modal.Dsl,
-          Lavash.Modal.Helpers
+        "Overlays": [
+          Lavash.Overlay,
+          Lavash.Overlay.Modal,
+          Lavash.Overlay.Modal.Dsl,
+          Lavash.Overlay.Modal.Helpers
         ],
         "PubSub": [
           Lavash.PubSub,

@@ -17,10 +17,10 @@ defmodule DemoWeb.ProductEditModal do
         id="product-edit-modal"
       />
   """
-  use Lavash.Component, extensions: [Lavash.Modal.Dsl]
+  use Lavash.Component, extensions: [Lavash.Overlay.Modal.Dsl]
 
   alias DemoWeb.CoreComponents
-  import Lavash.Modal.Helpers, only: [modal_close_button: 1]
+  import Lavash.Overlay.Modal.Helpers, only: [modal_close_button: 1]
 
   alias Demo.Catalog.{Category, Product}
 

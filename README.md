@@ -358,14 +358,14 @@ actions do
 end
 ```
 
-## Modal Plugin
+## Overlays (Modal, etc.)
 
 Pre-built modal behavior:
 
 ```elixir
 defmodule MyAppWeb.ProductModal do
-  use Lavash.Component, extensions: [Lavash.Modal.Dsl]
-  import Lavash.Modal.Helpers
+  use Lavash.Component, extensions: [Lavash.Overlay.Modal.Dsl]
+  import Lavash.Overlay.Modal.Helpers
 
   modal do
     open_field :product_id  # nil = closed

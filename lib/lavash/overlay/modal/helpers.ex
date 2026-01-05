@@ -1,4 +1,4 @@
-defmodule Lavash.Modal.Helpers do
+defmodule Lavash.Overlay.Modal.Helpers do
   @moduledoc """
   Helper components for modal rendering.
 
@@ -272,6 +272,10 @@ defmodule Lavash.Modal.Helpers do
           // Track previous server value to detect server-initiated changes
           this._previousServerValue = JSON.parse(this.el.dataset.openValue || "null");
 
+          // Track whether loading was visible before this update
+          const loadingContent = this.animator.getLoadingContent();
+          this._loadingWasVisible = loadingContent && !loadingContent.classList.contains("hidden");
+
           // Capture panel rect for FLIP animation
           // In standalone mode, capture when modal is open (has loading content visible)
           const isOpen = this._previousServerValue != null;
@@ -303,22 +307,28 @@ defmodule Lavash.Modal.Helpers do
             this.openState.serverSet(newServerValue);
           }
 
-          // Check if loading content should trigger FLIP
-          const loadingContent = this.animator.getLoadingContent();
-          const loadingVisible = loadingContent && !loadingContent.classList.contains("hidden");
+          // Check if we should run FLIP animation for loading -> content transition
+          // We need to run FLIP when:
+          // 1. Loading WAS visible before the update (captured in beforeUpdate)
+          // 2. Main content inner now exists (async data arrived and rendered)
+          const mainContentInner = this.animator.getMainContentInner();
+          const contentNowExists = !!mainContentInner;
+          const shouldRunFlip = this._loadingWasVisible && contentNowExists;
 
           if (this.animatedState) {
             const phase = this.animatedState.getPhase();
-            if ((phase === "visible" || phase === "loading") && loadingVisible) {
-              console.log(`LavashModal ${this.panelIdForLog}: updated - loading visible, running FLIP`);
+            if ((phase === "visible" || phase === "loading") && shouldRunFlip) {
+              console.log(`LavashModal ${this.panelIdForLog}: updated - loading->content transition, running FLIP`);
               this.animator._runFlipAnimation();
             }
-          } else if (nowIsOpen && loadingVisible) {
-            // Standalone mode - run FLIP when open and loading is visible
-            // This happens when async content arrives
-            console.log(`LavashModal ${this.panelIdForLog}: standalone updated - loading visible, running FLIP`);
+          } else if (nowIsOpen && shouldRunFlip) {
+            // Standalone mode - run FLIP when transitioning from loading to content
+            console.log(`LavashModal ${this.panelIdForLog}: standalone updated - loading->content transition, running FLIP`);
             this.animator._runFlipAnimation();
           }
+
+          // Clear the tracking flag
+          this._loadingWasVisible = false;
 
           // Always release size lock if it wasn't released by FLIP
           this.animator.releaseSizeLockIfNeeded();

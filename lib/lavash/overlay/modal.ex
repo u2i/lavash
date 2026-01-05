@@ -1,4 +1,4 @@
-defmodule Lavash.Modal do
+defmodule Lavash.Overlay.Modal do
   @moduledoc """
   Modal behavior plugin for Lavash Components.
 
@@ -12,8 +12,8 @@ defmodule Lavash.Modal do
   ## Basic Usage
 
       defmodule MyApp.EditModal do
-        use Lavash.Component, extensions: [Lavash.Modal.Dsl]
-        import Lavash.Modal.Helpers  # For modal_chrome and modal_close_button
+        use Lavash.Component, extensions: [Lavash.Overlay.Modal.Dsl]
+        import Lavash.Overlay.Modal.Helpers  # For modal_chrome and modal_close_button
 
         modal do
           open_field :product_id  # nil = closed, non-nil = open with ID
@@ -86,16 +86,16 @@ defmodule Lavash.Modal do
 
   ## Helper Components
 
-  The plugin provides these helper components via `Lavash.Modal.Helpers`:
+  The plugin provides these helper components via `Lavash.Overlay.Modal.Helpers`:
 
   - `modal_chrome/1` - Renders backdrop, container, escape/click handling
-  - `modal_close_button/1` - A simple × close button
+  - `modal_close_button/1` - A simple x close button
 
-  Import these explicitly with `import Lavash.Modal.Helpers`.
+  Import these explicitly with `import Lavash.Overlay.Modal.Helpers`.
   """
 
   # This module is a Spark DSL extension - use it via:
-  # use Lavash.Component, extensions: [Lavash.Modal]
+  # use Lavash.Component, extensions: [Lavash.Overlay.Modal]
   #
-  # The actual extension definition is in Lavash.Modal.Dsl
+  # The actual extension definition is in Lavash.Overlay.Modal.Dsl
 end

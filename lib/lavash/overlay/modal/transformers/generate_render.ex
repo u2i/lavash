@@ -1,4 +1,4 @@
-defmodule Lavash.Modal.Transformers.GenerateRender do
+defmodule Lavash.Overlay.Modal.Transformers.GenerateRender do
   @moduledoc """
   Transformer that generates the render/1 function for modal components.
 
@@ -12,7 +12,7 @@ defmodule Lavash.Modal.Transformers.GenerateRender do
   use Spark.Dsl.Transformer
   alias Spark.Dsl.Transformer
 
-  def after?(Lavash.Modal.Transformers.InjectState), do: true
+  def after?(Lavash.Overlay.Modal.Transformers.InjectState), do: true
   def after?(_), do: false
   def before?(_), do: false
 
@@ -20,8 +20,8 @@ defmodule Lavash.Modal.Transformers.GenerateRender do
     # Get render functions from top-level entities
     renders = Spark.Dsl.Extension.get_entities(dsl_state, [:renders])
 
-    render_entity = Enum.find(renders, &match?(%Lavash.Modal.Render{}, &1))
-    render_loading_entity = Enum.find(renders, &match?(%Lavash.Modal.RenderLoading{}, &1))
+    render_entity = Enum.find(renders, &match?(%Lavash.Overlay.Modal.Render{}, &1))
+    render_loading_entity = Enum.find(renders, &match?(%Lavash.Overlay.Modal.RenderLoading{}, &1))
 
     render_template = render_entity && render_entity.template
     render_loading_template = render_loading_entity && render_loading_entity.template

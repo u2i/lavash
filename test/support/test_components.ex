@@ -114,7 +114,7 @@ defmodule Lavash.TestModalComponent do
   Uses a named process to track whether the render function was called,
   allowing tests to verify render is not called when modal is closed.
   """
-  use Lavash.Component, extensions: [Lavash.Modal.Dsl]
+  use Lavash.Component, extensions: [Lavash.Overlay.Modal.Dsl]
 
   modal do
     open_field :item_id
