@@ -20,8 +20,6 @@
  *   animatedState.setDelegate(animator);
  */
 
-import { FlipAnimator } from "./flip_animator.js";
-
 export class ModalAnimator {
   /**
    * Create a ModalAnimator.
@@ -53,11 +51,8 @@ export class ModalAnimator {
     this._ghostInsertedInBeforeUpdate = false;
     this._preUpdateContentClone = null;
 
-    // FLIP animator for size transitions
-    this._flipAnimator = new FlipAnimator(this.panelContent, {
-      duration: this.duration,
-      easing: 'ease-in-out'
-    });
+    // Captured panel rect for FLIP animation (loading → content transition)
+    this._capturedRect = null;
 
     // IDs for onBeforeElUpdated detection
     this._mainContentId = `${id}-main_content`;
@@ -198,7 +193,7 @@ export class ModalAnimator {
   capturePreUpdateRect() {
     if (this.panelContent && this.getLoadingContent()) {
       // Just capture rect like baseline - don't lock, that causes flash
-      this._flipAnimator.captureFirst();
+      this._capturedRect = this.panelContent.getBoundingClientRect();
     }
   }
 
@@ -208,7 +203,7 @@ export class ModalAnimator {
    */
   releaseSizeLockIfNeeded() {
     // Clear captured rect if FLIP didn't run
-    this._flipAnimator.clearCapture();
+    this._capturedRect = null;
   }
 
   /**
@@ -219,7 +214,7 @@ export class ModalAnimator {
     const loadEl = this.getLoadingContent();
     const mainInnerEl = this.getMainContentInner();
     const mainContent = this.getMainContentContainer();
-    const firstRect = this._flipAnimator._firstRect;
+    const firstRect = this._capturedRect;
 
     console.log(`ModalAnimator _runFlipAnimation: mainInnerEl=${!!mainInnerEl}, loadEl=${!!loadEl}, hasCapture=${!!firstRect}`);
 
@@ -247,12 +242,12 @@ export class ModalAnimator {
 
     // Clear capture and bail if no FLIP needed
     if (!firstRect || !this.panelContent || !loadEl) {
-      this._flipAnimator.clearCapture();
+      this._capturedRect = null;
       return;
     }
 
     const lastRect = this.panelContent.getBoundingClientRect();
-    this._flipAnimator.clearCapture();
+    this._capturedRect = null;
 
     // Skip if size didn't change significantly
     if (
@@ -489,7 +484,7 @@ export class ModalAnimator {
 
     // Clean up animations
     this._cleanupCloseAnimation();
-    this._flipAnimator.clearCapture();
+    this._capturedRect = null;
     this._ghostInsertedInBeforeUpdate = false;
     this._preUpdateContentClone = null;
 
@@ -558,7 +553,7 @@ export class ModalAnimator {
    */
   destroy() {
     this._cleanupCloseAnimation();
-    this._flipAnimator.destroy();
+    this._capturedRect = null;
     if (this.panelContent && this._transitionHandler) {
       this.panelContent.removeEventListener("transitionend", this._transitionHandler);
     }

@@ -6,8 +6,7 @@
  * - SyncedVar: Optimistic state synchronization with version tracking
  * - SyncedVarStore: Collection of SyncedVars with dependency tracking
  * - AnimatedState: Phase-based state machine for animated transitions
- * - FlipAnimator: Reusable FLIP animation utility
- * - ModalAnimator: Modal-specific animation delegate
+ * - ModalAnimator: Modal-specific animation delegate (includes FLIP animation)
  * - LavashOptimistic: Main Phoenix LiveView hook
  *
  * Usage in your app.js:
@@ -27,6 +26,5 @@
 
 export { SyncedVar, SyncedVarStore } from "./synced_var.js";
 export { AnimatedState } from "./animated_state.js";
-export { FlipAnimator } from "./flip_animator.js";
 export { ModalAnimator } from "./modal_animator.js";
 export { LavashOptimistic } from "./lavash_optimistic.js";
