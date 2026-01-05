@@ -11,6 +11,10 @@ defmodule Lavash.Component.Compiler do
   defmacro __before_compile__(env) do
     modal_render = Spark.Dsl.Extension.get_persisted(env.module, :modal_render_template)
 
+    # Get optimistic colocated data if available (persisted by ColocatedTransformer)
+    optimistic_colocated_data =
+      Spark.Dsl.Extension.get_persisted(env.module, :lavash_optimistic_colocated_data)
+
     render_function =
       if modal_render do
         generate_modal_render(env.module)
@@ -91,6 +95,16 @@ defmodule Lavash.Component.Compiler do
 
       # Components don't have URL fields
       def __lavash__(:url_fields), do: []
+
+      # Phoenix colocated JS integration for optimistic functions
+      if unquote(not is_nil(optimistic_colocated_data)) do
+        @__lavash_optimistic_colocated_data__ unquote(Macro.escape(optimistic_colocated_data))
+        def __phoenix_macro_components__ do
+          %{
+            Phoenix.LiveView.ColocatedJS => [@__lavash_optimistic_colocated_data__]
+          }
+        end
+      end
     end
   end
 

@@ -7,6 +7,10 @@ defmodule Lavash.LiveView.Compiler do
     has_on_mount = Module.defines?(env.module, {:on_mount, 1})
     has_render = Module.defines?(env.module, {:render, 1})
 
+    # Get optimistic colocated data if available (persisted by ColocatedTransformer)
+    optimistic_colocated_data =
+      Spark.Dsl.Extension.get_persisted(env.module, :lavash_optimistic_colocated_data)
+
     # Check for template DSL entity
     templates = Spark.Dsl.Extension.get_entities(env.module, [:template_section]) || []
 
@@ -181,6 +185,16 @@ defmodule Lavash.LiveView.Compiler do
       # Expose optimistic actions from the optimistic_action macro
       def __lavash_optimistic_actions__ do
         @__lavash_optimistic_actions__ || []
+      end
+
+      # Phoenix colocated JS integration for optimistic functions
+      if unquote(not is_nil(optimistic_colocated_data)) do
+        @__lavash_optimistic_colocated_data__ unquote(Macro.escape(optimistic_colocated_data))
+        def __phoenix_macro_components__ do
+          %{
+            Phoenix.LiveView.ColocatedJS => [@__lavash_optimistic_colocated_data__]
+          }
+        end
       end
     end
   end

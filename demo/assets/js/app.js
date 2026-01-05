@@ -30,14 +30,14 @@ window.morphdom = morphdom
 import { SyncedVar, LavashOptimistic, ModalAnimator } from "lavash"
 // Colocated hooks from Lavash library
 import {hooks as lavashHooks} from "phoenix-colocated/lavash"
-// Lavash optimistic functions - auto-generated at compile time
-import lavashOptimisticFns from "./lavash-optimistic/index.js"
+// Lavash optimistic functions - auto-generated at compile time via phoenix-colocated
+import {optimistic as lavashOptimisticFns} from "phoenix-colocated/demo"
 
 // Register Lavash on window for colocated hooks and generated optimistic functions
 window.Lavash = window.Lavash || {};
 window.Lavash.SyncedVar = SyncedVar;
 window.Lavash.ModalAnimator = ModalAnimator;
-window.Lavash.optimistic = lavashOptimisticFns;
+window.Lavash.optimistic = lavashOptimisticFns || {};
 
 // Merge hooks from Lavash library and app-specific hooks
 const colocatedHooks = {

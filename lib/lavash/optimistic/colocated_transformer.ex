@@ -6,11 +6,13 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
   phoenix-colocated directory, allowing them to be bundled by esbuild instead
   of being eval'd at runtime.
 
-  The generated files follow the same structure as Phoenix.LiveView.ColocatedJS,
-  allowing them to be imported in app.js and registered with window.Lavash.optimistic.
+  The generated files integrate with Phoenix.LiveView.ColocatedJS system,
+  which handles manifest generation and cleanup automatically.
   """
 
   use Spark.Dsl.Transformer
+
+  alias Lavash.Component.CompilerHelpers
 
   # Run after all entities are defined but before compilation finishes
   def after?(_), do: true
@@ -21,24 +23,74 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
   """
   def transform(dsl_state) do
     module = Spark.Dsl.Transformer.get_persisted(dsl_state, :module)
+    env = Spark.Dsl.Transformer.get_persisted(dsl_state, :env)
 
-    # Skip if module is not available (shouldn't happen)
-    if is_nil(module) do
+    # Skip if module or env is not available (shouldn't happen)
+    if is_nil(module) or is_nil(env) do
       {:ok, dsl_state}
     else
-      extract_optimistic_js(dsl_state, module)
+      extract_optimistic_js(dsl_state, module, env)
     end
   end
 
-  defp extract_optimistic_js(dsl_state, module) do
+  defp extract_optimistic_js(dsl_state, module, env) do
     # Generate JS at compile time using the DSL state directly
     js_code = generate_js_from_dsl(dsl_state, module)
 
     if js_code do
-      write_colocated_file(module, js_code)
+      # Use Phoenix's colocated system via CompilerHelpers
+      # This writes to the same directory as other colocated hooks
+      colocated_data = write_colocated_optimistic(env, module, js_code)
+
+      # Persist the colocated data so the compiler can include it in __phoenix_macro_components__
+      dsl_state = Spark.Dsl.Transformer.persist(dsl_state, :lavash_optimistic_colocated_data, colocated_data)
+      {:ok, dsl_state}
+    else
+      {:ok, dsl_state}
+    end
+  end
+
+  # Write optimistic JS using Phoenix's colocated directory structure
+  defp write_colocated_optimistic(env, module, js_code) do
+    target_dir = CompilerHelpers.get_target_dir()
+    module_dir = Path.join(target_dir, inspect(module))
+
+    # Generate filename with hash for cache busting (same pattern as CompilerHelpers)
+    hash = :crypto.hash(:md5, js_code) |> Base.encode32(case: :lower, padding: false)
+    filename = "optimistic_#{hash}.js"
+    full_path = Path.join(module_dir, filename)
+
+    # Ensure directory exists
+    File.mkdir_p!(module_dir)
+
+    # Only write if content changed (avoids unnecessary esbuild rebuilds)
+    needs_write =
+      case File.read(full_path) do
+        {:ok, existing} -> existing != js_code
+        {:error, _} -> true
+      end
+
+    if needs_write do
+      # Clean up old optimistic files in this module's directory
+      case File.ls(module_dir) do
+        {:ok, files} ->
+          for file <- files, String.starts_with?(file, "optimistic_"), file != filename do
+            File.rm(Path.join(module_dir, file))
+          end
+
+        _ ->
+          :ok
+      end
+
+      # Write the new JS file
+      File.write!(full_path, js_code)
     end
 
-    {:ok, dsl_state}
+    # Return the data in the format Phoenix's ColocatedJS expects
+    # Use key: "optimistic" to group all optimistic JS under a separate export
+    # The name is the module name for lookup in the registry
+    module_name = inspect(env.module)
+    {filename, %{name: module_name, key: "optimistic"}}
   end
 
   defp generate_js_from_dsl(dsl_state, module) do
@@ -170,132 +222,6 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
         duration: config.duration
       }
     end)
-  end
-
-  # Write the JS file to the colocated directory
-  defp write_colocated_file(module, js_code) do
-    target_dir = colocated_target_dir()
-    module_dir = Path.join(target_dir, inspect(module))
-
-    # Use deterministic filename - one file per module
-    filename = "optimistic.js"
-    file_path = Path.join(module_dir, filename)
-
-    # Only write if directory exists or can be created
-    if File.dir?(target_dir) or create_target_dir(target_dir) do
-      File.mkdir_p!(module_dir)
-
-      # Clean up old hashed files (from previous versions)
-      cleanup_old_hashed_files(module_dir)
-
-      File.write!(file_path, js_code)
-
-      # Update the manifest with this module
-      store_colocated_data(module, filename)
-    end
-  end
-
-  # Remove old optimistic_*.js files (hashed filenames from previous versions)
-  defp cleanup_old_hashed_files(module_dir) do
-    case File.ls(module_dir) do
-      {:ok, files} ->
-        files
-        |> Enum.filter(&String.starts_with?(&1, "optimistic_"))
-        |> Enum.each(fn old_file ->
-          File.rm(Path.join(module_dir, old_file))
-        end)
-
-      {:error, _} ->
-        :ok
-    end
-  end
-
-  defp create_target_dir(target_dir) do
-    case File.mkdir_p(target_dir) do
-      :ok -> true
-      {:error, _} -> false
-    end
-  end
-
-  # Get the target directory for Lavash optimistic JS
-  # We write to assets/js/lavash-optimistic instead of phoenix-colocated
-  # to avoid being cleaned up by Phoenix's colocated compiler
-  defp colocated_target_dir do
-    # Write to assets/js/lavash-optimistic instead of phoenix-colocated
-    app_root = File.cwd!()
-    Path.join([app_root, "assets", "js", "lavash-optimistic"])
-  end
-
-  # Store file info and write manifest
-  defp store_colocated_data(module, _filename) do
-    target_dir = colocated_target_dir()
-    manifest_path = Path.join(target_dir, "index.js")
-
-    # Read existing manifest entries (if any)
-    existing_entries =
-      if File.exists?(manifest_path) do
-        content = File.read!(manifest_path)
-        # Parse existing entries from manifest
-        # Format: import module_hash from "./ModuleName/filename.js"; registry["ModuleName"] = module_hash;
-        Regex.scan(~r/registry\["([^"]+)"\]/, content)
-        |> Enum.map(fn [_, name] -> name end)
-        |> MapSet.new()
-      else
-        MapSet.new()
-      end
-
-    # Add current module to entries
-    module_name = inspect(module)
-    entries = MapSet.put(existing_entries, module_name)
-
-    # Generate manifest content
-    manifest_content = generate_manifest(entries, target_dir)
-    File.write!(manifest_path, manifest_content)
-  end
-
-  defp generate_manifest(module_names, target_dir) do
-    imports_and_registrations =
-      module_names
-      |> Enum.sort()
-      |> Enum.map(fn module_name ->
-        # Find the optimistic file for this module
-        module_dir = Path.join(target_dir, module_name)
-        file_path = Path.join(module_dir, "optimistic.js")
-
-        if File.exists?(file_path) do
-          import_name = "mod_" <> (:crypto.hash(:md5, module_name) |> Base.encode16(case: :lower) |> String.slice(0..7))
-          {module_name, "optimistic.js", import_name}
-        else
-          nil
-        end
-      end)
-      |> Enum.filter(& &1)
-
-    imports =
-      imports_and_registrations
-      |> Enum.map(fn {module_name, filename, import_name} ->
-        "import #{import_name} from \"./#{module_name}/#{filename}\";"
-      end)
-      |> Enum.join("\n")
-
-    registrations =
-      imports_and_registrations
-      |> Enum.map(fn {module_name, _filename, import_name} ->
-        "registry[\"#{module_name}\"] = #{import_name};"
-      end)
-      |> Enum.join("\n")
-
-    """
-    // Auto-generated by Lavash.Optimistic.ColocatedTransformer
-    // Do not edit manually - regenerated on each compile
-    const registry = {};
-
-    #{imports}
-
-    #{registrations}
-
-    export default registry;
-    """
   end
 
   # ============================================
