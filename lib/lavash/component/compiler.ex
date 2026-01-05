@@ -12,8 +12,12 @@ defmodule Lavash.Component.Compiler do
     modal_render = Spark.Dsl.Extension.get_persisted(env.module, :modal_render_template)
 
     # Get optimistic colocated data if available (persisted by ColocatedTransformer)
+    # Escape immediately to avoid "tried to unquote invalid AST" errors during incremental compilation
     optimistic_colocated_data =
-      Spark.Dsl.Extension.get_persisted(env.module, :lavash_optimistic_colocated_data)
+      case Spark.Dsl.Extension.get_persisted(env.module, :lavash_optimistic_colocated_data) do
+        nil -> nil
+        data -> Macro.escape(data)
+      end
 
     render_function =
       if modal_render do
@@ -98,7 +102,8 @@ defmodule Lavash.Component.Compiler do
 
       # Phoenix colocated JS integration for optimistic functions
       if unquote(not is_nil(optimistic_colocated_data)) do
-        @__lavash_optimistic_colocated_data__ unquote(Macro.escape(optimistic_colocated_data))
+        # optimistic_colocated_data is already escaped, so just unquote it directly
+        @__lavash_optimistic_colocated_data__ unquote(optimistic_colocated_data)
         def __phoenix_macro_components__ do
           %{
             Phoenix.LiveView.ColocatedJS => [@__lavash_optimistic_colocated_data__]

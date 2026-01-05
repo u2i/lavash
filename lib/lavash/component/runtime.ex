@@ -11,7 +11,7 @@ defmodule Lavash.Component.Runtime do
   - Assign projection
   """
 
-  alias Lavash.Graph
+  alias Lavash.Rx.Graph
   alias Lavash.Assigns
   alias Lavash.State
   alias Lavash.Socket, as: LSocket

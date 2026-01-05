@@ -1,13 +1,21 @@
-defmodule Lavash.Graph do
+defmodule Lavash.Rx.Graph do
   @moduledoc """
-  Dependency graph for derived state computation.
+  Dependency graph for reactive state computation.
 
-  Handles:
+  This module handles the server-side execution of the reactive graph,
+  including:
   - Topological sorting of derived fields
   - Dirty tracking and invalidation
   - Incremental recomputation
   - Async task management
   - Automatic propagation of special states (:loading, :error, nil)
+
+  The graph is built from DSL declarations (state, derive, calculate, read, form)
+  and maintains dependencies between fields. When a source field changes, all
+  transitively affected fields are recomputed in topological order.
+
+  See also `Lavash.Rx` for the reactive expression macro that captures
+  dependencies at compile time.
   """
 
   alias Lavash.Socket, as: LSocket

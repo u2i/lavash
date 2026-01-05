@@ -8,8 +8,12 @@ defmodule Lavash.LiveView.Compiler do
     has_render = Module.defines?(env.module, {:render, 1})
 
     # Get optimistic colocated data if available (persisted by ColocatedTransformer)
+    # Escape immediately to avoid "tried to unquote invalid AST" errors during incremental compilation
     optimistic_colocated_data =
-      Spark.Dsl.Extension.get_persisted(env.module, :lavash_optimistic_colocated_data)
+      case Spark.Dsl.Extension.get_persisted(env.module, :lavash_optimistic_colocated_data) do
+        nil -> nil
+        data -> Macro.escape(data)
+      end
 
     # Check for template DSL entity
     templates = Spark.Dsl.Extension.get_entities(env.module, [:template_section]) || []
@@ -189,7 +193,8 @@ defmodule Lavash.LiveView.Compiler do
 
       # Phoenix colocated JS integration for optimistic functions
       if unquote(not is_nil(optimistic_colocated_data)) do
-        @__lavash_optimistic_colocated_data__ unquote(Macro.escape(optimistic_colocated_data))
+        # optimistic_colocated_data is already escaped, so just unquote it directly
+        @__lavash_optimistic_colocated_data__ unquote(optimistic_colocated_data)
         def __phoenix_macro_components__ do
           %{
             Phoenix.LiveView.ColocatedJS => [@__lavash_optimistic_colocated_data__]

@@ -13,7 +13,7 @@ defmodule Lavash.LiveView.Runtime do
   require Phoenix.Component
 
   alias Lavash.State
-  alias Lavash.Graph
+  alias Lavash.Rx.Graph
   alias Lavash.Assigns
   alias Lavash.Type
   alias Lavash.Socket, as: LSocket
