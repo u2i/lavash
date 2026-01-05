@@ -453,4 +453,135 @@ defmodule Lavash.Rx.TranspilerTest do
       assert result =~ "test"
     end
   end
+
+  describe "elixir_to_js/1 - Luhn algorithm constructs" do
+    test "rem/2 for modulo" do
+      assert Transpiler.to_js("rem(@n, 2)") == "(state.n % 2)"
+      assert Transpiler.to_js("rem(10, 3)") == "(10 % 3)"
+    end
+
+    test "cond with single clause" do
+      code = """
+      cond do
+        true -> "default"
+      end
+      """
+
+      result = Transpiler.to_js(code)
+      assert result == "\"default\""
+    end
+
+    test "cond with multiple clauses" do
+      code = """
+      cond do
+        @x > 10 -> "big"
+        @x > 5 -> "medium"
+        true -> "small"
+      end
+      """
+
+      result = Transpiler.to_js(code)
+      assert result =~ "state.x > 10"
+      assert result =~ "state.x > 5"
+      assert result =~ "big"
+      assert result =~ "medium"
+      assert result =~ "small"
+      assert result =~ "?"
+    end
+
+    test "Enum.reverse/1" do
+      assert Transpiler.to_js("Enum.reverse(@list)") == "([...state.list].reverse())"
+    end
+
+    test "Enum.sum/1" do
+      assert Transpiler.to_js("Enum.sum(@numbers)") ==
+               "(state.numbers.reduce((a, b) => a + b, 0))"
+    end
+
+    test "Enum.with_index/1" do
+      assert Transpiler.to_js("Enum.with_index(@items)") ==
+               "(state.items.map((item, index) => [item, index]))"
+    end
+
+    test "Enum.reduce with simple form" do
+      code = "Enum.reduce(@items, 0, fn x, acc -> acc + x end)"
+      result = Transpiler.to_js(code)
+      assert result =~ "reduce"
+      assert result =~ "acc"
+      assert result =~ "+ x"
+    end
+
+    test "Enum.reduce with tuple destructuring" do
+      code = "Enum.reduce(@items, 0, fn {digit, index}, acc -> acc + digit end)"
+      result = Transpiler.to_js(code)
+      assert result =~ "reduce"
+      assert result =~ "[digit, index]"
+      assert result =~ "acc + digit"
+    end
+
+    test "Enum.map with tuple destructuring" do
+      code = "Enum.map(@items, fn {digit, index} -> digit + index end)"
+      result = Transpiler.to_js(code)
+      assert result =~ "map"
+      assert result =~ "[digit, index]"
+      assert result =~ "digit + index"
+    end
+
+    test "String.graphemes/1" do
+      assert Transpiler.to_js("String.graphemes(@text)") == "([...state.text])"
+    end
+
+    test "String.split/2" do
+      assert Transpiler.to_js(~s|String.split(@text, ",")|) ==
+               "(state.text.split(\",\"))"
+    end
+
+    test "piped Luhn-style operation" do
+      code = "@digits |> String.graphemes() |> Enum.reverse()"
+      result = Transpiler.to_js(code)
+      assert result =~ "[...state.digits]"
+      assert result =~ "reverse()"
+    end
+  end
+
+  describe "validate/1 - new constructs" do
+    test "validates rem/2" do
+      assert Transpiler.validate("rem(@n, 2)") == :ok
+    end
+
+    test "validates cond" do
+      code = """
+      cond do
+        @x > 10 -> "big"
+        true -> "small"
+      end
+      """
+
+      assert Transpiler.validate(code) == :ok
+    end
+
+    test "validates Enum.reverse" do
+      assert Transpiler.validate("Enum.reverse(@list)") == :ok
+    end
+
+    test "validates Enum.sum" do
+      assert Transpiler.validate("Enum.sum(@numbers)") == :ok
+    end
+
+    test "validates Enum.with_index" do
+      assert Transpiler.validate("Enum.with_index(@items)") == :ok
+    end
+
+    test "validates Enum.reduce" do
+      assert Transpiler.validate("Enum.reduce(@items, 0, fn x, acc -> acc + x end)") == :ok
+    end
+
+    test "validates String.graphemes" do
+      assert Transpiler.validate("String.graphemes(@text)") == :ok
+    end
+
+    test "validates String.split" do
+      assert Transpiler.validate(~s|String.split(@text, ",")|) == :ok
+    end
+  end
 end

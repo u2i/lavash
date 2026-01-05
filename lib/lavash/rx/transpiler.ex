@@ -109,6 +109,28 @@ defmodule Lavash.Rx.Transpiler do
     "(#{cond_js} ? #{do_js} : null)"
   end
 
+  # cond -> nested ternaries
+  # cond do
+  #   condition1 -> result1
+  #   condition2 -> result2
+  #   true -> default
+  # end
+  def ast_to_js({:cond, _, [[do: clauses]]}) do
+    cond_to_nested_ternary(clauses)
+  end
+
+  defp cond_to_nested_ternary([{:->, _, [[condition], result]}]) do
+    # Last clause - if condition is `true`, just return result, otherwise make ternary
+    case condition do
+      true -> ast_to_js(result)
+      _ -> "(#{ast_to_js(condition)} ? #{ast_to_js(result)} : null)"
+    end
+  end
+
+  defp cond_to_nested_ternary([{:->, _, [[condition], result]} | rest]) do
+    "(#{ast_to_js(condition)} ? #{ast_to_js(result)} : #{cond_to_nested_ternary(rest)})"
+  end
+
   # @variable -> state.variable
   def ast_to_js({:@, _, [{var_name, _, _}]}) when is_atom(var_name) do
     "state.#{var_name}"
@@ -174,6 +196,16 @@ defmodule Lavash.Rx.Transpiler do
   # String.trim(str) -> str.trim()
   def ast_to_js({{:., _, [{:__aliases__, _, [:String]}, :trim]}, _, [str]}) do
     "(#{ast_to_js(str)}.trim())"
+  end
+
+  # String.graphemes(str) -> [...str] (spread into array of chars)
+  def ast_to_js({{:., _, [{:__aliases__, _, [:String]}, :graphemes]}, _, [str]}) do
+    "([...#{ast_to_js(str)}])"
+  end
+
+  # String.split(str, pattern) -> str.split(pattern)
+  def ast_to_js({{:., _, [{:__aliases__, _, [:String]}, :split]}, _, [str, pattern]}) do
+    "(#{ast_to_js(str)}.split(#{ast_to_js(pattern)}))"
   end
 
   # String.match?(str, regex) -> regex.test(str)
@@ -274,6 +306,14 @@ defmodule Lavash.Rx.Transpiler do
     "(#{ast_to_js(list)}.map(#{var_str} => #{body_js}))"
   end
 
+  # Enum.map(list, fn {a, b} -> expr end) -> list.map(([a, b]) => expr) - tuple destructuring
+  def ast_to_js({{:., _, [{:__aliases__, _, [:Enum]}, :map]}, _, [list, {:fn, _, [{:->, _, [[{{var1, _, _}, {var2, _, _}}], body]}]}]}) do
+    var1_str = to_string(var1)
+    var2_str = to_string(var2)
+    body_js = ast_to_js(body)
+    "(#{ast_to_js(list)}.map(([#{var1_str}, #{var2_str}]) => #{body_js}))"
+  end
+
   # Enum.filter(list, fn x -> expr end) -> list.filter(x => expr)
   def ast_to_js({{:., _, [{:__aliases__, _, [:Enum]}, :filter]}, _, [list, {:fn, _, [{:->, _, [[{var, _, _}], body]}]}]}) do
     var_str = to_string(var)
@@ -292,6 +332,39 @@ defmodule Lavash.Rx.Transpiler do
   def ast_to_js({{:., _, [{:__aliases__, _, [:Enum]}, :reject]}, _, [list, {:&, _, [{:==, _, [{:&, _, [1]}, val]}]}]}) do
     val_js = ast_to_js(val)
     "(#{ast_to_js(list)}.filter(x => x !== #{val_js}))"
+  end
+
+  # Enum.reverse(list) -> [...list].reverse()
+  def ast_to_js({{:., _, [{:__aliases__, _, [:Enum]}, :reverse]}, _, [list]}) do
+    "([...#{ast_to_js(list)}].reverse())"
+  end
+
+  # Enum.sum(list) -> list.reduce((a, b) => a + b, 0)
+  def ast_to_js({{:., _, [{:__aliases__, _, [:Enum]}, :sum]}, _, [list]}) do
+    "(#{ast_to_js(list)}.reduce((a, b) => a + b, 0))"
+  end
+
+  # Enum.with_index(list) -> list.map((item, index) => [item, index])
+  def ast_to_js({{:., _, [{:__aliases__, _, [:Enum]}, :with_index]}, _, [list]}) do
+    "(#{ast_to_js(list)}.map((item, index) => [item, index]))"
+  end
+
+  # Enum.reduce(list, acc, fn {item, index}, acc -> ... end)
+  # Handle tuple destructuring in reduce for with_index pattern
+  def ast_to_js({{:., _, [{:__aliases__, _, [:Enum]}, :reduce]}, _, [list, initial, {:fn, _, [{:->, _, [[{{var1, _, _}, {var2, _, _}}, {acc_var, _, _}], body]}]}]}) do
+    var1_str = to_string(var1)
+    var2_str = to_string(var2)
+    acc_str = to_string(acc_var)
+    body_js = ast_to_js(body)
+    "(#{ast_to_js(list)}.reduce((#{acc_str}, [#{var1_str}, #{var2_str}]) => #{body_js}, #{ast_to_js(initial)}))"
+  end
+
+  # Enum.reduce(list, acc, fn item, acc -> ... end) - simple form
+  def ast_to_js({{:., _, [{:__aliases__, _, [:Enum]}, :reduce]}, _, [list, initial, {:fn, _, [{:->, _, [[{var, _, _}, {acc_var, _, _}], body]}]}]}) do
+    var_str = to_string(var)
+    acc_str = to_string(acc_var)
+    body_js = ast_to_js(body)
+    "(#{ast_to_js(list)}.reduce((#{acc_str}, #{var_str}) => #{body_js}, #{ast_to_js(initial)}))"
   end
 
   # Access.get style: item["key"]
@@ -361,6 +434,11 @@ defmodule Lavash.Rx.Transpiler do
       end
 
     "(#{ast_to_js(left)} #{js_op} #{ast_to_js(right)})"
+  end
+
+  # rem(a, b) -> (a % b)
+  def ast_to_js({:rem, _, [left, right]}) do
+    "(#{ast_to_js(left)} % #{ast_to_js(right)})"
   end
 
   # not operator
@@ -487,12 +565,32 @@ defmodule Lavash.Rx.Transpiler do
     end
   end
 
+  # cond expression
+  defp validate_ast({:cond, _, [[do: clauses]]}) do
+    Enum.reduce_while(clauses, :ok, fn {:->, _, [[condition], result]}, _acc ->
+      with :ok <- validate_ast(condition),
+           :ok <- validate_ast(result) do
+        {:cont, :ok}
+      else
+        error -> {:halt, error}
+      end
+    end)
+  end
+
+  # rem/2
+  defp validate_ast({:rem, _, [left, right]}) do
+    with :ok <- validate_ast(left),
+         :ok <- validate_ast(right) do
+      :ok
+    end
+  end
+
   # @variable references are always transpilable
   defp validate_ast({:@, _, [{_var_name, _, _}]}), do: :ok
 
   # Supported Enum functions
   defp validate_ast({{:., _, [{:__aliases__, _, [:Enum]}, func]}, _, args})
-       when func in [:member?, :count, :join, :map, :filter, :reject] do
+       when func in [:member?, :count, :join, :map, :filter, :reject, :reverse, :sum, :with_index, :reduce] do
     validate_all_args(args)
   end
 
@@ -529,7 +627,7 @@ defmodule Lavash.Rx.Transpiler do
   # Supported String functions
   defp validate_ast({{:., _, [{:__aliases__, _, modules}, func]}, _, args})
        when modules in [[:String], [:Lavash, :String]] and
-            func in [:length, :to_float, :to_integer, :trim, :match?, :contains?, :starts_with?, :ends_with?, :replace, :slice, :chunk] do
+            func in [:length, :to_float, :to_integer, :trim, :match?, :contains?, :starts_with?, :ends_with?, :replace, :slice, :chunk, :graphemes, :split] do
     validate_all_args(args)
   end
 
@@ -618,8 +716,23 @@ defmodule Lavash.Rx.Transpiler do
     end)
   end
 
-  # Anonymous function (used in Enum.map, etc.)
+  # Anonymous function with single arg (used in Enum.map, etc.)
   defp validate_ast({:fn, _, [{:->, _, [[_arg], body]}]}) do
+    validate_ast(body)
+  end
+
+  # Anonymous function with two args (used in Enum.reduce, etc.)
+  defp validate_ast({:fn, _, [{:->, _, [[_arg1, _arg2], body]}]}) do
+    validate_ast(body)
+  end
+
+  # Anonymous function with tuple destructuring in reduce (used in Enum.reduce with with_index)
+  defp validate_ast({:fn, _, [{:->, _, [[{_var1, _var2}, _acc], body]}]}) do
+    validate_ast(body)
+  end
+
+  # Anonymous function with single tuple arg (used in Enum.map with with_index result)
+  defp validate_ast({:fn, _, [{:->, _, [[{_var1, _var2}], body]}]}) do
     validate_ast(body)
   end
 
