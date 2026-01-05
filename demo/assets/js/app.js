@@ -26,22 +26,18 @@ import topbar from "../vendor/topbar"
 // morphdom for efficient DOM diffing (used by Shadow DOM components)
 import morphdom from "../vendor/morphdom"
 window.morphdom = morphdom
-// SyncedVar for optimistic state synchronization
-import "./synced_var.js"
-// ModalAnimator for modal-specific DOM manipulation
-import { ModalAnimator } from "./modal_animator.js"
+// Lavash optimistic UI library
+import { SyncedVar, LavashOptimistic, ModalAnimator } from "lavash"
 // Colocated hooks from Lavash library
 import {hooks as lavashHooks} from "phoenix-colocated/lavash"
 // Lavash optimistic functions - auto-generated at compile time
 import lavashOptimisticFns from "./lavash-optimistic/index.js"
-// Lavash optimistic hook for URL sync
-import {LavashOptimistic} from "./lavash_optimistic"
 
-// Register optimistic functions from compile-time generation
-// Functions are keyed by module name (e.g., "DemoWeb.CheckoutDemoLive")
+// Register Lavash on window for colocated hooks and generated optimistic functions
 window.Lavash = window.Lavash || {};
-window.Lavash.optimistic = lavashOptimisticFns;
+window.Lavash.SyncedVar = SyncedVar;
 window.Lavash.ModalAnimator = ModalAnimator;
+window.Lavash.optimistic = lavashOptimisticFns;
 
 // Merge hooks from Lavash library and app-specific hooks
 const colocatedHooks = {
