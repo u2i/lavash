@@ -464,12 +464,18 @@ defmodule Lavash.ClientComponent.Compiler do
           if (value !== undefined) {
             parentHook.state[parentField] = value;
             // Mark as pending so parent rejects stale server patches for this field
-            parentHook.pending[parentField] = value;
+            // Use SyncedVarStore if available (new architecture), fallback to pending map
+            if (parentHook.store) {
+              const syncedVar = parentHook.store.get(parentField, value);
+              syncedVar.setOptimistic(value);
+            } else if (parentHook.pending) {
+              parentHook.pending[parentField] = value;
+            }
             changedFields.push(parentField);
           }
         }
         // Bump parent's client version so stale server patches are rejected
-        if (changedFields.length > 0) {
+        if (changedFields.length > 0 && parentHook.clientVersion !== undefined) {
           parentHook.clientVersion++;
         }
         // Recompute parent's derives that depend on the changed fields
