@@ -10,64 +10,17 @@ defmodule DemoWeb.CheckoutDemoLive do
   - `data-lavash-visible` for conditional section visibility
   - `data-lavash-display` for reactive text updates
   - `extend_errors` for custom validation messages beyond Ash constraints
-  - `defrx` for reusable reactive validation functions
+  - `import_rx` for importing reusable reactive validation functions
   """
   use Lavash.LiveView
   import Lavash.Rx
   import Lavash.LiveView.Components
 
-  alias Demo.Forms.Payment
-
-  # ─────────────────────────────────────────────────────────────────
-  # Reusable Reactive Functions (defrx)
+  # Import credit card validators (valid_card_number?, valid_expiry?, valid_cvv?)
   # These are expanded inline at each call site and transpiled to JS
-  # ─────────────────────────────────────────────────────────────────
+  import_rx Demo.Validators.CreditCard
 
-  # Validates expiration date: MM must be 01-12 and total length must be 4 digits
-  defrx valid_expiry?(digits) do
-    String.length(digits) == 4 &&
-      String.to_integer(String.slice(digits, 0, 2) || "0") >= 1 &&
-      String.to_integer(String.slice(digits, 0, 2) || "0") <= 12
-  end
-
-  # Validates CVV length based on card type (4 for Amex, 3 for others)
-  defrx valid_cvv?(digits, is_amex) do
-    if(is_amex, do: String.length(digits) == 4, else: String.length(digits) == 3)
-  end
-
-  # Expected length for each card type (15 for Amex, 16 for others)
-  defrx expected_card_length(is_amex) do
-    if(is_amex, do: 15, else: 16)
-  end
-
-  # Luhn checksum - processes reversed digits with doubling at odd indices
-  # Takes reversed list of digit integers, returns sum
-  # Note: No intermediate variables allowed in defrx - must be single expression
-  defrx luhn_sum(digits_reversed) do
-    Enum.sum(
-      Enum.map(
-        Enum.with_index(digits_reversed),
-        fn {digit, index} ->
-          if(rem(index, 2) == 1,
-            do: if(digit * 2 > 9, do: digit * 2 - 9, else: digit * 2),
-            else: digit
-          )
-        end
-      )
-    )
-  end
-
-  # Convert digits string to reversed integer array for Luhn calculation
-  defrx digits_to_reversed_ints(digits) do
-    Enum.reverse(Enum.map(String.graphemes(digits), fn d -> String.to_integer(d) end))
-  end
-
-  # Full card number validation: all digits, correct length, passes Luhn
-  defrx valid_card_number?(digits, is_amex) do
-    String.match?(digits, ~r/^\d+$/) &&
-      String.length(digits) == expected_card_length(is_amex) &&
-      rem(luhn_sum(digits_to_reversed_ints(digits)), 10) == 0
-  end
+  alias Demo.Forms.Payment
 
   # ─────────────────────────────────────────────────────────────────
   # State
@@ -145,11 +98,10 @@ defmodule DemoWeb.CheckoutDemoLive do
   calculate :show_discover, rx(@is_discover or not @has_card_type)
 
   # ─────────────────────────────────────────────────────────────────
-  # Validation (using defrx functions defined above)
+  # Validation (using imported defrx functions from Demo.Validators.CreditCard)
   # ─────────────────────────────────────────────────────────────────
 
   # Card number: validates all-digits, length for card type, and Luhn checksum
-  # Uses defrx valid_card_number? which expands inline and transpiles to JS
   calculate :card_number_valid,
     rx(@payment_card_number_valid && valid_card_number?(@card_number_digits, @is_amex))
 

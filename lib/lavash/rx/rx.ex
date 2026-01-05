@@ -29,15 +29,36 @@ defmodule Lavash.Rx do
   Use `defrx` to define functions that can be called within `rx()` expressions:
 
       defrx valid_expiry?(digits) do
-        month_str = String.slice(digits, 0, 2)
-        has_month = String.length(month_str) == 2
-        month_int = if(has_month, do: String.to_integer(month_str), else: 0)
-        month_int >= 1 && month_int <= 12 && String.length(digits) == 4
+        String.length(digits) == 4 &&
+          String.to_integer(String.slice(digits, 0, 2) || "0") >= 1 &&
+          String.to_integer(String.slice(digits, 0, 2) || "0") <= 12
       end
 
       calculate :expiry_valid, rx(valid_expiry?(@expiry_digits))
 
   The function body is expanded inline at each call site.
+
+  ## Importing defrx functions from other modules
+
+  Create a module with reusable defrx functions:
+
+      defmodule MyApp.Validators do
+        use Lavash.Rx.Functions
+
+        defrx valid_email?(email) do
+          String.length(email) > 0 && String.contains?(email, "@")
+        end
+      end
+
+  Then import them in your LiveView:
+
+      defmodule MyAppWeb.FormLive do
+        use Lavash.LiveView
+        import Lavash.Rx
+        import_rx MyApp.Validators
+
+        calculate :email_valid, rx(valid_email?(@email))
+      end
 
   ## Fields
 
@@ -56,16 +77,17 @@ defmodule Lavash.Rx do
   ## Examples
 
       defrx valid_expiry?(digits) do
-        month_str = String.slice(digits, 0, 2)
-        has_month = String.length(month_str) == 2
-        month_int = if(has_month, do: String.to_integer(month_str), else: 0)
-        month_int >= 1 && month_int <= 12 && String.length(digits) == 4
+        String.length(digits) == 4 &&
+          String.to_integer(String.slice(digits, 0, 2) || "0") >= 1 &&
+          String.to_integer(String.slice(digits, 0, 2) || "0") <= 12
       end
 
       defrx valid_cvv?(digits, is_amex) do
-        len = String.length(digits)
-        if(is_amex, do: len == 4, else: len == 3)
+        if(is_amex, do: String.length(digits) == 4, else: String.length(digits) == 3)
       end
+
+  Note: defrx bodies must be single expressions. Variable assignments like
+  `len = String.length(digits)` are not supported.
   """
   defmacro defrx({name, _, params}, do: body) when is_atom(name) do
     param_names = for {p, _, _} <- params || [], do: p
@@ -79,6 +101,43 @@ defmodule Lavash.Rx do
       # - body_source is used by ColocatedTransformer for JS expansion
       Module.register_attribute(__MODULE__, :lavash_defrx, accumulate: true)
       @lavash_defrx {unquote(name), unquote(arity), unquote(param_names), unquote(Macro.escape(body)), unquote(body_source)}
+    end
+  end
+
+  @doc """
+  Imports defrx functions from another module.
+
+  The imported functions become available for use in `rx()` expressions
+  in the current module.
+
+  ## Example
+
+      defmodule MyApp.Validators do
+        use Lavash.Rx.Functions
+
+        defrx valid_email?(email) do
+          String.length(email) > 0 && String.contains?(email, "@")
+        end
+      end
+
+      defmodule MyAppWeb.UserLive do
+        use Lavash.LiveView
+        import Lavash.Rx
+        import_rx MyApp.Validators
+
+        calculate :email_valid, rx(valid_email?(@email))
+      end
+
+  You can also import only specific functions:
+
+      import_rx MyApp.Validators, only: [valid_email?: 1]
+
+  """
+  defmacro import_rx(module, opts \\ []) do
+    quote do
+      # Register the import for use during DSL compilation
+      Module.register_attribute(__MODULE__, :lavash_defrx_imports, accumulate: true)
+      @lavash_defrx_imports {unquote(module), unquote(opts)}
     end
   end
 
@@ -97,12 +156,17 @@ defmodule Lavash.Rx do
   """
   defmacro rx(body) do
     # Look up defrx definitions from the calling module (if available at compile time)
-    defrx_defs = Module.get_attribute(__CALLER__.module, :lavash_defrx) || []
+    local_defs = Module.get_attribute(__CALLER__.module, :lavash_defrx) || []
+
+    # Look up imported defrx definitions
+    imports = Module.get_attribute(__CALLER__.module, :lavash_defrx_imports) || []
+    imported_defs = collect_imported_defrx(imports)
 
     # Build a map of {name, arity} -> {params, body_ast}
+    # Local definitions override imports
     # Format from defrx: {name, arity, params, body_ast, body_source}
     defrx_map =
-      Enum.reduce(defrx_defs, %{}, fn {name, arity, params, body_ast, _body_source}, acc ->
+      Enum.reduce(imported_defs ++ local_defs, %{}, fn {name, arity, params, body_ast, _body_source}, acc ->
         Map.put(acc, {name, arity}, {params, body_ast})
       end)
 
@@ -122,6 +186,29 @@ defmodule Lavash.Rx do
     end
   end
 
+  # Collect defrx definitions from imported modules
+  defp collect_imported_defrx(imports) do
+    Enum.flat_map(imports, fn {module, opts} ->
+      try do
+        defs = module.__defrx_definitions__()
+
+        case Keyword.get(opts, :only) do
+          nil ->
+            defs
+
+          only_list ->
+            Enum.filter(defs, fn {name, arity, _, _, _} ->
+              {name, arity} in only_list
+            end)
+        end
+      rescue
+        UndefinedFunctionError ->
+          # Module doesn't export defrx definitions
+          []
+      end
+    end)
+  end
+
   # Expand calls to defrx-defined functions by substituting params with args
   defp expand_defrx_calls({name, meta, args}, defrx_map) when is_atom(name) and is_list(args) do
     arity = length(args)
@@ -131,7 +218,9 @@ defmodule Lavash.Rx do
       {params, body} ->
         # Substitute params with args in the body
         substitutions = Enum.zip(params, expanded_args) |> Map.new()
-        substitute_vars(body, substitutions)
+        substituted = substitute_vars(body, substitutions)
+        # Recursively expand any nested defrx calls in the substituted body
+        expand_defrx_calls(substituted, defrx_map)
 
       nil ->
         {name, meta, expanded_args}

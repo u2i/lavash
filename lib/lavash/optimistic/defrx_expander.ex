@@ -29,20 +29,49 @@ defmodule Lavash.Optimistic.DefrxExpander do
     end
   end
 
-  # Get defrx definitions from module attributes
+  # Get defrx definitions from module attributes (local and imported)
   defp get_defrx_map(dsl_state) do
     env = Spark.Dsl.Transformer.get_persisted(dsl_state, :env)
 
     if env do
+      # Get local defrx definitions
       # Format: {name, arity, params, body_ast, body_source}
-      defrx_list = Module.get_attribute(env.module, :lavash_defrx) || []
+      local_defs = Module.get_attribute(env.module, :lavash_defrx) || []
 
-      Enum.reduce(defrx_list, %{}, fn {name, arity, params, body_ast, _body_source}, acc ->
+      # Get imported defrx definitions
+      imports = Module.get_attribute(env.module, :lavash_defrx_imports) || []
+      imported_defs = collect_imported_defrx(imports)
+
+      # Build map with imports first, then locals (locals override imports)
+      Enum.reduce(imported_defs ++ local_defs, %{}, fn {name, arity, params, body_ast, _body_source}, acc ->
         Map.put(acc, {name, arity}, {params, body_ast})
       end)
     else
       %{}
     end
+  end
+
+  # Collect defrx definitions from imported modules
+  defp collect_imported_defrx(imports) do
+    Enum.flat_map(imports, fn {module, opts} ->
+      try do
+        defs = module.__defrx_definitions__()
+
+        case Keyword.get(opts, :only) do
+          nil ->
+            defs
+
+          only_list ->
+            Enum.filter(defs, fn {name, arity, _, _, _} ->
+              {name, arity} in only_list
+            end)
+        end
+      rescue
+        UndefinedFunctionError ->
+          # Module doesn't export defrx definitions
+          []
+      end
+    end)
   end
 
   # Expand defrx calls in all calculations
@@ -118,7 +147,9 @@ defmodule Lavash.Optimistic.DefrxExpander do
       {params, body_ast} ->
         # Substitute params with args in the body
         substitutions = Enum.zip(params, expanded_args) |> Map.new()
-        substitute_vars(body_ast, substitutions)
+        substituted = substitute_vars(body_ast, substitutions)
+        # Recursively expand any nested defrx calls in the substituted body
+        do_expand_ast(substituted, defrx_map)
 
       nil ->
         {name, meta, expanded_args}
