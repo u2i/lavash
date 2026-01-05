@@ -108,12 +108,12 @@ defmodule Lavash.Modal.Helpers do
         >
           {render_slot(@loading)}
         </div>
-        <%!-- Main content - starts invisible, JS controls opacity --%>
+        <%!-- Main content - client controls opacity via class/style --%>
         <div
           id={"#{@id}-main_content"}
           phx-mounted={JS.ignore_attributes(["class", "style"])}
           data-active-if-open={to_string(@is_open)}
-          class="row-start-1 col-start-1 opacity-0 bg-base-100"
+          class="row-start-1 col-start-1"
         >
           <div :if={@is_open} id={"#{@id}-main_content_inner"}>
             {render_slot(@inner_block)}
@@ -179,6 +179,9 @@ defmodule Lavash.Modal.Helpers do
             const initialValue = JSON.parse(this.el.dataset.openValue || "null");
             this.openState = new SyncedVar(initialValue, (newValue, oldValue, source) => {
               // In standalone mode, directly control animator
+              // Ignore 'confirmed' source - it just confirms what we already did optimistically
+              if (source === 'confirmed') return;
+
               const wasOpen = oldValue != null;
               const isOpen = newValue != null;
 

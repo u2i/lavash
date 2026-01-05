@@ -103,6 +103,21 @@ export class FlipAnimator {
   }
 
   /**
+   * Clear captured rect without releasing lock.
+   * Call this if you captured without lock and don't need to animate.
+   */
+  clearCapture() {
+    this._firstRect = null;
+  }
+
+  /**
+   * Check if we have a captured rect (whether locked or not).
+   */
+  hasCapture() {
+    return this._firstRect != null;
+  }
+
+  /**
    * Animate to a target size.
    *
    * @param {number} targetWidth - Target width in pixels

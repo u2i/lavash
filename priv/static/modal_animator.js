@@ -197,13 +197,8 @@ export class ModalAnimator {
    */
   capturePreUpdateRect() {
     if (this.panelContent && this.getLoadingContent()) {
-      // Use FlipAnimator to capture and lock
-      this._flipAnimator.captureFirstAndLock();
-
-      // Also disable overlay transitions during the update
-      if (this.overlay) {
-        this.overlay.style.transition = "none";
-      }
+      // Just capture rect like baseline - don't lock, that causes flash
+      this._flipAnimator.captureFirst();
     }
   }
 
@@ -212,60 +207,104 @@ export class ModalAnimator {
    * Call this at the end of updated() if FLIP didn't run.
    */
   releaseSizeLockIfNeeded() {
-    if (this._flipAnimator.isSizeLocked()) {
-      this._flipAnimator.releaseSizeLock();
-      if (this.overlay) {
-        this.overlay.style.removeProperty("transition");
-      }
-    }
+    // Clear captured rect if FLIP didn't run
+    this._flipAnimator.clearCapture();
   }
 
   /**
    * Run FLIP animation if panel size changed.
-   * Call this after content arrives (in onAsyncReady or onUpdate).
+   * Uses CSS transforms like the baseline for GPU-accelerated animation.
    */
   _runFlipAnimation() {
     const loadEl = this.getLoadingContent();
     const mainInnerEl = this.getMainContentInner();
     const mainContent = this.getMainContentContainer();
+    const firstRect = this._flipAnimator._firstRect;
 
-    console.log(`ModalAnimator _runFlipAnimation: mainInnerEl=${!!mainInnerEl}, loadEl=${!!loadEl}, sizeLocked=${this._flipAnimator.isSizeLocked()}`);
+    console.log(`ModalAnimator _runFlipAnimation: mainInnerEl=${!!mainInnerEl}, loadEl=${!!loadEl}, hasCapture=${!!firstRect}`);
 
-    // Helper to swap content visibility
-    const swapContent = () => {
-      // Show main content BEFORE hiding loading to prevent any gap
+    // Always hide loading if loadEl exists, even without flip animation
+    if (loadEl && !loadEl.classList.contains("hidden")) {
+      console.log(`ModalAnimator _runFlipAnimation: hiding loading`);
+      // Hide loading with transition (classList with Tailwind classes)
+      loadEl.classList.add("transition-opacity", "duration-200");
+      loadEl.offsetHeight;
+      loadEl.classList.remove("opacity-100");
+      loadEl.classList.add("opacity-0");
+      // Add hidden class after transition
+      setTimeout(() => {
+        loadEl.classList.add("hidden");
+        loadEl.classList.remove("transition-opacity", "duration-200");
+      }, 200);
+      // Also show main content
       if (mainContent) {
+        mainContent.classList.add("transition-opacity", "duration-200");
+        mainContent.offsetHeight;
         mainContent.classList.remove("opacity-0");
         mainContent.classList.add("opacity-100");
       }
-      // Now hide loading (main is already visible underneath in grid)
-      if (loadEl && !loadEl.classList.contains("hidden")) {
-        loadEl.classList.add("hidden", "opacity-0");
-        loadEl.classList.remove("opacity-100");
-      }
-    };
+    }
 
-    // Helper to restore overlay transitions
-    const restoreOverlay = () => {
-      if (this.overlay) {
-        this.overlay.style.removeProperty("transition");
-      }
-    };
-
-    // If no FLIP capture or no content to measure, just swap content
-    if (!this._flipAnimator.isSizeLocked() || !this.panelContent || !loadEl || !mainInnerEl) {
-      this._flipAnimator.releaseSizeLock();
-      restoreOverlay();
-      swapContent();
+    // Clear capture and bail if no FLIP needed
+    if (!firstRect || !this.panelContent || !loadEl) {
+      this._flipAnimator.clearCapture();
       return;
     }
 
-    // Use FlipAnimator to animate to content size
-    this._flipAnimator.animateToContentSize(mainInnerEl, {
-      onBeforeAnimate: () => {
-        restoreOverlay();
-        swapContent();
-      }
+    const lastRect = this.panelContent.getBoundingClientRect();
+    this._flipAnimator.clearCapture();
+
+    // Skip if size didn't change significantly
+    if (
+      Math.abs(firstRect.width - lastRect.width) < 1 &&
+      Math.abs(firstRect.height - lastRect.height) < 1
+    ) {
+      return;
+    }
+
+    // Calculate FLIP transform values
+    const sX = lastRect.width === 0 ? 1 : firstRect.width / lastRect.width;
+    const sY = lastRect.height === 0 ? 1 : firstRect.height / lastRect.height;
+    const dX = firstRect.left - lastRect.left + (firstRect.width - lastRect.width) / 2;
+    const dY = firstRect.top - lastRect.top + (firstRect.height - lastRect.height) / 2;
+
+    // Set up loading element inverse transform
+    loadEl.style.transition = "none";
+    loadEl.style.transform = `scale(${1 / sX},${1 / sY})`;
+    loadEl.style.transformOrigin = "top left";
+
+    // Set CSS custom properties for the animation
+    this.panelContent.style.setProperty("--flip-translate-x", `${dX}px`);
+    this.panelContent.style.setProperty("--flip-translate-y", `${dY}px`);
+    this.panelContent.style.setProperty("--flip-scale-x", sX);
+    this.panelContent.style.setProperty("--flip-scale-y", sY);
+    this.panelContent.style.setProperty("--flip-duration", `${this.duration}ms`);
+
+    // Apply initial transform (Invert step)
+    this.panelContent.classList.add("transition-none", "origin-center");
+    this.panelContent.style.transform = `translate(var(--flip-translate-x), var(--flip-translate-y)) scale(var(--flip-scale-x), var(--flip-scale-y))`;
+
+    // Force reflow then animate (Play step)
+    this.panelContent.offsetHeight;
+    requestAnimationFrame(() => {
+      this.panelContent.classList.remove("transition-none");
+      this.panelContent.classList.add("transition-all", "ease-in-out");
+      this.panelContent.style.transitionDuration = "var(--flip-duration)";
+      this.panelContent.style.transform = "";
+
+      this.panelContent.addEventListener(
+        "transitionend",
+        () => {
+          this.panelContent.classList.remove("transition-all", "ease-in-out", "origin-center");
+          this.panelContent.style.removeProperty("transition-duration");
+          this.panelContent.style.removeProperty("--flip-translate-x");
+          this.panelContent.style.removeProperty("--flip-translate-y");
+          this.panelContent.style.removeProperty("--flip-scale-x");
+          this.panelContent.style.removeProperty("--flip-scale-y");
+          this.panelContent.style.removeProperty("--flip-duration");
+        },
+        { once: true }
+      );
     });
   }
 
@@ -450,7 +489,7 @@ export class ModalAnimator {
 
     // Clean up animations
     this._cleanupCloseAnimation();
-    this._flipAnimator.releaseSizeLock();
+    this._flipAnimator.clearCapture();
     this._ghostInsertedInBeforeUpdate = false;
     this._preUpdateContentClone = null;
 
