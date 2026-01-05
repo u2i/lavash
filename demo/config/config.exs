@@ -33,16 +33,17 @@ config :demo, DemoWeb.Endpoint,
   live_view: [signing_salt: "31nKzofp"]
 
 # Configure esbuild (the version is required)
-# NODE_PATH includes build_path for colocated hooks from libraries
-# --alias:lavash resolves to the library's priv/static for JS imports
+# NODE_PATH includes:
+# - deps/ for hex dependencies (phoenix, phoenix_live_view, etc.)
+# - assets/vendor/ for phoenix-colocated hooks
+# --alias:lavash resolves to the library's priv/static/ directory (has package.json)
 config :esbuild,
   version: "0.17.11",
   demo: [
     args:
-      ~w(js/app.js --bundle --target=es2022 --outdir=../priv/static/assets/js --external:/fonts/* --external:/images/* --alias:@=. --alias:lavash=../../priv/static/index.js),
+      ~w(js/app.js --bundle --target=es2022 --outdir=../priv/static/assets/js --external:/fonts/* --external:/images/* --alias:@=. --alias:lavash=../../priv/static),
     cd: Path.expand("../assets", __DIR__),
     env: %{
-      # vendor/ contains phoenix-colocated (via :colocated_js config above)
       "NODE_PATH" =>
         Enum.join(
           [

@@ -1,0 +1,26 @@
+{
+  "name": "lavash",
+  "version": "0.1.0",
+  "description": "Optimistic UI primitives for Phoenix LiveView",
+  "license": "MIT",
+  "type": "module",
+  "module": "./index.js",
+  "main": "./index.js",
+  "exports": {
+    ".": {
+      "import": "./index.js",
+      "default": "./index.js"
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/yourusername/lavash.git"
+  },
+  "keywords": [
+    "phoenix",
+    "liveview",
+    "optimistic",
+    "ui",
+    "elixir"
+  ]
+}
