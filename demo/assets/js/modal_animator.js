@@ -20,6 +20,8 @@
  *   animatedState.setDelegate(animator);
  */
 
+import { FlipAnimator } from "./flip_animator.js";
+
 export class ModalAnimator {
   /**
    * Create a ModalAnimator.
@@ -48,9 +50,14 @@ export class ModalAnimator {
     // Ghost element state
     this.ghostElement = null;
     this._ghostOverlay = null;
-    this._flipPreRect = null;
     this._ghostInsertedInBeforeUpdate = false;
     this._preUpdateContentClone = null;
+
+    // FLIP animator for size transitions
+    this._flipAnimator = new FlipAnimator(this.panelContent, {
+      duration: this.duration,
+      easing: 'ease-in-out'
+    });
 
     // IDs for onBeforeElUpdated detection
     this._mainContentId = `${id}-main_content`;
@@ -190,16 +197,10 @@ export class ModalAnimator {
    */
   capturePreUpdateRect() {
     if (this.panelContent && this.getLoadingContent()) {
-      this._flipPreRect = this.panelContent.getBoundingClientRect();
-      this._sizeLockApplied = true;
+      // Use FlipAnimator to capture and lock
+      this._flipAnimator.captureFirstAndLock();
 
-      // CRITICAL: Lock the panel to its current size to prevent flash during DOM patch
-      // This ensures the panel doesn't visually resize until we explicitly animate it
-      this.panelContent.style.width = `${this._flipPreRect.width}px`;
-      this.panelContent.style.height = `${this._flipPreRect.height}px`;
-
-      // Disable all transitions during the update to prevent any flash
-      this.panelContent.style.transition = "none";
+      // Also disable overlay transitions during the update
       if (this.overlay) {
         this.overlay.style.transition = "none";
       }
@@ -211,13 +212,8 @@ export class ModalAnimator {
    * Call this at the end of updated() if FLIP didn't run.
    */
   releaseSizeLockIfNeeded() {
-    if (this._sizeLockApplied) {
-      this._sizeLockApplied = false;
-      if (this.panelContent) {
-        this.panelContent.style.removeProperty("width");
-        this.panelContent.style.removeProperty("height");
-        this.panelContent.style.removeProperty("transition");
-      }
+    if (this._flipAnimator.isSizeLocked()) {
+      this._flipAnimator.releaseSizeLock();
       if (this.overlay) {
         this.overlay.style.removeProperty("transition");
       }
@@ -233,118 +229,43 @@ export class ModalAnimator {
     const mainInnerEl = this.getMainContentInner();
     const mainContent = this.getMainContentContainer();
 
-    console.log(`ModalAnimator _runFlipAnimation: mainInnerEl=${!!mainInnerEl}, loadEl=${!!loadEl}, _flipPreRect=${!!this._flipPreRect}`);
+    console.log(`ModalAnimator _runFlipAnimation: mainInnerEl=${!!mainInnerEl}, loadEl=${!!loadEl}, sizeLocked=${this._flipAnimator.isSizeLocked()}`);
 
-    // Helper to release size lock and restore transitions
-    const releaseSizeLock = () => {
-      this._sizeLockApplied = false;
-      if (this.panelContent) {
-        this.panelContent.style.removeProperty("width");
-        this.panelContent.style.removeProperty("height");
-        this.panelContent.style.removeProperty("transition");
+    // Helper to swap content visibility
+    const swapContent = () => {
+      // Show main content BEFORE hiding loading to prevent any gap
+      if (mainContent) {
+        mainContent.classList.remove("opacity-0");
+        mainContent.classList.add("opacity-100");
       }
+      // Now hide loading (main is already visible underneath in grid)
+      if (loadEl && !loadEl.classList.contains("hidden")) {
+        loadEl.classList.add("hidden", "opacity-0");
+        loadEl.classList.remove("opacity-100");
+      }
+    };
+
+    // Helper to restore overlay transitions
+    const restoreOverlay = () => {
       if (this.overlay) {
         this.overlay.style.removeProperty("transition");
       }
     };
 
-    // If no FLIP rect captured or no panel, just do content swap
-    if (!this._flipPreRect || !this.panelContent || !loadEl) {
-      this._flipPreRect = null;
-      releaseSizeLock();
-
-      // Still need to swap content visibility
-      if (loadEl && !loadEl.classList.contains("hidden")) {
-        loadEl.classList.add("hidden", "opacity-0");
-        loadEl.classList.remove("opacity-100");
-      }
-      if (mainContent) {
-        mainContent.classList.remove("opacity-0");
-        mainContent.classList.add("opacity-100");
-      }
+    // If no FLIP capture or no content to measure, just swap content
+    if (!this._flipAnimator.isSizeLocked() || !this.panelContent || !loadEl || !mainInnerEl) {
+      this._flipAnimator.releaseSizeLock();
+      restoreOverlay();
+      swapContent();
       return;
     }
 
-    const firstRect = this._flipPreRect;
-    this._flipPreRect = null;
-
-    // Measure the new content size while panel is still locked at old size
-    // We measure the main content inner element to get the natural size
-    let targetWidth = firstRect.width;
-    let targetHeight = firstRect.height;
-
-    if (mainInnerEl) {
-      // Get the scroll dimensions of the content
-      targetWidth = mainInnerEl.scrollWidth;
-      targetHeight = mainInnerEl.scrollHeight;
-
-      // Account for panel padding by measuring the difference
-      const panelStyle = getComputedStyle(this.panelContent);
-      const paddingX = parseFloat(panelStyle.paddingLeft) + parseFloat(panelStyle.paddingRight);
-      const paddingY = parseFloat(panelStyle.paddingTop) + parseFloat(panelStyle.paddingBottom);
-
-      // The target size is the content plus padding (panel's natural size with new content)
-      targetWidth = targetWidth + paddingX;
-      targetHeight = targetHeight + paddingY;
-    }
-
-    // Skip if size didn't change significantly
-    if (
-      Math.abs(firstRect.width - targetWidth) < 1 &&
-      Math.abs(firstRect.height - targetHeight) < 1
-    ) {
-      releaseSizeLock();
-      // Still swap content visibility
-      if (loadEl && !loadEl.classList.contains("hidden")) {
-        loadEl.classList.add("hidden", "opacity-0");
-        loadEl.classList.remove("opacity-100");
+    // Use FlipAnimator to animate to content size
+    this._flipAnimator.animateToContentSize(mainInnerEl, {
+      onBeforeAnimate: () => {
+        restoreOverlay();
+        swapContent();
       }
-      if (mainContent) {
-        mainContent.classList.remove("opacity-0");
-        mainContent.classList.add("opacity-100");
-      }
-      return;
-    }
-
-    // Panel is still locked at old size, swap content visibility ATOMICALLY
-    // Show main content BEFORE hiding loading to prevent any gap
-    if (mainContent) {
-      mainContent.classList.remove("opacity-0");
-      mainContent.classList.add("opacity-100");
-    }
-    // Now hide loading (main is already visible underneath in grid)
-    if (loadEl && !loadEl.classList.contains("hidden")) {
-      loadEl.classList.add("hidden", "opacity-0");
-      loadEl.classList.remove("opacity-100");
-    }
-
-    // Mark size lock as released since we're starting animation
-    this._sizeLockApplied = false;
-
-    // Animate to new size
-    requestAnimationFrame(() => {
-      // Re-enable transitions for the animation
-      this.panelContent.style.transition = "";
-      if (this.overlay) {
-        this.overlay.style.transition = "";
-      }
-
-      this.panelContent.classList.add("transition-all", "ease-in-out");
-      this.panelContent.style.transitionDuration = `${this.duration}ms`;
-      this.panelContent.style.width = `${targetWidth}px`;
-      this.panelContent.style.height = `${targetHeight}px`;
-
-      this.panelContent.addEventListener(
-        "transitionend",
-        (e) => {
-          if (e.target !== this.panelContent) return;
-          this.panelContent.classList.remove("transition-all", "ease-in-out");
-          this.panelContent.style.removeProperty("transition-duration");
-          this.panelContent.style.removeProperty("width");
-          this.panelContent.style.removeProperty("height");
-        },
-        { once: true }
-      );
     });
   }
 
@@ -529,7 +450,7 @@ export class ModalAnimator {
 
     // Clean up animations
     this._cleanupCloseAnimation();
-    this._flipPreRect = null;
+    this._flipAnimator.releaseSizeLock();
     this._ghostInsertedInBeforeUpdate = false;
     this._preUpdateContentClone = null;
 
@@ -598,6 +519,7 @@ export class ModalAnimator {
    */
   destroy() {
     this._cleanupCloseAnimation();
+    this._flipAnimator.destroy();
     if (this.panelContent && this._transitionHandler) {
       this.panelContent.removeEventListener("transitionend", this._transitionHandler);
     }
