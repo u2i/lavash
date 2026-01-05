@@ -1,4 +1,4 @@
-defmodule Lavash.Validators do
+defmodule Lavash.Rx.Validators do
   @moduledoc """
   Validation functions that work both server-side (Elixir) and client-side (transpiled to JS).
 

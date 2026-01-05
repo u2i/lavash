@@ -98,7 +98,7 @@ defmodule Lavash.Component.Dsl do
 
   @state_entity %Spark.Dsl.Entity{
     name: :state,
-    target: Lavash.StateField,
+    target: Lavash.State.Field,
     args: [:name, :type],
     schema: [
       name: [
@@ -239,7 +239,7 @@ defmodule Lavash.Component.Dsl do
 
   @form_entity %Spark.Dsl.Entity{
     name: :form,
-    target: Lavash.FormStep,
+    target: Lavash.Form.Step,
     args: [:name, :resource],
     schema: [
       name: [

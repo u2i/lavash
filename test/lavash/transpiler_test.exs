@@ -1,7 +1,7 @@
-defmodule Lavash.TranspilerTest do
+defmodule Lavash.Rx.TranspilerTest do
   use ExUnit.Case, async: true
 
-  alias Lavash.Transpiler
+  alias Lavash.Rx.Transpiler
 
   describe "to_js/1 - literals" do
     test "string literals" do
@@ -233,7 +233,7 @@ defmodule Lavash.TranspilerTest do
 
     test "valid_card_number?" do
       assert Transpiler.to_js("valid_card_number?(@digits)") ==
-               "Lavash.Validators.validCardNumber(state.digits)"
+               "Lavash.Rx.Validators.validCardNumber(state.digits)"
     end
   end
 

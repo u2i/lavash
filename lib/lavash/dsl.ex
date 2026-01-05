@@ -67,7 +67,7 @@ defmodule Lavash.Dsl do
 
   @state_entity %Spark.Dsl.Entity{
     name: :state,
-    target: Lavash.StateField,
+    target: Lavash.State.Field,
     args: [:name, :type],
     schema: [
       name: [
@@ -148,7 +148,7 @@ defmodule Lavash.Dsl do
 
   @multi_select_entity %Spark.Dsl.Entity{
     name: :multi_select,
-    target: Lavash.MultiSelect,
+    target: Lavash.State.MultiSelect,
     args: [:name, :values],
     schema: [
       name: [
@@ -194,7 +194,7 @@ defmodule Lavash.Dsl do
 
   @toggle_entity %Spark.Dsl.Entity{
     name: :toggle,
-    target: Lavash.Toggle,
+    target: Lavash.State.Toggle,
     args: [:name],
     schema: [
       name: [
@@ -320,7 +320,7 @@ defmodule Lavash.Dsl do
 
   @form_entity %Spark.Dsl.Entity{
     name: :form,
-    target: Lavash.FormStep,
+    target: Lavash.Form.Step,
     args: [:name, :resource],
     schema: [
       name: [

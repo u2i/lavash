@@ -1,4 +1,4 @@
-defmodule Lavash.Transpiler do
+defmodule Lavash.Rx.Transpiler do
   @moduledoc """
   Translates Elixir expressions to JavaScript.
 
@@ -135,14 +135,14 @@ defmodule Lavash.Transpiler do
     "(#{js_val}.toString().replace(/_/g, ' ').replace(/^\\w/, c => c.toUpperCase()))"
   end
 
-  # valid_card_number?(digits) -> Lavash.Validators.validCardNumber(digits)
+  # valid_card_number?(digits) -> Lavash.Rx.Validators.validCardNumber(digits)
   def ast_to_js({:valid_card_number?, _, [digits]}) do
-    "Lavash.Validators.validCardNumber(#{ast_to_js(digits)})"
+    "Lavash.Rx.Validators.validCardNumber(#{ast_to_js(digits)})"
   end
 
-  # Lavash.Validators.valid_card_number?(digits)
-  def ast_to_js({{:., _, [{:__aliases__, _, [:Lavash, :Validators]}, :valid_card_number?]}, _, [digits]}) do
-    "Lavash.Validators.validCardNumber(#{ast_to_js(digits)})"
+  # Lavash.Rx.Validators.valid_card_number?(digits)
+  def ast_to_js({{:., _, [{:__aliases__, _, [:Lavash, :Rx, :Validators]}, :valid_card_number?]}, _, [digits]}) do
+    "Lavash.Rx.Validators.validCardNumber(#{ast_to_js(digits)})"
   end
 
   # length(list) -> list.length
@@ -220,13 +220,13 @@ defmodule Lavash.Transpiler do
     "(#{str_js}.slice(#{start_js}, #{start_js} + #{len_js}))"
   end
 
-  # String.chunk(str, size) or Lavash.String.chunk(str, size) with constant size
+  # String.chunk(str, size) or Lavash.Rx.String.chunk(str, size) with constant size
   def ast_to_js({{:., _, [{:__aliases__, _, modules}, :chunk]}, _, [str, size]})
        when modules in [[:String], [:Lavash, :String]] and is_integer(size) do
     "(#{ast_to_js(str)}.match(/.{1,#{size}}/g) || [])"
   end
 
-  # String.chunk or Lavash.String.chunk with dynamic size
+  # String.chunk or Lavash.Rx.String.chunk with dynamic size
   def ast_to_js({{:., _, [{:__aliases__, _, modules}, :chunk]}, _, [str, size]})
        when modules in [[:String], [:Lavash, :String]] do
     str_js = ast_to_js(str)
@@ -510,8 +510,8 @@ defmodule Lavash.Transpiler do
   # valid_card_number?/1
   defp validate_ast({:valid_card_number?, _, [arg]}), do: validate_ast(arg)
 
-  # Lavash.Validators.valid_card_number?/1
-  defp validate_ast({{:., _, [{:__aliases__, _, [:Lavash, :Validators]}, :valid_card_number?]}, _, args}) do
+  # Lavash.Rx.Validators.valid_card_number?/1
+  defp validate_ast({{:., _, [{:__aliases__, _, [:Lavash, :Rx, :Validators]}, :valid_card_number?]}, _, args}) do
     validate_all_args(args)
   end
 

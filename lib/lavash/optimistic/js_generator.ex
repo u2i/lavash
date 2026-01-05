@@ -410,7 +410,7 @@ defmodule Lavash.Optimistic.JsGenerator do
     {name, source, _ast, _deps} = normalize_calculation(calc)
 
     # Use the existing elixir_to_js transpiler
-    js_expr = Lavash.Transpiler.to_js(source)
+    js_expr = Lavash.Rx.Transpiler.to_js(source)
 
     """
       #{name}(state) {
@@ -430,7 +430,7 @@ defmodule Lavash.Optimistic.JsGenerator do
   ]
 
   # Generate JS for multi_select toggle action
-  defp generate_multi_select_action_js(%Lavash.MultiSelect{} = ms) do
+  defp generate_multi_select_action_js(%Lavash.State.MultiSelect{} = ms) do
     action_name = "toggle_#{ms.name}"
     field = ms.name
 
@@ -448,7 +448,7 @@ defmodule Lavash.Optimistic.JsGenerator do
   end
 
   # Generate JS for multi_select chip derive
-  defp generate_multi_select_derive_js(%Lavash.MultiSelect{} = ms) do
+  defp generate_multi_select_derive_js(%Lavash.State.MultiSelect{} = ms) do
     derive_name = "#{ms.name}_chips"
     field = ms.name
     values = ms.values
@@ -479,7 +479,7 @@ defmodule Lavash.Optimistic.JsGenerator do
   end
 
   # Generate JS for toggle action
-  defp generate_toggle_action_js(%Lavash.Toggle{} = toggle) do
+  defp generate_toggle_action_js(%Lavash.State.Toggle{} = toggle) do
     action_name = "toggle_#{toggle.name}"
     field = toggle.name
 
@@ -491,7 +491,7 @@ defmodule Lavash.Optimistic.JsGenerator do
   end
 
   # Generate JS for toggle chip derive
-  defp generate_toggle_derive_js(%Lavash.Toggle{} = toggle) do
+  defp generate_toggle_derive_js(%Lavash.State.Toggle{} = toggle) do
     derive_name = "#{toggle.name}_chip"
     field = toggle.name
     chip_class = toggle.chip_class || @default_chip_class
@@ -800,13 +800,13 @@ defmodule Lavash.Optimistic.JsGenerator do
     error_checks =
       Enum.reduce(custom_errors, error_checks, fn error, acc ->
         # Transpile the rx condition to JS - condition returns true when error should show
-        js_condition = Lavash.Transpiler.to_js(error.condition.source)
+        js_condition = Lavash.Rx.Transpiler.to_js(error.condition.source)
 
         # Handle both static string messages and dynamic rx() messages
         msg_js = case error.message do
           %Lavash.Rx{source: source} ->
             # Dynamic message - transpile the expression
-            "(#{Lavash.Transpiler.to_js(source)})"
+            "(#{Lavash.Rx.Transpiler.to_js(source)})"
           static_string when is_binary(static_string) ->
             # Static message - JSON encode
             Jason.encode!(static_string)

@@ -1,4 +1,4 @@
-defmodule Lavash.FormStep do
+defmodule Lavash.Form.Step do
   @moduledoc """
   DSL entity for a form step that creates an AshPhoenix.Form.
 

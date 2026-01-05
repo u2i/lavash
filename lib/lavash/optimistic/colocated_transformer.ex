@@ -99,8 +99,8 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
 
     # Get multi_selects and toggles from states section
     all_states = Transformer.get_entities(dsl_state, [:states]) || []
-    multi_selects = Enum.filter(all_states, &match?(%Lavash.MultiSelect{}, &1))
-    toggles = Enum.filter(all_states, &match?(%Lavash.Toggle{}, &1))
+    multi_selects = Enum.filter(all_states, &match?(%Lavash.State.MultiSelect{}, &1))
+    toggles = Enum.filter(all_states, &match?(%Lavash.State.Toggle{}, &1))
 
     # Get calculations (only those with optimistic: true)
     calculations =
@@ -234,7 +234,7 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
     inactive: "bg-base-100 text-base-content/70 border-base-300 hover:border-primary/50"
   ]
 
-  defp generate_multi_select_action_js(%Lavash.MultiSelect{} = ms) do
+  defp generate_multi_select_action_js(%Lavash.State.MultiSelect{} = ms) do
     action_name = "toggle_#{ms.name}"
     field = ms.name
 
@@ -251,7 +251,7 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
     """
   end
 
-  defp generate_multi_select_derive_js(%Lavash.MultiSelect{} = ms) do
+  defp generate_multi_select_derive_js(%Lavash.State.MultiSelect{} = ms) do
     derive_name = "#{ms.name}_chips"
     field = ms.name
     values = ms.values
@@ -281,7 +281,7 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
     """
   end
 
-  defp generate_toggle_action_js(%Lavash.Toggle{} = toggle) do
+  defp generate_toggle_action_js(%Lavash.State.Toggle{} = toggle) do
     action_name = "toggle_#{toggle.name}"
     field = toggle.name
 
@@ -292,7 +292,7 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
     """
   end
 
-  defp generate_toggle_derive_js(%Lavash.Toggle{} = toggle) do
+  defp generate_toggle_derive_js(%Lavash.State.Toggle{} = toggle) do
     derive_name = "#{toggle.name}_chip"
     field = toggle.name
     chip_class = toggle.chip_class || @default_chip_class
@@ -321,7 +321,7 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
     expanded_source = expand_defrx_in_source(source, defrx_map)
 
     # Use the existing elixir_to_js transpiler
-    js_expr = Lavash.Transpiler.to_js(expanded_source)
+    js_expr = Lavash.Rx.Transpiler.to_js(expanded_source)
 
     """
       #{name}(state) {
@@ -584,13 +584,13 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
     error_checks =
       Enum.reduce(custom_errors, error_checks, fn error, acc ->
         expanded_condition = expand_defrx_in_source(error.condition.source, defrx_map)
-        js_condition = Lavash.Transpiler.to_js(expanded_condition)
+        js_condition = Lavash.Rx.Transpiler.to_js(expanded_condition)
 
         msg_js =
           case error.message do
             %Lavash.Rx{source: source} ->
               expanded_msg = expand_defrx_in_source(source, defrx_map)
-              "(#{Lavash.Transpiler.to_js(expanded_msg)})"
+              "(#{Lavash.Rx.Transpiler.to_js(expanded_msg)})"
 
             static_string when is_binary(static_string) ->
               Jason.encode!(static_string)

@@ -402,7 +402,7 @@ defmodule Lavash.Template do
 
   defp extract_field_name(other) do
     # Fallback to full ast_to_js conversion
-    Lavash.Transpiler.ast_to_js(other)
+    Lavash.Rx.Transpiler.ast_to_js(other)
   end
 
   # Infer the action body from the event name
@@ -423,7 +423,7 @@ defmodule Lavash.Template do
   end
 
   defp generate_derive_js(%{type: :class, expr: {:expr, code, _}, context: context}) do
-    js_expr = Lavash.Transpiler.to_js(code)
+    js_expr = Lavash.Rx.Transpiler.to_js(code)
 
     case context do
       %{for: %{var: var, collection: collection}} ->
@@ -456,7 +456,7 @@ defmodule Lavash.Template do
   end
 
   defp generate_derive_js(%{type: :text, expr: {:expr, code, _}, context: context}) do
-    js_expr = Lavash.Transpiler.to_js(code)
+    js_expr = Lavash.Rx.Transpiler.to_js(code)
 
     case context do
       %{for: %{var: var, collection: collection}} ->
@@ -484,7 +484,7 @@ defmodule Lavash.Template do
   end
 
   defp generate_derive_js(%{type: type, expr: {:expr, code, _}}) do
-    js_expr = Lavash.Transpiler.to_js(code)
+    js_expr = Lavash.Rx.Transpiler.to_js(code)
 
     """
       derive_#{type}(state) {
@@ -604,7 +604,7 @@ defmodule Lavash.Template do
 
   # Expression node (like {humanize(v)} or {@field})
   defp node_to_js_parts({:expr, code, _meta}, _ctx) do
-    js_expr = Lavash.Transpiler.to_js(code)
+    js_expr = Lavash.Rx.Transpiler.to_js(code)
     ["${#{js_expr}}"]
   end
 
@@ -629,7 +629,7 @@ defmodule Lavash.Template do
         case find_special_attr(attrs, :if) do
           {:if, if_expr} ->
             # Parse condition
-            condition_js = Lavash.Transpiler.to_js(if_expr)
+            condition_js = Lavash.Rx.Transpiler.to_js(if_expr)
 
             # Remove :if from attrs and render normally
             attrs_without_if = reject_special_attr(attrs, :if)
@@ -690,7 +690,7 @@ defmodule Lavash.Template do
 
   # Expression attribute (like class={expr} or data-value={v})
   defp render_attr_to_js(name, {:expr, code, _}, _ctx) do
-    js_expr = Lavash.Transpiler.to_js(code)
+    js_expr = Lavash.Rx.Transpiler.to_js(code)
     " #{name}=\"${#{js_expr}}\""
   end
 
@@ -734,7 +734,7 @@ defmodule Lavash.Template do
   defp parse_for_to_js(code) do
     case Code.string_to_quoted(code) do
       {:ok, {:<-, _, [{var, _, _}, collection]}} when is_atom(var) ->
-        {to_string(var), Lavash.Transpiler.ast_to_js(collection)}
+        {to_string(var), Lavash.Rx.Transpiler.ast_to_js(collection)}
 
       _ ->
         # Fallback

@@ -59,7 +59,7 @@ defmodule Lavash.Optimistic.ExpandAnimatedStates do
     # (MultiSelect and Toggle don't have animated support)
     animated_states =
       Enum.filter(states, fn state ->
-        is_struct(state, Lavash.StateField) and
+        is_struct(state, Lavash.State.Field) and
           Map.get(state, :animated) not in [nil, false]
       end)
 
@@ -96,7 +96,7 @@ defmodule Lavash.Optimistic.ExpandAnimatedStates do
       # User already defined this, don't override
       dsl_state
     else
-      phase_state = %Lavash.StateField{
+      phase_state = %Lavash.State.Field{
         name: phase_field,
         type: :string,
         from: :ephemeral,

@@ -1,4 +1,4 @@
-defmodule Lavash.StateField do
+defmodule Lavash.State.Field do
   @moduledoc """
   A mutable state field from an external source.
 

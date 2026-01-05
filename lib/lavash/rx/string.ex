@@ -1,4 +1,4 @@
-defmodule Lavash.String do
+defmodule Lavash.Rx.String do
   @moduledoc """
   String utility functions that transpile to JavaScript.
 

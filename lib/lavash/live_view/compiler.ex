@@ -102,7 +102,7 @@ defmodule Lavash.LiveView.Compiler do
       # Note: This returns StateField structs, including synthetic ones from multi_select/toggle
       def __lavash__(:states) do
         explicit_states = Spark.Dsl.Extension.get_entities(__MODULE__, [:states])
-                          |> Enum.filter(&match?(%Lavash.StateField{}, &1))
+                          |> Enum.filter(&match?(%Lavash.State.Field{}, &1))
 
         multi_select_states = Lavash.LiveView.Compiler.generate_multi_select_states(__MODULE__)
         toggle_states = Lavash.LiveView.Compiler.generate_toggle_states(__MODULE__)
@@ -166,12 +166,12 @@ defmodule Lavash.LiveView.Compiler do
       # Multi-select and Toggle introspection
       def __lavash__(:multi_selects) do
         Spark.Dsl.Extension.get_entities(__MODULE__, [:states])
-        |> Enum.filter(&match?(%Lavash.MultiSelect{}, &1))
+        |> Enum.filter(&match?(%Lavash.State.MultiSelect{}, &1))
       end
 
       def __lavash__(:toggles) do
         Spark.Dsl.Extension.get_entities(__MODULE__, [:states])
-        |> Enum.filter(&match?(%Lavash.Toggle{}, &1))
+        |> Enum.filter(&match?(%Lavash.State.Toggle{}, &1))
       end
 
       # Expose calculations for JsGenerator
@@ -431,7 +431,7 @@ defmodule Lavash.LiveView.Compiler do
   def generate_multi_select_states(module) do
     module.__lavash__(:multi_selects)
     |> Enum.map(fn ms ->
-      %Lavash.StateField{
+      %Lavash.State.Field{
         name: ms.name,
         type: {:array, :string},
         from: ms.from,
@@ -447,7 +447,7 @@ defmodule Lavash.LiveView.Compiler do
   def generate_toggle_states(module) do
     module.__lavash__(:toggles)
     |> Enum.map(fn toggle ->
-      %Lavash.StateField{
+      %Lavash.State.Field{
         name: toggle.name,
         type: :boolean,
         from: toggle.from,

@@ -57,7 +57,7 @@ defmodule Lavash.Modal.Transformers.InjectState do
           [preserve_dom: true, duration: 200]
         end
 
-      state_field = %Lavash.StateField{
+      state_field = %Lavash.State.Field{
         name: open_field,
         type: :any,
         from: :ephemeral,

@@ -116,10 +116,10 @@ defmodule DemoWeb.CheckoutDemoLive do
 
   # Card number: validates prefix, length for card type, and Luhn checksum
   calculate :card_number_valid,
-    rx(@payment_card_number_valid && Lavash.Validators.valid_card_number?(@card_number_digits))
+    rx(@payment_card_number_valid && Lavash.Rx.Validators.valid_card_number?(@card_number_digits))
 
   extend_errors :payment_card_number_errors do
-    error rx(!Lavash.Validators.valid_card_number?(@card_number_digits) && @payment_card_number_valid),
+    error rx(!Lavash.Rx.Validators.valid_card_number?(@card_number_digits) && @payment_card_number_valid),
       "Enter a valid card number"
   end
 

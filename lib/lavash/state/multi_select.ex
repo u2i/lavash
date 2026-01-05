@@ -1,4 +1,4 @@
-defmodule Lavash.MultiSelect do
+defmodule Lavash.State.MultiSelect do
   @moduledoc """
   Represents a multi-select field declaration in the Lavash DSL.
 
@@ -49,7 +49,7 @@ defmodule Lavash.MultiSelect do
         }
 end
 
-defmodule Lavash.Toggle do
+defmodule Lavash.State.Toggle do
   @moduledoc """
   Represents a boolean toggle field declaration in the Lavash DSL.
 
