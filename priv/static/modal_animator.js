@@ -55,15 +55,8 @@ export class ModalAnimator {
     this._flipPreRect = null;
     this._sizeLockApplied = false;
 
-    // IDs for onBeforeElUpdated detection
-    this._mainContentId = `${id}-main_content`;
-    this._mainContentInnerId = `${id}-main_content_inner`;
-
     // Transition handler reference
     this._transitionHandler = null;
-
-    // Callback for notifying AnimatedState of transition end
-    this.onTransitionEnd = null;
   }
 
   // --- AnimatedState Delegate Callbacks ---
@@ -745,11 +738,6 @@ export class ModalAnimator {
       this.panelContent.style.removeProperty("transition-duration");
       this.panelContent.style.removeProperty("width");
       this.panelContent.style.removeProperty("height");
-      this.panelContent.style.removeProperty("--flip-translate-x");
-      this.panelContent.style.removeProperty("--flip-translate-y");
-      this.panelContent.style.removeProperty("--flip-scale-x");
-      this.panelContent.style.removeProperty("--flip-scale-y");
-      this.panelContent.style.removeProperty("--flip-duration");
     }
 
     // Overlay - reset

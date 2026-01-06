@@ -272,10 +272,6 @@ defmodule Lavash.Overlay.Modal.Helpers do
             });
           });
 
-          // Register modal state with parent hook (for future coordination)
-          if (this._parentOptimisticHook?.registerModalState) {
-            this._parentOptimisticHook.registerModalState(id, this.openField, this.openState);
-          }
         },
 
         _installDomCallback() {
@@ -400,11 +396,6 @@ defmodule Lavash.Overlay.Modal.Helpers do
           // Remove from global registry
           if (window.__lavashModalInstances && this._mainContentId) {
             delete window.__lavashModalInstances[this._mainContentId];
-          }
-
-          // Unregister from parent hook
-          if (this._parentOptimisticHook?.unregisterModalState) {
-            this._parentOptimisticHook.unregisterModalState(this.el.id);
           }
         },
       };
