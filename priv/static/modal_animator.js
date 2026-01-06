@@ -81,10 +81,17 @@ export class ModalAnimator {
     // Make wrapper visible
     this.el.classList.remove("invisible", "pointer-events-none");
 
-    // Show loading content
+    // Show loading content with fade-in (can be interrupted by content arriving)
     const loadingContent = this.getLoadingContent();
     if (loadingContent) {
-      loadingContent.classList.remove("hidden", "opacity-0");
+      loadingContent.classList.remove("hidden");
+      // Start at opacity 0, animate to full opacity
+      loadingContent.classList.add("opacity-0");
+      loadingContent.classList.add("transition-opacity");
+      loadingContent.style.transitionDuration = `${this.duration}ms`;
+      // Force reflow before changing opacity
+      loadingContent.offsetHeight;
+      loadingContent.classList.remove("opacity-0");
       loadingContent.classList.add("opacity-100");
     }
 
@@ -99,6 +106,8 @@ export class ModalAnimator {
         width: this.panelContent.offsetWidth,
         height: this.panelContent.offsetHeight
       };
+      // Track when enter animation started for computing remaining time
+      this._enterAnimationStartTime = performance.now();
       console.log(`ModalAnimator ${this.panelIdForLog}: captured entering loading rect (layout) ${this._enteringLoadingRect.width}x${this._enteringLoadingRect.height}`);
     }
 
@@ -212,6 +221,38 @@ export class ModalAnimator {
     // Capture the loading rect immediately - this is the "first" rect for FLIP
     // We must capture it now before any more DOM updates overwrite _flipPreRect
     this._queueFlipWithLoadingRect();
+
+    // Start fading out loading NOW - don't wait for onVisible
+    // This way the loading starts disappearing while the panel is still scaling in
+    const loadEl = this.getLoadingContent();
+    if (loadEl && !loadEl.classList.contains("hidden")) {
+      const elapsed = this._enterAnimationStartTime
+        ? performance.now() - this._enterAnimationStartTime
+        : this.duration;
+      const fadeOutDuration = Math.max(1, Math.min(elapsed / 2, this.duration));
+      console.log(`ModalAnimator: starting early loading fade-out, duration=${fadeOutDuration.toFixed(0)}ms (elapsed=${elapsed.toFixed(0)}ms)`);
+
+      const currentOpacity = getComputedStyle(loadEl).opacity;
+      loadEl.style.transition = "none";
+      loadEl.style.opacity = currentOpacity;
+      loadEl.offsetHeight;
+
+      loadEl.style.transition = `opacity ${fadeOutDuration}ms ease-out`;
+      loadEl.offsetHeight;
+      loadEl.style.opacity = "0";
+
+      setTimeout(() => {
+        loadEl.classList.add("hidden");
+        loadEl.classList.remove("transition-opacity", "opacity-100");
+        loadEl.classList.add("opacity-0");
+        loadEl.style.removeProperty("transition");
+        loadEl.style.removeProperty("transition-duration");
+        loadEl.style.removeProperty("opacity");
+      }, fadeOutDuration);
+
+      // Mark that we already handled the loading fade-out
+      this._loadingFadedOut = true;
+    }
   }
 
   /**
@@ -414,21 +455,47 @@ export class ModalAnimator {
       mainContent.classList.remove("opacity-0");
       mainContent.classList.add("opacity-100");
     }
-    // Fade out loading content over the same duration as the size animation
-    // This creates a smooth crossfade where form appears under the fading skeleton
-    if (loadEl && !loadEl.classList.contains("hidden")) {
-      loadEl.classList.add("transition-opacity");
-      loadEl.style.transitionDuration = `${this.duration}ms`;
-      // Force reflow before changing opacity
-      loadEl.offsetHeight;
-      loadEl.classList.remove("opacity-100");
-      loadEl.classList.add("opacity-0");
+    // Fade out loading content - if panel is still fading in, fade out quickly
+    // to counteract the partial fade-in that already happened
+    // Skip if we already started fading in onContentReadyDuringEnter
+    if (loadEl && !loadEl.classList.contains("hidden") && !this._loadingFadedOut) {
+      // Fade out loading at 2x the rate the panel is fading in
+      // This makes the apparent fade-out mirror the apparent fade-in
+      // (loading opacity × panel opacity decays at the same rate it grew)
+      let fadeOutDuration = this.duration;
+      if (this._enterAnimationStartTime) {
+        const elapsed = performance.now() - this._enterAnimationStartTime;
+        // Fade out in half the elapsed time (2x speed), capped at full duration for late arrivals
+        fadeOutDuration = Math.min(elapsed / 2, this.duration);
+        console.log(`ModalAnimator: loading fade-out duration=${fadeOutDuration.toFixed(0)}ms (elapsed=${elapsed.toFixed(0)}ms)`);
+      }
+
+      // Interrupt current fade-in transition and start fade-out with new duration
+      // First, capture current computed opacity and kill the transition
+      const currentOpacity = getComputedStyle(loadEl).opacity;
+      console.log(`ModalAnimator: loading currentOpacity=${currentOpacity}, will fade to 0 in ${fadeOutDuration.toFixed(0)}ms`);
+
+      loadEl.style.transition = "none";
+      loadEl.style.opacity = currentOpacity; // Lock at current value
+      loadEl.offsetHeight; // Force reflow
+
+      console.log(`ModalAnimator: after lock, opacity=${getComputedStyle(loadEl).opacity}`);
+
+      // Now start fade-out with calculated duration
+      loadEl.style.transition = `opacity ${fadeOutDuration}ms ease-out`;
+      loadEl.offsetHeight; // Force reflow
+      loadEl.style.opacity = "0";
+
+      console.log(`ModalAnimator: after setting opacity=0, computed=${getComputedStyle(loadEl).opacity}, style.opacity=${loadEl.style.opacity}`);
       // Hide after fade completes to remove from layout
       setTimeout(() => {
         loadEl.classList.add("hidden");
-        loadEl.classList.remove("transition-opacity");
+        loadEl.classList.remove("transition-opacity", "opacity-100");
+        loadEl.classList.add("opacity-0");
+        loadEl.style.removeProperty("transition");
         loadEl.style.removeProperty("transition-duration");
-      }, this.duration);
+        loadEl.style.removeProperty("opacity");
+      }, fadeOutDuration);
     }
 
     // Mark size lock as released since we're starting animation
@@ -646,6 +713,8 @@ export class ModalAnimator {
     this._sizeLockApplied = false;
     this._pendingFlipRect = null;
     this._enteringLoadingRect = null;
+    this._enterAnimationStartTime = null;
+    this._loadingFadedOut = false;
     this._ghostInsertedInBeforeUpdate = false;
     this._preUpdateContentClone = null;
 
