@@ -88,6 +88,20 @@ export class ModalAnimator {
       loadingContent.classList.add("opacity-100");
     }
 
+    // Capture loading skeleton rect NOW - after showing loading but BEFORE scale animation
+    // Use offsetWidth/offsetHeight to get LAYOUT size (unaffected by CSS transforms)
+    // getBoundingClientRect would give visual size (scaled), which causes mismatch when locking
+    if (this.panelContent) {
+      // Force layout to ensure loading content is rendered
+      this.panelContent.offsetHeight;
+      // Store layout dimensions (not affected by scale transform)
+      this._enteringLoadingRect = {
+        width: this.panelContent.offsetWidth,
+        height: this.panelContent.offsetHeight
+      };
+      console.log(`ModalAnimator ${this.panelIdForLog}: captured entering loading rect (layout) ${this._enteringLoadingRect.width}x${this._enteringLoadingRect.height}`);
+    }
+
     // Animate panel open
     if (this.panelContent) {
       this.panelContent.classList.add("transition-all", "duration-200", "ease-out");
@@ -135,6 +149,16 @@ export class ModalAnimator {
     console.log(`ModalAnimator ${this.panelIdForLog}: onVisible`);
     // Panel is now fully visible
     this.el.classList.remove("invisible");
+
+    // Check if there's a pending FLIP animation queued from the entering phase
+    // This happens when content arrives before the enter transition completes
+    if (this._pendingFlipRect) {
+      console.log(`ModalAnimator ${this.panelIdForLog}: onVisible - running queued FLIP from loading rect`);
+      // Use the captured loading rect as the "from" size
+      this._flipPreRect = this._pendingFlipRect;
+      this._pendingFlipRect = null;
+      this._runFlipAnimation();
+    }
   }
 
   /**
@@ -168,7 +192,7 @@ export class ModalAnimator {
   }
 
   /**
-   * Called when async data arrives.
+   * Called when async data arrives (in loading or visible phase).
    * Note: FLIP animation is now triggered from the hook's updated() method
    * using the rect stored on the SyncedVar, not from here.
    */
@@ -176,6 +200,18 @@ export class ModalAnimator {
     console.log(`ModalAnimator ${this.panelIdForLog}: onAsyncReady`);
     // FLIP animation is handled by the hook's updated() method
     // which has access to the pre-captured rect on the SyncedVar
+  }
+
+  /**
+   * Called when content arrives while enter animation is still running.
+   * Captures the loading skeleton rect NOW so we can animate from it
+   * after the enter transition completes.
+   */
+  onContentReadyDuringEnter(animatedState) {
+    console.log(`ModalAnimator ${this.panelIdForLog}: onContentReadyDuringEnter`);
+    // Capture the loading rect immediately - this is the "first" rect for FLIP
+    // We must capture it now before any more DOM updates overwrite _flipPreRect
+    this._queueFlipWithLoadingRect();
   }
 
   /**
@@ -192,8 +228,30 @@ export class ModalAnimator {
   /**
    * Capture panel rect before update for FLIP animation.
    * Call this in beforeUpdate() of the hook.
+   *
+   * @param {string} phase - Current animation phase from AnimatedState
    */
-  capturePreUpdateRect() {
+  capturePreUpdateRect(phase) {
+    // Don't overwrite if we already have a pending FLIP queued
+    if (this._pendingFlipRect) {
+      console.log(`ModalAnimator ${this.panelIdForLog}: capturePreUpdateRect skipped - pending FLIP already queued`);
+      return;
+    }
+
+    // During entering phase with content already arrived, lock to entering rect
+    // to prevent visual jump when DOM patches
+    // IMPORTANT: Do NOT set transition:none here - the scale animation needs to complete!
+    if (phase === "entering" && this._enteringLoadingRect) {
+      // Lock to the original entering loading rect (before scale animation)
+      // This keeps the panel at the skeleton size visually while scale animates
+      this._sizeLockApplied = true;
+      this.panelContent.style.width = `${this._enteringLoadingRect.width}px`;
+      this.panelContent.style.height = `${this._enteringLoadingRect.height}px`;
+      // Don't touch transition - let scale animation continue!
+      console.log(`ModalAnimator ${this.panelIdForLog}: capturePreUpdateRect (entering) - locked to entering rect ${this._enteringLoadingRect.width}x${this._enteringLoadingRect.height}`);
+      return;
+    }
+
     if (this.panelContent && this.getLoadingContent()) {
       this._flipPreRect = this.panelContent.getBoundingClientRect();
       this._sizeLockApplied = true;
@@ -209,6 +267,30 @@ export class ModalAnimator {
         this.overlay.style.transition = "none";
       }
       console.log(`ModalAnimator ${this.panelIdForLog}: capturePreUpdateRect ${this._flipPreRect.width}x${this._flipPreRect.height}`);
+    }
+  }
+
+  /**
+   * Queue a FLIP animation to run after enter transition completes.
+   * Uses the loading rect captured at the START of entering phase.
+   * Called when content arrives during the "entering" phase.
+   */
+  _queueFlipWithLoadingRect() {
+    // Only queue once - if we already have a pending rect, don't overwrite
+    if (this._pendingFlipRect) return;
+
+    // Use the rect captured at the start of entering (the canonical loading skeleton size)
+    // This is immune to any DOM updates that happen during the entering phase
+    if (this._enteringLoadingRect) {
+      this._pendingFlipRect = this._enteringLoadingRect;
+      console.log(`ModalAnimator ${this.panelIdForLog}: queued FLIP with entering loading rect ${this._pendingFlipRect.width}x${this._pendingFlipRect.height}`);
+    } else {
+      // Fallback - capture now (less ideal)
+      const loadEl = this.getLoadingContent();
+      if (this.panelContent && loadEl) {
+        this._pendingFlipRect = this.panelContent.getBoundingClientRect();
+        console.log(`ModalAnimator ${this.panelIdForLog}: queued FLIP with current rect (fallback) ${this._pendingFlipRect.width}x${this._pendingFlipRect.height}`);
+      }
     }
   }
 
@@ -327,16 +409,26 @@ export class ModalAnimator {
 
     console.log(`ModalAnimator _runFlipAnimation: animating size change`);
 
-    // Panel is still locked at old size, swap content visibility ATOMICALLY
-    // Show main content BEFORE hiding loading to prevent any gap
+    // Show main content instantly (it's behind loading in the grid)
     if (mainContent) {
       mainContent.classList.remove("opacity-0");
       mainContent.classList.add("opacity-100");
     }
-    // Now hide loading (main is already visible underneath in grid)
+    // Fade out loading content over the same duration as the size animation
+    // This creates a smooth crossfade where form appears under the fading skeleton
     if (loadEl && !loadEl.classList.contains("hidden")) {
-      loadEl.classList.add("hidden", "opacity-0");
+      loadEl.classList.add("transition-opacity");
+      loadEl.style.transitionDuration = `${this.duration}ms`;
+      // Force reflow before changing opacity
+      loadEl.offsetHeight;
       loadEl.classList.remove("opacity-100");
+      loadEl.classList.add("opacity-0");
+      // Hide after fade completes to remove from layout
+      setTimeout(() => {
+        loadEl.classList.add("hidden");
+        loadEl.classList.remove("transition-opacity");
+        loadEl.style.removeProperty("transition-duration");
+      }, this.duration);
     }
 
     // Mark size lock as released since we're starting animation
@@ -552,6 +644,8 @@ export class ModalAnimator {
     this._cleanupCloseAnimation();
     this._flipPreRect = null;
     this._sizeLockApplied = false;
+    this._pendingFlipRect = null;
+    this._enteringLoadingRect = null;
     this._ghostInsertedInBeforeUpdate = false;
     this._preUpdateContentClone = null;
 

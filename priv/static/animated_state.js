@@ -26,7 +26,8 @@
  * - onVisible(animatedState) - fully visible
  * - onExiting(animatedState) - start exit animation
  * - onIdle(animatedState) - back to closed
- * - onAsyncReady(animatedState) - async data arrived
+ * - onAsyncReady(animatedState) - async data arrived (in loading or visible phase)
+ * - onContentReadyDuringEnter(animatedState) - content arrived while enter animation running
  * - onTransitionEnd(animatedState) - enter animation completed
  */
 
@@ -101,8 +102,10 @@ class EnteringPhase extends AnimatedStatePhase {
   }
 
   onAsyncReady() {
-    // Data arrived during enter animation - will be used when we transition
+    // Data arrived during enter animation - notify delegate to capture loading rect
+    // before it gets overwritten by subsequent DOM updates
     this.manager.isAsyncReady = true;
+    this.manager._notifyDelegate("onContentReadyDuringEnter");
   }
 }
 
