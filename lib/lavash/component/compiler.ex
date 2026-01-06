@@ -153,6 +153,7 @@ defmodule Lavash.Component.Compiler do
         var!(assigns) =
           var!(assigns)
           |> Phoenix.Component.assign(:__modal_id__, modal_id)
+          |> Phoenix.Component.assign(:__modal_module__, __MODULE__)
           |> Phoenix.Component.assign(:on_close, on_close)
           |> Phoenix.Component.assign(:__modal_open__, open_value)
           |> Phoenix.Component.assign(:__modal_open_field__, unquote(open_field))
@@ -167,6 +168,7 @@ defmodule Lavash.Component.Compiler do
         <div class="contents">
           <.modal_chrome
             id={@__modal_id__}
+            module={@__modal_module__}
             open={@__modal_open__}
             open_field={@__modal_open_field__}
             myself={@myself}

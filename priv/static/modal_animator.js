@@ -1,7 +1,7 @@
 /**
- * ModalAnimator - Modal-specific DOM manipulation as an AnimatedState delegate.
+ * ModalAnimator - Modal-specific DOM manipulation as a SyncedVar delegate.
  *
- * This class implements the AnimatedState delegate interface for modal-specific
+ * This class implements the SyncedVar delegate interface for modal-specific
  * behavior including:
  * - Panel open/close animations
  * - Overlay fade in/out
@@ -16,8 +16,8 @@
  *     openField: 'product_id'
  *   });
  *
- *   // Set as delegate for AnimatedState
- *   animatedState.setDelegate(animator);
+ *   // Set as delegate for SyncedVar (with animated config)
+ *   syncedVar.setDelegate(animator);
  */
 
 export class ModalAnimator {
@@ -59,13 +59,13 @@ export class ModalAnimator {
     this._transitionHandler = null;
   }
 
-  // --- AnimatedState Delegate Callbacks ---
+  // --- SyncedVar Delegate Callbacks ---
 
   /**
    * Called when entering the "entering" phase.
    * Shows loading content and animates panel open.
    */
-  onEntering(animatedState) {
+  onEntering(syncedVar) {
     console.log(`ModalAnimator ${this.panelIdForLog}: onEntering`);
 
     // Reset DOM state before opening
@@ -119,8 +119,8 @@ export class ModalAnimator {
         console.log(`ModalAnimator ${this.panelIdForLog}: transitionend fired`);
         this.panelContent.removeEventListener("transitionend", this._transitionHandler);
         this._transitionHandler = null;
-        // Notify AnimatedState that transition completed
-        animatedState.notifyTransitionEnd();
+        // Notify SyncedVar that transition completed
+        syncedVar.notifyTransitionEnd();
       };
       this.panelContent.addEventListener("transitionend", this._transitionHandler);
     }
@@ -138,7 +138,7 @@ export class ModalAnimator {
    * Called when entering the "loading" phase.
    * Panel is open but waiting for async data.
    */
-  onLoading(animatedState) {
+  onLoading(_syncedVar) {
     console.log(`ModalAnimator ${this.panelIdForLog}: onLoading - waiting for async data`);
     // Panel is already open, just waiting for content
   }
@@ -147,7 +147,7 @@ export class ModalAnimator {
    * Called when entering the "visible" phase.
    * Modal is fully open and visible.
    */
-  onVisible(animatedState) {
+  onVisible(_syncedVar) {
     console.log(`ModalAnimator ${this.panelIdForLog}: onVisible`);
     // Panel is now fully visible
     this.el.classList.remove("invisible");
@@ -167,7 +167,7 @@ export class ModalAnimator {
    * Called when entering the "exiting" phase.
    * Sets up ghost element and animates close.
    */
-  onExiting(animatedState) {
+  onExiting(_syncedVar) {
     console.log(`ModalAnimator ${this.panelIdForLog}: onExiting`);
 
     // Disable pointer events immediately
@@ -187,7 +187,7 @@ export class ModalAnimator {
    * Called when entering the "idle" phase.
    * Resets DOM to closed state and cleans up ghost.
    */
-  onIdle(animatedState) {
+  onIdle(_syncedVar) {
     console.log(`ModalAnimator ${this.panelIdForLog}: onIdle`);
     this._resetDOM();
     this._cleanupCloseAnimation();
@@ -198,7 +198,7 @@ export class ModalAnimator {
    * Note: FLIP animation is now triggered from the hook's updated() method
    * using the rect stored on the SyncedVar, not from here.
    */
-  onAsyncReady(animatedState) {
+  onAsyncReady(_syncedVar) {
     console.log(`ModalAnimator ${this.panelIdForLog}: onAsyncReady`);
     // FLIP animation is handled by the hook's updated() method
     // which has access to the pre-captured rect on the SyncedVar
@@ -209,7 +209,7 @@ export class ModalAnimator {
    * Captures the loading skeleton rect NOW so we can animate from it
    * after the enter transition completes.
    */
-  onContentReadyDuringEnter(animatedState) {
+  onContentReadyDuringEnter(_syncedVar) {
     console.log(`ModalAnimator ${this.panelIdForLog}: onContentReadyDuringEnter`);
     // Capture the loading rect immediately - this is the "first" rect for FLIP
     // We must capture it now before any more DOM updates overwrite _flipPreRect
@@ -250,11 +250,11 @@ export class ModalAnimator {
 
   /**
    * Called when enter transition completes (forwarded from onEntering handler).
-   * This is for internal tracking, AnimatedState handles the phase transition.
+   * This is for internal tracking, SyncedVar handles the phase transition.
    */
-  onTransitionEnd(animatedState) {
+  onTransitionEnd(_syncedVar) {
     console.log(`ModalAnimator ${this.panelIdForLog}: onTransitionEnd`);
-    // AnimatedState handles the phase transition
+    // SyncedVar handles the phase transition
   }
 
   // --- FLIP Animation Support ---
@@ -263,7 +263,7 @@ export class ModalAnimator {
    * Capture panel rect before update for FLIP animation.
    * Call this in beforeUpdate() of the hook.
    *
-   * @param {string} phase - Current animation phase from AnimatedState
+   * @param {string} phase - Current animation phase from SyncedVar
    */
   capturePreUpdateRect(phase) {
     // Don't overwrite if we already have a pending FLIP queued

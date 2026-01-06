@@ -42,6 +42,7 @@ defmodule Lavash.Overlay.Modal.Helpers do
       </.modal_chrome>
   """
   attr(:id, :string, required: true, doc: "Unique ID for the modal")
+  attr(:module, :atom, required: true, doc: "The component module (for global SyncedVar registry)")
   attr(:open, :any, required: true, doc: "Controls visibility (truthy = open)")
   attr(:open_field, :atom, default: :open, doc: "The name of the open state field")
   attr(:myself, :any, required: true, doc: "The component's @myself")
@@ -67,6 +68,7 @@ defmodule Lavash.Overlay.Modal.Helpers do
       |> assign(:max_width_class, max_width_class)
       |> assign(:on_close, on_close)
       |> assign(:is_open, assigns.open != nil)
+      |> assign(:module_name, inspect(assigns.module))
 
     ~H"""
     <%!-- Wrapper for hook - always present, client controls visibility via class --%>
@@ -76,6 +78,7 @@ defmodule Lavash.Overlay.Modal.Helpers do
       phx-hook=".LavashModal"
       phx-mounted={JS.ignore_attributes(["class", "style"])}
       phx-target={@myself}
+      data-module={@module_name}
       data-duration={@duration}
       data-open={to_string(@is_open)}
       data-open-field={@open_field}
@@ -121,43 +124,37 @@ defmodule Lavash.Overlay.Modal.Helpers do
         </div>
       </div>
       <script :type={Phoenix.LiveView.ColocatedHook} name=".LavashModal">
-      // --- LavashModal Hook v3 ---
-      // Uses AnimatedState from parent LavashOptimistic hook with ModalAnimator as delegate
+      // --- LavashModal Hook v4 ---
+      // Uses global SyncedVar registry with animation support
       export default {
         mounted() {
           const id = this.el.id;
-          console.log(`LavashModal v3 mounted: #${id}`);
+          console.log(`LavashModal v4 mounted: #${id}`);
           if (!id) {
             console.error("LavashModal: Hook element requires an ID.");
             return;
           }
 
           // Get shared classes from global Lavash namespace (loaded via app.js)
-          // Must be accessed inside mounted() because colocated hooks load before app.js finishes
-          const SyncedVar = window.Lavash?.SyncedVar;
           const ModalAnimator = window.Lavash?.ModalAnimator;
-          const AnimatedState = window.Lavash?.AnimatedState;
+          const getSyncedVar = window.Lavash?.getSyncedVar;
 
-          if (!SyncedVar) {
-            console.error("LavashModal: SyncedVar not found. Ensure synced_var.js loads before modal hooks.");
-            return;
-          }
           if (!ModalAnimator) {
             console.error("LavashModal: ModalAnimator not found. Ensure modal_animator.js loads before modal hooks.");
             return;
           }
-          if (!AnimatedState) {
-            console.error("LavashModal: AnimatedState not found. Ensure animated_state.js loads before modal hooks.");
+          if (!getSyncedVar) {
+            console.error("LavashModal: getSyncedVar not found. Ensure synced_var.js loads before modal hooks.");
             return;
           }
 
           this.panelIdForLog = `#${id}`;
           this.duration = Number(this.el.dataset.duration) || 200;
-
-          // Get the open field name
+          this.moduleName = this.el.dataset.module;
           this.openField = this.el.dataset.openField || "open";
           this.setterAction = `set_${this.openField}`;
-          console.log(`LavashModal ${this.panelIdForLog}: openField=${this.openField}, setterAction=${this.setterAction}`);
+
+          console.log(`LavashModal ${this.panelIdForLog}: module=${this.moduleName}, openField=${this.openField}`);
 
           // Create ModalAnimator for DOM manipulation
           this.animator = new ModalAnimator(this.el, {
@@ -165,83 +162,25 @@ defmodule Lavash.Overlay.Modal.Helpers do
             openField: this.openField
           });
 
-          // Get AnimatedState from parent LavashOptimistic hook
-          const parentRoot = this.el.closest("[phx-hook='LavashOptimistic']");
-          this._parentOptimisticHook = parentRoot?.__lavash_hook__;
-          this.animatedState = this._parentOptimisticHook?.getAnimatedState?.(this.openField);
+          // Get or create SyncedVar from global registry
+          // This uses the __animated__ config from the component's optimistic module
+          this.syncedVar = getSyncedVar(this.moduleName, this.openField);
 
-          if (this.animatedState) {
-            // Set ModalAnimator as delegate for AnimatedState
-            this.animatedState.setDelegate(this.animator);
-            console.log(`LavashModal ${this.panelIdForLog}: Using AnimatedState from parent hook`);
+          if (this.syncedVar) {
+            // Set ModalAnimator as delegate for animation callbacks
+            this.syncedVar.setDelegate(this.animator);
+            console.log(`LavashModal ${this.panelIdForLog}: Using SyncedVar from global registry`);
 
-            // Get the SyncedVar from AnimatedState
-            this.openState = this.animatedState.syncedVar;
-          } else {
-            // Standalone mode - create our own AnimatedState
-            // (This is for modals that manage their own state, not inside parent LavashOptimistic)
-            console.log(`LavashModal ${this.panelIdForLog}: Standalone mode - creating own AnimatedState`);
-
-            // Create AnimatedState with modal animator as delegate
-            // The hook itself acts as a minimal "hook" interface for AnimatedState
-            const config = {
-              field: this.openField,
-              phaseField: `${this.openField}_phase`,
-              async: null,  // Modal handles async via its own async_result
-              preserveDom: true,
-              duration: this.duration
-            };
-
-            // Create a logging delegate to debug the state machine flow
-            const loggingDelegate = {
-              onEntering: (as) => {
-                console.log(`🔵 [${this.panelIdForLog}] onEntering - phase will be 'entering'`);
-                this.animator.onEntering(as);
-              },
-              onLoading: (as) => {
-                console.log(`🟡 [${this.panelIdForLog}] onLoading - phase will be 'loading'`);
-                this.animator.onLoading(as);
-              },
-              onVisible: (as) => {
-                console.log(`🟢 [${this.panelIdForLog}] onVisible - phase will be 'visible'`);
-                this.animator.onVisible(as);
-              },
-              onExiting: (as) => {
-                console.log(`🟠 [${this.panelIdForLog}] onExiting - phase will be 'exiting'`);
-                this.animator.onExiting(as);
-              },
-              onIdle: (as) => {
-                console.log(`⚪ [${this.panelIdForLog}] onIdle - phase will be 'idle'`);
-                this.animator.onIdle(as);
-              },
-              onAsyncReady: (as) => {
-                console.log(`✅ [${this.panelIdForLog}] onAsyncReady - async data arrived (loading/visible)`);
-                this.animator.onAsyncReady(as);
-              },
-              onContentReadyDuringEnter: (as) => {
-                console.log(`⏳ [${this.panelIdForLog}] onContentReadyDuringEnter - content arrived during enter animation`);
-                this.animator.onContentReadyDuringEnter(as);
-              },
-              onTransitionEnd: (as) => {
-                console.log(`🏁 [${this.panelIdForLog}] onTransitionEnd - enter animation done`);
-                this.animator.onTransitionEnd(as);
-              }
-            };
-
-            // Create AnimatedState with logging delegate
-            this.animatedState = new AnimatedState(config, this, loggingDelegate);
-
-            // Get the SyncedVar from AnimatedState
-            this.openState = this.animatedState.syncedVar;
-
-            // Initialize with current server value
+            // Initialize with current server value if modal starts open
             const initialValue = JSON.parse(this.el.dataset.openValue || "null");
-            if (initialValue != null) {
+            if (initialValue != null && this.syncedVar.value == null) {
               // Modal starts open - set value without triggering animation
-              // (the DOM already reflects the open state)
-              this.openState.value = initialValue;
-              this.openState.confirmedValue = initialValue;
+              this.syncedVar.value = initialValue;
+              this.syncedVar.confirmedValue = initialValue;
             }
+          } else {
+            console.error(`LavashModal ${this.panelIdForLog}: No SyncedVar found for ${this.moduleName}:${this.openField}`);
+            return;
           }
 
           // IDs for onBeforeElUpdated callback
@@ -259,7 +198,7 @@ defmodule Lavash.Overlay.Modal.Helpers do
           this.el.addEventListener("open-panel", (e) => {
             console.log(`LavashModal ${this.panelIdForLog}: open-panel event received`, e.detail);
             const openValue = e.detail?.[this.openField] ?? e.detail?.value ?? true;
-            this.openState.set(openValue, (p, cb) => {
+            this.syncedVar.set(openValue, (p, cb) => {
               this.pushEventTo(this.el, this.setterAction, { ...p, value: openValue }, cb);
             });
           });
@@ -267,7 +206,7 @@ defmodule Lavash.Overlay.Modal.Helpers do
           // Listen for close-panel event
           this.el.addEventListener("close-panel", () => {
             console.log(`LavashModal ${this.panelIdForLog}: close-panel event received`);
-            this.openState.set(null, (p, cb) => {
+            this.syncedVar.set(null, (p, cb) => {
               this.pushEventTo(this.el, this.setterAction, { ...p, value: null }, cb);
             });
           });
@@ -285,16 +224,10 @@ defmodule Lavash.Overlay.Modal.Helpers do
             const instances = window.__lavashModalInstances || {};
             const modal = instances[fromEl.id];
 
-            if (modal) {
+            if (modal && modal.syncedVar) {
               // Check if modal is in a state where we should preserve content
-              let shouldPreserve = false;
-              if (modal.animatedState) {
-                const phase = modal.animatedState.getPhase();
-                shouldPreserve = phase === "visible" || phase === "loading";
-              } else {
-                // Standalone mode - check if modal is currently open
-                shouldPreserve = modal.openState?.value != null;
-              }
+              const phase = modal.syncedVar.getPhase();
+              const shouldPreserve = phase === "visible" || phase === "loading";
 
               if (shouldPreserve) {
                 const innerId = modal._mainContentInnerId;
@@ -320,33 +253,32 @@ defmodule Lavash.Overlay.Modal.Helpers do
 
           // Capture panel rect for FLIP animation (only in loading/visible phases)
           // During entering phase, capturePreUpdateRect will skip to avoid locking panel
-          const isOpen = this._previousServerValue != null;
-          if (this.animatedState) {
-            const phase = this.animatedState.getPhase();
+          if (this.syncedVar) {
+            const phase = this.syncedVar.getPhase();
             if (phase === "visible" || phase === "entering" || phase === "loading") {
               this.animator.capturePreUpdateRect(phase);
             }
-          } else if (isOpen) {
-            // Standalone mode - always capture when open
-            this.animator.capturePreUpdateRect("visible");
           }
         },
 
         updated() {
           // Parse the new server value from the data attribute
           const newServerValue = JSON.parse(this.el.dataset.openValue || "null");
-          console.log(`LavashModal ${this.panelIdForLog}: updated - phase=${this.animatedState?.getPhase()}, newServerValue=${newServerValue}`);
+          const phase = this.syncedVar?.getPhase();
+          console.log(`LavashModal ${this.panelIdForLog}: updated - phase=${phase}, newServerValue=${newServerValue}`);
 
           // Detect server-initiated state changes
           const prevWasOpen = this._previousServerValue != null;
           const nowIsOpen = newServerValue != null;
 
-          if (prevWasOpen && !nowIsOpen) {
-            // Server closed the modal
-            this.openState.serverSet(null);
-          } else if (!prevWasOpen && nowIsOpen) {
-            // Server opened the modal
-            this.openState.serverSet(newServerValue);
+          if (this.syncedVar) {
+            if (prevWasOpen && !nowIsOpen) {
+              // Server closed the modal
+              this.syncedVar.serverSet(null);
+            } else if (!prevWasOpen && nowIsOpen) {
+              // Server opened the modal
+              this.syncedVar.serverSet(newServerValue);
+            }
           }
 
           // Check if main content has actually loaded (has height)
@@ -355,27 +287,19 @@ defmodule Lavash.Overlay.Modal.Helpers do
 
           // Notify state machine when content arrives - it handles the FLIP logic
           // based on current phase (entering vs loading vs visible)
-          if (this.animatedState && mainContentLoaded && !this.animatedState.isAsyncReady) {
+          if (this.syncedVar && mainContentLoaded && !this.syncedVar.isAsyncReady) {
             console.log(`LavashModal ${this.panelIdForLog}: updated - content arrived, notifying state machine`);
-            this.animatedState.onAsyncDataReady();
+            this.syncedVar.onAsyncDataReady();
           }
 
           // For loading/visible phases, run FLIP directly (state machine already transitioned)
-          if (this.animatedState) {
-            const phase = this.animatedState.getPhase();
+          if (this.syncedVar) {
+            const currentPhase = this.syncedVar.getPhase();
             const loadingContent = this.animator.getLoadingContent();
             const loadingVisible = loadingContent && !loadingContent.classList.contains("hidden");
 
-            if (loadingVisible && mainContentLoaded && (phase === "loading" || phase === "visible")) {
-              console.log(`LavashModal ${this.panelIdForLog}: updated - phase=${phase}, running FLIP`);
-              this.animator._runFlipAnimation();
-            }
-          } else if (nowIsOpen && mainContentLoaded) {
-            // Standalone mode - run FLIP when open and content loaded
-            const loadingContent = this.animator.getLoadingContent();
-            const loadingVisible = loadingContent && !loadingContent.classList.contains("hidden");
-            if (loadingVisible) {
-              console.log(`LavashModal ${this.panelIdForLog}: standalone updated - running FLIP`);
+            if (loadingVisible && mainContentLoaded && (currentPhase === "loading" || currentPhase === "visible")) {
+              console.log(`LavashModal ${this.panelIdForLog}: updated - phase=${currentPhase}, running FLIP`);
               this.animator._runFlipAnimation();
             }
           }
@@ -388,9 +312,9 @@ defmodule Lavash.Overlay.Modal.Helpers do
           // Clean up animator
           this.animator?.destroy();
 
-          // Remove delegate from AnimatedState
-          if (this.animatedState) {
-            this.animatedState.setDelegate(null);
+          // Remove delegate from SyncedVar
+          if (this.syncedVar) {
+            this.syncedVar.setDelegate(null);
           }
 
           // Remove from global registry
