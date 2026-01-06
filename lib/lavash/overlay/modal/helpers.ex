@@ -318,16 +318,17 @@ defmodule Lavash.Overlay.Modal.Helpers do
           // Track previous server value to detect server-initiated changes
           this._previousServerValue = JSON.parse(this.el.dataset.openValue || "null");
 
-          // Track whether loading was visible before this update
-          const loadingContent = this.animator.getLoadingContent();
-          this._loadingWasVisible = loadingContent && !loadingContent.classList.contains("hidden");
-
-          // Capture panel rect for FLIP animation (stored on SyncedVar so it travels with state)
-          // Only capture when modal is open and loading is visible
-          const isOpen = this.openState?.value != null;
-          if (isOpen && this._loadingWasVisible && this.animator.panelContent) {
-            this.openState.flipPreRect = this.animator.panelContent.getBoundingClientRect();
-            console.log(`LavashModal ${this.panelIdForLog}: beforeUpdate captured flipPreRect ${this.openState.flipPreRect.width}x${this.openState.flipPreRect.height}`);
+          // Capture panel rect for FLIP animation
+          // In standalone mode, capture when modal is open (has loading content visible)
+          const isOpen = this._previousServerValue != null;
+          if (this.animatedState) {
+            const phase = this.animatedState.getPhase();
+            if (phase === "visible" || phase === "entering" || phase === "loading") {
+              this.animator.capturePreUpdateRect();
+            }
+          } else if (isOpen) {
+            // Standalone mode - always capture when open
+            this.animator.capturePreUpdateRect();
           }
         },
 
@@ -348,29 +349,25 @@ defmodule Lavash.Overlay.Modal.Helpers do
             this.openState.serverSet(newServerValue);
           }
 
-          // Check if we should run FLIP animation for loading -> content transition
-          // We need to run FLIP when:
-          // 1. Loading WAS visible before the update (captured in beforeUpdate)
-          // 2. Main content inner now exists AND has actual content (not just empty async loading slot)
-          // 3. We have a captured flipPreRect on the SyncedVar
-          const mainContentInner = this.animator.getMainContentInner();
-          // Check that content actually has height (not just an empty container)
-          const contentHasHeight = mainContentInner && mainContentInner.offsetHeight > 0;
-          const flipPreRect = this.openState?.flipPreRect;
-          const shouldRunFlip = this._loadingWasVisible && contentHasHeight && flipPreRect;
+          // Check if loading content should trigger FLIP
+          const loadingContent = this.animator.getLoadingContent();
+          const loadingVisible = loadingContent && !loadingContent.classList.contains("hidden");
 
-          console.log(`LavashModal ${this.panelIdForLog}: FLIP check - loadingWasVisible=${this._loadingWasVisible}, mainContentInner=${!!mainContentInner}, height=${mainContentInner?.offsetHeight}, hasFlipRect=${!!flipPreRect}`);
-
-          if (nowIsOpen && shouldRunFlip) {
-            console.log(`LavashModal ${this.panelIdForLog}: updated - loading->content transition, running FLIP`);
-            // Run FLIP synchronously like baseline - the rect is on the SyncedVar
-            this.animator.runFlipAnimation(flipPreRect);
-            // Clear the rect after use
-            this.openState.flipPreRect = null;
+          if (this.animatedState) {
+            const phase = this.animatedState.getPhase();
+            if ((phase === "visible" || phase === "loading") && loadingVisible) {
+              console.log(`LavashModal ${this.panelIdForLog}: updated - loading visible, running FLIP`);
+              this.animator._runFlipAnimation();
+            }
+          } else if (nowIsOpen && loadingVisible) {
+            // Standalone mode - run FLIP when open and loading is visible
+            // This happens when async content arrives
+            console.log(`LavashModal ${this.panelIdForLog}: standalone updated - loading visible, running FLIP`);
+            this.animator._runFlipAnimation();
           }
 
-          // Clear the tracking flag
-          this._loadingWasVisible = false;
+          // Always release size lock if it wasn't released by FLIP
+          this.animator.releaseSizeLockIfNeeded();
         },
 
         destroyed() {
