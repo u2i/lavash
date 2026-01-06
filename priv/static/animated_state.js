@@ -311,3 +311,7 @@ export class AnimatedState {
     this.hook = null;
   }
 }
+
+// Expose globally for modal hooks
+window.Lavash = window.Lavash || {};
+window.Lavash.AnimatedState = AnimatedState;

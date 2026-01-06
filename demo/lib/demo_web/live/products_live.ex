@@ -13,6 +13,13 @@ defmodule DemoWeb.ProductsLive do
   state :max_price, :integer, from: :url, default: nil, setter: true
   state :min_rating, :integer, from: :url, default: nil, setter: true
 
+  # Modal open state - the modal component handles its own animations internally
+  # This field just tracks what product is being edited (nil = closed)
+  state :product_id, :any,
+    from: :ephemeral,
+    default: nil,
+    setter: true
+
   # Products - auto-maps state fields to :list action arguments
   # The action's arguments (search, category_id, in_stock, etc.) match our state field names
   # invalidate: :pubsub enables fine-grained PubSub invalidation using notify_on from the resource

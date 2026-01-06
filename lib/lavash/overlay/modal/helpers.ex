@@ -136,6 +136,7 @@ defmodule Lavash.Overlay.Modal.Helpers do
           // Must be accessed inside mounted() because colocated hooks load before app.js finishes
           const SyncedVar = window.Lavash?.SyncedVar;
           const ModalAnimator = window.Lavash?.ModalAnimator;
+          const AnimatedState = window.Lavash?.AnimatedState;
 
           if (!SyncedVar) {
             console.error("LavashModal: SyncedVar not found. Ensure synced_var.js loads before modal hooks.");
@@ -143,6 +144,10 @@ defmodule Lavash.Overlay.Modal.Helpers do
           }
           if (!ModalAnimator) {
             console.error("LavashModal: ModalAnimator not found. Ensure modal_animator.js loads before modal hooks.");
+            return;
+          }
+          if (!AnimatedState) {
+            console.error("LavashModal: AnimatedState not found. Ensure animated_state.js loads before modal hooks.");
             return;
           }
 
@@ -173,25 +178,66 @@ defmodule Lavash.Overlay.Modal.Helpers do
             // Get the SyncedVar from AnimatedState
             this.openState = this.animatedState.syncedVar;
           } else {
-            // Standalone mode - create our own SyncedVar
-            // (This is a fallback for modals not inside LavashOptimistic)
-            console.log(`LavashModal ${this.panelIdForLog}: Standalone mode - no parent LavashOptimistic`);
-            const initialValue = JSON.parse(this.el.dataset.openValue || "null");
-            this.openState = new SyncedVar(initialValue, (newValue, oldValue, source) => {
-              // In standalone mode, directly control animator
-              // Ignore 'confirmed' source - it just confirms what we already did optimistically
-              if (source === 'confirmed') return;
+            // Standalone mode - create our own AnimatedState
+            // (This is for modals that manage their own state, not inside parent LavashOptimistic)
+            console.log(`LavashModal ${this.panelIdForLog}: Standalone mode - creating own AnimatedState`);
 
-              const wasOpen = oldValue != null;
-              const isOpen = newValue != null;
+            // Create AnimatedState with modal animator as delegate
+            // The hook itself acts as a minimal "hook" interface for AnimatedState
+            const config = {
+              field: this.openField,
+              phaseField: `${this.openField}_phase`,
+              async: null,  // Modal handles async via its own async_result
+              preserveDom: true,
+              duration: this.duration
+            };
 
-              if (isOpen && !wasOpen) {
-                this.animator.onEntering({ notifyTransitionEnd: () => this.animator.onVisible({}) });
-              } else if (!isOpen && wasOpen) {
-                this.animator.onExiting({});
-                setTimeout(() => this.animator.onIdle({}), this.duration + 50);
+            // Create a logging delegate to debug the state machine flow
+            const loggingDelegate = {
+              onEntering: (as) => {
+                console.log(`🔵 [${this.panelIdForLog}] onEntering - phase will be 'entering'`);
+                this.animator.onEntering(as);
+              },
+              onLoading: (as) => {
+                console.log(`🟡 [${this.panelIdForLog}] onLoading - phase will be 'loading'`);
+                this.animator.onLoading(as);
+              },
+              onVisible: (as) => {
+                console.log(`🟢 [${this.panelIdForLog}] onVisible - phase will be 'visible'`);
+                this.animator.onVisible(as);
+              },
+              onExiting: (as) => {
+                console.log(`🟠 [${this.panelIdForLog}] onExiting - phase will be 'exiting'`);
+                this.animator.onExiting(as);
+              },
+              onIdle: (as) => {
+                console.log(`⚪ [${this.panelIdForLog}] onIdle - phase will be 'idle'`);
+                this.animator.onIdle(as);
+              },
+              onAsyncReady: (as) => {
+                console.log(`✅ [${this.panelIdForLog}] onAsyncReady - async data arrived`);
+                this.animator.onAsyncReady(as);
+              },
+              onTransitionEnd: (as) => {
+                console.log(`🏁 [${this.panelIdForLog}] onTransitionEnd - enter animation done`);
+                this.animator.onTransitionEnd(as);
               }
-            });
+            };
+
+            // Create AnimatedState with logging delegate
+            this.animatedState = new AnimatedState(config, this, loggingDelegate);
+
+            // Get the SyncedVar from AnimatedState
+            this.openState = this.animatedState.syncedVar;
+
+            // Initialize with current server value
+            const initialValue = JSON.parse(this.el.dataset.openValue || "null");
+            if (initialValue != null) {
+              // Modal starts open - set value without triggering animation
+              // (the DOM already reflects the open state)
+              this.openState.value = initialValue;
+              this.openState.confirmedValue = initialValue;
+            }
           }
 
           // IDs for onBeforeElUpdated callback
@@ -276,17 +322,12 @@ defmodule Lavash.Overlay.Modal.Helpers do
           const loadingContent = this.animator.getLoadingContent();
           this._loadingWasVisible = loadingContent && !loadingContent.classList.contains("hidden");
 
-          // Capture panel rect for FLIP animation
-          // In standalone mode, capture when modal is open (has loading content visible)
-          const isOpen = this._previousServerValue != null;
-          if (this.animatedState) {
-            const phase = this.animatedState.getPhase();
-            if (phase === "visible" || phase === "entering" || phase === "loading") {
-              this.animator.capturePreUpdateRect();
-            }
-          } else if (isOpen) {
-            // Standalone mode - always capture when open
-            this.animator.capturePreUpdateRect();
+          // Capture panel rect for FLIP animation (stored on SyncedVar so it travels with state)
+          // Only capture when modal is open and loading is visible
+          const isOpen = this.openState?.value != null;
+          if (isOpen && this._loadingWasVisible && this.animator.panelContent) {
+            this.openState.flipPreRect = this.animator.panelContent.getBoundingClientRect();
+            console.log(`LavashModal ${this.panelIdForLog}: beforeUpdate captured flipPreRect ${this.openState.flipPreRect.width}x${this.openState.flipPreRect.height}`);
           }
         },
 
@@ -310,28 +351,26 @@ defmodule Lavash.Overlay.Modal.Helpers do
           // Check if we should run FLIP animation for loading -> content transition
           // We need to run FLIP when:
           // 1. Loading WAS visible before the update (captured in beforeUpdate)
-          // 2. Main content inner now exists (async data arrived and rendered)
+          // 2. Main content inner now exists AND has actual content (not just empty async loading slot)
+          // 3. We have a captured flipPreRect on the SyncedVar
           const mainContentInner = this.animator.getMainContentInner();
-          const contentNowExists = !!mainContentInner;
-          const shouldRunFlip = this._loadingWasVisible && contentNowExists;
+          // Check that content actually has height (not just an empty container)
+          const contentHasHeight = mainContentInner && mainContentInner.offsetHeight > 0;
+          const flipPreRect = this.openState?.flipPreRect;
+          const shouldRunFlip = this._loadingWasVisible && contentHasHeight && flipPreRect;
 
-          if (this.animatedState) {
-            const phase = this.animatedState.getPhase();
-            if ((phase === "visible" || phase === "loading") && shouldRunFlip) {
-              console.log(`LavashModal ${this.panelIdForLog}: updated - loading->content transition, running FLIP`);
-              this.animator._runFlipAnimation();
-            }
-          } else if (nowIsOpen && shouldRunFlip) {
-            // Standalone mode - run FLIP when transitioning from loading to content
-            console.log(`LavashModal ${this.panelIdForLog}: standalone updated - loading->content transition, running FLIP`);
-            this.animator._runFlipAnimation();
+          console.log(`LavashModal ${this.panelIdForLog}: FLIP check - loadingWasVisible=${this._loadingWasVisible}, mainContentInner=${!!mainContentInner}, height=${mainContentInner?.offsetHeight}, hasFlipRect=${!!flipPreRect}`);
+
+          if (nowIsOpen && shouldRunFlip) {
+            console.log(`LavashModal ${this.panelIdForLog}: updated - loading->content transition, running FLIP`);
+            // Run FLIP synchronously like baseline - the rect is on the SyncedVar
+            this.animator.runFlipAnimation(flipPreRect);
+            // Clear the rect after use
+            this.openState.flipPreRect = null;
           }
 
           // Clear the tracking flag
           this._loadingWasVisible = false;
-
-          // Always release size lock if it wasn't released by FLIP
-          this.animator.releaseSizeLockIfNeeded();
         },
 
         destroyed() {
@@ -438,11 +477,13 @@ defmodule Lavash.Overlay.Modal.Helpers do
         |> assign(:inner_assigns, assigns.assigns)
         |> assign(:render_fn, assigns.render)
 
+      # Only render content when async data is ready.
+      # The loading_content div in modal_chrome handles the loading state,
+      # so we don't render anything here during loading - this enables FLIP animation
+      # to work (loading_content height vs main_content height are different).
       ~H"""
       <.async_result :let={data} assign={@async_value}>
-        <:loading>
-          {@loading.(@inner_assigns)}
-        </:loading>
+        <:loading></:loading>
         <% render_assigns = assign(@inner_assigns, :form, data) %>
         {@render_fn.(render_assigns)}
       </.async_result>

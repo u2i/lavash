@@ -51,9 +51,6 @@ export class ModalAnimator {
     this._ghostInsertedInBeforeUpdate = false;
     this._preUpdateContentClone = null;
 
-    // Captured panel rect for FLIP animation (loading → content transition)
-    this._capturedRect = null;
-
     // IDs for onBeforeElUpdated detection
     this._mainContentId = `${id}-main_content`;
     this._mainContentInnerId = `${id}-main_content_inner`;
@@ -168,11 +165,13 @@ export class ModalAnimator {
 
   /**
    * Called when async data arrives.
-   * Runs FLIP animation from loading to content.
+   * Note: FLIP animation is now triggered from the hook's updated() method
+   * using the rect stored on the SyncedVar, not from here.
    */
   onAsyncReady(animatedState) {
-    console.log(`ModalAnimator ${this.panelIdForLog}: onAsyncReady - running FLIP animation`);
-    this._runFlipAnimation();
+    console.log(`ModalAnimator ${this.panelIdForLog}: onAsyncReady`);
+    // FLIP animation is handled by the hook's updated() method
+    // which has access to the pre-captured rect on the SyncedVar
   }
 
   /**
@@ -187,49 +186,54 @@ export class ModalAnimator {
   // --- FLIP Animation Support ---
 
   /**
-   * Capture panel rect before update for FLIP animation.
-   * Call this in beforeUpdate() of the hook.
+   * Run FLIP animation with a pre-captured rect.
+   * This is the public API called from the hook's updated() method.
+   * The rect should be captured in beforeUpdate() and stored on the SyncedVar.
+   *
+   * @param {DOMRect} preRect - The panel's bounding rect captured before the DOM update
    */
-  capturePreUpdateRect() {
-    if (this.panelContent && this.getLoadingContent()) {
-      // Just capture rect like baseline - don't lock, that causes flash
-      this._capturedRect = this.panelContent.getBoundingClientRect();
+  runFlipAnimation(preRect) {
+    if (!preRect) {
+      console.log(`ModalAnimator runFlipAnimation: no preRect provided, skipping`);
+      return;
     }
+    this._runFlipAnimationWithPreRect(preRect);
   }
 
   /**
-   * Release size lock if it wasn't released by FLIP animation.
-   * Call this at the end of updated() if FLIP didn't run.
-   */
-  releaseSizeLockIfNeeded() {
-    // Clear captured rect if FLIP didn't run
-    this._capturedRect = null;
-  }
-
-  /**
-   * Run FLIP animation if panel size changed.
+   * Internal FLIP animation implementation with pre-captured rect.
    * Uses CSS transforms like the baseline for GPU-accelerated animation.
+   *
+   * @param {DOMRect} firstRect - The panel's bounding rect from before the update
    */
-  _runFlipAnimation() {
+  _runFlipAnimationWithPreRect(firstRect) {
+    // Guard against running twice (can happen with multiple rapid updates)
+    if (this._flipAnimationRunning) {
+      console.log(`ModalAnimator _runFlipAnimationWithPreRect: already running, skipping`);
+      return;
+    }
+    this._flipAnimationRunning = true;
+
     const loadEl = this.getLoadingContent();
     const mainInnerEl = this.getMainContentInner();
     const mainContent = this.getMainContentContainer();
-    const firstRect = this._capturedRect;
 
-    console.log(`ModalAnimator _runFlipAnimation: mainInnerEl=${!!mainInnerEl}, loadEl=${!!loadEl}, hasCapture=${!!firstRect}`);
+    console.log(`ModalAnimator _runFlipAnimationWithPreRect: mainInnerEl=${!!mainInnerEl}, loadEl=${!!loadEl}, firstRect=${firstRect.width}x${firstRect.height}`);
 
     // Always hide loading if loadEl exists, even without flip animation
     if (loadEl && !loadEl.classList.contains("hidden")) {
-      console.log(`ModalAnimator _runFlipAnimation: hiding loading`);
+      console.log(`ModalAnimator _runFlipAnimation: hiding loading, current classes:`, loadEl.className);
       // Hide loading with transition (classList with Tailwind classes)
       loadEl.classList.add("transition-opacity", "duration-200");
       loadEl.offsetHeight;
       loadEl.classList.remove("opacity-100");
       loadEl.classList.add("opacity-0");
+      console.log(`ModalAnimator _runFlipAnimation: after class changes:`, loadEl.className);
       // Add hidden class after transition
       setTimeout(() => {
         loadEl.classList.add("hidden");
         loadEl.classList.remove("transition-opacity", "duration-200");
+        this._flipAnimationRunning = false;
       }, 200);
       // Also show main content
       if (mainContent) {
@@ -240,23 +244,36 @@ export class ModalAnimator {
       }
     }
 
-    // Clear capture and bail if no FLIP needed
-    if (!firstRect || !this.panelContent || !loadEl) {
-      this._capturedRect = null;
+    // Bail if no FLIP needed (firstRect is guaranteed to exist since we check in runFlipAnimation)
+    if (!this.panelContent || !loadEl) {
+      // Reset flag if we're not running full FLIP (fade already started above if loadEl existed)
+      if (!loadEl) this._flipAnimationRunning = false;
       return;
     }
 
-    const lastRect = this.panelContent.getBoundingClientRect();
-    this._capturedRect = null;
+    // To measure the panel's FINAL size, we need to temporarily remove loading from layout
+    // Otherwise the grid cell won't expand to fit the taller main content
+    const savedDisplay = loadEl.style.display;
 
-    // Skip if size didn't change significantly
+    // Debug: measure main content inner directly
+    const mainInnerRect = mainInnerEl ? mainInnerEl.getBoundingClientRect() : null;
+    console.log(`ModalAnimator FLIP debug: mainInnerEl rect=${mainInnerRect ? `${mainInnerRect.width}x${mainInnerRect.height}` : 'null'}`);
+
+    loadEl.style.display = 'none';
+    this.panelContent.offsetHeight; // Force reflow
+    const lastRect = this.panelContent.getBoundingClientRect();
+    loadEl.style.display = savedDisplay; // Restore for fade animation
+
+    console.log(`ModalAnimator FLIP: firstRect=${firstRect.width}x${firstRect.height}, lastRect=${lastRect.width}x${lastRect.height}`);
     if (
       Math.abs(firstRect.width - lastRect.width) < 1 &&
       Math.abs(firstRect.height - lastRect.height) < 1
     ) {
+      console.log(`ModalAnimator _runFlipAnimation: size didn't change, skipping FLIP transform`);
       return;
     }
 
+    console.log(`ModalAnimator _runFlipAnimation: running FLIP transform`);
     // Calculate FLIP transform values
     const sX = lastRect.width === 0 ? 1 : firstRect.width / lastRect.width;
     const sY = lastRect.height === 0 ? 1 : firstRect.height / lastRect.height;
@@ -264,7 +281,8 @@ export class ModalAnimator {
     const dY = firstRect.top - lastRect.top + (firstRect.height - lastRect.height) / 2;
 
     // Set up loading element inverse transform
-    loadEl.style.transition = "none";
+    // NOTE: Don't set loadEl.style.transition = "none" here - it would kill the opacity fade
+    // The transform is instant (no transition needed) while opacity fades via CSS class
     loadEl.style.transform = `scale(${1 / sX},${1 / sY})`;
     loadEl.style.transformOrigin = "top left";
 
@@ -484,7 +502,6 @@ export class ModalAnimator {
 
     // Clean up animations
     this._cleanupCloseAnimation();
-    this._capturedRect = null;
     this._ghostInsertedInBeforeUpdate = false;
     this._preUpdateContentClone = null;
 
@@ -553,9 +570,12 @@ export class ModalAnimator {
    */
   destroy() {
     this._cleanupCloseAnimation();
-    this._capturedRect = null;
     if (this.panelContent && this._transitionHandler) {
       this.panelContent.removeEventListener("transitionend", this._transitionHandler);
     }
   }
 }
+
+// Expose globally for modal hooks
+window.Lavash = window.Lavash || {};
+window.Lavash.ModalAnimator = ModalAnimator;

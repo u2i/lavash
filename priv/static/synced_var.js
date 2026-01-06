@@ -30,6 +30,9 @@ export class SyncedVar {
     this.version = 0;
     this.confirmedVersion = 0;
     this.onChange = onChange;            // callback: (newValue, oldValue, source) => void
+
+    // FLIP animation support - captured rect travels with the state transition
+    this.flipPreRect = null;
   }
 
   /**
