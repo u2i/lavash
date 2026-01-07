@@ -150,6 +150,14 @@ defmodule Lavash.Component.Compiler do
           Phoenix.LiveView.JS.dispatch("close-panel", to: "##{modal_id}")
           |> Phoenix.LiveView.JS.push("close", target: var!(assigns).myself)
 
+        # Build optimistic state for data attribute (passive, no hook)
+        optimistic_state = Lavash.Component.Helpers.optimistic_state(__MODULE__, var!(assigns))
+        module_name = inspect(__MODULE__)
+        optimistic_json = Jason.encode!(optimistic_state)
+
+        # Get optimistic version from socket
+        version = Lavash.Socket.optimistic_version(var!(assigns).socket)
+
         var!(assigns) =
           var!(assigns)
           |> Phoenix.Component.assign(:__modal_id__, modal_id)
@@ -163,9 +171,18 @@ defmodule Lavash.Component.Compiler do
           |> Phoenix.Component.assign(:__modal_render__, render_fn)
           |> Phoenix.Component.assign(:__modal_loading__, loading_fn || default_loading_fn)
           |> Phoenix.Component.assign(:__modal_async_assign__, async_assign_field)
+          |> Phoenix.Component.assign(:__lavash_module__, module_name)
+          |> Phoenix.Component.assign(:__lavash_state__, optimistic_json)
+          |> Phoenix.Component.assign(:__lavash_version__, version)
 
         ~H"""
-        <div class="contents">
+        <div
+          id={"lavash-#{@id}"}
+          data-lavash-module={@__lavash_module__}
+          data-lavash-state={@__lavash_state__}
+          data-lavash-version={@__lavash_version__}
+          class="contents"
+        >
           <.modal_chrome
             id={@__modal_id__}
             module={@__modal_module__}

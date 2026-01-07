@@ -41,4 +41,74 @@ defmodule Lavash.Component.Helpers do
   end
 
   def get_component_state(nil, _component_id), do: %{}
+
+  @doc """
+  Builds the optimistic state map for a component.
+
+  This is used to expose component state via data attributes for
+  potential client-side access (without a JavaScript hook).
+  """
+  def optimistic_state(module, assigns) do
+    # Get optimistic state fields
+    state_fields = module.__lavash__(:optimistic_fields)
+
+    # Get forms - their params are automatically optimistic
+    forms = module.__lavash__(:forms)
+
+    # Build the state map from optimistic fields
+    state_map =
+      Enum.reduce(state_fields, %{}, fn field, acc ->
+        value = Map.get(assigns, field.name)
+        Map.put(acc, field.name, value)
+      end)
+
+    # Add form params - forms are implicitly optimistic for client-side validation
+    state_map =
+      Enum.reduce(forms, state_map, fn form, acc ->
+        params_field = :"#{form.name}_params"
+        value = Map.get(assigns, params_field, %{})
+        Map.put(acc, params_field, value)
+      end)
+
+    # Add derives, unwrapping async values
+    derives = get_optimistic_derives(module)
+
+    Enum.reduce(derives, state_map, fn derive, acc ->
+      value = Map.get(assigns, derive.name)
+
+      # Unwrap async values
+      value =
+        case value do
+          %Phoenix.LiveView.AsyncResult{ok?: true, result: v} -> v
+          %Phoenix.LiveView.AsyncResult{loading: loading} when loading != nil -> nil
+          %Phoenix.LiveView.AsyncResult{} -> nil
+          {:ok, v} -> v
+          :loading -> nil
+          {:error, _} -> nil
+          v -> v
+        end
+
+      Map.put(acc, derive.name, value)
+    end)
+  end
+
+  defp get_optimistic_derives(module) do
+    # Get derives from module introspection
+    derives = module.__lavash__(:derived_fields)
+    calculations = module.__lavash__(:calculations)
+
+    # Filter to only optimistic derives
+    optimistic_derives =
+      Enum.filter(derives, fn derive ->
+        Map.get(derive, :optimistic, false)
+      end)
+
+    # Calculations are optimistic by default
+    optimistic_calculations =
+      Enum.filter(calculations, fn calc ->
+        Map.get(calc, :optimistic, true)
+      end)
+
+    optimistic_derives ++ optimistic_calculations
+  end
 end
