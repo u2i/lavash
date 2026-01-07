@@ -229,7 +229,8 @@ defmodule Lavash.Optimistic.ExpandAnimatedStates do
       phase_field: :"#{field}_phase",
       async: Keyword.get(opts, :async),
       preserve_dom: Keyword.get(opts, :preserve_dom, false),
-      duration: Keyword.get(opts, :duration, 200)
+      duration: Keyword.get(opts, :duration, 200),
+      type: Keyword.get(opts, :type)
     }
 
     Transformer.persist(dsl_state, :lavash_animated_fields, [config | animated_fields])

@@ -219,7 +219,8 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
         phaseField: to_string(config.phase_field),
         async: config.async && to_string(config.async),
         preserveDom: config.preserve_dom,
-        duration: config.duration
+        duration: config.duration,
+        type: config.type && to_string(config.type)
       }
     end)
   end
