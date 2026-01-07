@@ -35,14 +35,13 @@ import { SyncedVar } from "./synced_var.js";
 
 // --- Base State Class ---
 class AnimatedStatePhase {
-  constructor(manager) {
+  constructor(manager, phaseName) {
     this.manager = manager;
+    this._phaseName = phaseName;
   }
 
   get name() {
-    return this.constructor.name
-      .replace(/Phase$/, "")
-      .toLowerCase();
+    return this._phaseName;
   }
 
   onOpen() {}
@@ -56,6 +55,10 @@ class AnimatedStatePhase {
 // --- Concrete Phase Implementations ---
 
 class IdlePhase extends AnimatedStatePhase {
+  constructor(manager) {
+    super(manager, "idle");
+  }
+
   onEnter() {
     this.manager._setPhase("idle");
     this.manager._notifyDelegate("onIdle");
@@ -67,6 +70,10 @@ class IdlePhase extends AnimatedStatePhase {
 }
 
 class EnteringPhase extends AnimatedStatePhase {
+  constructor(manager) {
+    super(manager, "entering");
+  }
+
   onEnter() {
     this.manager._setPhase("entering");
     this.manager._notifyDelegate("onEntering");
@@ -110,6 +117,10 @@ class EnteringPhase extends AnimatedStatePhase {
 }
 
 class LoadingPhase extends AnimatedStatePhase {
+  constructor(manager) {
+    super(manager, "loading");
+  }
+
   onEnter() {
     this.manager._setPhase("loading");
     this.manager._notifyDelegate("onLoading");
@@ -127,6 +138,10 @@ class LoadingPhase extends AnimatedStatePhase {
 }
 
 class VisiblePhase extends AnimatedStatePhase {
+  constructor(manager) {
+    super(manager, "visible");
+  }
+
   onEnter() {
     this.manager._setPhase("visible");
     this.manager._notifyDelegate("onVisible");
@@ -143,6 +158,10 @@ class VisiblePhase extends AnimatedStatePhase {
 }
 
 class ExitingPhase extends AnimatedStatePhase {
+  constructor(manager) {
+    super(manager, "exiting");
+  }
+
   onEnter() {
     this.manager._setPhase("exiting");
     this.manager._notifyDelegate("onExiting");
@@ -221,12 +240,16 @@ export class AnimatedState {
     const wasOpen = oldValue != null;
     const isOpen = newValue != null;
 
+    console.log(`[AnimatedState ${this.config.field}] onValueChange: wasOpen=${wasOpen}, isOpen=${isOpen}, currentPhase=${this.currentPhase?.name}`);
+
     if (isOpen && !wasOpen) {
       // Opening
+      console.log(`[AnimatedState ${this.config.field}] Opening - calling onOpen()`);
       this.isAsyncReady = false; // Reset async state for new open
       this.currentPhase.onOpen();
     } else if (!isOpen && wasOpen) {
       // Closing
+      console.log(`[AnimatedState ${this.config.field}] Closing - calling onClose()`);
       this.currentPhase.onClose();
     }
   }

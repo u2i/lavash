@@ -216,21 +216,30 @@ export class ModalAnimator {
     const mainInner = this.getMainContentInner();
     const mainContentLoaded = mainInner && mainInner.offsetHeight > 10;
 
-    // Notify state machine when content arrives
-    if (animated.syncedVar && mainContentLoaded && !animated.syncedVar.isAsyncReady) {
-      console.log(`ModalAnimator ${this.panelIdForLog}: onUpdated - content arrived, notifying state machine`);
-      animated.syncedVar.onAsyncDataReady();
+    const currentPhase = animated.getPhase();
+    const loadingContent = this.getLoadingContent();
+    const loadingVisible = loadingContent && !loadingContent.classList.contains("hidden");
+
+    console.log(`ModalAnimator ${this.panelIdForLog}: onUpdated - phase=${currentPhase}, mainContentLoaded=${mainContentLoaded}, loadingVisible=${loadingVisible}`);
+
+    // Handle content arrival during entering phase
+    // Notify state machine so it can call onContentReadyDuringEnter
+    if (mainContentLoaded && currentPhase === "entering" && !animated.isAsyncReady) {
+      console.log(`ModalAnimator ${this.panelIdForLog}: onUpdated - content arrived during entering, notifying state machine`);
+      animated.onAsyncDataReady();
+      // onContentReadyDuringEnter will handle the FLIP queuing and early loading fadeout
+      this.releaseSizeLockIfNeeded();
+      return;
     }
 
-    // For loading/visible phases, run FLIP directly (state machine already transitioned)
-    if (animated.syncedVar) {
-      const currentPhase = animated.syncedVar.getPhase();
-      const loadingContent = this.getLoadingContent();
-      const loadingVisible = loadingContent && !loadingContent.classList.contains("hidden");
-
-      if (loadingVisible && mainContentLoaded && (currentPhase === "loading" || currentPhase === "visible")) {
-        console.log(`ModalAnimator ${this.panelIdForLog}: onUpdated - phase=${currentPhase}, running FLIP`);
+    // For loading/visible phases with content ready, run FLIP animation
+    if (mainContentLoaded && (currentPhase === "loading" || currentPhase === "visible")) {
+      // Content is ready - run FLIP if loading is still visible
+      if (loadingVisible) {
+        console.log(`ModalAnimator ${this.panelIdForLog}: onUpdated - running FLIP animation`);
         this._runFlipAnimation();
+      } else {
+        console.log(`ModalAnimator ${this.panelIdForLog}: onUpdated - loading already hidden, skipping FLIP`);
       }
     }
 

@@ -220,10 +220,13 @@ const LavashOptimistic = {
     if (animatedConfigs.length === 0 && this.el.dataset.lavashAnimated) {
       try {
         animatedConfigs = JSON.parse(this.el.dataset.lavashAnimated);
+        console.log(`[LavashOptimistic] Parsed animated configs from data attr:`, animatedConfigs);
       } catch (e) {
         console.warn("[LavashOptimistic] Failed to parse data-lavash-animated:", e);
       }
     }
+
+    console.log(`[LavashOptimistic] initAnimatedFields: ${animatedConfigs.length} configs`, animatedConfigs);
 
     for (const config of animatedConfigs) {
       // Create delegate based on type
@@ -259,13 +262,18 @@ const LavashOptimistic = {
 
             const openHandler = (e) => {
               const openValue = e.detail?.[config.field] ?? e.detail?.value ?? true;
-              console.debug(`[LavashOptimistic] open-panel event for ${config.field}:`, openValue);
+              console.log(`[LavashOptimistic] open-panel event for ${config.field}:`, openValue);
+              console.log(`[LavashOptimistic] animatedStates:`, Object.keys(this.animatedStates || {}));
               // AnimatedState is created after this block, access via closure
               const animState = this.animatedStates[config.field];
               if (animState) {
+                console.log(`[LavashOptimistic] Found animState, calling set()`);
                 animState.syncedVar.set(openValue, (p, cb) => {
+                  console.log(`[LavashOptimistic] pushEventTo ${setterAction}`, p);
                   this.pushEventTo(modalChrome, setterAction, { ...p, value: openValue }, cb);
                 });
+              } else {
+                console.warn(`[LavashOptimistic] No animState found for ${config.field}`);
               }
             };
 
@@ -1412,8 +1420,11 @@ const LavashOptimistic = {
     const newServerVersion = parseInt(this.el.dataset.lavashVersion || "0", 10);
     const serverState = JSON.parse(this.el.dataset.lavashState || "{}");
 
+    console.log(`[LavashOptimistic] updated() - serverState keys:`, Object.keys(serverState));
+
     // Track which async fields got populated (for animated state coordination)
     const asyncFieldsReady = this.detectAsyncFieldsReady(serverState);
+    console.log(`[LavashOptimistic] updated() - asyncFieldsReady:`, asyncFieldsReady);
 
     // Update SyncedVars from server state (flattened paths)
     // serverUpdate only updates vars that are not pending
@@ -1499,16 +1510,31 @@ const LavashOptimistic = {
   notifyAnimatedStatesServerUpdate(changedFields) {
     if (!this.animatedStates || !changedFields) return;
 
+    console.log(`[LavashOptimistic] notifyAnimatedStatesServerUpdate - changedFields:`, changedFields);
+
     for (const field of changedFields) {
       const animated = this.animatedStates[field];
       if (animated) {
         const oldValue = animated.syncedVar.getValue();
         const newValue = this.state[field];
 
+        console.log(`[LavashOptimistic] animated field ${field}: oldValue=${oldValue}, newValue=${newValue}`);
+
         // Only notify if value actually changed
         if (oldValue !== newValue) {
-          animated.syncedVar.serverUpdate(newValue);
-          animated.onValueChange(newValue, oldValue, 'server');
+          console.log(`[LavashOptimistic] Notifying animated state for ${field}: ${oldValue} -> ${newValue}`);
+          try {
+            // Directly update the SyncedVar's value and confirmed state
+            // We bypass serverSet() because it rejects when isPending, but version
+            // tracking happens at the hook level, not the AnimatedState level
+            animated.syncedVar.value = newValue;
+            animated.syncedVar.confirmedValue = newValue;
+            animated.syncedVar.confirmedVersion = animated.syncedVar.version;
+            // AnimatedState.onValueChange handles the phase state machine
+            animated.onValueChange(newValue, oldValue, 'server');
+          } catch (e) {
+            console.error(`[LavashOptimistic] Error notifying animated state for ${field}:`, e);
+          }
         }
       }
     }

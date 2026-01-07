@@ -57,35 +57,27 @@ defmodule Lavash.Overlay.Modal.Helpers do
   def modal_chrome(assigns) do
     max_width_class = Map.get(@max_width_classes, assigns.max_width, "max-w-md")
 
-    # Build the close command: just dispatch close-panel event
-    # The hook will use pushEvent with cycle tracking to send the close to the server
+    # Build the close command: dispatch close-panel event
+    # LavashOptimistic on the parent wrapper handles this event
     on_close = JS.dispatch("close-panel", to: "##{assigns.id}")
 
-    # All modal chrome animations are now handled by the hook via direct classList manipulation
-    # since all chrome elements have JS.ignore_attributes(["class", "style"])
+    # All modal chrome animations are handled by LavashOptimistic via ModalAnimator
+    # Chrome elements have JS.ignore_attributes(["class", "style"]) for direct manipulation
 
     assigns =
       assigns
       |> assign(:max_width_class, max_width_class)
       |> assign(:on_close, on_close)
       |> assign(:is_open, assigns.open != nil)
-      |> assign(:module_name, inspect(assigns.module))
-      |> assign(:async_field_name, assigns.async_assign && to_string(assigns.async_assign))
 
     ~H"""
-    <%!-- Wrapper for hook - always present, client controls visibility via class --%>
+    <%!-- Modal chrome wrapper - LavashOptimistic on parent handles animations --%>
     <div
       id={@id}
       class="fixed inset-0 z-50 flex items-center justify-center pointer-events-none invisible"
-      phx-hook=".LavashModal"
       phx-mounted={JS.ignore_attributes(["class", "style"])}
       phx-target={@myself}
-      data-module={@module_name}
-      data-duration={@duration}
-      data-open={to_string(@is_open)}
-      data-open-field={@open_field}
       data-open-value={Jason.encode!(@open)}
-      data-async-field={@async_field_name}
     >
       <%!-- Backdrop overlay - client controls opacity and visibility --%>
       <div
@@ -126,236 +118,6 @@ defmodule Lavash.Overlay.Modal.Helpers do
           </div>
         </div>
       </div>
-      <script :type={Phoenix.LiveView.ColocatedHook} name=".LavashModal">
-      // --- LavashModal Hook v6 ---
-      // Reads animated config from parent wrapper's data-lavash-animated attribute
-      export default {
-        mounted() {
-          const id = this.el.id;
-          console.log(`LavashModal v6 mounted: #${id}`);
-          if (!id) {
-            console.error("LavashModal: Hook element requires an ID.");
-            return;
-          }
-
-          // Get shared classes from global Lavash namespace (loaded via app.js)
-          const ModalAnimator = window.Lavash?.ModalAnimator;
-          const SyncedVar = window.Lavash?.SyncedVar;
-
-          if (!ModalAnimator) {
-            console.error("LavashModal: ModalAnimator not found. Ensure modal_animator.js loads before modal hooks.");
-            return;
-          }
-          if (!SyncedVar) {
-            console.error("LavashModal: SyncedVar not found. Ensure synced_var.js loads before modal hooks.");
-            return;
-          }
-
-          // Find parent wrapper with data-lavash-animated (contains DSL config)
-          const wrapper = this.el.closest('[data-lavash-animated]');
-          let animatedConfig = null;
-
-          // If parent has LavashOptimistic hook, it will handle everything - skip this hook
-          if (wrapper && wrapper.hasAttribute('phx-hook') &&
-              wrapper.getAttribute('phx-hook') === 'LavashOptimistic') {
-            console.log(`LavashModal ${id}: Skipping - LavashOptimistic is handling this modal`);
-            this._skipped = true;
-            return;
-          }
-
-          if (wrapper) {
-            const animatedConfigs = JSON.parse(wrapper.dataset.lavashAnimated || '[]');
-            // Find the config for this modal's open field
-            const openField = this.el.dataset.openField || "open";
-            animatedConfig = animatedConfigs.find(c => c.field === openField);
-            console.log(`LavashModal ${id}: Found DSL config from wrapper:`, animatedConfig);
-          }
-
-          // Fall back to data attributes if no DSL config found
-          this.panelIdForLog = `#${id}`;
-          this.openField = animatedConfig?.field || this.el.dataset.openField || "open";
-          this.asyncField = animatedConfig?.async || this.el.dataset.asyncField || null;
-          this.duration = animatedConfig?.duration || Number(this.el.dataset.duration) || 200;
-          this.moduleName = this.el.dataset.module;
-          this.setterAction = `set_${this.openField}`;
-
-          console.log(`LavashModal ${this.panelIdForLog}: module=${this.moduleName}, openField=${this.openField}, asyncField=${this.asyncField}`);
-
-          // Create ModalAnimator for DOM manipulation
-          this.animator = new ModalAnimator(this.el, {
-            duration: this.duration,
-            openField: this.openField
-          });
-
-          // Create SyncedVar with config from DSL or fallback
-          const syncedConfig = animatedConfig || {
-            field: this.openField,
-            phaseField: `${this.openField}_phase`,
-            async: this.asyncField,
-            preserveDom: true,
-            duration: this.duration
-          };
-
-          this.syncedVar = new SyncedVar(null, { animated: syncedConfig });
-
-          // Set ModalAnimator as delegate for animation callbacks
-          this.syncedVar.setDelegate(this.animator);
-          console.log(`LavashModal ${this.panelIdForLog}: Created SyncedVar with config:`, syncedConfig);
-
-          // Initialize with current server value if modal starts open
-          const initialValue = JSON.parse(this.el.dataset.openValue || "null");
-          if (initialValue != null) {
-            // Modal starts open - set value without triggering animation
-            this.syncedVar.value = initialValue;
-            this.syncedVar.confirmedValue = initialValue;
-          }
-
-          // IDs for onBeforeElUpdated callback
-          this._mainContentId = `${id}-main_content`;
-          this._mainContentInnerId = `${id}-main_content_inner`;
-
-          // Register ourselves in global registry for onBeforeElUpdated callback
-          window.__lavashModalInstances = window.__lavashModalInstances || {};
-          window.__lavashModalInstances[this._mainContentId] = this;
-
-          // Install global DOM callback for ghost element detection
-          this._installDomCallback();
-
-          // Listen for open-panel event
-          this.el.addEventListener("open-panel", (e) => {
-            console.log(`LavashModal ${this.panelIdForLog}: open-panel event received`, e.detail);
-            const openValue = e.detail?.[this.openField] ?? e.detail?.value ?? true;
-            this.syncedVar.set(openValue, (p, cb) => {
-              this.pushEventTo(this.el, this.setterAction, { ...p, value: openValue }, cb);
-            });
-          });
-
-          // Listen for close-panel event
-          this.el.addEventListener("close-panel", () => {
-            console.log(`LavashModal ${this.panelIdForLog}: close-panel event received`);
-            this.syncedVar.set(null, (p, cb) => {
-              this.pushEventTo(this.el, this.setterAction, { ...p, value: null }, cb);
-            });
-          });
-
-        },
-
-        _installDomCallback() {
-          // Only install once globally
-          if (window.__lavashModalDomCallbackInstalled) return;
-          window.__lavashModalDomCallbackInstalled = true;
-
-          const original = this.liveSocket.domCallbacks.onBeforeElUpdated;
-          this.liveSocket.domCallbacks.onBeforeElUpdated = (fromEl, toEl) => {
-            // Check if any registered modal cares about this element
-            const instances = window.__lavashModalInstances || {};
-            const modal = instances[fromEl.id];
-
-            if (modal && modal.syncedVar) {
-              // Check if modal is in a state where we should preserve content
-              const phase = modal.syncedVar.getPhase();
-              const shouldPreserve = phase === "visible" || phase === "loading";
-
-              if (shouldPreserve) {
-                const innerId = modal._mainContentInnerId;
-                const fromHasInner = fromEl.querySelector(`#${innerId}`);
-                const toHasInner = toEl.querySelector(`#${innerId}`);
-
-                if (fromHasInner && !toHasInner) {
-                  // Content is being removed! Create ghost NOW before morphdom patches
-                  console.log(`LavashModal ${modal.panelIdForLog}: onBeforeElUpdated detected content removal`);
-                  modal.animator.createGhostBeforePatch(fromHasInner);
-                }
-              }
-            }
-
-            // Call original callback
-            original(fromEl, toEl);
-          };
-        },
-
-        beforeUpdate() {
-          if (this._skipped) return;
-
-          // Track previous server value to detect server-initiated changes
-          this._previousServerValue = JSON.parse(this.el.dataset.openValue || "null");
-
-          // Capture panel rect for FLIP animation (only in loading/visible phases)
-          // During entering phase, capturePreUpdateRect will skip to avoid locking panel
-          if (this.syncedVar) {
-            const phase = this.syncedVar.getPhase();
-            if (phase === "visible" || phase === "entering" || phase === "loading") {
-              this.animator.capturePreUpdateRect(phase);
-            }
-          }
-        },
-
-        updated() {
-          if (this._skipped) return;
-          // Parse the new server value from the data attribute
-          const newServerValue = JSON.parse(this.el.dataset.openValue || "null");
-          const phase = this.syncedVar?.getPhase();
-          console.log(`LavashModal ${this.panelIdForLog}: updated - phase=${phase}, newServerValue=${newServerValue}`);
-
-          // Detect server-initiated state changes
-          const prevWasOpen = this._previousServerValue != null;
-          const nowIsOpen = newServerValue != null;
-
-          if (this.syncedVar) {
-            if (prevWasOpen && !nowIsOpen) {
-              // Server closed the modal
-              this.syncedVar.serverSet(null);
-            } else if (!prevWasOpen && nowIsOpen) {
-              // Server opened the modal
-              this.syncedVar.serverSet(newServerValue);
-            }
-          }
-
-          // Check if main content has actually loaded (has height)
-          const mainInner = this.animator.getMainContentInner();
-          const mainContentLoaded = mainInner && mainInner.offsetHeight > 10;
-
-          // Notify state machine when content arrives - it handles the FLIP logic
-          // based on current phase (entering vs loading vs visible)
-          if (this.syncedVar && mainContentLoaded && !this.syncedVar.isAsyncReady) {
-            console.log(`LavashModal ${this.panelIdForLog}: updated - content arrived, notifying state machine`);
-            this.syncedVar.onAsyncDataReady();
-          }
-
-          // For loading/visible phases, run FLIP directly (state machine already transitioned)
-          if (this.syncedVar) {
-            const currentPhase = this.syncedVar.getPhase();
-            const loadingContent = this.animator.getLoadingContent();
-            const loadingVisible = loadingContent && !loadingContent.classList.contains("hidden");
-
-            if (loadingVisible && mainContentLoaded && (currentPhase === "loading" || currentPhase === "visible")) {
-              console.log(`LavashModal ${this.panelIdForLog}: updated - phase=${currentPhase}, running FLIP`);
-              this.animator._runFlipAnimation();
-            }
-          }
-
-          // Always release size lock if it wasn't released by FLIP
-          this.animator.releaseSizeLockIfNeeded();
-        },
-
-        destroyed() {
-          if (this._skipped) return;
-
-          // Clean up animator
-          this.animator?.destroy();
-
-          // Remove delegate from SyncedVar
-          if (this.syncedVar) {
-            this.syncedVar.setDelegate(null);
-          }
-
-          // Remove from global registry
-          if (window.__lavashModalInstances && this._mainContentId) {
-            delete window.__lavashModalInstances[this._mainContentId];
-          }
-        },
-      };
-      </script>
     </div>
     """
   end
