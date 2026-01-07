@@ -124,6 +124,23 @@ defmodule Lavash.Component.Compiler do
     async_assign = Spark.Dsl.Extension.get_persisted(module, :modal_async_assign)
     helpers_path = @helpers_path
 
+    # Get animated fields config at compile time for JS consumption
+    animated_fields = Spark.Dsl.Extension.get_persisted(module, :lavash_animated_fields) || []
+
+    animated_json =
+      animated_fields
+      |> Enum.map(fn config ->
+        %{
+          field: to_string(config.field),
+          phaseField: to_string(config.phase_field),
+          async: config.async && to_string(config.async),
+          preserveDom: config.preserve_dom,
+          duration: config.duration,
+          type: config.type && to_string(config.type)
+        }
+      end)
+      |> Jason.encode!()
+
     quote do
       # Track helpers.ex so changes trigger recompilation of this module
       @external_resource unquote(helpers_path)
@@ -174,6 +191,7 @@ defmodule Lavash.Component.Compiler do
           |> Phoenix.Component.assign(:__lavash_module__, module_name)
           |> Phoenix.Component.assign(:__lavash_state__, optimistic_json)
           |> Phoenix.Component.assign(:__lavash_version__, version)
+          |> Phoenix.Component.assign(:__lavash_animated__, unquote(animated_json))
 
         ~H"""
         <div
@@ -181,6 +199,7 @@ defmodule Lavash.Component.Compiler do
           data-lavash-module={@__lavash_module__}
           data-lavash-state={@__lavash_state__}
           data-lavash-version={@__lavash_version__}
+          data-lavash-animated={@__lavash_animated__}
           class="contents"
         >
           <.modal_chrome
