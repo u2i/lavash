@@ -181,20 +181,25 @@ const LavashOptimistic = {
     // Expose hook instance on element for onBeforeElUpdated access
     this.el.__lavash_hook__ = this;
 
-    // Intercept clicks on elements with data-lavash-action
-    this.el.addEventListener("click", this.handleClick.bind(this), true);
+    // Check if this is a component (skip form handling to avoid interference)
+    this.isComponent = this.el.hasAttribute("data-lavash-component");
 
-    // Intercept input/change on elements with data-lavash-bind
-    this.el.addEventListener("input", this.handleInput.bind(this), true);
+    if (!this.isComponent) {
+      // Intercept clicks on elements with data-lavash-action
+      this.el.addEventListener("click", this.handleClick.bind(this), true);
 
-    // Track blur events for touched state
-    this.el.addEventListener("blur", this.handleBlur.bind(this), true);
+      // Intercept input/change on elements with data-lavash-bind
+      this.el.addEventListener("input", this.handleInput.bind(this), true);
 
-    // Track form submit for formSubmitted state
-    this.el.addEventListener("submit", this.handleFormSubmit.bind(this), true);
+      // Track blur events for touched state
+      this.el.addEventListener("blur", this.handleBlur.bind(this), true);
 
-    // Listen for server validation responses
-    this.handleEvent("validation_result", (payload) => this.handleValidationResult(payload));
+      // Track form submit for formSubmitted state
+      this.el.addEventListener("submit", this.handleFormSubmit.bind(this), true);
+
+      // Listen for server validation responses
+      this.handleEvent("validation_result", (payload) => this.handleValidationResult(payload));
+    }
 
     // Initialize animated state managers
     this.initAnimatedFields();
@@ -203,13 +208,89 @@ const LavashOptimistic = {
   /**
    * Initialize AnimatedState managers for fields with animated: true.
    * Reads configuration from __animated__ metadata in the generated optimistic module.
+   * For type: "modal" fields, creates a ModalAnimator as the delegate.
    */
   initAnimatedFields() {
     this.animatedStates = {};
 
-    const animatedConfigs = this.fns.__animated__ || [];
+    // First try __animated__ from generated functions (LiveViews)
+    let animatedConfigs = this.fns.__animated__ || [];
+
+    // For components, also check data-lavash-animated attribute
+    if (animatedConfigs.length === 0 && this.el.dataset.lavashAnimated) {
+      try {
+        animatedConfigs = JSON.parse(this.el.dataset.lavashAnimated);
+      } catch (e) {
+        console.warn("[LavashOptimistic] Failed to parse data-lavash-animated:", e);
+      }
+    }
+
     for (const config of animatedConfigs) {
-      const animated = new AnimatedState(config, this);
+      // Create delegate based on type
+      let delegate = null;
+
+      if (config.type === "modal") {
+        // For modal type, create ModalAnimator targeting the modal chrome element
+        const ModalAnimator = window.Lavash?.ModalAnimator;
+        if (ModalAnimator) {
+          // Modal chrome ID is "{component_id}-modal" where component_id is extracted from wrapper ID
+          // Wrapper ID is "lavash-{component_id}", so modal ID is "{component_id}-modal"
+          const wrapperId = this.el.id; // e.g., "lavash-product-edit-modal"
+          const componentId = wrapperId.replace(/^lavash-/, ""); // e.g., "product-edit-modal"
+          const modalChromeId = `${componentId}-modal`; // e.g., "product-edit-modal-modal"
+          const modalChrome = document.getElementById(modalChromeId);
+
+          if (modalChrome) {
+            delegate = new ModalAnimator(modalChrome, {
+              duration: config.duration || 200,
+              openField: config.field
+            });
+            console.debug(`[LavashOptimistic] Created ModalAnimator for ${config.field} on #${modalChromeId}`);
+
+            // Register content element IDs for ghost detection in onBeforeElUpdated
+            const mainContentId = `${modalChromeId}-main_content`;
+            const mainContentInnerId = `${modalChromeId}-main_content_inner`;
+            this._registerModalContentIds(mainContentId, mainContentInnerId, config.field);
+
+            // Set up event listeners on modal chrome for open/close events
+            // We store references for cleanup in destroyed()
+            this._modalEventListeners = this._modalEventListeners || [];
+            const setterAction = `set_${config.field}`;
+
+            const openHandler = (e) => {
+              const openValue = e.detail?.[config.field] ?? e.detail?.value ?? true;
+              console.debug(`[LavashOptimistic] open-panel event for ${config.field}:`, openValue);
+              // AnimatedState is created after this block, access via closure
+              const animState = this.animatedStates[config.field];
+              if (animState) {
+                animState.syncedVar.set(openValue, (p, cb) => {
+                  this.pushEventTo(modalChrome, setterAction, { ...p, value: openValue }, cb);
+                });
+              }
+            };
+
+            const closeHandler = () => {
+              console.debug(`[LavashOptimistic] close-panel event for ${config.field}`);
+              const animState = this.animatedStates[config.field];
+              if (animState) {
+                animState.syncedVar.set(null, (p, cb) => {
+                  this.pushEventTo(modalChrome, setterAction, { ...p, value: null }, cb);
+                });
+              }
+            };
+
+            modalChrome.addEventListener("open-panel", openHandler);
+            modalChrome.addEventListener("close-panel", closeHandler);
+            this._modalEventListeners.push({ el: modalChrome, open: openHandler, close: closeHandler });
+          } else {
+            console.warn(`[LavashOptimistic] Modal chrome element #${modalChromeId} not found for animated field ${config.field}`);
+          }
+        } else {
+          console.warn("[LavashOptimistic] ModalAnimator not found in window.Lavash for type:modal field");
+        }
+      }
+
+      const animated = new AnimatedState(config, this, delegate);
 
       // Initialize from current state value
       const currentValue = this.state[config.field];
@@ -220,7 +301,7 @@ const LavashOptimistic = {
 
       this.animatedStates[config.field] = animated;
 
-      console.debug(`[LavashOptimistic] Initialized animated field: ${config.field}`);
+      console.debug(`[LavashOptimistic] Initialized animated field: ${config.field}${delegate ? " with delegate" : ""}`);
     }
   },
 
@@ -239,6 +320,68 @@ const LavashOptimistic = {
     return Object.values(this.animatedStates).some(
       a => a.getPhase() === "entering" || a.getPhase() === "exiting"
     );
+  },
+
+  /**
+   * Register modal content element IDs for ghost detection.
+   * This is called when creating ModalAnimator delegates.
+   */
+  _registerModalContentIds(contentId, innerId, field) {
+    // Store mapping from content ID to this hook and field
+    window.__lavashModalContentRegistry = window.__lavashModalContentRegistry || {};
+    window.__lavashModalContentRegistry[contentId] = {
+      hook: this,
+      field: field,
+      innerId: innerId
+    };
+
+    // Install global DOM callback if not already done
+    this._installGlobalDomCallback();
+  },
+
+  /**
+   * Install global onBeforeElUpdated callback for ghost detection.
+   * Only installs once globally across all LavashOptimistic instances.
+   */
+  _installGlobalDomCallback() {
+    if (window.__lavashOptimisticDomCallbackInstalled) return;
+    window.__lavashOptimisticDomCallbackInstalled = true;
+
+    const original = this.liveSocket.domCallbacks.onBeforeElUpdated;
+    this.liveSocket.domCallbacks.onBeforeElUpdated = (fromEl, toEl) => {
+      // Check if any registered modal cares about this element
+      const registry = window.__lavashModalContentRegistry || {};
+      const entry = registry[fromEl.id];
+
+      if (entry) {
+        const { hook, field, innerId } = entry;
+        const animated = hook.animatedStates?.[field];
+
+        if (animated) {
+          // Check if modal is in a state where we should preserve content
+          const phase = animated.getPhase();
+          const shouldPreserve = phase === "visible" || phase === "loading";
+
+          if (shouldPreserve) {
+            const fromHasInner = fromEl.querySelector(`#${innerId}`);
+            const toHasInner = toEl.querySelector(`#${innerId}`);
+
+            if (fromHasInner && !toHasInner) {
+              // Content is being removed! Create ghost NOW before morphdom patches
+              console.debug(`[LavashOptimistic] onBeforeElUpdated detected content removal for ${field}`);
+              if (animated.delegate?.createGhostBeforePatch) {
+                animated.delegate.createGhostBeforePatch(fromHasInner);
+              }
+            }
+          }
+        }
+      }
+
+      // Call original callback
+      if (original) {
+        original(fromEl, toEl);
+      }
+    };
   },
 
   /**
@@ -775,6 +918,21 @@ const LavashOptimistic = {
     }
   },
 
+  /**
+   * Notify animated state delegates of a LiveView update.
+   * Delegates can use this for post-update logic like FLIP animations.
+   */
+  notifyAnimatedStatesDelegatesUpdated() {
+    if (!this.animatedStates) return;
+
+    for (const animated of Object.values(this.animatedStates)) {
+      if (animated.delegate?.onUpdated) {
+        const phase = animated.getPhase();
+        animated.delegate.onUpdated(animated, phase);
+      }
+    }
+  },
+
   recomputeDerives(changedFields = null) {
     // Use graph-based recomputation if available
     if (Object.keys(this.graph).length > 0) {
@@ -1230,6 +1388,25 @@ const LavashOptimistic = {
     return false;
   },
 
+  /**
+   * Before DOM update - capture pre-update state for FLIP animations.
+   * Called by Phoenix LiveView before morphdom applies patches.
+   */
+  beforeUpdate() {
+    // Capture pre-update rects for animated states with delegates
+    if (this.animatedStates) {
+      for (const animated of Object.values(this.animatedStates)) {
+        const phase = animated.getPhase();
+        // Only capture if currently visible/entering/loading (something to animate from)
+        if (phase === "visible" || phase === "entering" || phase === "loading") {
+          if (animated.delegate?.capturePreUpdateRect) {
+            animated.delegate.capturePreUpdateRect(phase);
+          }
+        }
+      }
+    }
+  },
+
   updated() {
     // Server patch arrived - check version to decide whether to accept
     const newServerVersion = parseInt(this.el.dataset.lavashVersion || "0", 10);
@@ -1263,6 +1440,9 @@ const LavashOptimistic = {
     for (const asyncField of asyncFieldsReady) {
       this.notifyAsyncReady(asyncField);
     }
+
+    // Let animated state delegates handle post-update logic (e.g., modal FLIP animations)
+    this.notifyAnimatedStatesDelegatesUpdated();
 
     // Recompute derives based on current state
     this.recomputeDerives();
@@ -1414,10 +1594,30 @@ const LavashOptimistic = {
   },
 
   destroyed() {
-    this.el.removeEventListener("click", this.handleClick.bind(this), true);
-    this.el.removeEventListener("input", this.handleInput.bind(this), true);
-    this.el.removeEventListener("blur", this.handleBlur.bind(this), true);
-    this.el.removeEventListener("submit", this.handleFormSubmit.bind(this), true);
+    if (!this.isComponent) {
+      this.el.removeEventListener("click", this.handleClick.bind(this), true);
+      this.el.removeEventListener("input", this.handleInput.bind(this), true);
+      this.el.removeEventListener("blur", this.handleBlur.bind(this), true);
+      this.el.removeEventListener("submit", this.handleFormSubmit.bind(this), true);
+    }
+
+    // Clean up modal event listeners
+    if (this._modalEventListeners) {
+      for (const { el, open, close } of this._modalEventListeners) {
+        el.removeEventListener("open-panel", open);
+        el.removeEventListener("close-panel", close);
+      }
+      this._modalEventListeners = [];
+    }
+
+    // Clean up modal content registry entries for this hook
+    if (window.__lavashModalContentRegistry) {
+      for (const [contentId, entry] of Object.entries(window.__lavashModalContentRegistry)) {
+        if (entry.hook === this) {
+          delete window.__lavashModalContentRegistry[contentId];
+        }
+      }
+    }
 
     // Clean up animated state managers
     if (this.animatedStates) {

@@ -205,6 +205,40 @@ export class ModalAnimator {
   }
 
   /**
+   * Called by LavashOptimistic after a LiveView update.
+   * Handles modal-specific post-update logic like FLIP animations.
+   *
+   * @param {AnimatedState} animated - The animated state manager
+   * @param {string} _phase - Current animation phase (unused, we get fresh phase from syncedVar)
+   */
+  onUpdated(animated, _phase) {
+    // Check if main content has actually loaded (has height)
+    const mainInner = this.getMainContentInner();
+    const mainContentLoaded = mainInner && mainInner.offsetHeight > 10;
+
+    // Notify state machine when content arrives
+    if (animated.syncedVar && mainContentLoaded && !animated.syncedVar.isAsyncReady) {
+      console.log(`ModalAnimator ${this.panelIdForLog}: onUpdated - content arrived, notifying state machine`);
+      animated.syncedVar.onAsyncDataReady();
+    }
+
+    // For loading/visible phases, run FLIP directly (state machine already transitioned)
+    if (animated.syncedVar) {
+      const currentPhase = animated.syncedVar.getPhase();
+      const loadingContent = this.getLoadingContent();
+      const loadingVisible = loadingContent && !loadingContent.classList.contains("hidden");
+
+      if (loadingVisible && mainContentLoaded && (currentPhase === "loading" || currentPhase === "visible")) {
+        console.log(`ModalAnimator ${this.panelIdForLog}: onUpdated - phase=${currentPhase}, running FLIP`);
+        this._runFlipAnimation();
+      }
+    }
+
+    // Always release size lock if it wasn't released by FLIP
+    this.releaseSizeLockIfNeeded();
+  }
+
+  /**
    * Called when content arrives while enter animation is still running.
    * Captures the loading skeleton rect NOW so we can animate from it
    * after the enter transition completes.

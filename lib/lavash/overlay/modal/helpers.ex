@@ -155,6 +155,14 @@ defmodule Lavash.Overlay.Modal.Helpers do
           const wrapper = this.el.closest('[data-lavash-animated]');
           let animatedConfig = null;
 
+          // If parent has LavashOptimistic hook, it will handle everything - skip this hook
+          if (wrapper && wrapper.hasAttribute('phx-hook') &&
+              wrapper.getAttribute('phx-hook') === 'LavashOptimistic') {
+            console.log(`LavashModal ${id}: Skipping - LavashOptimistic is handling this modal`);
+            this._skipped = true;
+            return;
+          }
+
           if (wrapper) {
             const animatedConfigs = JSON.parse(wrapper.dataset.lavashAnimated || '[]');
             // Find the config for this modal's open field
@@ -267,6 +275,8 @@ defmodule Lavash.Overlay.Modal.Helpers do
         },
 
         beforeUpdate() {
+          if (this._skipped) return;
+
           // Track previous server value to detect server-initiated changes
           this._previousServerValue = JSON.parse(this.el.dataset.openValue || "null");
 
@@ -281,6 +291,7 @@ defmodule Lavash.Overlay.Modal.Helpers do
         },
 
         updated() {
+          if (this._skipped) return;
           // Parse the new server value from the data attribute
           const newServerValue = JSON.parse(this.el.dataset.openValue || "null");
           const phase = this.syncedVar?.getPhase();
@@ -328,6 +339,8 @@ defmodule Lavash.Overlay.Modal.Helpers do
         },
 
         destroyed() {
+          if (this._skipped) return;
+
           // Clean up animator
           this.animator?.destroy();
 

@@ -196,6 +196,8 @@ defmodule Lavash.Component.Compiler do
         ~H"""
         <div
           id={"lavash-#{@id}"}
+          phx-hook="LavashOptimistic"
+          data-lavash-component
           data-lavash-module={@__lavash_module__}
           data-lavash-state={@__lavash_state__}
           data-lavash-version={@__lavash_version__}
