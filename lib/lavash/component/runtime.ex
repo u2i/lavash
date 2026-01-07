@@ -15,6 +15,8 @@ defmodule Lavash.Component.Runtime do
   alias Lavash.Assigns
   alias Lavash.State
   alias Lavash.Socket, as: LSocket
+  alias Lavash.Action.Runtime, as: ActionRuntime
+  alias Lavash.Form.Runtime, as: FormRuntime
 
   def update(module, assigns, socket) do
     # Check if this is an invoke from parent
@@ -369,18 +371,14 @@ defmodule Lavash.Component.Runtime do
   end
 
   defp execute_action(socket, module, action, event_params) do
-    params =
-      Enum.reduce(action.params || [], %{}, fn param, acc ->
-        key = to_string(param)
-        Map.put(acc, param, Map.get(event_params, key))
-      end)
+    params = ActionRuntime.build_params(action.params, event_params)
 
-    if guards_pass?(socket, module, action.when) do
+    if ActionRuntime.guards_pass?(socket, module, action.when) do
       socket =
         socket
-        |> apply_sets(action.sets || [], params, module)
-        |> apply_updates(action.updates || [], params)
-        |> apply_effects(action.effects || [], params)
+        |> ActionRuntime.apply_sets(action.sets || [], params, module)
+        |> ActionRuntime.apply_updates(action.updates || [], params)
+        |> ActionRuntime.apply_effects(action.effects || [], params)
 
       # Collect notify_parent events to execute after state updates
       notify_events = collect_notify_events(socket, module, action.notify_parents || [])
@@ -390,59 +388,6 @@ defmodule Lavash.Component.Runtime do
     else
       {:ok, socket, []}
     end
-  end
-
-  defp guards_pass?(socket, _module, guards) do
-    state = LSocket.full_state(socket)
-    Enum.all?(guards, fn guard -> Map.get(state, guard) == true end)
-  end
-
-  defp apply_sets(socket, sets, params, module) do
-    states = module.__lavash__(:states)
-
-    Enum.reduce(sets, socket, fn set, sock ->
-      value =
-        case set.value do
-          fun when is_function(fun, 1) ->
-            fun.(%{params: params, state: LSocket.state(sock)})
-
-          value ->
-            value
-        end
-
-      # Coerce value to the field's declared type
-      state_field = Enum.find(states, &(&1.name == set.field))
-      coerced = coerce_value(value, state_field)
-
-      LSocket.put_state(sock, set.field, coerced)
-    end)
-  end
-
-  defp coerce_value(value, nil), do: value
-  defp coerce_value(nil, _state_field), do: nil
-  defp coerce_value("", %{type: type}) when type != :string, do: nil
-
-  defp coerce_value(value, %{type: type}) when is_binary(value) do
-    case Lavash.Type.parse(type, value) do
-      {:ok, parsed} -> parsed
-      {:error, _} -> value
-    end
-  end
-
-  defp coerce_value(value, _state_field), do: value
-
-  defp apply_updates(socket, updates, _params) do
-    Enum.reduce(updates, socket, fn update, sock ->
-      current = LSocket.get_state(sock, update.field)
-      new_value = update.fun.(current)
-      LSocket.put_state(sock, update.field, new_value)
-    end)
-  end
-
-  defp apply_effects(socket, effects, _params) do
-    state = LSocket.full_state(socket)
-    Enum.each(effects, fn effect -> effect.fun.(state) end)
-    socket
   end
 
   defp collect_notify_events(socket, _module, notify_parents) do
@@ -497,7 +442,7 @@ defmodule Lavash.Component.Runtime do
       end
 
     # Extract resource from form for mutation signaling
-    resource = extract_resource(form)
+    resource = FormRuntime.extract_resource(form)
 
     # Use Lavash.Form.submit which handles Lavash.Form, Ash.Changeset,
     # AshPhoenix.Form, and Phoenix.HTML.Form
@@ -530,7 +475,7 @@ defmodule Lavash.Component.Runtime do
         # Broadcast resource mutation for cross-process invalidation
         if resource do
           # Broadcast to all relevant combination topics based on changed attributes
-          broadcast_mutation(form)
+          FormRuntime.broadcast_mutation(form)
         end
 
         apply_submits(socket, module, rest, notify_events)
@@ -588,64 +533,4 @@ defmodule Lavash.Component.Runtime do
   defp decode_type(value, :boolean), do: !!value
   defp decode_type(value, _type), do: value
 
-  # Extract the Ash resource module from various form types
-  defp extract_resource(%Lavash.Form{changeset: %Ash.Changeset{resource: resource}}), do: resource
-  defp extract_resource(%Ash.Changeset{resource: resource}), do: resource
-  defp extract_resource(%AshPhoenix.Form{resource: resource}), do: resource
-  defp extract_resource(%Phoenix.HTML.Form{source: source}), do: extract_resource(source)
-  defp extract_resource(_), do: nil
-
-  # Broadcast mutation to all relevant combination topics
-  # Uses the resource's notify_on configuration from Lavash.Resource extension
-  defp broadcast_mutation(form) do
-    changeset = extract_changeset(form)
-
-    if changeset do
-      resource = changeset.resource
-      old_record = changeset.data
-      changed_attrs = changeset.attributes || %{}
-
-      # Get notify_on attributes from the resource's Lavash extension
-      notify_attrs = Lavash.Resource.notify_on(resource)
-
-      if notify_attrs != [] do
-        # Build changes map: %{attr => {old_value, new_value}}
-        changes =
-          notify_attrs
-          |> Enum.filter(&Map.has_key?(changed_attrs, &1))
-          |> Enum.map(fn attr ->
-            old_value = if old_record, do: Map.get(old_record, attr), else: nil
-            new_value = Map.get(changed_attrs, attr)
-            {attr, {old_value, new_value}}
-          end)
-          |> Map.new()
-
-        # Build unchanged map: %{attr => value} for notify attrs that didn't change
-        unchanged =
-          notify_attrs
-          |> Enum.reject(&Map.has_key?(changed_attrs, &1))
-          |> Enum.map(fn attr ->
-            value = if old_record, do: Map.get(old_record, attr), else: nil
-            {attr, value}
-          end)
-          |> Map.new()
-
-        # Broadcast to all relevant combination topics
-        Lavash.PubSub.broadcast_mutation(resource, notify_attrs, changes, unchanged)
-      else
-        # No fine-grained invalidation configured, just broadcast resource-level
-        Lavash.PubSub.broadcast(resource)
-      end
-    else
-      # Couldn't extract changeset, broadcast resource-level
-      resource = extract_resource(form)
-      if resource, do: Lavash.PubSub.broadcast(resource)
-    end
-  end
-
-  defp extract_changeset(%Lavash.Form{changeset: changeset}), do: changeset
-  defp extract_changeset(%Phoenix.HTML.Form{source: source}), do: extract_changeset(source)
-  defp extract_changeset(%AshPhoenix.Form{source: %Ash.Changeset{} = cs}), do: cs
-  defp extract_changeset(%Ash.Changeset{} = cs), do: cs
-  defp extract_changeset(_), do: nil
 end

@@ -54,6 +54,8 @@ defmodule Lavash.Component.Dsl do
       end
   """
 
+  alias Lavash.Dsl.CommonEntities
+
   # ============================================
   # Props - passed from parent
   # ============================================
@@ -96,48 +98,22 @@ defmodule Lavash.Component.Dsl do
   # State - internal mutable state
   # ============================================
 
+  # Component state uses base schema + from option (no URL support)
+  @state_schema CommonEntities.base_state_schema() ++
+                  [
+                    from: [
+                      type: {:one_of, [:socket, :ephemeral]},
+                      default: :ephemeral,
+                      doc:
+                        "Where to store: :socket (survives reconnects) or :ephemeral (socket only)"
+                    ]
+                  ]
+
   @state_entity %Spark.Dsl.Entity{
     name: :state,
     target: Lavash.State.Field,
     args: [:name, :type],
-    schema: [
-      name: [
-        type: :atom,
-        required: true,
-        doc: "The name of the state field"
-      ],
-      type: [
-        type: :any,
-        required: true,
-        doc: "The type of the field"
-      ],
-      from: [
-        type: {:one_of, [:socket, :ephemeral]},
-        default: :ephemeral,
-        doc: "Where to store: :socket (survives reconnects) or :ephemeral (socket only)"
-      ],
-      default: [
-        type: :any,
-        doc: "Default value when not present"
-      ],
-      optimistic: [
-        type: :boolean,
-        default: false,
-        doc: "Enable optimistic updates with version tracking"
-      ],
-      animated: [
-        type: {:or, [:boolean, :keyword_list]},
-        default: false,
-        doc: """
-        Enable animated state transitions with phase tracking.
-
-        Options (when keyword list):
-        - `async: :field_name` - coordinate with async data loading
-        - `preserve_dom: true` - keep DOM alive during exit animation
-        - `duration: 200` - fallback timeout in ms
-        """
-      ]
-    ]
+    schema: @state_schema
   }
 
   @states_section %Spark.Dsl.Section{
@@ -151,27 +127,7 @@ defmodule Lavash.Component.Dsl do
   # Read - async resource loading
   # ============================================
 
-  @read_argument_entity %Spark.Dsl.Entity{
-    name: :argument,
-    target: Lavash.Read.Argument,
-    args: [:name, {:optional, :source}],
-    schema: [
-      name: [
-        type: :atom,
-        required: true,
-        doc: "The action argument name to override"
-      ],
-      source: [
-        type: :any,
-        doc:
-          "The source: state(:field), prop(:field), or result(:derive). If omitted, uses state(name)."
-      ],
-      transform: [
-        type: {:fun, 1},
-        doc: "Optional transform function applied to the value before passing to action"
-      ]
-    ]
-  }
+  @read_argument_entity CommonEntities.read_argument_entity()
 
   @read_entity %Spark.Dsl.Entity{
     name: :read,
@@ -241,36 +197,7 @@ defmodule Lavash.Component.Dsl do
     name: :form,
     target: Lavash.Form.Step,
     args: [:name, :resource],
-    schema: [
-      name: [
-        type: :atom,
-        required: true,
-        doc: "The name of the form"
-      ],
-      resource: [
-        type: :atom,
-        required: true,
-        doc: "The Ash resource module"
-      ],
-      data: [
-        type: :any,
-        doc: "The record source: result(:read_name). If nil, creates a create form."
-      ],
-      params: [
-        type: :any,
-        doc: "The params source: state(:form_params). Defaults to implicit :name_params."
-      ],
-      create: [
-        type: :atom,
-        default: :create,
-        doc: "The create action name"
-      ],
-      update: [
-        type: :atom,
-        default: :update,
-        doc: "The update action name"
-      ]
-    ]
+    schema: CommonEntities.base_form_schema()
   }
 
   @forms_section %Spark.Dsl.Section{
@@ -284,27 +211,7 @@ defmodule Lavash.Component.Dsl do
   # Derive - computed values
   # ============================================
 
-  @argument_entity %Spark.Dsl.Entity{
-    name: :argument,
-    target: Lavash.Argument,
-    args: [:name, {:optional, :source}],
-    schema: [
-      name: [
-        type: :atom,
-        required: true,
-        doc: "The name of the argument (key in the deps map passed to run)"
-      ],
-      source: [
-        type: :any,
-        doc:
-          "The source: state(:field), prop(:field), or result(:derive_name). Defaults to state(name) if omitted."
-      ],
-      transform: [
-        type: {:fun, 1},
-        doc: "Optional transform function applied to the value before passing to run"
-      ]
-    ]
-  }
+  @argument_entity CommonEntities.derive_argument_entity()
 
   @derive_entity %Spark.Dsl.Entity{
     name: :derive,
@@ -313,22 +220,7 @@ defmodule Lavash.Component.Dsl do
     entities: [
       arguments: [@argument_entity]
     ],
-    schema: [
-      name: [
-        type: :atom,
-        required: true,
-        doc: "The name of the derived field"
-      ],
-      async: [
-        type: :boolean,
-        default: false,
-        doc: "Whether this computation is async"
-      ],
-      run: [
-        type: {:fun, 2},
-        doc: "Function that computes the value: fn %{arg1: val1, ...}, context -> result end"
-      ]
-    ]
+    schema: CommonEntities.base_derive_schema()
   }
 
   @derives_section %Spark.Dsl.Section{
@@ -342,75 +234,11 @@ defmodule Lavash.Component.Dsl do
   # Actions - state transformers
   # ============================================
 
-  @set_entity %Spark.Dsl.Entity{
-    name: :set,
-    target: Lavash.Actions.Set,
-    args: [:field, :value],
-    schema: [
-      field: [
-        type: :atom,
-        required: true,
-        doc: "The field to set"
-      ],
-      value: [
-        type: :any,
-        required: true,
-        doc: "The value or function to set"
-      ]
-    ]
-  }
-
-  @update_entity %Spark.Dsl.Entity{
-    name: :update,
-    target: Lavash.Actions.Update,
-    args: [:field, :fun],
-    schema: [
-      field: [
-        type: :atom,
-        required: true,
-        doc: "The field to update"
-      ],
-      fun: [
-        type: {:fun, 1},
-        required: true,
-        doc: "Function that transforms the current value"
-      ]
-    ]
-  }
-
-  @effect_entity %Spark.Dsl.Entity{
-    name: :effect,
-    target: Lavash.Actions.Effect,
-    args: [:fun],
-    schema: [
-      fun: [
-        type: {:fun, 1},
-        required: true,
-        doc: "Side effect function"
-      ]
-    ]
-  }
-
-  @submit_entity %Spark.Dsl.Entity{
-    name: :submit,
-    target: Lavash.Actions.Submit,
-    args: [:field],
-    schema: [
-      field: [
-        type: :atom,
-        required: true,
-        doc: "The form field to submit (must be a form)"
-      ],
-      on_success: [
-        type: :atom,
-        doc: "Action to trigger after successful submission"
-      ],
-      on_error: [
-        type: :atom,
-        doc: "Action to trigger on submission error"
-      ]
-    ]
-  }
+  # Use shared action sub-entities
+  @set_entity CommonEntities.set_entity()
+  @update_entity CommonEntities.update_entity()
+  @effect_entity CommonEntities.effect_entity()
+  @submit_entity CommonEntities.submit_entity()
 
   @notify_parent_entity %Spark.Dsl.Entity{
     name: :notify_parent,
@@ -436,23 +264,7 @@ defmodule Lavash.Component.Dsl do
       submits: [@submit_entity],
       notify_parents: [@notify_parent_entity]
     ],
-    schema: [
-      name: [
-        type: :atom,
-        required: true,
-        doc: "The action name"
-      ],
-      params: [
-        type: {:list, :atom},
-        default: [],
-        doc: "Expected params from the event"
-      ],
-      when: [
-        type: {:list, :atom},
-        default: [],
-        doc: "Guard conditions"
-      ]
-    ]
+    schema: CommonEntities.base_action_schema()
   }
 
   @actions_section %Spark.Dsl.Section{
@@ -480,26 +292,7 @@ defmodule Lavash.Component.Dsl do
     """,
     target: Lavash.Component.Calculate,
     args: [:name, :rx],
-    schema: [
-      name: [
-        type: :atom,
-        required: true,
-        doc: "The name of the calculated field"
-      ],
-      rx: [
-        type: {:struct, Lavash.Rx},
-        required: true,
-        doc: "The reactive expression wrapped in rx()"
-      ],
-      optimistic: [
-        type: :boolean,
-        default: true,
-        doc: """
-        Whether to transpile to JavaScript for client-side updates.
-        Set to false for expressions that can't be transpiled.
-        """
-      ]
-    ]
+    schema: CommonEntities.base_calculate_schema()
   }
 
   @calculations_section %Spark.Dsl.Section{
