@@ -42,9 +42,10 @@ defmodule Lavash.Overlay.Modal.Helpers do
       </.modal_chrome>
   """
   attr(:id, :string, required: true, doc: "Unique ID for the modal")
-  attr(:module, :atom, required: true, doc: "The component module (for global SyncedVar registry)")
+  attr(:module, :atom, required: true, doc: "The component module (for logging)")
   attr(:open, :any, required: true, doc: "Controls visibility (truthy = open)")
   attr(:open_field, :atom, default: :open, doc: "The name of the open state field")
+  attr(:async_assign, :atom, default: nil, doc: "Async assign to wait for before showing content")
   attr(:myself, :any, required: true, doc: "The component's @myself")
   attr(:close_on_escape, :boolean, default: true)
   attr(:close_on_backdrop, :boolean, default: true)
@@ -69,6 +70,7 @@ defmodule Lavash.Overlay.Modal.Helpers do
       |> assign(:on_close, on_close)
       |> assign(:is_open, assigns.open != nil)
       |> assign(:module_name, inspect(assigns.module))
+      |> assign(:async_field_name, assigns.async_assign && to_string(assigns.async_assign))
 
     ~H"""
     <%!-- Wrapper for hook - always present, client controls visibility via class --%>
@@ -83,6 +85,7 @@ defmodule Lavash.Overlay.Modal.Helpers do
       data-open={to_string(@is_open)}
       data-open-field={@open_field}
       data-open-value={Jason.encode!(@open)}
+      data-async-field={@async_field_name}
     >
       <%!-- Backdrop overlay - client controls opacity and visibility --%>
       <div
@@ -124,12 +127,12 @@ defmodule Lavash.Overlay.Modal.Helpers do
         </div>
       </div>
       <script :type={Phoenix.LiveView.ColocatedHook} name=".LavashModal">
-      // --- LavashModal Hook v4 ---
-      // Uses global SyncedVar registry with animation support
+      // --- LavashModal Hook v5 ---
+      // Component owns its SyncedVar - created directly from data attributes
       export default {
         mounted() {
           const id = this.el.id;
-          console.log(`LavashModal v4 mounted: #${id}`);
+          console.log(`LavashModal v5 mounted: #${id}`);
           if (!id) {
             console.error("LavashModal: Hook element requires an ID.");
             return;
@@ -137,24 +140,26 @@ defmodule Lavash.Overlay.Modal.Helpers do
 
           // Get shared classes from global Lavash namespace (loaded via app.js)
           const ModalAnimator = window.Lavash?.ModalAnimator;
-          const getSyncedVar = window.Lavash?.getSyncedVar;
+          const SyncedVar = window.Lavash?.SyncedVar;
 
           if (!ModalAnimator) {
             console.error("LavashModal: ModalAnimator not found. Ensure modal_animator.js loads before modal hooks.");
             return;
           }
-          if (!getSyncedVar) {
-            console.error("LavashModal: getSyncedVar not found. Ensure synced_var.js loads before modal hooks.");
+          if (!SyncedVar) {
+            console.error("LavashModal: SyncedVar not found. Ensure synced_var.js loads before modal hooks.");
             return;
           }
 
+          // Read configuration from data attributes
           this.panelIdForLog = `#${id}`;
           this.duration = Number(this.el.dataset.duration) || 200;
           this.moduleName = this.el.dataset.module;
           this.openField = this.el.dataset.openField || "open";
+          this.asyncField = this.el.dataset.asyncField || null;
           this.setterAction = `set_${this.openField}`;
 
-          console.log(`LavashModal ${this.panelIdForLog}: module=${this.moduleName}, openField=${this.openField}`);
+          console.log(`LavashModal ${this.panelIdForLog}: module=${this.moduleName}, openField=${this.openField}, asyncField=${this.asyncField}`);
 
           // Create ModalAnimator for DOM manipulation
           this.animator = new ModalAnimator(this.el, {
@@ -162,25 +167,27 @@ defmodule Lavash.Overlay.Modal.Helpers do
             openField: this.openField
           });
 
-          // Get or create SyncedVar from global registry
-          // This uses the __animated__ config from the component's optimistic module
-          this.syncedVar = getSyncedVar(this.moduleName, this.openField);
-
-          if (this.syncedVar) {
-            // Set ModalAnimator as delegate for animation callbacks
-            this.syncedVar.setDelegate(this.animator);
-            console.log(`LavashModal ${this.panelIdForLog}: Using SyncedVar from global registry`);
-
-            // Initialize with current server value if modal starts open
-            const initialValue = JSON.parse(this.el.dataset.openValue || "null");
-            if (initialValue != null && this.syncedVar.value == null) {
-              // Modal starts open - set value without triggering animation
-              this.syncedVar.value = initialValue;
-              this.syncedVar.confirmedValue = initialValue;
+          // Create SyncedVar directly - component owns its state
+          this.syncedVar = new SyncedVar(null, {
+            animated: {
+              field: this.openField,
+              phaseField: `${this.openField}_phase`,
+              async: this.asyncField,
+              preserveDom: true,
+              duration: this.duration
             }
-          } else {
-            console.error(`LavashModal ${this.panelIdForLog}: No SyncedVar found for ${this.moduleName}:${this.openField}`);
-            return;
+          });
+
+          // Set ModalAnimator as delegate for animation callbacks
+          this.syncedVar.setDelegate(this.animator);
+          console.log(`LavashModal ${this.panelIdForLog}: Created component-owned SyncedVar`);
+
+          // Initialize with current server value if modal starts open
+          const initialValue = JSON.parse(this.el.dataset.openValue || "null");
+          if (initialValue != null) {
+            // Modal starts open - set value without triggering animation
+            this.syncedVar.value = initialValue;
+            this.syncedVar.confirmedValue = initialValue;
           }
 
           // IDs for onBeforeElUpdated callback

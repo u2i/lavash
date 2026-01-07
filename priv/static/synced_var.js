@@ -427,45 +427,7 @@ export class SyncedVar {
   }
 }
 
-// --- Global Registry ---
-
-/**
- * Get or create a SyncedVar from the global registry.
- * Creates animated SyncedVars from __animated__ metadata in optimistic modules.
- *
- * @param {string} moduleName - The module name (e.g., "DemoWeb.ProductEditModal")
- * @param {string} field - The field name (e.g., "product_id")
- * @returns {SyncedVar|null} The SyncedVar or null if no config found
- */
-export function getSyncedVar(moduleName, field) {
-  const registry = (window.Lavash._syncedVars =
-    window.Lavash._syncedVars || {});
-  const key = `${moduleName}:${field}`;
-
-  if (!registry[key]) {
-    const moduleFns = window.Lavash.optimistic?.[moduleName];
-    const config = moduleFns?.__animated__?.find((c) => c.field === field);
-
-    if (config) {
-      registry[key] = new SyncedVar(null, {
-        animated: {
-          field: config.field,
-          phaseField: config.phaseField,
-          async: config.async,
-          preserveDom: config.preserveDom,
-          duration: config.duration,
-        },
-      });
-      console.debug(
-        `[Lavash] Created SyncedVar for ${moduleName}:${field}`,
-        config
-      );
-    }
-  }
-  return registry[key] || null;
-}
-
-// --- SyncedVarStore (unchanged) ---
+// --- SyncedVarStore ---
 
 /**
  * SyncedVarStore - Manages a collection of SyncedVars with flattened keys.
@@ -586,6 +548,5 @@ function flattenState(obj, prefix = "") {
 window.Lavash = window.Lavash || {};
 window.Lavash.SyncedVar = SyncedVar;
 window.Lavash.SyncedVarStore = SyncedVarStore;
-window.Lavash.getSyncedVar = getSyncedVar;
 
 export default SyncedVar;

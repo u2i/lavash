@@ -171,6 +171,7 @@ defmodule Lavash.Component.Compiler do
             module={@__modal_module__}
             open={@__modal_open__}
             open_field={@__modal_open_field__}
+            async_assign={@__modal_async_assign__}
             myself={@myself}
             close_on_escape={@__modal_close_on_escape__}
             close_on_backdrop={@__modal_close_on_backdrop__}
