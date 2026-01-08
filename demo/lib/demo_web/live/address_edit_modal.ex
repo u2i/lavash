@@ -63,14 +63,12 @@ defmodule DemoWeb.AddressEditModal do
             label="First name"
             errors={@address_form_first_name_errors}
             show_errors={assigns[:address_form_first_name_show_errors]}
-            floating={false}
           />
           <.input
             field={@address_form[:last_name]}
             label="Last name"
             errors={@address_form_last_name_errors}
             show_errors={assigns[:address_form_last_name_show_errors]}
-            floating={false}
           />
         </div>
 
@@ -78,7 +76,6 @@ defmodule DemoWeb.AddressEditModal do
         <.input
           field={@address_form[:company]}
           label="Company (optional)"
-          floating={false}
         />
 
         <!-- Address -->
@@ -87,14 +84,12 @@ defmodule DemoWeb.AddressEditModal do
           label="Address"
           errors={@address_form_address_errors}
           show_errors={assigns[:address_form_address_show_errors]}
-          floating={false}
         />
 
         <!-- Apartment (optional - no validation) -->
         <.input
           field={@address_form[:apartment]}
           label="Apartment, suite, etc. (optional)"
-          floating={false}
         />
 
         <!-- City / State / ZIP row -->
@@ -104,7 +99,6 @@ defmodule DemoWeb.AddressEditModal do
             label="City"
             errors={@address_form_city_errors}
             show_errors={assigns[:address_form_city_show_errors]}
-            floating={false}
           />
           <CoreComponents.input
             field={@address_form[:state]}
@@ -118,7 +112,6 @@ defmodule DemoWeb.AddressEditModal do
             label="ZIP code"
             errors={@address_form_zip_errors}
             show_errors={assigns[:address_form_zip_show_errors]}
-            floating={false}
           />
         </div>
 
@@ -127,7 +120,6 @@ defmodule DemoWeb.AddressEditModal do
           field={@address_form[:phone]}
           label="Phone (optional)"
           type="tel"
-          floating={false}
         />
 
         <!-- Submit -->
