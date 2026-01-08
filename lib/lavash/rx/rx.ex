@@ -288,11 +288,21 @@ defmodule Lavash.Rx do
     end
   end
 
-  # Dot access: @params.name → get_in(state, [:params, :name])
+  # Dot access: @params.name → state[:params][:name] or state[:params].name
+  # Use Map.get for both levels to support both maps and structs
   defp transform_at_refs({{:., _, [{:@, _, [{var_name, _, _}]}, field]}, _, []})
        when is_atom(var_name) and is_atom(field) do
     state_var = Macro.var(:state, nil)
-    quote do: get_in(unquote(state_var), [unquote(var_name), unquote(field)])
+    # First get the value from state, then access the field
+    # Using a case to handle both maps and structs
+    quote do
+      case Map.get(unquote(state_var), unquote(var_name)) do
+        nil -> nil
+        %{__struct__: _} = struct -> Map.get(struct, unquote(field))
+        map when is_map(map) -> Map.get(map, unquote(field))
+        _ -> nil
+      end
+    end
   end
 
   # Simple @var reference

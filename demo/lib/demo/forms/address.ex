@@ -5,10 +5,17 @@ defmodule Demo.Forms.Address do
   Uses ETS data layer - addresses are stored in memory during the session
   but not persisted to disk. This demonstrates Ash form validation
   for shipping address fields.
+
+  Addresses are scoped by session_id for multi-user demos.
   """
   use Ash.Resource,
     domain: Demo.Forms,
-    data_layer: Ash.DataLayer.Ets
+    data_layer: Ash.DataLayer.Ets,
+    extensions: [Lavash.Resource]
+
+  lavash do
+    notify_on [:session_id]
+  end
 
   ets do
     private? true
@@ -16,6 +23,11 @@ defmodule Demo.Forms.Address do
 
   attributes do
     uuid_primary_key :id
+
+    attribute :session_id, :string do
+      allow_nil? false
+      public? true
+    end
 
     attribute :country, :string do
       allow_nil? false
@@ -74,6 +86,7 @@ defmodule Demo.Forms.Address do
 
     create :save do
       accept [
+        :session_id,
         :country,
         :first_name,
         :last_name,
@@ -85,6 +98,19 @@ defmodule Demo.Forms.Address do
         :zip,
         :phone
       ]
+    end
+
+    read :list do
+      argument :session_id, :string, allow_nil?: true
+
+      # Only return addresses if session_id is provided, otherwise empty
+      filter expr(
+        if is_nil(^arg(:session_id)) do
+          false
+        else
+          session_id == ^arg(:session_id)
+        end
+      )
     end
   end
 

@@ -14,6 +14,7 @@ defmodule DemoWeb.AddressEditModal do
       <.lavash_component
         module={DemoWeb.AddressEditModal}
         id="address-edit-modal"
+        session_id={@session_id}
       />
   """
   use Lavash.Component, extensions: [Lavash.Overlay.Modal.Dsl]
@@ -23,6 +24,9 @@ defmodule DemoWeb.AddressEditModal do
   import Lavash.Overlay.Modal.Helpers, only: [modal_close_button: 1]
 
   alias Demo.Forms.Address
+
+  # Session ID from parent for scoping addresses
+  prop :session_id, :string, required: true
 
   # Configure modal behavior
   modal do
@@ -146,14 +150,15 @@ defmodule DemoWeb.AddressEditModal do
 
   actions do
     action :save do
+      # Inject session_id into form params before submit
+      set :address_form_params, fn %{state: state} ->
+        Map.put(state.address_form_params || %{}, "session_id", state.session_id)
+      end
       submit :address_form, on_success: :on_saved
     end
 
     action :on_saved do
-      # Send address data to parent via effect, then close modal
-      effect fn state ->
-        send(self(), {:lavash_component_event, :address_saved, state.address_form_params})
-      end
+      # Close modal - PubSub will notify the parent to refresh the address list
       set :open, nil
     end
   end

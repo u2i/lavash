@@ -21,11 +21,14 @@ defmodule DemoWeb.CheckoutDemoLive do
   # These are expanded inline at each call site and transpiled to JS
   import_rx Demo.Validators.CreditCard
 
-  alias Demo.Forms.Payment
+  alias Demo.Forms.{Address, Payment}
 
   # ─────────────────────────────────────────────────────────────────
   # State
   # ─────────────────────────────────────────────────────────────────
+
+  # Session ID for scoping addresses - generated at runtime via function default
+  state :session_id, :string, from: :ephemeral, default: &Ecto.UUID.generate/0, optimistic: false
 
   # Payment form params - Lavash automatically populates from form events
   state :payment_params, :map, from: :ephemeral, default: %{}, optimistic: true
@@ -36,12 +39,21 @@ defmodule DemoWeb.CheckoutDemoLive do
   state :ship_to_expanded, :boolean, from: :ephemeral, default: true, optimistic: true
   state :submitted, :boolean, from: :ephemeral, default: false, optimistic: true
 
-  # Shipping address - stored after modal saves
-  state :shipping_address, :map, from: :ephemeral, default: nil, optimistic: true
+  # Selected address ID (nil = use default address)
+  state :selected_address_id, :string, from: :ephemeral, default: nil, optimistic: true
 
   # Order data (would come from cart in real app)
   state :subtotal, :decimal, from: :ephemeral, default: Decimal.new("20.00"), optimistic: false
   state :shipping, :decimal, from: :ephemeral, default: Decimal.new("8.00"), optimistic: false
+
+  # ─────────────────────────────────────────────────────────────────
+  # Addresses - loaded from ETS, scoped by session_id, auto-refresh via PubSub
+  # ─────────────────────────────────────────────────────────────────
+
+  read :addresses, Address, :list do
+    async false
+    invalidate :pubsub
+  end
 
   # ─────────────────────────────────────────────────────────────────
   # Ash Form - Auto-generates validation from Payment resource
@@ -146,26 +158,44 @@ defmodule DemoWeb.CheckoutDemoLive do
   calculate :is_card_payment, rx(@payment_method == "card")
   calculate :form_valid, rx(if(@is_card_payment, do: @card_form_valid, else: true))
 
-  # Address display calculations
-  calculate :has_custom_address, rx(@shipping_address != nil)
+  # ─────────────────────────────────────────────────────────────────
+  # Address Selection and Display
+  # ─────────────────────────────────────────────────────────────────
+
+  # Find the selected address from the list (or first address if none selected)
+  derive :selected_address do
+    argument :addresses, result(:addresses)
+    argument :selected_id, state(:selected_address_id)
+
+    run fn
+      %{addresses: [], selected_id: _}, _ -> nil
+      %{addresses: addresses, selected_id: nil}, _ -> List.first(addresses)
+      %{addresses: addresses, selected_id: id}, _ ->
+        Enum.find(addresses, List.first(addresses), &(&1.id == id))
+    end
+  end
+
+  calculate :has_addresses, rx(length(@addresses) > 0), optimistic: false
 
   calculate :address_line1,
     rx(
-      if @shipping_address do
-        "#{@shipping_address["first_name"]} #{@shipping_address["last_name"]}, #{@shipping_address["address"]}"
+      if @selected_address do
+        "#{@selected_address.first_name} #{@selected_address.last_name}, #{@selected_address.address}"
       else
         "Thomas Clarke, 78 Example Street"
       end
-    )
+    ),
+    optimistic: false
 
   calculate :address_line2,
     rx(
-      if @shipping_address do
-        "#{@shipping_address["city"]}, #{@shipping_address["state"]} #{@shipping_address["zip"]}, US"
+      if @selected_address do
+        "#{@selected_address.city}, #{@selected_address.state} #{@selected_address.zip}, US"
       else
         "Red Hook, NY 12571, US"
       end
-    )
+    ),
+    optimistic: false
 
   # ─────────────────────────────────────────────────────────────────
   # Computed Values
@@ -215,12 +245,12 @@ defmodule DemoWeb.CheckoutDemoLive do
       set :payment_params, %{}
       set :submitted, false
       set :payment_method, "card"
-      set :shipping_address, nil
+      set :selected_address_id, nil
     end
 
-    # Handle address saved from modal
-    action :address_saved do
-      set :shipping_address, &(&1)
+    # Select an address from the list
+    action :select_address, [:id] do
+      set :selected_address_id, &(&1.params.id)
     end
   end
 
@@ -302,17 +332,47 @@ defmodule DemoWeb.CheckoutDemoLive do
 
                 <div
                   data-lavash-visible="ship_to_expanded"
-                  class={"flex items-start justify-between rounded-lg border border-base-300 bg-base-200/40 p-4" <> unless @ship_to_expanded, do: " hidden", else: ""}
+                  class={"space-y-2" <> unless @ship_to_expanded, do: " hidden", else: ""}
                 >
-                  <div>
-                    <div class="font-semibold" data-lavash-display="address_line1">{@address_line1}</div>
-                    <div class="text-sm opacity-70" data-lavash-display="address_line2">{@address_line2}</div>
-                  </div>
-                  <button
-                    class="btn btn-ghost btn-sm"
-                    aria-label="Edit address"
-                    phx-click={Phoenix.LiveView.JS.dispatch("open-panel", to: "#address-edit-modal-modal", detail: %{open: true})}
-                  >⋮</button>
+                  <!-- Default address (shown when no saved addresses) -->
+                  <%= unless @has_addresses do %>
+                    <div class="flex items-start justify-between rounded-lg border border-primary ring-1 ring-primary bg-base-200/40 p-4">
+                      <div class="flex items-center gap-3">
+                        <input type="radio" name="address" class="radio radio-primary radio-sm" checked />
+                        <div>
+                          <div class="font-semibold">Thomas Clarke, 78 Example Street</div>
+                          <div class="text-sm opacity-70">Red Hook, NY 12571, US</div>
+                        </div>
+                      </div>
+                    </div>
+                  <% end %>
+
+                  <!-- Saved addresses -->
+                  <%= for address <- @addresses do %>
+                    <div
+                      class={"flex items-start justify-between rounded-lg border p-4 cursor-pointer transition-all " <>
+                        if @selected_address && @selected_address.id == address.id do
+                          "border-primary ring-1 ring-primary bg-base-200/40"
+                        else
+                          "border-base-300 hover:border-base-400"
+                        end}
+                      phx-click="select_address"
+                      phx-value-id={address.id}
+                    >
+                      <div class="flex items-center gap-3">
+                        <input
+                          type="radio"
+                          name="address"
+                          class="radio radio-primary radio-sm"
+                          checked={@selected_address && @selected_address.id == address.id}
+                        />
+                        <div>
+                          <div class="font-semibold">{address.first_name} {address.last_name}, {address.address}</div>
+                          <div class="text-sm opacity-70">{address.city}, {address.state} {address.zip}, US</div>
+                        </div>
+                      </div>
+                    </div>
+                  <% end %>
                 </div>
 
                 <a
@@ -320,7 +380,7 @@ defmodule DemoWeb.CheckoutDemoLive do
                   phx-click={Phoenix.LiveView.JS.dispatch("open-panel", to: "#address-edit-modal-modal", detail: %{open: true})}
                 >
                   <span class="text-lg leading-none">＋</span>
-                  Use a different address
+                  Add a new address
                 </a>
               </div>
 
@@ -610,6 +670,7 @@ defmodule DemoWeb.CheckoutDemoLive do
       <.lavash_component
         module={DemoWeb.AddressEditModal}
         id="address-edit-modal"
+        session_id={@session_id}
       />
     </main>
   </div>

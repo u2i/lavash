@@ -27,7 +27,14 @@ defmodule Lavash.State do
         if Map.has_key?(state, field.name) do
           state
         else
-          Map.put(state, field.name, field.default)
+          # Support function/0 defaults for runtime-generated values
+          value =
+            case field.default do
+              fun when is_function(fun, 0) -> fun.()
+              other -> other
+            end
+
+          Map.put(state, field.name, value)
         end
       end)
 
