@@ -248,11 +248,6 @@ defmodule Lavash.Rx.TranspilerTest do
                "(state.data.user.name)"
     end
 
-    test "valid_card_number?" do
-      assert Transpiler.to_js("valid_card_number?(@digits)") ==
-               "Lavash.Rx.Validators.validCardNumber(state.digits)"
-    end
-
     test "get_in with string keys" do
       assert Transpiler.to_js(~s|get_in(@data, ["user", "name"])|) ==
                "(state.data[\"user\"][\"name\"])"

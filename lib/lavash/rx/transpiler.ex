@@ -157,16 +157,6 @@ defmodule Lavash.Rx.Transpiler do
     "(#{js_val}.toString().replace(/_/g, ' ').replace(/^\\w/, c => c.toUpperCase()))"
   end
 
-  # valid_card_number?(digits) -> Lavash.Rx.Validators.validCardNumber(digits)
-  def ast_to_js({:valid_card_number?, _, [digits]}) do
-    "Lavash.Rx.Validators.validCardNumber(#{ast_to_js(digits)})"
-  end
-
-  # Lavash.Rx.Validators.valid_card_number?(digits)
-  def ast_to_js({{:., _, [{:__aliases__, _, [:Lavash, :Rx, :Validators]}, :valid_card_number?]}, _, [digits]}) do
-    "Lavash.Rx.Validators.validCardNumber(#{ast_to_js(digits)})"
-  end
-
   # length(list) -> list.length
   def ast_to_js({:length, _, [list]}) do
     "(#{ast_to_js(list)}.length)"
@@ -604,14 +594,6 @@ defmodule Lavash.Rx.Transpiler do
 
   # humanize/1
   defp validate_ast({:humanize, _, [arg]}), do: validate_ast(arg)
-
-  # valid_card_number?/1
-  defp validate_ast({:valid_card_number?, _, [arg]}), do: validate_ast(arg)
-
-  # Lavash.Rx.Validators.valid_card_number?/1
-  defp validate_ast({{:., _, [{:__aliases__, _, [:Lavash, :Rx, :Validators]}, :valid_card_number?]}, _, args}) do
-    validate_all_args(args)
-  end
 
   # is_nil/1
   defp validate_ast({:is_nil, _, [arg]}), do: validate_ast(arg)
