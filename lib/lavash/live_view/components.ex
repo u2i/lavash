@@ -120,6 +120,7 @@ defmodule Lavash.LiveView.Components do
         type={@type}
         name={@field.name}
         value={@field.value || ""}
+        placeholder={if @floating, do: @label, else: @rest[:placeholder]}
         data-lavash-bind={"#{@form_str}_params.#{@field_str}"}
         data-lavash-form={@form_str}
         data-lavash-field={@field_str}
@@ -160,6 +161,7 @@ defmodule Lavash.LiveView.Components do
       <textarea
         name={@field.name}
         rows={@rows}
+        placeholder={if @floating, do: @label, else: @rest[:placeholder]}
         data-lavash-bind={"#{@form_str}_params.#{@field_str}"}
         data-lavash-form={@form_str}
         data-lavash-field={@field_str}
@@ -196,9 +198,7 @@ defmodule Lavash.LiveView.Components do
         </label>
         {render_slot(@inner_block)}
       <% end %>
-      <div class="min-h-5 mt-1">
-        <.field_errors form={@form_name} field={@field_name} errors={@errors || []} />
-      </div>
+      <.field_errors form={@form_name} field={@field_name} errors={@errors || []} />
     </div>
     """
   end
