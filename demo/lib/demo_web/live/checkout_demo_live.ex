@@ -347,6 +347,8 @@ defmodule DemoWeb.CheckoutDemoLive do
                   <!-- Card form fields - only visible when card is selected -->
                   <.form
                     for={@payment}
+                    id="payment-form"
+                    phx-change="validate_payment"
                     phx-submit="save"
                     data-lavash-visible="is_card_payment"
                     class={"mt-4 space-y-3" <> if @payment_method != "card", do: " hidden", else: ""}

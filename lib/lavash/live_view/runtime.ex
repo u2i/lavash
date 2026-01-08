@@ -252,7 +252,7 @@ defmodule Lavash.LiveView.Runtime do
     # Check for form validation events (validate_<form_name>)
     case parse_validation_event(module, event) do
       {:validate, form, form_name} ->
-        handle_validation_event(socket, form, form_name, params)
+        handle_validation_event(module, socket, form, form_name, params)
 
       :not_validation ->
         handle_action_event(module, event, params, socket)
@@ -271,7 +271,43 @@ defmodule Lavash.LiveView.Runtime do
   end
 
   # Handle field validation request from client
-  defp handle_validation_event(socket, form, form_name, params) do
+  # Also handles form recovery when phx-change fires with full form params
+  defp handle_validation_event(module, socket, form, form_name, params) do
+    # Check if this is a per-field validation (Lavash client-side) or full form change (Phoenix recovery)
+    field_name = params["field"]
+    param_key = to_string(form_name)
+
+    cond do
+      # Per-field validation from Lavash client
+      field_name != nil ->
+        handle_per_field_validation(socket, form, form_name, params)
+
+      # Full form change (e.g., from Phoenix form recovery)
+      Map.has_key?(params, param_key) ->
+        handle_form_change(module, socket, form_name, params[param_key])
+
+      true ->
+        {:noreply, socket}
+    end
+  end
+
+  # Handle Phoenix form change events (form recovery, standard phx-change)
+  defp handle_form_change(module, socket, form_name, form_params) when is_map(form_params) do
+    params_field = :"#{form_name}_params"
+
+    socket =
+      socket
+      |> LSocket.put_state(params_field, form_params)
+      |> Graph.recompute_dirty(module)
+      |> Assigns.project(module)
+
+    {:noreply, socket}
+  end
+
+  defp handle_form_change(_module, socket, _form_name, _), do: {:noreply, socket}
+
+  # Handle per-field validation from Lavash client
+  defp handle_per_field_validation(socket, form, form_name, params) do
     field_name = params["field"]
     value = params["value"]
     request_id = params["_validation_request_id"]

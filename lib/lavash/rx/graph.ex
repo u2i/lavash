@@ -74,7 +74,12 @@ defmodule Lavash.Rx.Graph do
           # Build state map from deps_map for AST evaluation
           # Create an env with the module so defrx functions are accessible
           eval_env = %{__ENV__ | module: module}
-          {result, _binding} = Code.eval_quoted(ast, [state: deps_map], eval_env)
+
+          # Rewrite String.chunk calls to Lavash.Rx.String.chunk for Elixir-side evaluation
+          # (String.chunk doesn't support integer size in stdlib)
+          rewritten_ast = rewrite_string_calls(ast)
+
+          {result, _binding} = Code.eval_quoted(rewritten_ast, [state: deps_map], eval_env)
           result
         end
       }
@@ -84,6 +89,20 @@ defmodule Lavash.Rx.Graph do
   # Normalize a dependency - extract root field from path deps
   defp normalize_dep({:path, root, _path}), do: root
   defp normalize_dep(atom) when is_atom(atom), do: atom
+
+  # Rewrite String module calls to Lavash.Rx.String for Elixir-side evaluation
+  # This is needed because the transpiler emits JS equivalents, but Elixir's
+  # String module doesn't have all the same functions (e.g., String.chunk/2 with integer size)
+  defp rewrite_string_calls(ast) do
+    Macro.prewalk(ast, fn
+      # String.chunk -> Lavash.Rx.String.chunk
+      {{:., meta1, [{:__aliases__, meta2, [:String]}, :chunk]}, meta3, args} ->
+        {{:., meta1, [{:__aliases__, meta2, [:Lavash, :Rx, :String]}, :chunk]}, meta3, args}
+
+      other ->
+        other
+    end)
+  end
 
   # Expand read entities into derived-like field structs
   defp expand_reads(module) do
