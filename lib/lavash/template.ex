@@ -82,8 +82,8 @@ defmodule Lavash.Template do
 
   defp parse_children([{:tag, name, attrs, meta} | rest], acc) do
     case meta[:closing] do
-      :self ->
-        # Self-closing tag
+      closing when closing in [:self, :void] ->
+        # Self-closing tag or void element (like input, br, img)
         node = {:element, name, parse_attrs(attrs), [], meta}
         parse_children(rest, [node | acc])
 
@@ -648,12 +648,19 @@ defmodule Lavash.Template do
   # Special attribute node (standalone - shouldn't happen in well-formed input)
   defp node_to_js_parts({:special_attr, _, _, _, _}, _ctx), do: []
 
+  # HTML void elements that cannot have children and must not have closing tags
+  @void_elements ~w(area base br col embed hr img input link meta source track wbr)
+
   # Render element parts inline (no wrapper backticks)
   defp render_element_parts(tag, attrs, children, _meta, ctx) do
     attrs_js = render_attrs_to_js(attrs, ctx)
 
     if children == [] do
-      ["<#{tag}#{attrs_js}></#{tag}>"]
+      if tag in @void_elements do
+        ["<#{tag}#{attrs_js}>"]
+      else
+        ["<#{tag}#{attrs_js}></#{tag}>"]
+      end
     else
       children_parts = tree_to_js_parts(children, ctx)
       ["<#{tag}#{attrs_js}>"] ++ children_parts ++ ["</#{tag}>"]
@@ -665,7 +672,11 @@ defmodule Lavash.Template do
     attrs_js = render_attrs_to_js(attrs, ctx)
 
     if children == [] do
-      "`<#{tag}#{attrs_js}></#{tag}>`"
+      if tag in @void_elements do
+        "`<#{tag}#{attrs_js}>`"
+      else
+        "`<#{tag}#{attrs_js}></#{tag}>`"
+      end
     else
       children_parts = tree_to_js_parts(children, ctx)
       children_js = Enum.join(children_parts, "")

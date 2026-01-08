@@ -1051,10 +1051,26 @@ const LavashOptimistic = {
     return result;
   },
 
+  // Check if element is inside a nested child hook (e.g., ClientComponent)
+  // We should not manipulate elements inside child hooks - they manage their own state
+  isInsideChildHook(el) {
+    let parent = el.parentElement;
+    while (parent && parent !== this.el) {
+      if (parent.hasAttribute("phx-hook") && parent !== this.el) {
+        return true;
+      }
+      parent = parent.parentElement;
+    }
+    return false;
+  },
+
   updateDOM() {
     // Update all elements with data-lavash-display attribute (text content)
     const displayElements = this.el.querySelectorAll("[data-lavash-display]");
     displayElements.forEach(el => {
+      // Skip elements inside nested child hooks - they manage their own state
+      if (this.isInsideChildHook(el)) return;
+
       const fieldName = el.dataset.lavashDisplay;
       const value = this.state[fieldName];
       if (value !== undefined) {
@@ -1065,6 +1081,9 @@ const LavashOptimistic = {
     // Update all elements with data-lavash-visible attribute (show/hide based on boolean)
     const visibleElements = this.el.querySelectorAll("[data-lavash-visible]");
     visibleElements.forEach(el => {
+      // Skip elements inside nested child hooks - they manage their own state
+      if (this.isInsideChildHook(el)) return;
+
       const fieldName = el.dataset.lavashVisible;
       const value = this.state[fieldName];
       if (value) {
@@ -1077,6 +1096,9 @@ const LavashOptimistic = {
     // Update all elements with data-lavash-enabled attribute (enable/disable based on boolean)
     const enabledElements = this.el.querySelectorAll("[data-lavash-enabled]");
     enabledElements.forEach(el => {
+      // Skip elements inside nested child hooks - they manage their own state
+      if (this.isInsideChildHook(el)) return;
+
       const fieldName = el.dataset.lavashEnabled;
       const value = this.state[fieldName];
       el.disabled = !value;
@@ -1086,6 +1108,9 @@ const LavashOptimistic = {
     // Format: "fieldName|trueClasses|falseClasses" (uses | to avoid conflict with Tailwind's :)
     const classToggleElements = this.el.querySelectorAll("[data-lavash-toggle]");
     classToggleElements.forEach(el => {
+      // Skip elements inside nested child hooks - they manage their own state
+      if (this.isInsideChildHook(el)) return;
+
       const spec = el.dataset.lavashToggle;
       const [fieldName, trueClasses, falseClasses] = spec.split("|");
       const value = this.state[fieldName];
@@ -1103,6 +1128,9 @@ const LavashOptimistic = {
     // Format: data-lavash-class="roast_chips.light" means state.roast_chips["light"]
     const classElements = this.el.querySelectorAll("[data-lavash-class]");
     classElements.forEach(el => {
+      // Skip elements inside nested child hooks - they manage their own state
+      if (this.isInsideChildHook(el)) return;
+
       const path = el.dataset.lavashClass;
       const [field, key] = path.split(".");
       const classMap = this.state[field];
@@ -1118,6 +1146,9 @@ const LavashOptimistic = {
     // Only show errors if the corresponding show_errors field is true (touched || submitted)
     const errorElements = this.el.querySelectorAll("[data-lavash-errors]");
     errorElements.forEach(el => {
+      // Skip elements inside nested child hooks - they manage their own state
+      if (this.isInsideChildHook(el)) return;
+
       const errorsField = el.dataset.lavashErrors; // e.g., "registration_name_errors"
       const clientErrors = this.state[errorsField] || [];
 
@@ -1175,6 +1206,9 @@ const LavashOptimistic = {
     // Update error summary element (shows all errors when form is submitted)
     const errorSummaryElements = this.el.querySelectorAll("[data-lavash-error-summary]");
     errorSummaryElements.forEach(el => {
+      // Skip elements inside nested child hooks - they manage their own state
+      if (this.isInsideChildHook(el)) return;
+
       const formName = el.dataset.lavashErrorSummary; // e.g., "registration"
 
       // Only show if form has been submitted
@@ -1241,6 +1275,9 @@ const LavashOptimistic = {
     // Update field status indicators (✗ when invalid, empty otherwise)
     const statusElements = this.el.querySelectorAll("[data-lavash-status]");
     statusElements.forEach(el => {
+      // Skip elements inside nested child hooks - they manage their own state
+      if (this.isInsideChildHook(el)) return;
+
       const validField = el.dataset.lavashStatus; // e.g., "registration_name_valid"
 
       // Use explicit form/field if provided
@@ -1282,6 +1319,9 @@ const LavashOptimistic = {
     // Find all bound inputs and update their border/ring classes
     const boundInputs = this.el.querySelectorAll("[data-lavash-bind]");
     boundInputs.forEach(input => {
+      // Skip elements inside nested child hooks - they manage their own state
+      if (this.isInsideChildHook(input)) return;
+
       const fieldPath = input.dataset.lavashBind; // e.g., "registration_params.name"
 
       // Get form/field from explicit attributes or derive from path
