@@ -1,10 +1,6 @@
 defmodule Lavash.Components.SyncedToggle do
   @moduledoc """
-  Optimistic toggle switch using LiveComponent.
-
-  This component uses SyncedVar for per-field optimistic tracking.
-  Unlike ClientComponent which re-renders entire HTML, LiveComponent
-  updates individual values in a static DOM structure via data-synced-* attributes.
+  Optimistic toggle switch using ClientComponent.
 
   ## Usage
 
@@ -18,12 +14,13 @@ defmodule Lavash.Components.SyncedToggle do
 
   ## How it works
 
-  1. User clicks toggle -> client instantly updates via SyncedVar.setOptimistic()
-  2. Server receives event and updates state
-  3. SyncedVar.serverSet() only accepts if no pending updates (version match)
+  1. User clicks toggle -> client instantly updates via optimistic action
+  2. Client re-renders with new state (instant visual feedback)
+  3. Server receives event and updates state
+  4. Server patch accepted if versions match, rejected if stale
   """
 
-  use Lavash.LiveComponent
+  use Lavash.ClientComponent
 
   # State connects to parent state
   state :value, :boolean
@@ -54,7 +51,7 @@ defmodule Lavash.Components.SyncedToggle do
   optimistic_action :toggle, :value,
     run: fn value, _arg -> !value end
 
-  # Template with natural syntax - l-action and class={@calc} are auto-transformed
+  # Template with data-lavash-action for optimistic updates
   template """
   <div class="inline-flex items-center gap-2">
     <button
@@ -62,7 +59,8 @@ defmodule Lavash.Components.SyncedToggle do
       role="switch"
       aria-checked={to_string(@value)}
       disabled={@disabled}
-      l-action="toggle"
+      data-lavash-action="toggle"
+      data-lavash-state-field="value"
       class={@button_class}
     >
       <span

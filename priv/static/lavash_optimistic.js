@@ -181,25 +181,29 @@ const LavashOptimistic = {
     // Expose hook instance on element for onBeforeElUpdated access
     this.el.__lavash_hook__ = this;
 
-    // Check if this is a component (skip form handling to avoid interference)
+    // Check if this is a component
     this.isComponent = this.el.hasAttribute("data-lavash-component");
 
+    // Intercept clicks on elements with data-lavash-action
+    this.el.addEventListener("click", this.handleClick.bind(this), true);
+
+    // Intercept input/change on elements with data-lavash-bind
+    this.el.addEventListener("input", this.handleInput.bind(this), true);
+
+    // Track blur events for touched state
+    this.el.addEventListener("blur", this.handleBlur.bind(this), true);
+
+    // Track form submit for formSubmitted state
+    this.el.addEventListener("submit", this.handleFormSubmit.bind(this), true);
+
     if (!this.isComponent) {
-      // Intercept clicks on elements with data-lavash-action
-      this.el.addEventListener("click", this.handleClick.bind(this), true);
-
-      // Intercept input/change on elements with data-lavash-bind
-      this.el.addEventListener("input", this.handleInput.bind(this), true);
-
-      // Track blur events for touched state
-      this.el.addEventListener("blur", this.handleBlur.bind(this), true);
-
-      // Track form submit for formSubmitted state
-      this.el.addEventListener("submit", this.handleFormSubmit.bind(this), true);
 
       // Listen for server validation responses
       this.handleEvent("validation_result", (payload) => this.handleValidationResult(payload));
     }
+
+    // Install global DOM callback for input preservation (only once globally)
+    this._installGlobalDomCallback();
 
     // Initialize animated state managers
     this.initAnimatedFields();
@@ -343,12 +347,10 @@ const LavashOptimistic = {
       innerId: innerId
     };
 
-    // Install global DOM callback if not already done
-    this._installGlobalDomCallback();
   },
 
   /**
-   * Install global onBeforeElUpdated callback for ghost detection.
+   * Install global onBeforeElUpdated callback for ghost detection and input preservation.
    * Only installs once globally across all LavashOptimistic instances.
    */
   _installGlobalDomCallback() {
@@ -357,6 +359,23 @@ const LavashOptimistic = {
 
     const original = this.liveSocket.domCallbacks.onBeforeElUpdated;
     this.liveSocket.domCallbacks.onBeforeElUpdated = (fromEl, toEl) => {
+      // Preserve input values for form fields with data-lavash-bind
+      // This runs before morphdom patches the DOM, so we can prevent value overwrites
+      if (fromEl.hasAttribute && fromEl.hasAttribute("data-lavash-bind")) {
+        const fieldPath = fromEl.getAttribute("data-lavash-bind");
+        // Find the LavashOptimistic hook that owns this input
+        const hookEl = fromEl.closest("[phx-hook='LavashOptimistic']");
+        const hook = hookEl?.__lavash_hook__;
+
+        if (hook && hook.store && hook.store.isPending(fieldPath)) {
+          // Input has pending changes - preserve the current value
+          const pendingValue = hook.store.getValue(fieldPath);
+          if (pendingValue !== undefined) {
+            toEl.value = pendingValue;
+          }
+        }
+      }
+
       // Check if any registered modal cares about this element
       const registry = window.__lavashModalContentRegistry || {};
       const entry = registry[fromEl.id];
@@ -1501,21 +1520,17 @@ const LavashOptimistic = {
     // Update DOM after server patch
     this.updateDOM();
 
-    // If input is focused, restore optimistic value if server morphed it away
-    const activeEl = document.activeElement;
-    const inputHasFocus = activeEl &&
-      this.el.contains(activeEl) &&
-      activeEl.matches("[data-lavash-bind]");
-
-    if (inputHasFocus) {
-      const fieldPath = activeEl.dataset.lavashBind;
-      if (fieldPath && this.store.has(fieldPath)) {
+    // Restore all inputs with pending values (server may have overwritten them)
+    const boundInputs = this.el.querySelectorAll("[data-lavash-bind]");
+    boundInputs.forEach(input => {
+      const fieldPath = input.dataset.lavashBind;
+      if (fieldPath && this.store.isPending(fieldPath)) {
         const val = this.store.getValue(fieldPath);
-        if (val !== undefined && activeEl.value !== val) {
-          activeEl.value = val;
+        if (val !== undefined && input.value !== val) {
+          input.value = val;
         }
       }
-    }
+    });
   },
 
   /**
@@ -1660,12 +1675,11 @@ const LavashOptimistic = {
   },
 
   destroyed() {
-    if (!this.isComponent) {
-      this.el.removeEventListener("click", this.handleClick.bind(this), true);
-      this.el.removeEventListener("input", this.handleInput.bind(this), true);
-      this.el.removeEventListener("blur", this.handleBlur.bind(this), true);
-      this.el.removeEventListener("submit", this.handleFormSubmit.bind(this), true);
-    }
+    // Remove event listeners (attached for both LiveViews and components)
+    this.el.removeEventListener("click", this.handleClick.bind(this), true);
+    this.el.removeEventListener("input", this.handleInput.bind(this), true);
+    this.el.removeEventListener("blur", this.handleBlur.bind(this), true);
+    this.el.removeEventListener("submit", this.handleFormSubmit.bind(this), true);
 
     // Clean up modal event listeners
     if (this._modalEventListeners) {

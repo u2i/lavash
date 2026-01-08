@@ -507,19 +507,37 @@ defmodule Lavash.LiveView.Runtime do
 
   def handle_info(module, {:lavash_component_toggle, field, value}, socket) do
     # Handle toggle operations from child Lavash components.
-    # Components send atomic toggle ops (not full values) so rapid clicks
-    # each apply to the current server state rather than overwriting each other.
-    current = LSocket.get_state(socket, field) || []
+    # Two modes:
+    # 1. Boolean toggle (value is nil): simply negate the current boolean
+    # 2. List toggle (value is not nil): add/remove value from the list
+    current = LSocket.get_state(socket, field)
 
     new_value =
-      if value in current do
-        List.delete(current, value)
-      else
-        [value | current]
-      end
+      case {current, value} do
+        # Boolean toggle - negate the value
+        {bool, nil} when is_boolean(bool) ->
+          !bool
 
-    require Logger
-    Logger.warning("[Lavash] toggle #{field}: #{inspect(current)} + #{value} => #{inspect(new_value)}")
+        # Boolean toggle with nil/missing current - start as true
+        {nil, nil} ->
+          true
+
+        # List toggle - add or remove value
+        {list, val} when is_list(list) ->
+          if val in list do
+            List.delete(list, val)
+          else
+            [val | list]
+          end
+
+        # List toggle with nil current - start new list
+        {nil, val} ->
+          [val]
+
+        # Fallback for any other case
+        _ ->
+          !current
+      end
 
     socket =
       socket

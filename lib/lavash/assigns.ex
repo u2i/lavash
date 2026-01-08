@@ -100,7 +100,7 @@ defmodule Lavash.Assigns do
   end
 
   # Collect auto-generated form validation field names from Ash resource constraints
-  # These include: form_field_valid, form_field_errors, form_valid, form_errors
+  # These include: form_field_valid, form_field_errors, form_field_show_errors, form_valid, form_errors
   defp collect_form_validation_field_names(module) do
     forms = safe_get(module, :forms)
 
@@ -115,6 +115,7 @@ defmodule Lavash.Assigns do
         # Generate field-specific validation names
         field_valid_names = Enum.map(field_names, &:"#{form_name}_#{&1}_valid")
         field_errors_names = Enum.map(field_names, &:"#{form_name}_#{&1}_errors")
+        field_show_errors_names = Enum.map(field_names, &:"#{form_name}_#{&1}_show_errors")
 
         # Generate combined form-level names
         form_level_names =
@@ -124,7 +125,7 @@ defmodule Lavash.Assigns do
             []
           end
 
-        field_valid_names ++ field_errors_names ++ form_level_names
+        field_valid_names ++ field_errors_names ++ field_show_errors_names ++ form_level_names
       else
         []
       end

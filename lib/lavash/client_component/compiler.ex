@@ -240,7 +240,9 @@ defmodule Lavash.ClientComponent.Compiler do
       condition_ast = build_condition_ast(validate_fn_ast, max_field)
 
       quote do
-        def handle_event(unquote(event_name), %{"val" => value}, socket) do
+        def handle_event(unquote(event_name), params, socket) do
+          # Extract value from params (may be nil for toggle actions)
+          value = Map.get(params, "val")
           binding_map = socket.assigns[:__lavash_binding_map__] || %{}
 
           case Map.get(binding_map, unquote(field)) do
@@ -252,7 +254,9 @@ defmodule Lavash.ClientComponent.Compiler do
                 # Call the run function directly
                 run_fn = unquote(run_fn_ast)
                 new_value = run_fn.(current, value)
-                socket = Lavash.LiveComponent.bump_version(socket)
+                # Bump version to signal state change to client
+                version = (socket.assigns[:__lavash_version__] || 0) + 1
+                socket = Phoenix.Component.assign(socket, :__lavash_version__, version)
                 {:noreply, Phoenix.Component.assign(socket, unquote(field), new_value)}
               else
                 {:noreply, socket}
@@ -564,13 +568,13 @@ defmodule Lavash.ClientComponent.Compiler do
 
     ~s"""
       validateAction(action, field, value) {
-        const current = this.state[field] || [];
+        const current = this.state[field];
     #{validate_cases}
         return true;
       },
 
       applyOptimisticAction(action, field, value) {
-        const current = this.state[field] || [];
+        const current = this.state[field];
     #{action_cases}
       },
     """

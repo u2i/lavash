@@ -15,6 +15,7 @@ defmodule DemoWeb.CheckoutDemoLive do
   use Lavash.LiveView
   import Lavash.Rx
   import Lavash.LiveView.Components
+  import Lavash.LiveView.Helpers, only: [lavash_component: 1]
 
   # Import credit card validators (valid_card_number?, valid_expiry?, valid_cvv?)
   # These are expanded inline at each call site and transpiled to JS
@@ -34,6 +35,9 @@ defmodule DemoWeb.CheckoutDemoLive do
   state :use_shipping_as_billing, :boolean, from: :ephemeral, default: true, optimistic: true
   state :ship_to_expanded, :boolean, from: :ephemeral, default: true, optimistic: true
   state :submitted, :boolean, from: :ephemeral, default: false, optimistic: true
+
+  # Shipping address - stored after modal saves
+  state :shipping_address, :map, from: :ephemeral, default: nil, optimistic: true
 
   # Order data (would come from cart in real app)
   state :subtotal, :decimal, from: :ephemeral, default: Decimal.new("20.00"), optimistic: false
@@ -142,6 +146,27 @@ defmodule DemoWeb.CheckoutDemoLive do
   calculate :is_card_payment, rx(@payment_method == "card")
   calculate :form_valid, rx(if(@is_card_payment, do: @card_form_valid, else: true))
 
+  # Address display calculations
+  calculate :has_custom_address, rx(@shipping_address != nil)
+
+  calculate :address_line1,
+    rx(
+      if @shipping_address do
+        "#{@shipping_address["first_name"]} #{@shipping_address["last_name"]}, #{@shipping_address["address"]}"
+      else
+        "Thomas Clarke, 78 Example Street"
+      end
+    )
+
+  calculate :address_line2,
+    rx(
+      if @shipping_address do
+        "#{@shipping_address["city"]}, #{@shipping_address["state"]} #{@shipping_address["zip"]}, US"
+      else
+        "Red Hook, NY 12571, US"
+      end
+    )
+
   # ─────────────────────────────────────────────────────────────────
   # Computed Values
   # ─────────────────────────────────────────────────────────────────
@@ -190,6 +215,12 @@ defmodule DemoWeb.CheckoutDemoLive do
       set :payment_params, %{}
       set :submitted, false
       set :payment_method, "card"
+      set :shipping_address, nil
+    end
+
+    # Handle address saved from modal
+    action :address_saved do
+      set :shipping_address, &(&1)
     end
   end
 
@@ -274,13 +305,20 @@ defmodule DemoWeb.CheckoutDemoLive do
                   class={"flex items-start justify-between rounded-lg border border-base-300 bg-base-200/40 p-4" <> unless @ship_to_expanded, do: " hidden", else: ""}
                 >
                   <div>
-                    <div class="font-semibold">Thomas Clarke, 78 Example Street</div>
-                    <div class="text-sm opacity-70">Red Hook, NY 12571, US</div>
+                    <div class="font-semibold" data-lavash-display="address_line1">{@address_line1}</div>
+                    <div class="text-sm opacity-70" data-lavash-display="address_line2">{@address_line2}</div>
                   </div>
-                  <button class="btn btn-ghost btn-sm" aria-label="Edit address">⋮</button>
+                  <button
+                    class="btn btn-ghost btn-sm"
+                    aria-label="Edit address"
+                    phx-click={Phoenix.LiveView.JS.dispatch("open-panel", to: "#address-edit-modal-modal", detail: %{open: true})}
+                  >⋮</button>
                 </div>
 
-                <a class="link link-primary inline-flex items-center gap-2 text-sm font-semibold" href="#">
+                <a
+                  class="link link-primary inline-flex items-center gap-2 text-sm font-semibold cursor-pointer"
+                  phx-click={Phoenix.LiveView.JS.dispatch("open-panel", to: "#address-edit-modal-modal", detail: %{open: true})}
+                >
                   <span class="text-lg leading-none">＋</span>
                   Use a different address
                 </a>
@@ -567,6 +605,12 @@ defmodule DemoWeb.CheckoutDemoLive do
           </aside>
         </div>
       <% end %>
+
+      <!-- Address Edit Modal -->
+      <.lavash_component
+        module={DemoWeb.AddressEditModal}
+        id="address-edit-modal"
+      />
     </main>
   </div>
   """

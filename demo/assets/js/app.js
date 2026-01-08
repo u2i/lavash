@@ -74,22 +74,6 @@ const liveSocketOpts = {
   longPollFallbackMs: 2500,
   params: () => ({ _csrf_token: csrfToken, _lavash_state: lavashState }),
   hooks: colocatedHooks,
-  dom: {
-    onBeforeElUpdated(from, to) {
-      // For inputs with data-synced, check if they have pending changes
-      // and preserve the value attribute if so
-      if (from.matches && from.matches("[data-synced]")) {
-        const fieldPath = from.dataset.synced;
-        // Find the hook instance by walking up to the lavash root
-        const hookEl = from.closest("[phx-hook='LavashOptimistic']");
-        const hook = hookEl?.__lavash_hook__;
-        if (hook && hook.store && hook.store.isPending(fieldPath)) {
-          // Preserve the input value - don't let server overwrite it
-          to.value = from.value;
-        }
-      }
-    }
-  }
 };
 
 const liveSocket = new LiveSocket("/live", Socket, liveSocketOpts);

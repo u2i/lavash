@@ -10,30 +10,26 @@ defmodule Lavash.Template do
   ## Example
 
       defmodule MyComponent do
-        use Lavash.LiveComponent
+        use Lavash.ClientComponent
 
-        bind :selected, {:array, :string}
+        state :selected, {:array, :string}
 
-        # Template DSL that generates both HEEx and a colocated hook
-        template :chips do
-          ~T\"\"\"
-          <button
-            :for={value <- @values}
-            l-optimistic="toggle_selected"
-            l-optimistic-value={value}
-            l-class={if value in @selected, do: @active_class, else: @inactive_class}
-          >
-            {value}
-          </button>
-          \"\"\"
-        end
+        optimistic_action :toggle_selected, :selected,
+          run: fn selected, value ->
+            if value in selected, do: List.delete(selected, value), else: selected ++ [value]
+          end
+
+        template \"\"\"
+        <button
+          :for={value <- @values}
+          data-lavash-action="toggle_selected"
+          data-lavash-value={value}
+          class={if value in @selected, do: @active_class, else: @inactive_class}
+        >
+          {value}
+        </button>
+        \"\"\"
       end
-
-  The `l-` prefixed attributes are Lavash-specific and control JS generation:
-  - `l-optimistic` - Names the optimistic action function to generate
-  - `l-optimistic-value` - The value passed to the action function
-  - `l-class` - Generates a class derive function (updates element className)
-  - `l-text` - Generates a text content derive function
 
   ## Generated Colocated Hook
 

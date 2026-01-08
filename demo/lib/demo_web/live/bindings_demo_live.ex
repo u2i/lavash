@@ -1,6 +1,6 @@
 defmodule DemoWeb.BindingsDemoLive do
   @moduledoc """
-  Demo page for Lavash.LiveComponent bindings.
+  Demo page for Lavash.ClientComponent bindings.
 
   Shows how a component can bind to parent state and update it,
   with changes flowing through the reactive graph.

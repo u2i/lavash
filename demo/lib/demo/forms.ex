@@ -10,5 +10,6 @@ defmodule Demo.Forms do
   resources do
     resource Demo.Forms.Registration
     resource Demo.Forms.Payment
+    resource Demo.Forms.Address
   end
 end
