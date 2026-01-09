@@ -223,6 +223,67 @@ const LavashOptimistic = {
         } else {
           console.warn("[LavashOptimistic] ModalAnimator not found in window.Lavash for type:modal field");
         }
+      } else if (config.type === "flyover") {
+        // For flyover type, create FlyoverAnimator targeting the flyover chrome element
+        const FlyoverAnimator = window.Lavash?.FlyoverAnimator;
+        if (FlyoverAnimator) {
+          // Flyover chrome ID is "{component_id}-flyover" where component_id is extracted from wrapper ID
+          // Wrapper ID is "lavash-{component_id}", so flyover ID is "{component_id}-flyover"
+          const wrapperId = this.el.id; // e.g., "lavash-nav-flyover"
+          const componentId = wrapperId.replace(/^lavash-/, ""); // e.g., "nav-flyover"
+          const flyoverChromeId = `${componentId}-flyover`; // e.g., "nav-flyover-flyover"
+          const flyoverChrome = document.getElementById(flyoverChromeId);
+
+          if (flyoverChrome) {
+            delegate = new FlyoverAnimator(flyoverChrome, {
+              duration: config.duration || 200,
+              slideFrom: flyoverChrome.dataset.slideFrom || 'right',
+              openField: config.field
+            });
+            console.debug(`[LavashOptimistic] Created FlyoverAnimator for ${config.field} on #${flyoverChromeId}`);
+
+            // Register content element IDs for ghost detection in onBeforeElUpdated
+            const mainContentId = `${flyoverChromeId}-main_content`;
+            const mainContentInnerId = `${flyoverChromeId}-main_content_inner`;
+            this._registerModalContentIds(mainContentId, mainContentInnerId, config.field);
+
+            // Set up event listeners on flyover chrome for open/close events
+            this._modalEventListeners = this._modalEventListeners || [];
+            const setterAction = `set_${config.field}`;
+
+            const openHandler = (e) => {
+              const openValue = e.detail?.[config.field] ?? e.detail?.open ?? e.detail?.value ?? true;
+              console.log(`[LavashOptimistic] open-panel event for flyover ${config.field}:`, openValue);
+              const animState = this.animatedStates[config.field];
+              if (animState) {
+                animState.syncedVar.set(openValue, (p, cb) => {
+                  console.log(`[LavashOptimistic] pushEventTo ${setterAction}`, p);
+                  this.pushEventTo(flyoverChrome, setterAction, { ...p, value: openValue }, cb);
+                });
+              } else {
+                console.warn(`[LavashOptimistic] No animState found for ${config.field}`);
+              }
+            };
+
+            const closeHandler = () => {
+              console.debug(`[LavashOptimistic] close-panel event for flyover ${config.field}`);
+              const animState = this.animatedStates[config.field];
+              if (animState) {
+                animState.syncedVar.set(null, (p, cb) => {
+                  this.pushEventTo(flyoverChrome, setterAction, { ...p, value: null }, cb);
+                });
+              }
+            };
+
+            flyoverChrome.addEventListener("open-panel", openHandler);
+            flyoverChrome.addEventListener("close-panel", closeHandler);
+            this._modalEventListeners.push({ el: flyoverChrome, open: openHandler, close: closeHandler });
+          } else {
+            console.warn(`[LavashOptimistic] Flyover chrome element #${flyoverChromeId} not found for animated field ${config.field}`);
+          }
+        } else {
+          console.warn("[LavashOptimistic] FlyoverAnimator not found in window.Lavash for type:flyover field");
+        }
       }
 
       const animated = new AnimatedState(config, this, delegate);

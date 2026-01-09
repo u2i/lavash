@@ -39,6 +39,11 @@ defmodule DemoWeb.DemosIndexLive do
               title="Component Showcase"
               description="Overview of Lavash component patterns and their optimistic behaviors."
             />
+            <.demo_card
+              href={~p"/demos/flyover"}
+              title="Flyover (Slideover)"
+              description="Sliding panels from screen edges with optimistic open/close animations."
+            />
           </div>
         </section>
 

@@ -27,7 +27,7 @@ import topbar from "../vendor/topbar"
 import morphdom from "../vendor/morphdom"
 window.morphdom = morphdom
 // Lavash optimistic UI library
-import { SyncedVar, LavashOptimistic, ModalAnimator } from "lavash"
+import { SyncedVar, LavashOptimistic, ModalAnimator, FlyoverAnimator } from "lavash"
 // Colocated hooks from Lavash library
 import {hooks as lavashHooks} from "phoenix-colocated/lavash"
 // Lavash optimistic functions - auto-generated at compile time via phoenix-colocated
@@ -37,6 +37,7 @@ import {optimistic as lavashOptimisticFns} from "phoenix-colocated/demo"
 window.Lavash = window.Lavash || {};
 window.Lavash.SyncedVar = SyncedVar;
 window.Lavash.ModalAnimator = ModalAnimator;
+window.Lavash.FlyoverAnimator = FlyoverAnimator;
 window.Lavash.optimistic = lavashOptimisticFns || {};
 
 // Merge hooks from Lavash library and app-specific hooks

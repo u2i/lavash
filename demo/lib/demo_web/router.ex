@@ -75,5 +75,6 @@ defmodule DemoWeb.Router do
     live "/toggle", ToggleDemoLive
     live "/form-validation", FormValidationDemoLive
     live "/checkout", CheckoutDemoLive
+    live "/flyover", FlyoverDemoLive
   end
 end
