@@ -36,13 +36,19 @@ defmodule Demo.Accounts.User do
     uuid_primary_key :id
 
     attribute :email, :ci_string do
-      allow_nil? false
+      allow_nil? true
       public? true
     end
 
     attribute :hashed_password, :string do
-      allow_nil? false
+      allow_nil? true
       sensitive? true
+    end
+
+    attribute :anonymous, :boolean do
+      default true
+      allow_nil? false
+      public? true
     end
 
     timestamps()
@@ -50,9 +56,26 @@ defmodule Demo.Accounts.User do
 
   actions do
     defaults [:read]
+
+    create :create_anonymous do
+      accept []
+      change set_attribute(:anonymous, true)
+    end
+
+    update :register do
+      accept [:email]
+      argument :password, :string, allow_nil?: false, sensitive?: true
+      argument :password_confirmation, :string, allow_nil?: false, sensitive?: true
+
+      validate confirm(:password, :password_confirmation)
+
+      change set_attribute(:anonymous, false)
+      change AshAuthentication.Strategy.Password.HashPasswordChange
+      change AshAuthentication.GenerateTokenChange
+    end
   end
 
   identities do
-    identity :unique_email, [:email]
+    identity :unique_email, [:email], where: expr(not is_nil(email))
   end
 end

@@ -12,6 +12,11 @@ defmodule DemoWeb.Router do
     plug :load_from_session
   end
 
+  # Pipeline that ensures a user exists (creates anonymous user if needed)
+  pipeline :ensure_user do
+    plug DemoWeb.Plugs.EnsureUser
+  end
+
   pipeline :api do
     plug :accepts, ["json"]
   end
@@ -33,9 +38,9 @@ defmodule DemoWeb.Router do
     live "/", DemosIndexLive
   end
 
-  # Storefront (public)
+  # Storefront (public, with automatic anonymous user creation)
   scope "/storefront", DemoWeb do
-    pipe_through :browser
+    pipe_through [:browser, :ensure_user]
 
     live "/", StorefrontLive
     live "/products", Storefront.ProductsLive
