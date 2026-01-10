@@ -1,0 +1,128 @@
+{
+  "attributes": [
+    {
+      "default": "nil",
+      "size": null,
+      "type": "uuid",
+      "source": "id",
+      "references": null,
+      "allow_nil?": false,
+      "primary_key?": true,
+      "generated?": false
+    },
+    {
+      "default": "nil",
+      "size": null,
+      "type": "bigint",
+      "source": "quantity",
+      "references": null,
+      "allow_nil?": false,
+      "primary_key?": false,
+      "generated?": false
+    },
+    {
+      "default": "nil",
+      "size": null,
+      "type": "decimal",
+      "source": "unit_price",
+      "references": null,
+      "allow_nil?": false,
+      "primary_key?": false,
+      "generated?": false
+    },
+    {
+      "default": "nil",
+      "size": null,
+      "type": "utc_datetime_usec",
+      "source": "inserted_at",
+      "references": null,
+      "allow_nil?": false,
+      "primary_key?": false,
+      "generated?": false
+    },
+    {
+      "default": "nil",
+      "size": null,
+      "type": "utc_datetime_usec",
+      "source": "updated_at",
+      "references": null,
+      "allow_nil?": false,
+      "primary_key?": false,
+      "generated?": false
+    },
+    {
+      "default": "nil",
+      "size": null,
+      "type": "uuid",
+      "source": "cart_id",
+      "references": {
+        "name": "cart_items_cart_id_fkey",
+        "table": "carts",
+        "on_update": null,
+        "primary_key?": true,
+        "destination_attribute": "id",
+        "on_delete": null,
+        "deferrable": false,
+        "multitenancy": {
+          "global": null,
+          "attribute": null,
+          "strategy": null
+        },
+        "destination_attribute_default": null,
+        "destination_attribute_generated": null
+      },
+      "allow_nil?": false,
+      "primary_key?": false,
+      "generated?": false
+    },
+    {
+      "default": "nil",
+      "size": null,
+      "type": "uuid",
+      "source": "product_id",
+      "references": {
+        "name": "cart_items_product_id_fkey",
+        "table": "products",
+        "on_update": null,
+        "primary_key?": true,
+        "destination_attribute": "id",
+        "on_delete": null,
+        "deferrable": false,
+        "multitenancy": {
+          "global": null,
+          "attribute": null,
+          "strategy": null
+        },
+        "destination_attribute_default": null,
+        "destination_attribute_generated": null
+      },
+      "allow_nil?": false,
+      "primary_key?": false,
+      "generated?": false
+    }
+  ],
+  "table": "cart_items",
+  "hash": "55E869DAF11E1CFA43B83F30B8820B7B84B2D2DD2918EF874ED88842C5347738",
+  "repo": "Elixir.Demo.Repo",
+  "strict?": false,
+  "identities": [
+    {
+      "name": "unique_cart_product",
+      "keys": [
+        "cart_id",
+        "product_id"
+      ],
+      "base_filter": null,
+      "index_name": "cart_items_unique_cart_product_index"
+    }
+  ],
+  "custom_indexes": [],
+  "base_filter": null,
+  "custom_statements": [],
+  "multitenancy": {
+    "global": null,
+    "attribute": null,
+    "strategy": null
+  },
+  "has_create_action": true
+}

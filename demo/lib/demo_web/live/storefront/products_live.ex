@@ -8,6 +8,11 @@ defmodule DemoWeb.Storefront.ProductsLive do
     statics: DemoWeb.static_paths()
 
   alias Demo.Catalog.{Product, Category}
+  alias Demo.Cart.{Cart, CartItem}
+
+  # ============================================
+  # Filter State
+  # ============================================
 
   # Static multi-select: roast levels are known at compile time
   # This auto-generates: state, toggle action, and chip derive
@@ -23,6 +28,20 @@ defmodule DemoWeb.Storefront.ProductsLive do
   # This auto-generates: state, toggle action, and chip derive
   toggle :in_stock, from: :url
 
+  # ============================================
+  # Cart State
+  # ============================================
+
+  # Cart ID loaded/created on mount
+  state :cart_id, :string, from: :ephemeral
+
+  # Note: Cart flyover manages its own open/close state internally.
+  # We open it via JS.dispatch("open-panel", to: "#cart-flyover-flyover", detail: %{open: true})
+
+  # ============================================
+  # Reads
+  # ============================================
+
   # Load categories for filter chips
   read :categories, Category do
     async false
@@ -36,7 +55,29 @@ defmodule DemoWeb.Storefront.ProductsLive do
     argument :category_slugs, state(:category)
   end
 
+  # Load cart items with product preloaded (depends on cart_id)
+  # Uses PubSub invalidation - auto-refreshes when cart items change
+  read :cart_items, CartItem, :for_cart do
+    argument :cart_id, state(:cart_id)
+    async false
+    invalidate :pubsub
+  end
+
+  # ============================================
+  # Calculations
+  # ============================================
+
   calculate :has_filters, rx(@roast != [] or @category != [] or @in_stock), optimistic: false
+
+  # Cart calculations
+  calculate :cart_item_count, rx(Enum.reduce(@cart_items, 0, fn item, acc -> acc + item.quantity end))
+
+  calculate :cart_subtotal,
+            rx(
+              Enum.reduce(@cart_items, Decimal.new(0), fn item, acc ->
+                Decimal.add(acc, Decimal.mult(item.unit_price, item.quantity))
+              end)
+            )
 
   # Derive chip classes for categories (dynamic values require explicit derive)
   derive :category_chips do
@@ -76,6 +117,116 @@ defmodule DemoWeb.Storefront.ProductsLive do
       set :category, []
       set :in_stock, false
     end
+
+    # Cart actions - use set to capture params, then effect to mutate + broadcast
+    action :add_to_cart, [:product_id] do
+      # Store product_id in ephemeral state for access in effect
+      set :_pending_product_id, & &1.params.product_id
+
+      effect fn state ->
+        cart_id = state.cart_id
+        product_id = state[:_pending_product_id]
+
+        # Check if product already in cart
+        existing =
+          state.cart_items
+          |> Enum.find(fn item -> item.product_id == product_id end)
+
+        if existing do
+          existing
+          |> Ash.Changeset.for_update(:update_quantity, %{quantity: existing.quantity + 1})
+          |> Ash.update!()
+        else
+          CartItem
+          |> Ash.Changeset.for_create(:add, %{
+            cart_id: cart_id,
+            product_id: product_id,
+            quantity: 1
+          })
+          |> Ash.create!()
+        end
+
+        # Broadcast for PubSub invalidation
+        Lavash.PubSub.broadcast(CartItem)
+      end
+    end
+
+    action :update_cart_item, [:item_id, :delta] do
+      set :_pending_item_id, & &1.params.item_id
+      set :_pending_delta, &parse_delta(&1.params.delta)
+
+      effect fn state ->
+        item_id = state[:_pending_item_id]
+        delta = state[:_pending_delta]
+
+        case Ash.get(CartItem, item_id) do
+          {:ok, item} ->
+            new_qty = item.quantity + delta
+
+            if new_qty <= 0 do
+              Ash.destroy!(item)
+            else
+              item
+              |> Ash.Changeset.for_update(:update_quantity, %{quantity: new_qty})
+              |> Ash.update!()
+            end
+
+          _ ->
+            nil
+        end
+
+        Lavash.PubSub.broadcast(CartItem)
+      end
+    end
+
+    action :remove_cart_item, [:item_id] do
+      set :_pending_item_id, & &1.params.item_id
+
+      effect fn state ->
+        item_id = state[:_pending_item_id]
+
+        case Ash.get(CartItem, item_id) do
+          {:ok, item} -> Ash.destroy!(item)
+          _ -> nil
+        end
+
+        Lavash.PubSub.broadcast(CartItem)
+      end
+    end
+  end
+
+  defp parse_delta(nil), do: 0
+  defp parse_delta(d) when is_integer(d), do: d
+  defp parse_delta(d) when is_binary(d), do: String.to_integer(d)
+
+  # Mount hook to find or create cart for current user
+  def on_mount(socket) do
+    user = socket.assigns[:current_user]
+
+    cart_id =
+      if user do
+        # Find or create cart for user
+        case Cart |> Ash.Query.for_read(:for_user, %{user_id: user.id}) |> Ash.read_one() do
+          {:ok, nil} ->
+            # Create new cart
+            {:ok, cart} =
+              Cart
+              |> Ash.Changeset.for_create(:create, %{}, actor: user)
+              |> Ash.create()
+
+            cart.id
+
+          {:ok, cart} ->
+            cart.id
+
+          _ ->
+            nil
+        end
+      else
+        nil
+      end
+
+    {:ok, Lavash.Socket.put_state(socket, :cart_id, cart_id)}
   end
 
   defp toggle_in_list(list, value) when value in ["", nil] do
@@ -114,9 +265,29 @@ defmodule DemoWeb.Storefront.ProductsLive do
   def render(assigns) do
     ~H"""
     <div class="space-y-6">
-      <div class="text-center py-4">
-        <h1 class="text-3xl font-bold">Our Coffees</h1>
-        <p class="text-base-content/70 mt-2">Freshly roasted, ethically sourced</p>
+      <div class="flex items-center justify-between py-4">
+        <div class="flex-1"></div>
+        <div class="text-center flex-1">
+          <h1 class="text-3xl font-bold">Our Coffees</h1>
+          <p class="text-base-content/70 mt-2">Freshly roasted, ethically sourced</p>
+        </div>
+        <div class="flex-1 flex justify-end">
+          <!-- Cart Button -->
+          <button
+            class="btn btn-ghost btn-circle relative"
+            phx-click={Phoenix.LiveView.JS.dispatch("open-panel", to: "#cart-flyover-flyover", detail: %{open: true})}
+          >
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+            </svg>
+            <span
+              :if={@cart_item_count > 0}
+              class="badge badge-sm badge-primary absolute -top-1 -right-1"
+            >
+              {@cart_item_count}
+            </span>
+          </button>
+        </div>
       </div>
 
       <!-- Filters -->
@@ -168,7 +339,10 @@ defmodule DemoWeb.Storefront.ProductsLive do
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <%= for product <- @products do %>
           <% {badge_color, badge_label} = roast_badge(product.roast_level) %>
-          <a href={~p"/storefront/products/#{product.id}"} class="card bg-base-200 hover:shadow-lg transition-all hover:-translate-y-1">
+          <div
+            class="card bg-base-200 hover:shadow-lg transition-all hover:-translate-y-1 cursor-pointer"
+            phx-click={Phoenix.LiveView.JS.navigate(~p"/storefront/products/#{product.id}")}
+          >
             <figure class="px-4 pt-4">
               <img
                 src={"https://images.unsplash.com/#{coffee_image(product.roast_level)}?w=400&q=80"}
@@ -202,13 +376,22 @@ defmodule DemoWeb.Storefront.ProductsLive do
                   <span class="text-xs text-base-content/50">/ {product.weight_oz}oz</span>
                 </div>
                 <%= if product.in_stock do %>
-                  <span class="btn btn-sm btn-primary">Add to Cart</span>
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-primary"
+                    phx-click={
+                      Phoenix.LiveView.JS.push("add_to_cart", value: %{"product_id" => product.id})
+                      |> Phoenix.LiveView.JS.dispatch("open-panel", to: "#cart-flyover-flyover", detail: %{open: true})
+                    }
+                  >
+                    Add to Cart
+                  </button>
                 <% else %>
                   <span class="btn btn-sm btn-disabled">Sold Out</span>
                 <% end %>
               </div>
             </div>
-          </a>
+          </div>
         <% end %>
       </div>
 
@@ -220,6 +403,15 @@ defmodule DemoWeb.Storefront.ProductsLive do
           </button>
         </div>
       <% end %>
+
+      <!-- Cart Flyover -->
+      <.lavash_component
+        module={DemoWeb.CartFlyover}
+        id="cart-flyover"
+        items={@cart_items}
+        subtotal={@cart_subtotal}
+        item_count={@cart_item_count}
+      />
 
       <script :type={Phoenix.LiveView.ColocatedJS} name="optimistic">
         // Client-side optimistic functions for dynamic filter chips

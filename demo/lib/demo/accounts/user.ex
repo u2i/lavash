@@ -60,6 +60,12 @@ defmodule Demo.Accounts.User do
     create :create_anonymous do
       accept []
       change set_attribute(:anonymous, true)
+
+      # Generate token manually (can't use GenerateTokenChange as there's no strategy)
+      change after_action(fn _changeset, user, _context ->
+        {:ok, token, _claims} = AshAuthentication.Jwt.token_for_user(user, %{"purpose" => "user"})
+        {:ok, Ash.Resource.put_metadata(user, :token, token)}
+      end)
     end
 
     update :register do
