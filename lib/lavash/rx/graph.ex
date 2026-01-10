@@ -130,17 +130,18 @@ defmodule Lavash.Rx.Graph do
 
     %Lavash.Derived.Field{
       name: read.name,
-      depends_on: [id_dep],
+      depends_on: [id_dep, :__actor__],
       async: is_async,
       compute: fn deps ->
         id = Map.get(deps, id_dep)
+        actor = Map.get(deps, :__actor__)
 
         case id do
           nil ->
             nil
 
           id ->
-            case Ash.get(resource, id, action: action) do
+            case Ash.get(resource, id, action: action, actor: actor) do
               {:ok, record} -> record
               {:error, %Ash.Error.Query.NotFound{}} -> nil
               {:error, error} -> raise error
@@ -191,7 +192,8 @@ defmodule Lavash.Rx.Graph do
         end
       end)
 
-    depends_on = Enum.reverse(depends_on) |> Enum.uniq()
+    # Add :__actor__ to dependencies for authorization
+    depends_on = (Enum.reverse(depends_on) ++ [:__actor__]) |> Enum.uniq()
     arg_mapping = Enum.reverse(arg_mapping)
 
     %Lavash.Derived.Field{
@@ -200,6 +202,8 @@ defmodule Lavash.Rx.Graph do
       async: is_async,
       reads: [resource],
       compute: fn deps ->
+        actor = Map.get(deps, :__actor__)
+
         # Build the args map
         args =
           Enum.reduce(arg_mapping, %{}, fn {arg_name, source_field, transform}, acc ->
@@ -215,7 +219,7 @@ defmodule Lavash.Rx.Graph do
               # Read action - use Ash.Query.for_read + Ash.read
               query = Ash.Query.for_read(resource, action_name, args)
 
-              case Ash.read(query) do
+              case Ash.read(query, actor: actor) do
                 {:ok, records} -> records
                 {:error, error} -> raise error
               end
@@ -224,7 +228,7 @@ defmodule Lavash.Rx.Graph do
               # Generic action - use Ash.ActionInput.for_action + Ash.run_action
               input = Ash.ActionInput.for_action(resource, action_name, args)
 
-              case Ash.run_action(input) do
+              case Ash.run_action(input, actor: actor) do
                 {:ok, result} -> result
                 {:error, error} -> raise error
               end
@@ -903,6 +907,10 @@ defmodule Lavash.Rx.Graph do
     Enum.reduce(deps, %{}, fn dep, acc ->
       value =
         cond do
+          # Special reserved key for actor - reads from socket assigns
+          dep == :__actor__ ->
+            socket.assigns[:current_user]
+
           Map.has_key?(state, dep) ->
             Map.get(state, dep)
 

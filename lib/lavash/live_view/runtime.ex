@@ -748,9 +748,12 @@ defmodule Lavash.LiveView.Runtime do
     # Extract resource from form for mutation signaling
     resource = FormRuntime.extract_resource(form)
 
+    # Get actor from socket assigns for authorization
+    actor = socket.assigns[:current_user]
+
     # Use Lavash.Form.submit which handles Lavash.Form, Ash.Changeset,
     # AshPhoenix.Form, and Phoenix.HTML.Form
-    result = Lavash.Form.submit(form)
+    result = Lavash.Form.submit(form, actor: actor)
 
     case result do
       {:ok, _result} ->

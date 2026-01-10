@@ -267,16 +267,26 @@ defmodule Lavash.LiveView.Helpers do
     component_states = get_component_states()
     initial_state = Map.get(component_states, assigns.id, %{})
 
+    # Inherit current_user from parent for actor-based authorization
+    # This allows child components to use Ash authorization automatically
+    current_user = assigns[:current_user]
+
     # Build the assigns for live_component
-    assigns =
-      assigns
-      |> assign(
-        :__component_assigns__,
-        assigns.rest
-        |> Map.put(:module, assigns.module)
-        |> Map.put(:id, assigns.id)
-        |> Map.put(:__lavash_initial_state__, initial_state)
-      )
+    component_assigns =
+      assigns.rest
+      |> Map.put(:module, assigns.module)
+      |> Map.put(:id, assigns.id)
+      |> Map.put(:__lavash_initial_state__, initial_state)
+
+    # Only include current_user if the parent has it
+    component_assigns =
+      if current_user do
+        Map.put(component_assigns, :current_user, current_user)
+      else
+        component_assigns
+      end
+
+    assigns = assign(assigns, :__component_assigns__, component_assigns)
 
     ~H"""
     <.live_component {@__component_assigns__} />

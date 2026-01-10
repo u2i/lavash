@@ -110,37 +110,47 @@ defmodule Lavash.Form do
   @doc """
   Submits the form by running the underlying Ash action.
   Returns {:ok, result} or {:error, changeset}.
+
+  Options:
+    - :actor - The actor to use for authorization
   """
-  def submit(%__MODULE__{changeset: changeset}) do
+  def submit(form, opts \\ [])
+
+  def submit(%__MODULE__{changeset: changeset}, opts) do
+    actor = Keyword.get(opts, :actor)
+
     case changeset.action_type do
-      :create -> Ash.create(changeset)
-      :update -> Ash.update(changeset)
-      :destroy -> Ash.destroy(changeset)
+      :create -> Ash.create(changeset, actor: actor)
+      :update -> Ash.update(changeset, actor: actor)
+      :destroy -> Ash.destroy(changeset, actor: actor)
       _ -> {:error, "Unknown action type: #{changeset.action_type}"}
     end
   end
 
-  def submit(%Ash.Changeset{} = changeset) do
+  def submit(%Ash.Changeset{} = changeset, opts) do
+    actor = Keyword.get(opts, :actor)
+
     case changeset.action_type do
-      :create -> Ash.create(changeset)
-      :update -> Ash.update(changeset)
-      :destroy -> Ash.destroy(changeset)
+      :create -> Ash.create(changeset, actor: actor)
+      :update -> Ash.update(changeset, actor: actor)
+      :destroy -> Ash.destroy(changeset, actor: actor)
       _ -> {:error, "Unknown action type: #{changeset.action_type}"}
     end
   end
 
   # Also support AshPhoenix.Form directly for backwards compatibility
-  def submit(%AshPhoenix.Form{} = form) do
-    AshPhoenix.Form.submit(form)
+  def submit(%AshPhoenix.Form{} = form, opts) do
+    actor = Keyword.get(opts, :actor)
+    AshPhoenix.Form.submit(form, actor: actor)
   end
 
   # Support Phoenix.HTML.Form by checking its source
-  def submit(%Phoenix.HTML.Form{source: source}) do
-    submit(source)
+  def submit(%Phoenix.HTML.Form{source: source}, opts) do
+    submit(source, opts)
   end
 
   # Handle special states that shouldn't be submitted
-  def submit(:loading), do: {:error, :loading}
-  def submit({:error, _} = err), do: err
-  def submit(nil), do: {:error, :no_form}
+  def submit(:loading, _opts), do: {:error, :loading}
+  def submit({:error, _} = err, _opts), do: err
+  def submit(nil, _opts), do: {:error, :no_form}
 end

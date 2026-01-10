@@ -289,9 +289,17 @@ defmodule Lavash.Component.Runtime do
   defp preserve_livecomponent_assigns(socket, module, assigns) do
     # Preserve LiveComponent built-in assigns and store the module for async callbacks
     # Note: :myself is reserved and auto-assigned by LiveView, so we don't set it
-    socket
-    |> Phoenix.Component.assign(:id, Map.get(assigns, :id))
-    |> Phoenix.Component.assign(:__component_module__, module)
+    socket =
+      socket
+      |> Phoenix.Component.assign(:id, Map.get(assigns, :id))
+      |> Phoenix.Component.assign(:__component_module__, module)
+
+    # Preserve current_user for actor-based authorization in read DSL and form submits
+    # This is inherited from the parent via lavash_component helper
+    case Map.get(assigns, :current_user) do
+      nil -> socket
+      user -> Phoenix.Component.assign(socket, :current_user, user)
+    end
   end
 
   defp hydrate_ephemeral(socket, module) do
@@ -444,9 +452,12 @@ defmodule Lavash.Component.Runtime do
     # Extract resource from form for mutation signaling
     resource = FormRuntime.extract_resource(form)
 
+    # Get actor from socket assigns for authorization
+    actor = socket.assigns[:current_user]
+
     # Use Lavash.Form.submit which handles Lavash.Form, Ash.Changeset,
     # AshPhoenix.Form, and Phoenix.HTML.Form
-    result = Lavash.Form.submit(form)
+    result = Lavash.Form.submit(form, actor: actor)
 
     case result do
       {:ok, _result} ->
