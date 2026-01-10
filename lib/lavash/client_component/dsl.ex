@@ -129,6 +129,15 @@ defmodule Lavash.ClientComponent.Dsl do
       default: [
         type: :any,
         doc: "Default value if not provided"
+      ],
+      client: [
+        type: :boolean,
+        default: true,
+        doc: """
+        Whether to include this prop in the client-side state.
+        Set to false for props that can't be serialized to JSON
+        (like Phoenix.LiveView.JS callbacks) or aren't needed on the client.
+        """
       ]
     ]
   }
@@ -217,15 +226,38 @@ defmodule Lavash.ClientComponent.Dsl do
         required: true,
         doc: "The state field this action operates on"
       ],
+      key: [
+        type: :atom,
+        doc: """
+        For array-of-objects: the field used to identify items (e.g., :id).
+        When specified, the run function receives the matched item instead of
+        the whole array: `fn item, value -> updated_item end`.
+        Return `:remove` to delete the item from the array.
+
+        Example:
+            optimistic_action :update_qty, :items,
+              key: :id,
+              run: fn item, delta -> %{item | quantity: item.quantity + delta} end
+
+            optimistic_action :remove_item, :items,
+              key: :id,
+              run: fn _item, _id -> :remove end
+        """
+      ],
       run: [
-        type: {:fun, 2},
+        type: {:or, [{:fun, 2}, {:in, [:remove]}]},
         required: true,
         doc: """
         Function that transforms the field value.
-        Receives (current_value, action_value) and returns new_value.
-        Compiled to both Elixir and JavaScript.
 
-        Example: fn tags, tag -> tags ++ [tag] end
+        Without :key - receives (array, value) and returns new array:
+            fn tags, tag -> tags ++ [tag] end
+
+        With :key - receives (item, value) and returns updated item or :remove:
+            fn item, delta -> %{item | quantity: item.quantity + delta} end
+            fn _item, _id -> :remove end
+
+        Can also be the atom :remove as shorthand for removal actions.
         """
       ],
       run_source: [

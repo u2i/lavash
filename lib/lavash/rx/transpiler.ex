@@ -256,6 +256,46 @@ defmodule Lavash.Rx.Transpiler do
     "(#{str_js}.match(new RegExp('.{1,' + #{size_js} + '}', 'g')) || [])"
   end
 
+  # Float.round(number, precision) -> number.toFixed(precision) converted back to number
+  def ast_to_js({{:., _, [{:__aliases__, _, [:Float]}, :round]}, _, [number, precision]}) do
+    "(Math.round(#{ast_to_js(number)} * Math.pow(10, #{ast_to_js(precision)})) / Math.pow(10, #{ast_to_js(precision)}))"
+  end
+
+  # Float.floor(number, precision) -> floor with precision
+  def ast_to_js({{:., _, [{:__aliases__, _, [:Float]}, :floor]}, _, [number, precision]}) do
+    "(Math.floor(#{ast_to_js(number)} * Math.pow(10, #{ast_to_js(precision)})) / Math.pow(10, #{ast_to_js(precision)}))"
+  end
+
+  # Float.ceil(number, precision) -> ceil with precision
+  def ast_to_js({{:., _, [{:__aliases__, _, [:Float]}, :ceil]}, _, [number, precision]}) do
+    "(Math.ceil(#{ast_to_js(number)} * Math.pow(10, #{ast_to_js(precision)})) / Math.pow(10, #{ast_to_js(precision)}))"
+  end
+
+  # round(number) -> Math.round(number)
+  def ast_to_js({:round, _, [number]}) do
+    "Math.round(#{ast_to_js(number)})"
+  end
+
+  # trunc(number) -> Math.trunc(number)
+  def ast_to_js({:trunc, _, [number]}) do
+    "Math.trunc(#{ast_to_js(number)})"
+  end
+
+  # floor(number) -> Math.floor(number)
+  def ast_to_js({:floor, _, [number]}) do
+    "Math.floor(#{ast_to_js(number)})"
+  end
+
+  # ceil(number) -> Math.ceil(number)
+  def ast_to_js({:ceil, _, [number]}) do
+    "Math.ceil(#{ast_to_js(number)})"
+  end
+
+  # abs(number) -> Math.abs(number)
+  def ast_to_js({:abs, _, [number]}) do
+    "Math.abs(#{ast_to_js(number)})"
+  end
+
   # get_in(map, [keys]) -> nested access
   def ast_to_js({:get_in, _, [map, keys]}) when is_list(keys) do
     base = ast_to_js(map)
@@ -613,6 +653,12 @@ defmodule Lavash.Rx.Transpiler do
     validate_all_args(args)
   end
 
+  # Supported Float functions
+  defp validate_ast({{:., _, [{:__aliases__, _, [:Float]}, func]}, _, args})
+       when func in [:round, :floor, :ceil] do
+    validate_all_args(args)
+  end
+
   # Binary operators
   defp validate_ast({op, _, [left, right]})
        when op in [:==, :!=, :&&, :||, :and, :or, :>, :<, :>=, :<=, :+, :-, :*, :/, :<>, :++, :in, :|>] do
@@ -743,7 +789,7 @@ defmodule Lavash.Rx.Transpiler do
 
   # Local function call - not transpilable
   defp validate_ast({func, _, args}) when is_atom(func) and is_list(args) do
-    if func in [:length, :humanize, :if, :not, :!] do
+    if func in [:length, :humanize, :if, :not, :!, :round, :trunc, :floor, :ceil, :abs, :rem, :is_nil, :get_in] do
       validate_all_args(args)
     else
       {:error, "#{func}/#{length(args)}"}

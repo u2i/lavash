@@ -268,4 +268,96 @@ defmodule Lavash.Component.CompilerHelpers do
   end
 
   def fn_source_to_js_return(nil), do: "return currentValue;"
+
+  @doc """
+  Converts an Elixir function source to a JS expression for item-level transformations.
+
+  Used for key-based array mutations where the function receives an item and value,
+  and returns an updated item (or :remove).
+
+  ## Patterns supported
+
+  - `fn item, delta -> %{item | quantity: item.quantity + delta} end`
+    → `({...item, quantity: item.quantity + arg})`
+
+  - `fn item, _value -> :remove end` → `'remove'`
+
+  ## Parameters
+
+  - `source` - The Elixir function source string
+
+  ## Returns
+
+  A JS expression that can be used inside a map function.
+  Uses `item` for the current item and `arg` for the second argument.
+
+  ## Example
+
+      fn_source_to_js_item_transform("fn item, delta -> %{item | quantity: item.quantity + delta} end")
+      # => "({...item, quantity: item.quantity + arg})"
+  """
+  def fn_source_to_js_item_transform(source) when is_binary(source) do
+    case Code.string_to_quoted(source) do
+      {:ok, {:fn, _, [{:->, _, [[{item_var, _, _}, {arg_var, _, _}], body]}]}} ->
+        js_body = transform_map_update_to_js(body, item_var, arg_var)
+        js_body
+
+      _ ->
+        "item // TODO: parse #{inspect(source)}"
+    end
+  end
+
+  def fn_source_to_js_item_transform(nil), do: "item"
+
+  # Transform Elixir map update syntax to JS object spread
+  defp transform_map_update_to_js(body, item_var, arg_var) do
+    item_str = to_string(item_var)
+    arg_str = to_string(arg_var)
+
+    case body do
+      # Handle :remove atom
+      :remove ->
+        "'remove'"
+
+      # Handle if expression with :remove branch
+      {:if, _, [condition, [do: then_branch, else: else_branch]]} ->
+        cond_js = transform_expr_to_js(condition, item_str, arg_str)
+        then_js = transform_map_update_to_js(then_branch, item_var, arg_var)
+        else_js = transform_map_update_to_js(else_branch, item_var, arg_var)
+        "(#{cond_js} ? #{then_js} : #{else_js})"
+
+      # Handle map update: %{item | field: value}
+      {:%{}, _, [{:|, _, [{^item_var, _, _}, updates]}]} ->
+        # Convert updates to JS object spread syntax
+        update_parts = Enum.map(updates, fn {key, value} ->
+          key_str = to_string(key)
+          value_js = transform_expr_to_js(value, item_str, arg_str)
+          "#{key_str}: #{value_js}"
+        end)
+        "({...item, #{Enum.join(update_parts, ", ")}})"
+
+      # Handle plain map: %{key: value, ...}
+      {:%{}, _, updates} when is_list(updates) ->
+        update_parts = Enum.map(updates, fn {key, value} ->
+          key_str = to_string(key)
+          value_js = transform_expr_to_js(value, item_str, arg_str)
+          "#{key_str}: #{value_js}"
+        end)
+        "({#{Enum.join(update_parts, ", ")}})"
+
+      # Fallback: try general transpilation
+      _ ->
+        transform_expr_to_js(body, item_str, arg_str)
+    end
+  end
+
+  # Transform an expression to JS, replacing item/arg variable names
+  defp transform_expr_to_js(expr, item_str, arg_str) do
+    js = Lavash.Rx.Transpiler.to_js(Macro.to_string(expr))
+    js
+    |> String.replace("state.#{item_str}", "item")
+    |> String.replace("state.#{arg_str}", "arg")
+    |> String.replace(item_str, "item")
+    |> String.replace(arg_str, "arg")
+  end
 end

@@ -64,10 +64,31 @@ defmodule DemoWeb.Storefront.ProductsLive do
   end
 
   # ============================================
-  # Calculations
+  # Calculations & Derives
   # ============================================
 
   calculate :has_filters, rx(@roast != [] or @category != [] or @in_stock), optimistic: false
+
+  # Transform cart items to JSON-serializable maps for ClientComponent
+  derive :cart_items_json do
+    argument :cart_items, result(:cart_items)
+
+    run fn %{cart_items: items}, _ ->
+      Enum.map(items || [], fn item ->
+        %{
+          id: item.id,
+          quantity: item.quantity,
+          unit_price: Decimal.to_string(item.unit_price),
+          product: %{
+            id: item.product.id,
+            name: item.product.name,
+            origin: item.product.origin,
+            roast_level: to_string(item.product.roast_level)
+          }
+        }
+      end)
+    end
+  end
 
   # Cart calculations
   calculate :cart_item_count, rx(Enum.reduce(@cart_items, 0, fn item, acc -> acc + item.quantity end))
@@ -77,7 +98,20 @@ defmodule DemoWeb.Storefront.ProductsLive do
               Enum.reduce(@cart_items, Decimal.new(0), fn item, acc ->
                 Decimal.add(acc, Decimal.mult(item.unit_price, item.quantity))
               end)
-            )
+            ),
+            optimistic: false
+
+  # String version of subtotal for JSON serialization
+  derive :cart_subtotal_str do
+    argument :cart_items, result(:cart_items)
+
+    run fn %{cart_items: items}, _ ->
+      subtotal = Enum.reduce(items || [], Decimal.new(0), fn item, acc ->
+        Decimal.add(acc, Decimal.mult(item.unit_price, item.quantity))
+      end)
+      Decimal.to_string(subtotal)
+    end
+  end
 
   # Derive chip classes for categories (dynamic values require explicit derive)
   derive :category_chips do
@@ -198,6 +232,55 @@ defmodule DemoWeb.Storefront.ProductsLive do
   defp parse_delta(nil), do: 0
   defp parse_delta(d) when is_integer(d), do: d
   defp parse_delta(d) when is_binary(d), do: String.to_integer(d)
+
+  # Handle key-based mutations from CartItemList ClientComponent
+  # These are sent when the component is bound to cart_items_json
+
+  def handle_info({:lavash_component_increment, _field, %{key: item_id}}, socket) do
+    case Ash.get(CartItem, item_id) do
+      {:ok, item} ->
+        item
+        |> Ash.Changeset.for_update(:update_quantity, %{quantity: item.quantity + 1})
+        |> Ash.update!()
+
+      _ ->
+        nil
+    end
+
+    Lavash.PubSub.broadcast(CartItem)
+    {:noreply, socket}
+  end
+
+  def handle_info({:lavash_component_decrement, _field, %{key: item_id}}, socket) do
+    case Ash.get(CartItem, item_id) do
+      {:ok, item} ->
+        new_qty = item.quantity - 1
+
+        if new_qty <= 0 do
+          Ash.destroy!(item)
+        else
+          item
+          |> Ash.Changeset.for_update(:update_quantity, %{quantity: new_qty})
+          |> Ash.update!()
+        end
+
+      _ ->
+        nil
+    end
+
+    Lavash.PubSub.broadcast(CartItem)
+    {:noreply, socket}
+  end
+
+  def handle_info({:lavash_component_remove, _field, %{key: item_id}}, socket) do
+    case Ash.get(CartItem, item_id) do
+      {:ok, item} -> Ash.destroy!(item)
+      _ -> nil
+    end
+
+    Lavash.PubSub.broadcast(CartItem)
+    {:noreply, socket}
+  end
 
   # Mount hook to find or create cart for current user
   def on_mount(socket) do
@@ -408,8 +491,7 @@ defmodule DemoWeb.Storefront.ProductsLive do
       <.lavash_component
         module={DemoWeb.CartFlyover}
         id="cart-flyover"
-        items={@cart_items}
-        subtotal={@cart_subtotal}
+        items={@cart_items_json}
         item_count={@cart_item_count}
       />
 
@@ -453,6 +535,8 @@ defmodule DemoWeb.Storefront.ProductsLive do
             }
             return result;
           }
+
+          // Cart optimistic updates are handled by CartItemList ClientComponent
         };
       </script>
     </div>

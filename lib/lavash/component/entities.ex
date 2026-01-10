@@ -39,8 +39,9 @@ defmodule Lavash.Component.Prop do
   - `:type` - The type specification (e.g., `:string`, `{:array, :string}`)
   - `:required` - Whether the prop must be provided (default: false)
   - `:default` - Default value if not provided
+  - `:client` - Whether to include in client state JSON (default: true)
   """
-  defstruct [:name, :type, :required, :default, __spark_metadata__: nil]
+  defstruct [:name, :type, :required, :default, client: true, __spark_metadata__: nil]
 end
 
 defmodule Lavash.Component.Template do
@@ -126,11 +127,12 @@ defmodule Lavash.Component.OptimisticAction do
 
   - `:name` - The action name (used for event routing)
   - `:field` - The state field this action operates on
-  - `:run` - Function that transforms the field value
+  - `:key` - For array-of-objects: the field used to identify items (e.g., :id)
+  - `:run` - Function that transforms the field value (or `:remove` atom)
   - `:run_source` - Source string for JS compilation
   - `:validate` - Optional validation function
   - `:validate_source` - Source string for JS validation
   - `:max` - Optional prop/state field containing max length limit
   """
-  defstruct [:name, :field, :run, :run_source, :validate, :validate_source, :max, __spark_metadata__: nil]
+  defstruct [:name, :field, :key, :run, :run_source, :validate, :validate_source, :max, __spark_metadata__: nil]
 end

@@ -29,10 +29,10 @@ defmodule Lavash.ClientComponent.Compiler do
         {calc.name, calc.rx.source, calc.rx.ast, calc.rx.deps}
       end)
 
-    # Actions are stored as tuples: {name, field, run_source, validate_source, max}
+    # Actions are stored as tuples: {name, field, key, run_source, validate_source, max}
     action_tuples = Module.get_attribute(env.module, :__lavash_optimistic_actions__) || []
-    actions = Enum.map(action_tuples, fn {name, field, run_source, validate_source, max} ->
-      %{name: name, field: field, run_source: run_source, validate_source: validate_source, max: max}
+    actions = Enum.map(action_tuples, fn {name, field, key, run_source, validate_source, max} ->
+      %{name: name, field: field, key: key, run_source: run_source, validate_source: validate_source, max: max}
     end)
 
     {template_source, deprecated_name} = case templates do
@@ -53,7 +53,7 @@ defmodule Lavash.ClientComponent.Compiler do
     # Note: We build it manually here since module isn't compiled yet
     optimistic_actions_map =
       action_tuples
-      |> Enum.map(fn {name, field, _run, _validate, _max} -> {name, %{field: field}} end)
+      |> Enum.map(fn {name, field, _key, _run, _validate, _max} -> {name, %{field: field}} end)
       |> Map.new()
 
     # Transform template to inject data-lavash-* attributes
@@ -171,7 +171,13 @@ defmodule Lavash.ClientComponent.Compiler do
       {name, quote do: Map.get(assigns, unquote(name), nil)}
     end)
 
-    prop_fields = Enum.map(props, fn %{name: name, default: default} ->
+    # Only include props with client: true (default) in client state
+    # Props with client: false are server-only (e.g., Phoenix.LiveView.JS callbacks)
+    client_props = Enum.filter(props, fn prop ->
+      Map.get(prop, :client, true) != false
+    end)
+
+    prop_fields = Enum.map(client_props, fn %{name: name, default: default} ->
       default_val = Macro.escape(default || nil)
       {name, quote do: Map.get(assigns, unquote(name), unquote(default_val))}
     end)
@@ -229,43 +235,97 @@ defmodule Lavash.ClientComponent.Compiler do
   end
 
   defp generate_handle_events(actions, _bindings) do
-    Enum.map(actions, fn %{name: action_name, field: field, run_source: run_source, validate_source: validate_source, max: max_field} ->
+    Enum.map(actions, fn %{name: action_name, field: field, key: key_field, run_source: run_source, validate_source: validate_source, max: max_field} ->
       event_name = "#{action_name}_#{field |> to_string() |> String.trim_trailing("s")}"
 
-      # Parse function sources to AST - these are the full fn expressions
-      run_fn_ast = CompilerHelpers.parse_fn_source(run_source)
+      # Handle :remove shorthand - generate a function that returns :remove
+      run_fn_ast = if run_source == ":remove" do
+        quote do: fn _item, _value -> :remove end
+      else
+        CompilerHelpers.parse_fn_source(run_source)
+      end
+
       validate_fn_ast = CompilerHelpers.parse_fn_source(validate_source)
 
       # Build the condition AST based on which checks are needed
       condition_ast = build_condition_ast(validate_fn_ast, max_field)
 
-      quote do
-        def handle_event(unquote(event_name), params, socket) do
-          # Extract value from params (may be nil for toggle actions)
-          value = Map.get(params, "val")
-          binding_map = socket.assigns[:__lavash_binding_map__] || %{}
+      # Generate different code paths for key-based vs non-key-based actions
+      if key_field do
+        # Key-based action: find item by key, apply transformation
+        quote do
+          def handle_event(unquote(event_name), params, socket) do
+            # For key-based actions, "val" is the key value to find the item
+            # "arg" is the argument passed to the run function (optional)
+            key_value = Map.get(params, "val")
+            arg = Map.get(params, "arg", key_value)
+            binding_map = socket.assigns[:__lavash_binding_map__] || %{}
 
-          case Map.get(binding_map, unquote(field)) do
-            nil ->
-              # Not bound - update own assigns
-              current = socket.assigns[unquote(field)] || []
+            case Map.get(binding_map, unquote(field)) do
+              nil ->
+                # Not bound - update own assigns
+                current = socket.assigns[unquote(field)] || []
 
-              if unquote(condition_ast) do
-                # Call the run function directly
-                run_fn = unquote(run_fn_ast)
-                new_value = run_fn.(current, value)
-                # Bump version to signal state change to client
-                version = (socket.assigns[:__lavash_version__] || 0) + 1
-                socket = Phoenix.Component.assign(socket, :__lavash_version__, version)
-                {:noreply, Phoenix.Component.assign(socket, unquote(field), new_value)}
-              else
+                if unquote(condition_ast) do
+                  run_fn = unquote(run_fn_ast)
+
+                  # Find item by key and apply transformation
+                  new_value = Enum.flat_map(current, fn item ->
+                    if Map.get(item, unquote(key_field)) == key_value do
+                      case run_fn.(item, arg) do
+                        :remove -> []
+                        updated -> [updated]
+                      end
+                    else
+                      [item]
+                    end
+                  end)
+
+                  # Bump version to signal state change to client
+                  version = (socket.assigns[:__lavash_version__] || 0) + 1
+                  socket = Phoenix.Component.assign(socket, :__lavash_version__, version)
+                  {:noreply, Phoenix.Component.assign(socket, unquote(field), new_value)}
+                else
+                  {:noreply, socket}
+                end
+
+              parent_field ->
+                # Bound to parent - send message with key info
+                send(self(), {unquote(:"lavash_component_#{action_name}"), parent_field, %{key: key_value, arg: arg}})
                 {:noreply, socket}
-              end
+            end
+          end
+        end
+      else
+        # Non-key-based action: original behavior
+        quote do
+          def handle_event(unquote(event_name), params, socket) do
+            # Extract value from params (may be nil for toggle actions)
+            value = Map.get(params, "val")
+            binding_map = socket.assigns[:__lavash_binding_map__] || %{}
 
-            parent_field ->
-              # Bound to parent - send message
-              send(self(), {unquote(:"lavash_component_#{action_name}"), parent_field, value})
-              {:noreply, socket}
+            case Map.get(binding_map, unquote(field)) do
+              nil ->
+                # Not bound - update own assigns
+                current = socket.assigns[unquote(field)] || []
+
+                if unquote(condition_ast) do
+                  # Call the run function directly
+                  run_fn = unquote(run_fn_ast)
+                  new_value = run_fn.(current, value)
+                  # Bump version to signal state change to client
+                  version = (socket.assigns[:__lavash_version__] || 0) + 1
+                  socket = Phoenix.Component.assign(socket, :__lavash_version__, version)
+                  {:noreply, Phoenix.Component.assign(socket, unquote(field), new_value)}
+                else
+                  {:noreply, socket}
+                end
+
+              parent_field ->
+                # Bound to parent - send message
+                send(self(), {unquote(:"lavash_component_#{action_name}"), parent_field, value})
+                {:noreply, socket}
+            end
           end
         end
       end
@@ -333,6 +393,7 @@ defmodule Lavash.ClientComponent.Compiler do
 
     export default {
       mounted() {
+        console.log('[ClientComponent] mounted', this.el.id, this.el.dataset.lavashState);
         this.state = JSON.parse(this.el.dataset.lavashState || "{}");
         this.calculations = #{calc_names_json};
         this.bindings = JSON.parse(this.el.dataset.lavashBindings || "{}");
@@ -344,6 +405,7 @@ defmodule Lavash.ClientComponent.Compiler do
         this.el.addEventListener("keydown", this.keydownHandler, true);
         this.el.addEventListener("input", this.inputHandler, true);
         this.el.__lavash_hook__ = this;
+        console.log('[ClientComponent] mounted complete, state:', this.state);
       },
 
       updated() {
@@ -430,19 +492,28 @@ defmodule Lavash.ClientComponent.Compiler do
       },
 
       handleClick(e) {
+        console.log('[ClientComponent] handleClick', e.target);
         const target = e.target.closest("[data-lavash-action]");
-        if (!target) return;
+        if (!target) {
+          console.log('[ClientComponent] no data-lavash-action found');
+          return;
+        }
 
         const action = target.dataset.lavashAction;
         const field = target.dataset.lavashStateField;
         const value = target.dataset.lavashValue;
+        console.log('[ClientComponent] action:', action, 'field:', field, 'value:', value);
 
         if (action === "add" && !value) return;
 
         e.stopPropagation();
 
-        if (!this.validateAction(action, field, value)) return;
+        if (!this.validateAction(action, field, value)) {
+          console.log('[ClientComponent] validation failed');
+          return;
+        }
 
+        console.log('[ClientComponent] applying optimistic action');
         this.pendingCount++;
         this.applyOptimisticAction(action, field, value);
         this.runCalculations();
@@ -534,9 +605,16 @@ defmodule Lavash.ClientComponent.Compiler do
 
   # Generate JS for optimistic actions
   defp generate_action_js(actions) do
-    action_cases = Enum.map(actions, fn %{name: action_name, field: field, run_source: run_source} ->
-      run_js = CompilerHelpers.fn_source_to_js_assignment(run_source, field)
-      ~s|    if (action === "#{action_name}" && field === "#{field}") {\n      #{run_js}\n    }|
+    action_cases = Enum.map(actions, fn %{name: action_name, field: field, key: key_field, run_source: run_source} ->
+      if key_field do
+        # Key-based action: find item by key, apply transformation
+        run_js = generate_keyed_action_js(run_source, key_field)
+        ~s|    if (action === "#{action_name}" && field === "#{field}") {\n#{run_js}\n    }|
+      else
+        # Non-key-based action: original behavior
+        run_js = CompilerHelpers.fn_source_to_js_assignment(run_source, field)
+        ~s|    if (action === "#{action_name}" && field === "#{field}") {\n      #{run_js}\n    }|
+      end
     end)
     |> Enum.join("\n")
 
@@ -567,17 +645,40 @@ defmodule Lavash.ClientComponent.Compiler do
     |> Enum.join("\n")
 
     ~s"""
-      validateAction(action, field, value) {
+      validateAction(action, field, value, arg) {
         const current = this.state[field];
     #{validate_cases}
         return true;
       },
 
-      applyOptimisticAction(action, field, value) {
+      applyOptimisticAction(action, field, value, arg) {
         const current = this.state[field];
     #{action_cases}
       },
     """
+  end
+
+  # Generate JS for key-based array mutations
+  defp generate_keyed_action_js(run_source, key_field) do
+    key_str = to_string(key_field)
+
+    if run_source == ":remove" do
+      # Shorthand for removal - filter out the item
+      ~s|      if (!current) return;
+      this.state[field] = current.filter(item => item.#{key_str} !== value);|
+    else
+      # Transform function - map over items and update matching one
+      # Parse the Elixir function and convert to JS
+      item_transform_js = CompilerHelpers.fn_source_to_js_item_transform(run_source)
+      ~s|      if (!current) return;
+      this.state[field] = current.map(item => {
+        if (item.#{key_str} === value) {
+          const result = #{item_transform_js};
+          return result === 'remove' ? null : result;
+        }
+        return item;
+      }).filter(item => item !== null);|
+    end
   end
 
   # Generate render function

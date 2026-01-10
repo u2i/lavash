@@ -30,6 +30,8 @@ window.morphdom = morphdom
 import { SyncedVar, LavashOptimistic, ModalAnimator, FlyoverAnimator } from "lavash"
 // Colocated hooks from Lavash library
 import {hooks as lavashHooks} from "phoenix-colocated/lavash"
+// Colocated hooks from Demo app (ClientComponents)
+import {hooks as demoHooks} from "phoenix-colocated/demo"
 // Lavash optimistic functions - auto-generated at compile time via phoenix-colocated
 import {optimistic as lavashOptimisticFns} from "phoenix-colocated/demo"
 
@@ -43,6 +45,7 @@ window.Lavash.optimistic = lavashOptimisticFns || {};
 // Merge hooks from Lavash library and app-specific hooks
 const colocatedHooks = {
   ...lavashHooks,
+  ...demoHooks,
   LavashOptimistic
 }
 
