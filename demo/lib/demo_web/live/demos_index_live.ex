@@ -44,6 +44,11 @@ defmodule DemoWeb.DemosIndexLive do
               title="Flyover (Slideover)"
               description="Sliding panels from screen edges with optimistic open/close animations."
             />
+            <.demo_card
+              href={~p"/demos/nesting"}
+              title="Nested Bindings"
+              description="Component binding chains at 1, 2, and 3 levels deep with bidirectional sync."
+            />
           </div>
         </section>
 

@@ -130,8 +130,21 @@ defmodule Lavash.Component.CompilerHelpers do
                 {local, parent}
               end)
 
-            # Store the binding map for later use in handle_event
+            # Store the binding map for later use in handle_event (server-side routing)
             socket = Phoenix.Component.assign(socket, :__lavash_binding_map__, binding_map)
+
+            # Store client bindings (resolved/flattened) for JS lavash-set events
+            # If __lavash_client_bindings__ was passed, use it; otherwise use binding_map
+            client_bindings = Map.get(assigns, :__lavash_client_bindings__) || binding_map
+            socket = Phoenix.Component.assign(socket, :__lavash_client_bindings__, client_bindings)
+
+            # Store parent CID for routing bound field updates via send_update
+            # This is passed when the child is rendered inside a Lavash.Component
+            socket =
+              case Map.get(assigns, :__lavash_parent_cid__) do
+                nil -> socket
+                parent_cid -> Phoenix.Component.assign(socket, :__lavash_parent_cid__, parent_cid)
+              end
 
             # Sync parent's optimistic version when bound
             socket =

@@ -162,6 +162,20 @@ defmodule Lavash.ClientComponent.Compiler do
 
       # Inject shared binding resolution code
       unquote(binding_resolution)
+
+      # Notify parent about bound field updates
+      # Routes to parent Lavash.Component via send_update, or to LiveView via send
+      defp __notify_parent_binding__(socket, action, parent_field, value) do
+        case socket.assigns[:__lavash_parent_cid__] do
+          nil ->
+            # No parent CID - send to LiveView process
+            send(self(), {action, parent_field, value})
+
+          parent_cid ->
+            # Parent is a Lavash.Component - use send_update with CID
+            Phoenix.LiveView.send_update(parent_cid, __lavash_binding_update__: {action, parent_field, value})
+        end
+      end
     end
   end
 
@@ -290,8 +304,13 @@ defmodule Lavash.ClientComponent.Compiler do
                 end
 
               parent_field ->
-                # Bound to parent - send message with key info
-                send(self(), {unquote(:"lavash_component_#{action_name}"), parent_field, %{key: key_value, arg: arg}})
+                # Bound to parent - route to parent component or LiveView
+                __notify_parent_binding__(
+                  socket,
+                  unquote(:"lavash_component_#{action_name}"),
+                  parent_field,
+                  %{key: key_value, arg: arg}
+                )
                 {:noreply, socket}
             end
           end
@@ -322,8 +341,8 @@ defmodule Lavash.ClientComponent.Compiler do
                 end
 
               parent_field ->
-                # Bound to parent - send message
-                send(self(), {unquote(:"lavash_component_#{action_name}"), parent_field, value})
+                # Bound to parent - route to parent component or LiveView
+                __notify_parent_binding__(socket, unquote(:"lavash_component_#{action_name}"), parent_field, value)
                 {:noreply, socket}
             end
           end
@@ -397,6 +416,7 @@ defmodule Lavash.ClientComponent.Compiler do
         this.state = JSON.parse(this.el.dataset.lavashState || "{}");
         this.calculations = #{calc_names_json};
         this.bindings = JSON.parse(this.el.dataset.lavashBindings || "{}");
+        console.log('[ClientComponent] bindings:', this.bindings);
         this.pendingCount = 0;
         this.clickHandler = this.handleClick.bind(this);
         this.keydownHandler = this.handleKeydown.bind(this);
@@ -405,6 +425,10 @@ defmodule Lavash.ClientComponent.Compiler do
         this.el.addEventListener("keydown", this.keydownHandler, true);
         this.el.addEventListener("input", this.inputHandler, true);
         this.el.__lavash_hook__ = this;
+        // Re-render with JS template to ensure data-lavash-* attributes are present
+        // Server template may not have all attributes injected
+        this.runCalculations();
+        this.updateDOM();
         console.log('[ClientComponent] mounted complete, state:', this.state);
       },
 
@@ -524,11 +548,12 @@ defmodule Lavash.ClientComponent.Compiler do
         if (parentField) {
           // Dispatch a lavash-set event that bubbles up to parent components
           // The parent's LavashOptimistic hook will handle it and sync to server
-          const parsedValue = value === "true" ? true : value === "false" ? false : value;
-          console.log('[ClientComponent] dispatching lavash-set for bound field', field, '->', parentField, '=', parsedValue);
+          // Use the NEW value from state (after applyOptimisticAction), not the click value
+          const newValue = this.state[field];
+          console.log('[ClientComponent] dispatching lavash-set for bound field', field, '->', parentField, '=', newValue);
           this.el.dispatchEvent(new CustomEvent('lavash-set', {
             bubbles: true,
-            detail: { field: parentField, value: parsedValue }
+            detail: { field: parentField, value: newValue }
           }));
           this.pendingCount--;
           return;
@@ -770,7 +795,9 @@ defmodule Lavash.ClientComponent.Compiler do
         state_json = Jason.encode!(state)
 
         version = Map.get(var!(assigns), :__lavash_version__, 0)
-        binding_map = Map.get(var!(assigns), :__lavash_binding_map__, %{})
+        # Use client bindings (resolved/flattened) for JS if available, fall back to regular binding map
+        client_bindings = Map.get(var!(assigns), :__lavash_client_bindings__)
+        binding_map = client_bindings || Map.get(var!(assigns), :__lavash_binding_map__, %{})
         bindings_json = Jason.encode!(binding_map)
 
         var!(assigns) =

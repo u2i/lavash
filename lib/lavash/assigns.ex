@@ -36,6 +36,14 @@ defmodule Lavash.Assigns do
     # Project parent's optimistic version for child components to inherit
     socket = Phoenix.Component.assign(socket, :__lavash_parent_version__, LSocket.optimistic_version(socket))
 
+    # Project client bindings for nested component binding resolution
+    # This allows child components to resolve their bindings through parent's bindings
+    socket =
+      case socket.assigns[:__lavash_client_bindings__] do
+        nil -> socket
+        bindings -> Phoenix.Component.assign(socket, :__lavash_client_bindings__, bindings)
+      end
+
     # Project form metadata (action_type) for each form
     project_form_metadata(socket, module, derived)
   end

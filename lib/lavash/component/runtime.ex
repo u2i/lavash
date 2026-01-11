@@ -19,78 +19,88 @@ defmodule Lavash.Component.Runtime do
   alias Lavash.Form.Runtime, as: FormRuntime
 
   def update(module, assigns, socket) do
-    # Check if this is an invoke from parent
-    case Map.get(assigns, :__lavash_invoke__) do
-      {action_name, params} ->
-        # Handle invoke - execute the action
-        handle_invoke(module, action_name, params, socket)
+    # Check if this is a binding update from a child component
+    case Map.get(assigns, :__lavash_binding_update__) do
+      {action, field, value} ->
+        # Handle binding update from child ClientComponent or Lavash.Component
+        handle_binding_update(module, action, field, value, socket)
 
       nil ->
-        # Check if this is an invalidation from parent LiveView
-        case Map.get(assigns, :__lavash_invalidate__) do
-          resource when is_atom(resource) and not is_nil(resource) ->
-            # Handle resource invalidation - same logic as LiveView
-            handle_invalidate(module, resource, socket)
+        # Check if this is an invoke from parent
+        case Map.get(assigns, :__lavash_invoke__) do
+          {action_name, params} ->
+            # Handle invoke - execute the action
+            handle_invoke(module, action_name, params, socket)
 
           nil ->
-            # Check if this is an async result delivery
-            case Map.get(assigns, :__lavash_async_result__) do
-              {field, result} ->
-                # Handle async result delivery - convert to AsyncResult struct
-                async =
-                  case result do
-                    {:ok, value} ->
-                      Phoenix.LiveView.AsyncResult.ok(value)
-
-                    {:error, reason} ->
-                      Phoenix.LiveView.AsyncResult.failed(%Phoenix.LiveView.AsyncResult{}, reason)
-
-                    value ->
-                      Phoenix.LiveView.AsyncResult.ok(value)
-                  end
-
-                socket =
-                  socket
-                  |> LSocket.put_derived(field, async)
-                  |> Graph.recompute_dependents(module, field)
-                  |> Assigns.project(module)
-
-                {:ok, socket}
+            # Check if this is an invalidation from parent LiveView
+            case Map.get(assigns, :__lavash_invalidate__) do
+              resource when is_atom(resource) and not is_nil(resource) ->
+                # Handle resource invalidation - same logic as LiveView
+                handle_invalidate(module, resource, socket)
 
               nil ->
-                # Normal update
-                socket =
-                  if first_mount?(socket) do
-                    # First mount - initialize everything
-                    # Register with parent for invalidation forwarding
-                    register_with_parent(module, assigns)
+                # Check if this is an async result delivery
+                case Map.get(assigns, :__lavash_async_result__) do
+                  {field, result} ->
+                    # Handle async result delivery - convert to AsyncResult struct
+                    async =
+                      case result do
+                        {:ok, value} ->
+                          Phoenix.LiveView.AsyncResult.ok(value)
 
-                    socket
-                    |> init_lavash_state(module, assigns)
-                    |> hydrate_socket_state(module, assigns)
-                    |> hydrate_ephemeral(module)
-                    |> State.hydrate_forms(module)
-                    |> store_props(module, assigns)
-                    |> preserve_livecomponent_assigns(module, assigns)
-                    |> Graph.recompute_all(module)
-                    |> Assigns.project(module)
-                  else
-                    # Subsequent update - store props (marks changed props as dirty)
-                    socket = store_props(socket, module, assigns)
-                    socket = preserve_livecomponent_assigns(socket, module, assigns)
+                        {:error, reason} ->
+                          Phoenix.LiveView.AsyncResult.failed(%Phoenix.LiveView.AsyncResult{}, reason)
 
-                    # Recompute any derived fields affected by dirty props
-                    socket =
-                      if LSocket.dirty?(socket) do
-                        Graph.recompute_dirty(socket, module)
-                      else
-                        socket
+                        value ->
+                          Phoenix.LiveView.AsyncResult.ok(value)
                       end
 
-                    Assigns.project(socket, module)
-                  end
+                    socket =
+                      socket
+                      |> LSocket.put_derived(field, async)
+                      |> Graph.recompute_dependents(module, field)
+                      |> Assigns.project(module)
 
-                {:ok, socket}
+                    {:ok, socket}
+
+                  nil ->
+                    # Normal update
+                    socket =
+                      if first_mount?(socket) do
+                        # First mount - initialize everything
+                        # Register with parent for invalidation forwarding
+                        register_with_parent(module, assigns)
+
+                        socket
+                        |> init_lavash_state(module, assigns)
+                        |> hydrate_socket_state(module, assigns)
+                        |> hydrate_ephemeral(module)
+                        |> State.hydrate_forms(module)
+                        |> store_props(module, assigns)
+                        |> resolve_bindings(assigns)
+                        |> preserve_livecomponent_assigns(module, assigns)
+                        |> Graph.recompute_all(module)
+                        |> Assigns.project(module)
+                      else
+                        # Subsequent update - store props (marks changed props as dirty)
+                        socket = store_props(socket, module, assigns)
+                        socket = resolve_bindings(socket, assigns)
+                        socket = preserve_livecomponent_assigns(socket, module, assigns)
+
+                        # Recompute any derived fields affected by dirty props
+                        socket =
+                          if LSocket.dirty?(socket) do
+                            Graph.recompute_dirty(socket, module)
+                          else
+                            socket
+                          end
+
+                        Assigns.project(socket, module)
+                      end
+
+                    {:ok, socket}
+                end
             end
         end
     end
@@ -111,6 +121,111 @@ defmodule Lavash.Component.Runtime do
       {:ok, socket}
     else
       {:ok, socket}
+    end
+  end
+
+  defp handle_binding_update(module, action, field, value, socket) do
+    # Handle binding update from a child component
+    # The child has modified a bound field and is notifying us
+
+    # Parse the value if it's a string representation
+    parsed_value = parse_binding_value(value)
+
+    # Update our state with the new value
+    socket =
+      socket
+      |> LSocket.bump_optimistic_version()
+      |> LSocket.put_state(field, parsed_value)
+      |> Graph.recompute_dirty(module)
+      |> Assigns.project(module)
+
+    # Check if this field is bound upward to our parent
+    # If so, propagate the update (for nested binding chains)
+    binding_map = socket.assigns[:__lavash_binding_map__] || %{}
+
+    case Map.get(binding_map, field) do
+      nil ->
+        # Not bound upward - we're the owner, send to LiveView
+        send(self(), {action, field, parsed_value})
+
+      parent_field ->
+        # Bound upward - propagate to our parent
+        case socket.assigns[:__lavash_parent_cid__] do
+          nil ->
+            # No parent CID - send to LiveView
+            send(self(), {action, parent_field, parsed_value})
+
+          parent_cid ->
+            # Parent is a Lavash.Component - use send_update
+            Phoenix.LiveView.send_update(parent_cid, __lavash_binding_update__: {action, parent_field, parsed_value})
+        end
+    end
+
+    {:ok, socket}
+  end
+
+  defp parse_binding_value("true"), do: true
+  defp parse_binding_value("false"), do: false
+  defp parse_binding_value(nil), do: nil
+  defp parse_binding_value(%{key: key, arg: arg}), do: %{key: key, arg: arg}
+  defp parse_binding_value(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {int, ""} -> int
+      _ ->
+        case Float.parse(value) do
+          {float, ""} -> float
+          _ -> value
+        end
+    end
+  end
+  defp parse_binding_value(value), do: value
+
+  # Resolve bindings from the bind prop - sets up binding map and parent CID
+  defp resolve_bindings(socket, assigns) do
+    case Map.get(assigns, :bind) do
+      nil ->
+        socket
+
+      bindings when is_list(bindings) ->
+        # Build a map of local_name -> parent_field
+        binding_map =
+          Enum.into(bindings, %{}, fn {local, parent} ->
+            {local, parent}
+          end)
+
+        # Store the binding map for later use in handle_binding_update
+        socket = Phoenix.Component.assign(socket, :__lavash_binding_map__, binding_map)
+
+        # Store client bindings (resolved/flattened) for JS lavash-set events
+        # If __lavash_client_bindings__ was passed, use it; otherwise use binding_map
+        # This is critical for nested component chains - child bindings resolve
+        # through parent bindings to reach the root LiveView field name
+        client_bindings = Map.get(assigns, :__lavash_client_bindings__) || binding_map
+        socket = Phoenix.Component.assign(socket, :__lavash_client_bindings__, client_bindings)
+
+        # Store parent CID for routing bound field updates via send_update
+        # This is passed when the child is rendered inside a Lavash.Component
+        socket =
+          case Map.get(assigns, :__lavash_parent_cid__) do
+            nil -> socket
+            parent_cid -> Phoenix.Component.assign(socket, :__lavash_parent_cid__, parent_cid)
+          end
+
+        # Sync parent's optimistic version when bound
+        socket =
+          case Map.get(assigns, :__lavash_parent_version__) do
+            nil -> socket
+            parent_version -> Phoenix.Component.assign(socket, :__lavash_version__, parent_version)
+          end
+
+        # For each binding, look up the parent's current value and update our state
+        Enum.reduce(bindings, socket, fn {local, _parent}, sock ->
+          value = Map.get(assigns, local)
+          # Update both the assign and the internal state
+          sock
+          |> Phoenix.Component.assign(local, value)
+          |> LSocket.put_state(local, value)
+        end)
     end
   end
 

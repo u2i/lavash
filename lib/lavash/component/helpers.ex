@@ -2,6 +2,7 @@ defmodule Lavash.Component.Helpers do
   @moduledoc """
   Helper functions for using Lavash components in LiveViews.
   """
+  use Phoenix.Component
 
   @doc """
   Extracts component states from connect_params and stores them in socket assigns.
@@ -110,5 +111,80 @@ defmodule Lavash.Component.Helpers do
       end)
 
     optimistic_derives ++ optimistic_calculations
+  end
+
+  @doc """
+  Renders a child component with bindings, auto-injecting the parent CID.
+
+  When used inside a Lavash.Component, this helper automatically passes
+  `__lavash_parent_cid__` so that bound field updates can be routed back
+  to the parent component.
+
+  ## Usage
+
+      <.child_component
+        module={MyClientComponent}
+        id="my-child"
+        bind={[count: :my_count]}
+        count={@my_count}
+        myself={@myself}
+      />
+
+  This is equivalent to:
+
+      <.live_component
+        module={MyClientComponent}
+        id="my-child"
+        bind={[count: :my_count]}
+        count={@my_count}
+        __lavash_parent_cid__={@myself}
+      />
+  """
+  attr :module, :atom, required: true
+  attr :id, :string, required: true
+  attr :myself, :any, required: true, doc: "The parent component's @myself"
+  attr :bind, :list, default: nil
+  attr :__lavash_client_bindings__, :map, default: nil, doc: "Parent's resolved client bindings (internal)"
+  attr :rest, :global
+
+  def child_component(assigns) do
+    # Build the assigns for live_component, injecting parent CID if bindings exist
+    component_assigns =
+      assigns.rest
+      |> Map.put(:module, assigns.module)
+      |> Map.put(:id, assigns.id)
+
+    component_assigns =
+      if assigns.bind do
+        # Resolve bindings through parent's binding map for client-side propagation
+        # If parent's field X is bound to grandparent's field Y, then child binding
+        # to X should actually resolve to Y so lavash-set events reach the root LiveView
+        #
+        # Server-side still uses the original bindings for routing through each component
+        # Client-side uses resolved bindings for direct propagation via lavash-set events
+        parent_client_bindings = assigns[:__lavash_client_bindings__] || %{}
+
+        resolved_client_bindings =
+          Enum.into(assigns.bind, %{}, fn {child_field, parent_field} ->
+            # Check if parent's field is itself bound to a grandparent
+            case Map.get(parent_client_bindings, parent_field) do
+              nil -> {child_field, parent_field}
+              grandparent_field -> {child_field, grandparent_field}
+            end
+          end)
+
+        component_assigns
+        |> Map.put(:bind, assigns.bind)  # Keep original for server-side
+        |> Map.put(:__lavash_parent_cid__, assigns.myself)
+        |> Map.put(:__lavash_client_bindings__, resolved_client_bindings)  # For client-side
+      else
+        component_assigns
+      end
+
+    assigns = assign(assigns, :__component_assigns__, component_assigns)
+
+    ~H"""
+    <.live_component {@__component_assigns__} />
+    """
   end
 end
