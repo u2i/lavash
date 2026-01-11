@@ -119,6 +119,11 @@ const LavashOptimistic = {
     // Track form submit for formSubmitted state
     this.el.addEventListener("submit", this.handleFormSubmit.bind(this), true);
 
+    // Handle lavash-set events from child ClientComponents
+    // This allows nested components to set bound state on parent components
+    // Use bubbling mode (not capture) so the closest ancestor hook handles it first
+    this.el.addEventListener("lavash-set", this.handleLavashSet.bind(this), false);
+
     if (!this.isComponent) {
 
       // Listen for server validation responses
@@ -613,6 +618,73 @@ const LavashOptimistic = {
         return;
       }
     }
+  },
+
+  /**
+   * Handle lavash-set events from child ClientComponents.
+   * This allows nested components to set bound state on parent components.
+   * The event bubbles up from a ClientComponent that has a bound field.
+   *
+   * @param {CustomEvent} e - Event with detail: { field: string, value: any }
+   */
+  handleLavashSet(e) {
+    const { field, value } = e.detail;
+    if (!field) return;
+
+    console.log("[LavashOptimistic] handleLavashSet", field, "=", value, "animatedStates:", Object.keys(this.animatedStates || {}));
+
+    // Check if this field has an animated state (modal/flyover)
+    const animatedState = this.animatedStates?.[field];
+    if (animatedState) {
+      // Stop propagation - we own this field
+      e.stopPropagation();
+
+      // For animated states (modal/flyover), falsy values mean "close" which is represented as null
+      // The animation system uses null to detect close transitions
+      const animValue = value ? value : null;
+
+      // Use the animated state's syncedVar to set the value
+      // This triggers proper animations and server sync
+      const setterAction = `set_${field}`;
+      console.log("[LavashOptimistic] Using animatedState.syncedVar.set for", field, "value:", animValue);
+      animatedState.syncedVar.set(animValue, (payload, callback) => {
+        this.pushEventTo(this.el, setterAction, { ...payload, value: animValue }, callback);
+      });
+      return;
+    }
+
+    // Check if this field exists in our state (we own it)
+    if (field in this.state) {
+      // Stop propagation - we own this field
+      e.stopPropagation();
+
+      // Regular field - update state and push to server
+      this.state[field] = value;
+
+      // Track in SyncedVarStore if available
+      if (this.store) {
+        const syncedVar = this.store.get(field, value);
+        syncedVar.setOptimistic(value);
+      }
+
+      // Bump client version
+      if (this.clientVersion !== undefined) {
+        this.clientVersion++;
+      }
+
+      // Recompute derives and update DOM
+      this.recomputeDerives([field]);
+      this.updateDOM();
+
+      // Push to server
+      const setterAction = `set_${field}`;
+      this.pushEventTo(this.el, setterAction, { value }, () => {});
+      return;
+    }
+
+    // We don't own this field - let the event continue propagating
+    // (another hook up the tree may own it)
+    console.log("[LavashOptimistic] Field", field, "not owned by this hook, letting event propagate");
   },
 
   /**

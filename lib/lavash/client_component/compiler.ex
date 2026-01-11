@@ -238,11 +238,11 @@ defmodule Lavash.ClientComponent.Compiler do
     Enum.map(actions, fn %{name: action_name, field: field, key: key_field, run_source: run_source, validate_source: validate_source, max: max_field} ->
       event_name = "#{action_name}_#{field |> to_string() |> String.trim_trailing("s")}"
 
-      # Handle :remove shorthand - generate a function that returns :remove
-      run_fn_ast = if run_source == ":remove" do
-        quote do: fn _item, _value -> :remove end
-      else
-        CompilerHelpers.parse_fn_source(run_source)
+      # Handle shorthand run values
+      run_fn_ast = case run_source do
+        ":remove" -> quote do: fn _item, _value -> :remove end
+        ":set" -> quote do: fn _current, value -> value end
+        _ -> CompilerHelpers.parse_fn_source(run_source)
       end
 
       validate_fn_ast = CompilerHelpers.parse_fn_source(validate_source)
@@ -518,6 +518,23 @@ defmodule Lavash.ClientComponent.Compiler do
         this.applyOptimisticAction(action, field, value);
         this.runCalculations();
         this.updateDOM();
+
+        // Check if this field is bound to a parent
+        const parentField = this.bindings[field];
+        if (parentField) {
+          // Dispatch a lavash-set event that bubbles up to parent components
+          // The parent's LavashOptimistic hook will handle it and sync to server
+          const parsedValue = value === "true" ? true : value === "false" ? false : value;
+          console.log('[ClientComponent] dispatching lavash-set for bound field', field, '->', parentField, '=', parsedValue);
+          this.el.dispatchEvent(new CustomEvent('lavash-set', {
+            bubbles: true,
+            detail: { field: parentField, value: parsedValue }
+          }));
+          this.pendingCount--;
+          return;
+        }
+
+        // Not bound - sync to LiveView root and push event
         this.syncParentUrl();
 
         const phxEvent = target.dataset.phxClick || `${action}_${field.replace(/s$/, '')}`;
@@ -611,8 +628,14 @@ defmodule Lavash.ClientComponent.Compiler do
         run_js = generate_keyed_action_js(run_source, key_field)
         ~s|    if (action === "#{action_name}" && field === "#{field}") {\n#{run_js}\n    }|
       else
-        # Non-key-based action: original behavior
-        run_js = CompilerHelpers.fn_source_to_js_assignment(run_source, field)
+        # Non-key-based action: handle shorthands or compile function
+        run_js = case run_source do
+          ":set" ->
+            # :set shorthand - parse value and assign directly
+            ~s|this.state.#{field} = value === "true" ? true : value === "false" ? false : value;|
+          _ ->
+            CompilerHelpers.fn_source_to_js_assignment(run_source, field)
+        end
         ~s|    if (action === "#{action_name}" && field === "#{field}") {\n      #{run_js}\n    }|
       end
     end)

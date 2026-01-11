@@ -33,6 +33,9 @@ defmodule DemoWeb.Components.CartItemList do
   # Cart items as array of maps: %{id, quantity, unit_price, product: %{...}}
   state :items, {:array, :map}
 
+  # Bound to parent's flyover open state - allows closing from within
+  state :open, :boolean
+
   # Calculations for display
   calculate :item_count, rx(Enum.reduce(@items || [], 0, fn item, acc -> acc + item.quantity end))
 
@@ -66,9 +69,10 @@ defmodule DemoWeb.Components.CartItemList do
     key: :id,
     run: :remove
 
-  # on_close callback from parent (for Continue Shopping button)
-  # client: false because Phoenix.LiveView.JS can't be serialized to JSON
-  prop :on_close, :any, default: nil, client: false
+  # Close the flyover by setting open to false
+  optimistic_action :close, :open,
+    run: :set
+
 
   # Helper to format subtotal with 2 decimal places
   calculate :subtotal_formatted, rx(Float.round(@subtotal, 2))
@@ -141,7 +145,14 @@ defmodule DemoWeb.Components.CartItemList do
       </div>
       <p class="text-sm text-base-content/60">Shipping calculated at checkout</p>
       <button class="btn btn-primary w-full">Checkout</button>
-      <button :if={@on_close} class="btn btn-ghost w-full" phx-click={@on_close}>Continue Shopping</button>
+      <button
+        type="button"
+        class="btn btn-ghost w-full"
+        data-lavash-action="close"
+        data-lavash-value="false"
+      >
+        Continue Shopping
+      </button>
     </div>
   </div>
   """

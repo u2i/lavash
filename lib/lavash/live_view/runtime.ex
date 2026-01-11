@@ -590,6 +590,54 @@ defmodule Lavash.LiveView.Runtime do
     {:noreply, socket}
   end
 
+  def handle_info(module, {:lavash_component_close, field, value}, socket) do
+    # Handle close operations from child Lavash components.
+    # Sets a field to the provided value (typically false for closing overlays).
+    parsed_value = parse_value(value)
+
+    socket =
+      socket
+      |> LSocket.bump_optimistic_version()
+      |> LSocket.put_state(field, parsed_value)
+      |> maybe_push_patch(module)
+      |> Graph.recompute_dirty(module)
+      |> Assigns.project(module)
+
+    {:noreply, socket}
+  end
+
+  def handle_info(module, {:lavash_component_set, field, value}, socket) do
+    # Handle set operations from child Lavash components.
+    # Sets a field to the provided value directly.
+    parsed_value = parse_value(value)
+
+    socket =
+      socket
+      |> LSocket.bump_optimistic_version()
+      |> LSocket.put_state(field, parsed_value)
+      |> maybe_push_patch(module)
+      |> Graph.recompute_dirty(module)
+      |> Assigns.project(module)
+
+    {:noreply, socket}
+  end
+
+  # Parse string values from client into Elixir types
+  defp parse_value("true"), do: true
+  defp parse_value("false"), do: false
+  defp parse_value(nil), do: nil
+  defp parse_value(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {int, ""} -> int
+      _ ->
+        case Float.parse(value) do
+          {float, ""} -> float
+          _ -> value
+        end
+    end
+  end
+  defp parse_value(value), do: value
+
   def handle_info(
         _module,
         {:lavash_component_async, component_module, component_id, field, result},

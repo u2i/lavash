@@ -42,9 +42,9 @@ defmodule DemoWeb.CartFlyover do
       <.live_component
         module={DemoWeb.Components.CartItemList}
         id="cart-item-list"
-        bind={[items: :cart_items_json]}
+        bind={[items: :cart_items_json, open: :open]}
         items={@items}
-        on_close={@on_close}
+        open={@open}
       />
     </div>
     """
