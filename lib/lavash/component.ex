@@ -78,6 +78,25 @@ defmodule Lavash.Component do
       require Phoenix.Component
       import Phoenix.Component
 
+      # Define ~L sigil for Lavash-enhanced HEEx templates
+      # Transforms <.child_component> to auto-inject __lavash_client_bindings__
+      defmacro sigil_L({:<<>>, meta, [template]}, modifiers) when is_binary(template) do
+        caller = __CALLER__
+        module = caller.module
+
+        # Transform template at compile time
+        transformed =
+          try do
+            Lavash.Template.Transformer.transform(template, module, context: :component)
+          rescue
+            _ -> template
+          end
+
+        # Build the transformed sigil AST
+        transformed_ast = {:<<>>, meta, [transformed]}
+        quote do: sigil_H(unquote(transformed_ast), unquote(modifiers))
+      end
+
       @before_compile Lavash.Component.Compiler
     end
   end

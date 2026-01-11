@@ -16,7 +16,7 @@ defmodule DemoWeb.Components.DoubleWrapper do
   state :count, :integer, from: :ephemeral, default: 0, optimistic: true
 
   def render(assigns) do
-    ~H"""
+    ~L"""
     <div class="p-4 border-2 border-dashed border-secondary/30 rounded-lg bg-secondary/5">
       <div class="text-xs text-secondary/70 mb-2 font-semibold">
         Double Wrapper (Level 2)
@@ -27,7 +27,6 @@ defmodule DemoWeb.Components.DoubleWrapper do
         bind={[count: :count]}
         count={@count}
         myself={@myself}
-        __lavash_client_bindings__={assigns[:__lavash_client_bindings__]}
       />
       <div class="text-xs text-base-content/50 mt-2">
         Level 2 state: {@count}

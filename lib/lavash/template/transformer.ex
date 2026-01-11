@@ -82,16 +82,9 @@ defmodule Lavash.Template.Transformer do
         meta -> Map.put(meta, :context, Keyword.get(opts, :context, meta[:context] || :live_view))
       end
 
-    if Enum.empty?(metadata.optimistic_fields) and
-       Enum.empty?(metadata.optimistic_derives) and
-       Enum.empty?(metadata.forms) and
-       Enum.empty?(metadata.actions) and
-       Enum.empty?(metadata.optimistic_actions) do
-      # No Lavash features to transform
-      template_source
-    else
-      do_transform(template_source, metadata)
-    end
+    # Always run transformation - even without other Lavash features,
+    # we need to inject __lavash_client_bindings__ for child_component
+    do_transform(template_source, metadata)
   end
 
   @doc """
@@ -453,6 +446,7 @@ defmodule Lavash.Template.Transformer do
     |> maybe_inject_visibility(tag_info, metadata)
     |> maybe_inject_enabled(tag_info, metadata)
     |> maybe_inject_client_component_action(tag_info, metadata)
+    |> maybe_inject_child_component_bindings(tag_info)
   end
 
   # Pattern 1: Form inputs
@@ -733,6 +727,18 @@ defmodule Lavash.Template.Transformer do
         _ ->
           attrs
       end
+    else
+      attrs
+    end
+  end
+
+  # Pattern 7: child_component helper - inject __lavash_client_bindings__
+  # When <.child_component> is used, auto-inject the parent's client bindings
+  # so binding resolution works through nested component chains
+  defp maybe_inject_child_component_bindings(attrs, tag_info) do
+    if tag_info.name == ".child_component" and
+       not has_attr?(attrs, "__lavash_client_bindings__") do
+      add_attr_if_missing(attrs, "__lavash_client_bindings__", {:expr, "@__lavash_client_bindings__"})
     else
       attrs
     end

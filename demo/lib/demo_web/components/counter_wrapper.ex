@@ -19,7 +19,7 @@ defmodule DemoWeb.Components.CounterWrapper do
   state :count, :integer, from: :ephemeral, default: 0, optimistic: true
 
   def render(assigns) do
-    ~H"""
+    ~L"""
     <div class="p-4 border border-dashed border-primary/30 rounded-lg bg-primary/5">
       <div class="text-xs text-primary/70 mb-2 font-semibold">
         Lavash.Component Wrapper
@@ -30,7 +30,6 @@ defmodule DemoWeb.Components.CounterWrapper do
         bind={[count: :count]}
         count={@count}
         myself={@myself}
-        __lavash_client_bindings__={assigns[:__lavash_client_bindings__]}
       />
       <div class="text-xs text-base-content/50 mt-2">
         Internal state: {@count}

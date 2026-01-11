@@ -185,7 +185,7 @@ defmodule Lavash.LiveView.Helpers do
     assigns = assign(assigns, :field_name, to_string(assigns.field))
 
     ~H"""
-    <.dynamic_tag name={@tag} data-lavash-display={@field_name} {@rest}>
+    <.dynamic_tag tag_name={@tag} data-lavash-display={@field_name} {@rest}>
       <%= if @inner_block != [] do %>
         {render_slot(@inner_block)}
       <% else %>
@@ -238,7 +238,7 @@ defmodule Lavash.LiveView.Helpers do
     assigns = assign(assigns, :hidden_class, if(assigns.when, do: nil, else: "hidden"))
 
     ~H"""
-    <.dynamic_tag name={@tag} data-lavash-visible={@field_name} class={@hidden_class} {@rest}>
+    <.dynamic_tag tag_name={@tag} data-lavash-visible={@field_name} class={@hidden_class} {@rest}>
       {render_slot(@inner_block)}
     </.dynamic_tag>
     """

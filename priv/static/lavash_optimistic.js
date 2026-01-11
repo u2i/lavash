@@ -631,7 +631,7 @@ const LavashOptimistic = {
     const { field, value } = e.detail;
     if (!field) return;
 
-    console.log("[LavashOptimistic] handleLavashSet", field, "=", value, "animatedStates:", Object.keys(this.animatedStates || {}));
+    console.log("[LavashOptimistic] handleLavashSet", field, "=", value);
 
     // Check if this field has an animated state (modal/flyover)
     const animatedState = this.animatedStates?.[field];
@@ -646,7 +646,6 @@ const LavashOptimistic = {
       // Use the animated state's syncedVar to set the value
       // This triggers proper animations and server sync
       const setterAction = `set_${field}`;
-      console.log("[LavashOptimistic] Using animatedState.syncedVar.set for", field, "value:", animValue);
       animatedState.syncedVar.set(animValue, (payload, callback) => {
         this.pushEventTo(this.el, setterAction, { ...payload, value: animValue }, callback);
       });

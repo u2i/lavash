@@ -13,6 +13,7 @@ defmodule DemoWeb.CartFlyover do
   use Lavash.Component, extensions: [Lavash.Overlay.Flyover.Dsl]
 
   import Lavash.Overlay.Flyover.Helpers, only: [flyover_close_button: 1]
+  import Lavash.Component.Helpers, only: [child_component: 1]
 
   flyover do
     open_field :open
@@ -39,12 +40,13 @@ defmodule DemoWeb.CartFlyover do
       </div>
 
       <!-- Cart Items - ClientComponent for optimistic updates (includes footer with subtotal) -->
-      <.live_component
+      <.child_component
         module={DemoWeb.Components.CartItemList}
         id="cart-item-list"
         bind={[items: :cart_items_json, open: :open]}
         items={@items}
         open={@open}
+        myself={@myself}
       />
     </div>
     """

@@ -144,10 +144,14 @@ defmodule Lavash.Component.Helpers do
   attr :id, :string, required: true
   attr :myself, :any, required: true, doc: "The parent component's @myself"
   attr :bind, :list, default: nil
-  attr :__lavash_client_bindings__, :map, default: nil, doc: "Parent's resolved client bindings (internal)"
+  attr :__lavash_client_bindings__, :map, default: %{}, doc: "Auto-injected by ~L sigil"
   attr :rest, :global
 
   def child_component(assigns) do
+    # Get parent's client bindings from assigns (set by Lavash.Component runtime)
+    # This is automatically available - no need to pass explicitly
+    parent_client_bindings = assigns[:__lavash_client_bindings__] || %{}
+
     # Build the assigns for live_component, injecting parent CID if bindings exist
     component_assigns =
       assigns.rest
@@ -162,7 +166,6 @@ defmodule Lavash.Component.Helpers do
         #
         # Server-side still uses the original bindings for routing through each component
         # Client-side uses resolved bindings for direct propagation via lavash-set events
-        parent_client_bindings = assigns[:__lavash_client_bindings__] || %{}
 
         resolved_client_bindings =
           Enum.into(assigns.bind, %{}, fn {child_field, parent_field} ->
