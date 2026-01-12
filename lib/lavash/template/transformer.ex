@@ -446,7 +446,8 @@ defmodule Lavash.Template.Transformer do
     |> maybe_inject_visibility(tag_info, metadata)
     |> maybe_inject_enabled(tag_info, metadata)
     |> maybe_inject_client_component_action(tag_info, metadata)
-    |> maybe_inject_child_component_bindings(tag_info)
+    # Note: child_component bindings are now injected via AST post-processing
+    # in Lavash.Template.ASTTransformer, called from the ~L sigil
   end
 
   # Pattern 1: Form inputs
@@ -727,18 +728,6 @@ defmodule Lavash.Template.Transformer do
         _ ->
           attrs
       end
-    else
-      attrs
-    end
-  end
-
-  # Pattern 7: child_component helper - inject __lavash_client_bindings__
-  # When <.child_component> is used, auto-inject the parent's client bindings
-  # so binding resolution works through nested component chains
-  defp maybe_inject_child_component_bindings(attrs, tag_info) do
-    if tag_info.name == ".child_component" and
-       not has_attr?(attrs, "__lavash_client_bindings__") do
-      add_attr_if_missing(attrs, "__lavash_client_bindings__", {:expr, "@__lavash_client_bindings__"})
     else
       attrs
     end

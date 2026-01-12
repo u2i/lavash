@@ -79,22 +79,16 @@ defmodule Lavash.Component do
       import Phoenix.Component
 
       # Define ~L sigil for Lavash-enhanced HEEx templates
-      # Transforms <.child_component> to auto-inject __lavash_client_bindings__
-      defmacro sigil_L({:<<>>, meta, [template]}, modifiers) when is_binary(template) do
-        caller = __CALLER__
-        module = caller.module
+      # Uses AST post-processing to inject __lavash_client_bindings__ into component calls
+      defmacro sigil_L({:<<>>, _meta, [template]} = sigil_ast, modifiers) when is_binary(template) do
+        # Build the sigil_H call AST
+        sigil_h_call = quote do: sigil_H(unquote(sigil_ast), unquote(modifiers))
 
-        # Transform template at compile time
-        transformed =
-          try do
-            Lavash.Template.Transformer.transform(template, module, context: :component)
-          rescue
-            _ -> template
-          end
+        # Expand the sigil_H macro to get the compiled template AST
+        expanded_ast = Macro.expand(sigil_h_call, __CALLER__)
 
-        # Build the transformed sigil AST
-        transformed_ast = {:<<>>, meta, [transformed]}
-        quote do: sigil_H(unquote(transformed_ast), unquote(modifiers))
+        # Transform the expanded AST to inject client bindings
+        Lavash.Template.ASTTransformer.inject_client_bindings(expanded_ast)
       end
 
       @before_compile Lavash.Component.Compiler
