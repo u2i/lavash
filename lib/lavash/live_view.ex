@@ -56,34 +56,39 @@ defmodule Lavash.LiveView do
       import Lavash.Optimistic.Macros, only: [optimistic_action: 3]
 
       # Define ~L sigil in the module for auto-attribute injection in templates
-      # Note: We can't use `import Lavash.Sigil` here due to Spark's Code.eval_quoted
-      # which evaluates in a separate context. Instead, we define the sigil inline.
-      defmacro sigil_L({:<<>>, meta, [template]}, modifiers) when is_binary(template) do
+      # Uses Lavash.TagEngine with token transformer for unified processing
+      defmacro sigil_L({:<<>>, _meta, [template]}, _modifiers) when is_binary(template) do
         caller = __CALLER__
         module = caller.module
 
-        # Transform template at compile time
-        transformed =
+        # Get metadata for token transformation
+        metadata =
           try do
             if Code.ensure_loaded?(module) and function_exported?(module, :__lavash__, 1) do
-              Lavash.Template.Transformer.transform(template, module, context: :live_view)
+              Lavash.Template.TokenTransformer.build_metadata(module, context: :live_view)
             else
               case Lavash.Sigil.get_compile_time_metadata(module) do
-                nil -> template
-                metadata -> Lavash.Template.Transformer.transform(template, module, metadata: metadata)
+                nil -> %{context: :live_view}
+                m -> m
               end
             end
           rescue
-            _ -> template
+            _ -> %{context: :live_view}
           end
 
-        # Build the transformed sigil AST - pass directly without escaping
-        transformed_ast = {:<<>>, meta, [transformed]}
+        # Compile with Lavash.TagEngine and token transformer
+        opts = [
+          engine: Lavash.TagEngine,
+          file: caller.file,
+          line: caller.line + 1,
+          caller: caller,
+          source: template,
+          tag_handler: Phoenix.LiveView.HTMLEngine,
+          token_transformer: Lavash.Template.TokenTransformer,
+          lavash_metadata: metadata
+        ]
 
-        quote do
-          require Phoenix.Component
-          Phoenix.Component.sigil_H(unquote(transformed_ast), unquote(modifiers))
-        end
+        EEx.compile_string(template, opts)
       end
     end
   end

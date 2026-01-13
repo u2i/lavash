@@ -53,38 +53,42 @@ defmodule Lavash.Sigil do
   @doc """
   Handles the `~L` sigil for Lavash-enhanced HEEx templates.
 
-  This sigil attempts to transform the template at compile time if module
-  metadata is available. Otherwise, it falls back to the standard `~H` behavior.
+  Uses Lavash.TagEngine with token transformer for unified processing.
+  This approach handles both data-lavash-* attributes on HTML elements
+  and __lavash_client_bindings__ on component calls at the token level.
   """
-  defmacro sigil_L({:<<>>, meta, [template]}, modifiers) when is_binary(template) do
+  defmacro sigil_L({:<<>>, _meta, [template]}, _modifiers) when is_binary(template) do
     caller = __CALLER__
     module = caller.module
 
-    # Try to transform at compile time
-    # This works for ClientComponent but may not have full metadata for LiveView
-    # since LiveView's __lavash__ is generated in @before_compile
-    transformed =
+    # Get metadata for token transformation
+    metadata =
       try do
         if Code.ensure_loaded?(module) and function_exported?(module, :__lavash__, 1) do
-          Lavash.Template.Transformer.transform(template, module, context: :live_view)
+          Lavash.Template.TokenTransformer.build_metadata(module, context: :live_view)
         else
-          # Try to get metadata from module attributes if available
           case get_compile_time_metadata(module) do
-            nil -> template
-            metadata -> Lavash.Template.Transformer.transform(template, module, metadata: metadata)
+            nil -> %{context: :live_view}
+            m -> m
           end
         end
       rescue
-        _ -> template
+        _ -> %{context: :live_view}
       end
 
-    # Build transformed AST and pass to Phoenix's ~H sigil directly (no escape!)
-    transformed_ast = {:<<>>, meta, [transformed]}
+    # Compile with Lavash.TagEngine and token transformer
+    opts = [
+      engine: Lavash.TagEngine,
+      file: caller.file,
+      line: caller.line + 1,
+      caller: caller,
+      source: template,
+      tag_handler: Phoenix.LiveView.HTMLEngine,
+      token_transformer: Lavash.Template.TokenTransformer,
+      lavash_metadata: metadata
+    ]
 
-    quote do
-      require Phoenix.Component
-      Phoenix.Component.sigil_H(unquote(transformed_ast), unquote(modifiers))
-    end
+    EEx.compile_string(template, opts)
   end
 
   @doc false

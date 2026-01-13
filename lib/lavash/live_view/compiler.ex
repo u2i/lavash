@@ -211,37 +211,34 @@ defmodule Lavash.LiveView.Compiler do
   @doc """
   Generate render/1 function from template DSL.
 
-  This transforms the template with Lavash.Template.Transformer to inject
-  data-lavash-* attributes, then compiles the HEEx and wraps the result
+  Uses Lavash.TagEngine with Lavash.Template.TokenTransformer to inject
+  data-lavash-* attributes at the token level, then wraps the result
   with optimistic state handling.
   """
   def generate_render_from_template(template_source, env) do
     module = env.module
 
-    # Get metadata for template transformation
+    # Get metadata for token transformation
     metadata = Lavash.Sigil.get_compile_time_metadata(module)
-
-    # Transform template to inject data-lavash-* attributes
-    transformed_template =
-      if metadata do
-        Lavash.Template.Transformer.transform(template_source, module, metadata: metadata)
-      else
-        template_source
-      end
+    escaped_metadata = Macro.escape(metadata)
 
     quote do
-      # Store the transformed template source for the render macro
-      @__lavash_template_source__ unquote(transformed_template)
+      # Store the template source and metadata for the render macro
+      @__lavash_template_source__ unquote(template_source)
+      @__lavash_template_metadata__ unquote(escaped_metadata)
 
       @doc false
       defmacro __lavash_render_template__(assigns_var) do
         template = Module.get_attribute(__MODULE__, :__lavash_template_source__)
+        metadata = Module.get_attribute(__MODULE__, :__lavash_template_metadata__)
 
         opts = [
-          engine: Phoenix.LiveView.TagEngine,
+          engine: Lavash.TagEngine,
           caller: __CALLER__,
           source: template,
-          tag_handler: Phoenix.LiveView.HTMLEngine
+          tag_handler: Phoenix.LiveView.HTMLEngine,
+          token_transformer: Lavash.Template.TokenTransformer,
+          lavash_metadata: metadata
         ]
 
         ast = EEx.compile_string(template, opts)

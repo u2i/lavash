@@ -79,16 +79,35 @@ defmodule Lavash.Component do
       import Phoenix.Component
 
       # Define ~L sigil for Lavash-enhanced HEEx templates
-      # Uses AST post-processing to inject __lavash_client_bindings__ into component calls
-      defmacro sigil_L({:<<>>, _meta, [template]} = sigil_ast, modifiers) when is_binary(template) do
-        # Build the sigil_H call AST
-        sigil_h_call = quote do: sigil_H(unquote(sigil_ast), unquote(modifiers))
+      # Uses Lavash.TagEngine with token transformer for unified processing
+      defmacro sigil_L({:<<>>, _meta, [template]}, _modifiers) when is_binary(template) do
+        caller = __CALLER__
+        module = caller.module
 
-        # Expand the sigil_H macro to get the compiled template AST
-        expanded_ast = Macro.expand(sigil_h_call, __CALLER__)
+        # Get metadata for token transformation (component context)
+        metadata =
+          try do
+            case Lavash.Sigil.get_compile_time_metadata(module) do
+              nil -> %{context: :component}
+              m -> Map.put(m, :context, :component)
+            end
+          rescue
+            _ -> %{context: :component}
+          end
 
-        # Transform the expanded AST to inject client bindings
-        Lavash.Template.ASTTransformer.inject_client_bindings(expanded_ast)
+        # Compile with Lavash.TagEngine and token transformer
+        opts = [
+          engine: Lavash.TagEngine,
+          file: caller.file,
+          line: caller.line + 1,
+          caller: caller,
+          source: template,
+          tag_handler: Phoenix.LiveView.HTMLEngine,
+          token_transformer: Lavash.Template.TokenTransformer,
+          lavash_metadata: metadata
+        ]
+
+        EEx.compile_string(template, opts)
       end
 
       @before_compile Lavash.Component.Compiler
