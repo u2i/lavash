@@ -495,7 +495,7 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
     {validation_fns, error_fns, validation_derives, error_derives}
   end
 
-  defp generate_field_validation_js(name, params_field, validation, skip_constraints \\ false) do
+  defp generate_field_validation_js(name, params_field, validation, skip_constraints) do
     field = validation.field
     field_str = to_string(field)
     required = validation.required

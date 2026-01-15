@@ -119,18 +119,6 @@ defmodule Lavash.Rx.Transpiler do
     cond_to_nested_ternary(clauses)
   end
 
-  defp cond_to_nested_ternary([{:->, _, [[condition], result]}]) do
-    # Last clause - if condition is `true`, just return result, otherwise make ternary
-    case condition do
-      true -> ast_to_js(result)
-      _ -> "(#{ast_to_js(condition)} ? #{ast_to_js(result)} : null)"
-    end
-  end
-
-  defp cond_to_nested_ternary([{:->, _, [[condition], result]} | rest]) do
-    "(#{ast_to_js(condition)} ? #{ast_to_js(result)} : #{cond_to_nested_ternary(rest)})"
-  end
-
   # @variable -> state.variable
   def ast_to_js({:@, _, [{var_name, _, _}]}) when is_atom(var_name) do
     "state.#{var_name}"
@@ -554,6 +542,19 @@ defmodule Lavash.Rx.Transpiler do
 
   defp insert_pipe_arg({func, meta, nil}, value, _pos) do
     {func, meta, [value]}
+  end
+
+  # Helper to convert Elixir cond to nested ternaries
+  defp cond_to_nested_ternary([{:->, _, [[condition], result]}]) do
+    # Last clause - if condition is `true`, just return result, otherwise make ternary
+    case condition do
+      true -> ast_to_js(result)
+      _ -> "(#{ast_to_js(condition)} ? #{ast_to_js(result)} : null)"
+    end
+  end
+
+  defp cond_to_nested_ternary([{:->, _, [[condition], result]} | rest]) do
+    "(#{ast_to_js(condition)} ? #{ast_to_js(result)} : #{cond_to_nested_ternary(rest)})"
   end
 
   # ===========================================================================

@@ -464,6 +464,26 @@ defmodule Lavash.LiveView.Runtime do
     end)
   end
 
+  # Parse string values from client into Elixir types
+  defp parse_value("true"), do: true
+  defp parse_value("false"), do: false
+  defp parse_value(nil), do: nil
+
+  defp parse_value(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {int, ""} ->
+        int
+
+      _ ->
+        case Float.parse(value) do
+          {float, ""} -> float
+          _ -> value
+        end
+    end
+  end
+
+  defp parse_value(value), do: value
+
   def handle_info(module, {:lavash_async, field, result}, socket) do
     # Convert result to AsyncResult struct
     async =
@@ -621,22 +641,6 @@ defmodule Lavash.LiveView.Runtime do
 
     {:noreply, socket}
   end
-
-  # Parse string values from client into Elixir types
-  defp parse_value("true"), do: true
-  defp parse_value("false"), do: false
-  defp parse_value(nil), do: nil
-  defp parse_value(value) when is_binary(value) do
-    case Integer.parse(value) do
-      {int, ""} -> int
-      _ ->
-        case Float.parse(value) do
-          {float, ""} -> float
-          _ -> value
-        end
-    end
-  end
-  defp parse_value(value), do: value
 
   def handle_info(
         _module,
@@ -878,95 +882,6 @@ defmodule Lavash.LiveView.Runtime do
     LSocket.clear_url_changed(socket)
   end
 
-  defp _maybe_push_patch_server_side(socket, module) do
-    # NOTE: This version uses push_patch which triggers handle_params and
-    # interrupts inflight events. Use only if client-side URL sync is disabled.
-    if LSocket.url_changed?(socket) do
-      url_fields = module.__lavash__(:url_fields)
-      state = LSocket.state(socket)
-      route_pattern = LSocket.get(socket, :route_pattern)
-      path_param_names = LSocket.get(socket, :path_param_names) || MapSet.new()
-      url_field_names = url_fields |> Enum.map(& &1.name) |> MapSet.new()
-
-      # Separate path params from query params
-      {path_fields, query_fields} =
-        Enum.split_with(url_fields, fn field ->
-          MapSet.member?(path_param_names, field.name)
-        end)
-
-      # Build the path by substituting path params into the route pattern
-      # First, substitute fields that are defined in the DSL
-      path =
-        Enum.reduce(path_fields, route_pattern, fn field, pattern ->
-          value = Map.get(state, field.name)
-
-          encoded =
-            if field.encode do
-              field.encode.(value)
-            else
-              Type.dump(field.type, value)
-            end
-
-          # Replace :param_name with the actual value
-          String.replace(pattern, ":#{field.name}", to_string(encoded))
-        end)
-
-      # Now substitute any remaining path params that aren't in the DSL
-      # (e.g., product_id in /products/:product_id/counter when using a counter LiveView)
-      # These values were stored from the route info during handle_params
-      path_param_values = LSocket.get(socket, :path_param_values) || %{}
-
-      path =
-        Enum.reduce(path_param_names, path, fn param_name, pattern ->
-          if MapSet.member?(url_field_names, param_name) do
-            # Already handled above
-            pattern
-          else
-            # Get from stored path param values
-            value = Map.get(path_param_values, param_name)
-
-            if value do
-              String.replace(pattern, ":#{param_name}", to_string(value))
-            else
-              pattern
-            end
-          end
-        end)
-
-      # Build query params from non-path fields
-      query_params =
-        Enum.reduce(query_fields, %{}, fn field, acc ->
-          value = Map.get(state, field.name)
-
-          if value != nil and value != field.default do
-            encoded =
-              if field.encode do
-                field.encode.(value)
-              else
-                Type.dump(field.type, value)
-              end
-
-            Map.put(acc, to_string(field.name), encoded)
-          else
-            acc
-          end
-        end)
-
-      url =
-        if query_params == %{} do
-          path
-        else
-          path <> "?" <> URI.encode_query(query_params)
-        end
-
-      socket
-      |> LSocket.clear_url_changed()
-      |> Phoenix.LiveView.push_patch(to: url)
-    else
-      socket
-    end
-  end
-
   defp maybe_sync_socket_state(socket, module) do
     if LSocket.socket_changed?(socket) do
       socket_fields = module.__lavash__(:socket_fields)
@@ -976,7 +891,7 @@ defmodule Lavash.LiveView.Runtime do
       socket_state =
         Enum.reduce(socket_fields, %{}, fn field, acc ->
           value = Map.get(state, field.name)
-          Map.put(acc, to_string(field.name), Type.dump(field.type, value))
+          Map.put(acc, to_string(field.name), Lavash.Type.dump(field.type, value))
         end)
 
       IO.puts("[Lavash] syncing socket state to client: #{inspect(socket_state)}")

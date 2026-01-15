@@ -467,7 +467,7 @@ defmodule Lavash.Rx.Graph do
 
   # Build a compute function for an errors field
   # ash_validations: list of validation specs from ValidationTranspiler (with custom messages)
-  defp build_errors_compute(validation, params_dep, custom_errors \\ [], ash_validations \\ []) do
+  defp build_errors_compute(validation, params_dep, custom_errors, ash_validations) do
     field = validation.field
     field_str = to_string(field)
     type = validation.type
