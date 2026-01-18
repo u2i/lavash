@@ -35,15 +35,8 @@ defmodule DemoWeb.ProductsLive do
     as_options label: :name, value: :id
   end
 
-  # No longer needed - can compute directly in template or use a simple derive
-
-  derive :result_count do
-    argument :products, result(:products)
-
-    run fn %{products: products}, _ ->
-      length(products)
-    end
-  end
+  # Result count computed from products
+  calculate :result_count, rx(length(@products)), optimistic: false
 
   calculate :has_filters,
             rx(

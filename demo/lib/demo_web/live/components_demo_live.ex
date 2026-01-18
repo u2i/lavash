@@ -13,11 +13,12 @@ defmodule DemoWeb.ComponentsDemoLive do
   alias Demo.Catalog
   alias DemoWeb.ProductCard
 
-  # Derive products (computed once on mount - no arguments)
-  derive :products do
-    run fn _, _ ->
-      Catalog.list_products(%{}) |> Enum.take(6)
-    end
+  # Products computed once on mount
+  calculate :products, rx(get_products()), optimistic: false
+
+  def get_products do
+    {:ok, products} = Catalog.list_products(nil, nil, nil, nil, nil, nil)
+    Enum.take(products, 6)
   end
 
   template """

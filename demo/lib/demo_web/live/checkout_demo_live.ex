@@ -163,16 +163,15 @@ defmodule DemoWeb.CheckoutDemoLive do
   # ─────────────────────────────────────────────────────────────────
 
   # Find the selected address from the list (or first address if none selected)
-  derive :selected_address do
-    argument :addresses, result(:addresses)
-    argument :selected_id, state(:selected_address_id)
+  calculate :selected_address,
+            rx(find_selected_address(@addresses, @selected_address_id)),
+            optimistic: false
 
-    run fn
-      %{addresses: [], selected_id: _}, _ -> nil
-      %{addresses: addresses, selected_id: nil}, _ -> List.first(addresses)
-      %{addresses: addresses, selected_id: id}, _ ->
-        Enum.find(addresses, List.first(addresses), &(&1.id == id))
-    end
+  def find_selected_address([], _selected_id), do: nil
+  def find_selected_address(addresses, nil), do: List.first(addresses)
+
+  def find_selected_address(addresses, id) do
+    Enum.find(addresses, List.first(addresses), &(&1.id == id))
   end
 
   calculate :has_addresses, rx(length(@addresses) > 0), optimistic: false

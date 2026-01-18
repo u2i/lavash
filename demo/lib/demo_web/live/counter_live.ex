@@ -7,17 +7,8 @@ defmodule DemoWeb.CounterLive do
 
   calculate :doubled, rx(@count * @multiplier)
 
-  derive :fact do
-    optimistic true
-    async true
-    argument :count, state(:count)
-
-    run fn %{count: c}, _ ->
-      # Simulate slow computation
-      Process.sleep(500)
-      factorial(max(c, 0))
-    end
-  end
+  # Async calculation - simulates slow computation, returns AsyncResult
+  calculate :fact, rx(factorial_slow(max(@count, 0))), async: true
 
   actions do
     action :increment do
@@ -166,6 +157,12 @@ defmodule DemoWeb.CounterLive do
   </div>
   """
 
-  defp factorial(0), do: 1
-  defp factorial(n) when n > 0, do: n * factorial(n - 1)
+  # Slow factorial for async demo - simulates network/db latency
+  def factorial_slow(n) do
+    Process.sleep(500)
+    factorial(n)
+  end
+
+  def factorial(0), do: 1
+  def factorial(n) when n > 0, do: n * factorial(n - 1)
 end

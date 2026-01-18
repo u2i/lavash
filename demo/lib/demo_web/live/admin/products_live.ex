@@ -19,10 +19,7 @@ defmodule DemoWeb.Admin.ProductsLive do
     as_options label: :name, value: :id
   end
 
-  derive :result_count do
-    argument :products, result(:products)
-    run fn %{products: products}, _ -> length(products) end
-  end
+  calculate :result_count, rx(length(@products)), optimistic: false
 
   calculate :has_filters,
             rx(@search != "" or @category_id != nil or @in_stock != nil),

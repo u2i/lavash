@@ -14,15 +14,14 @@ defmodule DemoWeb.ToggleDemoLive do
   state :dark_mode, :boolean, default: false, optimistic: true
   state :notifications, :boolean, default: true, optimistic: true
 
-  # Server-side derive to show round-trip timing
-  derive :server_timestamp do
-    argument :feature_enabled, state(:feature_enabled)
-    argument :dark_mode, state(:dark_mode)
-    argument :notifications, state(:notifications)
+  # Server-side calculate to show round-trip timing
+  # Uses helper function since DateTime operations can't be transpiled to JS
+  calculate :server_timestamp,
+            rx(get_timestamp(@feature_enabled, @dark_mode, @notifications)),
+            optimistic: false
 
-    run fn _args, _ ->
-      DateTime.utc_now() |> DateTime.to_time() |> Time.truncate(:second) |> Time.to_string()
-    end
+  def get_timestamp(_feature_enabled, _dark_mode, _notifications) do
+    DateTime.utc_now() |> DateTime.to_time() |> Time.truncate(:second) |> Time.to_string()
   end
 
   template """

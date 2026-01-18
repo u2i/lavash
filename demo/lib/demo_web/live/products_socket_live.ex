@@ -21,43 +21,43 @@ defmodule DemoWeb.ProductsSocketLive do
   state :max_price, :integer, from: :socket, default: nil
   state :min_rating, :integer, from: :socket, default: nil
 
-  # Products are derived from filter state
-  derive :products do
-    argument :search, state(:search)
-    argument :category, state(:category)
-    argument :in_stock, state(:in_stock)
-    argument :min_price, state(:min_price)
-    argument :max_price, state(:max_price)
-    argument :min_rating, state(:min_rating)
+  # Products computed from filter state
+  calculate :products,
+            rx(
+              get_products(
+                @search,
+                @category,
+                @in_stock,
+                @min_price,
+                @max_price,
+                @min_rating
+              )
+            ),
+            optimistic: false
 
-    run fn filters, _ ->
-      {:ok, products} =
-        Catalog.list_products(
-          filters.search,
-          if(filters.category == "", do: nil, else: filters.category),
-          parse_bool(filters.in_stock),
-          filters.min_price,
-          filters.max_price,
-          filters.min_rating
-        )
+  # Categories loaded once
+  calculate :categories, rx(get_categories()), optimistic: false
 
-      products
-    end
+  # Result count computed from products
+  calculate :result_count, rx(length(@products)), optimistic: false
+
+  def get_products(search, category, in_stock, min_price, max_price, min_rating) do
+    {:ok, products} =
+      Catalog.list_products(
+        search,
+        if(category == "", do: nil, else: category),
+        parse_bool(in_stock),
+        min_price,
+        max_price,
+        min_rating
+      )
+
+    products
   end
 
-  derive :categories do
-    run fn _, _ ->
-      {:ok, categories} = Catalog.list_categories()
-      categories
-    end
-  end
-
-  derive :result_count do
-    argument :products, result(:products)
-
-    run fn %{products: products}, _ ->
-      length(products)
-    end
+  def get_categories do
+    {:ok, categories} = Catalog.list_categories()
+    categories
   end
 
   calculate :has_filters,

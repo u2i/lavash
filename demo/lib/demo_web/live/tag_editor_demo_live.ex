@@ -12,14 +12,8 @@ defmodule DemoWeb.TagEditorDemoLive do
   # Tags with optimistic updates
   state :tags, {:array, :string}, from: :url, default: ["elixir", "phoenix"], optimistic: true
 
-  # Server-side derive for comparison
-  derive :server_timestamp do
-    argument :tags, state(:tags)
-
-    run fn _args, _ ->
-      DateTime.utc_now() |> DateTime.to_time() |> Time.truncate(:second) |> Time.to_string()
-    end
-  end
+  # Server-side calculation for comparison (uses @tags to trigger recomputation)
+  calculate :server_timestamp, rx(get_timestamp(@tags)), optimistic: false
 
   # Optimistic calculation - transpiles to both Elixir and JavaScript
   calculate :tag_count, rx(length(@tags))
@@ -162,4 +156,9 @@ defmodule DemoWeb.TagEditorDemoLive do
     </div>
   </div>
   """
+
+  # Helper for server timestamp - takes tags as arg to trigger recomputation when tags change
+  def get_timestamp(_tags) do
+    DateTime.utc_now() |> DateTime.to_time() |> Time.truncate(:second) |> Time.to_string()
+  end
 end

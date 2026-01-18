@@ -51,7 +51,7 @@ defmodule Lavash.Rx.Graph do
 
     Enum.map(calculations, fn calc ->
       # Normalize to 7-tuple format for consistency
-      {name, _source, ast, deps, _optimistic, is_async, reads} =
+      {name, _source, ast, deps, declared_optimistic, is_async, reads} =
         case calc do
           {name, source, ast, deps} ->
             {name, source, ast, deps, true, false, []}
@@ -64,12 +64,27 @@ defmodule Lavash.Rx.Graph do
       # {:path, :params, ["name"]} -> :params
       normalized_deps = Enum.map(deps, &normalize_dep/1) |> Enum.uniq()
 
+      # Auto-detect transpilability if optimistic was requested
+      # Async calculations are always server-only
+      is_optimistic =
+        cond do
+          is_async ->
+            false
+
+          not declared_optimistic ->
+            false
+
+          true ->
+            # Check if the AST can be transpiled to JS
+            Lavash.Rx.Transpiler.transpilable?(ast)
+        end
+
       %Lavash.Derived.Field{
         name: name,
         depends_on: normalized_deps,
         async: is_async,
         reads: reads,
-        optimistic: true,
+        optimistic: is_optimistic,
         compute: fn deps_map ->
           # Build state map from deps_map for AST evaluation
           # Create an env with the module so defrx functions are accessible
@@ -77,7 +92,10 @@ defmodule Lavash.Rx.Graph do
 
           # Rewrite String.chunk calls to Lavash.Rx.String.chunk for Elixir-side evaluation
           # (String.chunk doesn't support integer size in stdlib)
-          rewritten_ast = rewrite_string_calls(ast)
+          rewritten_ast =
+            ast
+            |> rewrite_string_calls()
+            |> rewrite_local_calls(module)
 
           {result, _binding} = Code.eval_quoted(rewritten_ast, [state: deps_map], eval_env)
           result
@@ -98,6 +116,36 @@ defmodule Lavash.Rx.Graph do
       # String.chunk -> Lavash.Rx.String.chunk
       {{:., meta1, [{:__aliases__, meta2, [:String]}, :chunk]}, meta3, args} ->
         {{:., meta1, [{:__aliases__, meta2, [:Lavash, :Rx, :String]}, :chunk]}, meta3, args}
+
+      other ->
+        other
+    end)
+  end
+
+  # Rewrite local function calls to be fully qualified with the module
+  # This is needed because Code.eval_quoted cannot resolve local function calls
+  # Example: get_timestamp(@tags) -> Module.get_timestamp(state.tags)
+  defp rewrite_local_calls(ast, module) do
+    # Get list of functions defined in the module
+    module_functions =
+      if function_exported?(module, :__info__, 1) do
+        module.__info__(:functions) |> MapSet.new()
+      else
+        MapSet.new()
+      end
+
+    Macro.prewalk(ast, fn
+      # Match local function calls: {func_name, meta, args} where func_name is an atom
+      # and args is a list (not nil, which would be a variable reference)
+      {func_name, meta, args} = node when is_atom(func_name) and is_list(args) ->
+        arity = length(args)
+
+        if MapSet.member?(module_functions, {func_name, arity}) do
+          # Rewrite to Module.func_name(args)
+          {{:., meta, [module, func_name]}, meta, args}
+        else
+          node
+        end
 
       other ->
         other

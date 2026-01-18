@@ -70,24 +70,22 @@ defmodule DemoWeb.Storefront.ProductsLive do
   calculate :has_filters, rx(@roast != [] or @category != [] or @in_stock), optimistic: false
 
   # Transform cart items to JSON-serializable maps for ClientComponent
-  derive :cart_items_json do
-    argument :cart_items, result(:cart_items)
+  calculate :cart_items_json, rx(serialize_cart_items(@cart_items)), optimistic: false
 
-    run fn %{cart_items: items}, _ ->
-      Enum.map(items || [], fn item ->
-        %{
-          id: item.id,
-          quantity: item.quantity,
-          unit_price: Decimal.to_string(item.unit_price),
-          product: %{
-            id: item.product.id,
-            name: item.product.name,
-            origin: item.product.origin,
-            roast_level: to_string(item.product.roast_level)
-          }
+  def serialize_cart_items(items) do
+    Enum.map(items || [], fn item ->
+      %{
+        id: item.id,
+        quantity: item.quantity,
+        unit_price: Decimal.to_string(item.unit_price),
+        product: %{
+          id: item.product.id,
+          name: item.product.name,
+          origin: item.product.origin,
+          roast_level: to_string(item.product.roast_level)
         }
-      end)
-    end
+      }
+    end)
   end
 
   # Cart calculations
@@ -102,26 +100,22 @@ defmodule DemoWeb.Storefront.ProductsLive do
             optimistic: false
 
   # String version of subtotal for JSON serialization
-  derive :cart_subtotal_str do
-    argument :cart_items, result(:cart_items)
+  calculate :cart_subtotal_str, rx(compute_subtotal_str(@cart_items)), optimistic: false
 
-    run fn %{cart_items: items}, _ ->
-      subtotal = Enum.reduce(items || [], Decimal.new(0), fn item, acc ->
+  def compute_subtotal_str(items) do
+    subtotal =
+      Enum.reduce(items || [], Decimal.new(0), fn item, acc ->
         Decimal.add(acc, Decimal.mult(item.unit_price, item.quantity))
       end)
-      Decimal.to_string(subtotal)
-    end
+
+    Decimal.to_string(subtotal)
   end
 
-  # Derive chip classes for categories (dynamic values require explicit derive)
-  derive :category_chips do
-    optimistic true
-    argument :category, state(:category)
-    argument :categories, result(:categories)
+  # Chip classes for categories (dynamic values require explicit calculation)
+  calculate :category_chips, rx(compute_category_chips(@category, @categories)), optimistic: false
 
-    run fn %{category: selected, categories: cats}, _ ->
-      Map.new(cats, fn cat -> {cat.slug, chip_class(cat.slug in selected)} end)
-    end
+  def compute_category_chips(selected, cats) do
+    Map.new(cats, fn cat -> {cat.slug, chip_class(cat.slug in selected)} end)
   end
 
   defp chip_class(active) do

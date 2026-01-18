@@ -367,20 +367,8 @@ defmodule Lavash.Dsl do
   # Calculate - reactive computed values (expression form)
   # ============================================
 
-  # LiveView calculate extends base schema with async and reads options
-  @calculate_schema CommonEntities.base_calculate_schema() ++
-                      [
-                        async: [
-                          type: :boolean,
-                          default: false,
-                          doc: "Whether this calculation is async (returns loading/ok/error states)"
-                        ],
-                        reads: [
-                          type: {:list, :atom},
-                          default: [],
-                          doc: "Ash resources this calculation reads from. Used for automatic invalidation."
-                        ]
-                      ]
+  # LiveView calculate uses base schema (which now includes async and reads)
+  @calculate_schema CommonEntities.base_calculate_schema()
 
   @calculate_entity %Spark.Dsl.Entity{
     name: :calculate,
@@ -388,19 +376,23 @@ defmodule Lavash.Dsl do
     Declares a calculated field computed from state using a reactive expression.
 
     Uses `rx()` to capture the expression, which is then transpiled to
-    JavaScript for client-side optimistic updates.
+    JavaScript for client-side optimistic updates. If the expression can't
+    be transpiled, it falls back to server-only computation.
 
     ## Examples
 
+        # Simple reactive calculation - transpiles to JS
         calculate :tag_count, rx(length(@tags))
-        calculate :can_add, rx(@max_tags == nil or length(@tags) < @max_tags)
         calculate :doubled, rx(@count * 2)
 
-    For server-only calculations that can't be transpiled:
+        # Server-only (explicit or auto-detected if not transpilable)
+        calculate :complex, rx(my_helper(@data)), optimistic: false
 
-        calculate :complex, rx(some_function(@data)), optimistic: false
+        # Async calculation - returns AsyncResult (loading/ok/error)
+        calculate :factorial, rx(compute_factorial(@n)), async: true
 
-    For complex server-only computations, use the block-form `derive` instead.
+        # With resource invalidation
+        calculate :total, rx(sum_items(@items)), reads: [Item]
     """,
     target: Lavash.Component.Calculate,
     args: [:name, :rx],
@@ -416,8 +408,6 @@ defmodule Lavash.Dsl do
     Use `rx()` to wrap expressions that reference state via `@field` syntax.
     Calculations are automatically recomputed when their dependencies change
     and can be transpiled to JavaScript for optimistic client-side updates.
-
-    For complex server-only computations (async, Ash reads, etc.), use `derive` instead.
     """,
     entities: [@calculate_entity]
   }
@@ -635,6 +625,7 @@ defmodule Lavash.Dsl do
       @template_section
     ],
     transformers: [
+      Lavash.Transformers.DeprecateDerive,
       Lavash.Optimistic.ExpandAnimatedStates,
       Lavash.Optimistic.DefrxExpander,
       Lavash.Optimistic.ColocatedTransformer

@@ -569,10 +569,10 @@ defmodule Lavash.Rx.Transpiler do
 
   ## Examples
 
-      iex> Lavash.Transpiler.validate("length(@tags)")
+      iex> Lavash.Rx.Transpiler.validate("length(@tags)")
       :ok
 
-      iex> Lavash.Transpiler.validate("Ash.read!(Product)")
+      iex> Lavash.Rx.Transpiler.validate("Ash.read!(Product)")
       {:error, "Ash.read!"}
   """
   @spec validate(String.t()) :: :ok | {:error, String.t()}
@@ -581,7 +581,29 @@ defmodule Lavash.Rx.Transpiler do
     validate_ast(ast)
   end
 
-  defp validate_ast({:if, _, [condition, [do: do_clause, else: else_clause]]}) do
+  @doc """
+  Checks if an AST can be transpiled to JavaScript.
+
+  Returns `true` if transpilable, `false` otherwise.
+  Use `validate/1` or `validate_ast/1` to get the specific error.
+  """
+  @spec transpilable?(Macro.t()) :: boolean()
+  def transpilable?(ast) do
+    case validate_ast(ast) do
+      :ok -> true
+      {:error, _} -> false
+    end
+  end
+
+  @doc """
+  Validates an AST for transpilability.
+
+  Returns `:ok` if transpilable, `{:error, reason}` otherwise.
+  """
+  @spec validate_ast(Macro.t()) :: :ok | {:error, String.t()}
+  def validate_ast(ast)
+
+  def validate_ast({:if, _, [condition, [do: do_clause, else: else_clause]]}) do
     with :ok <- validate_ast(condition),
          :ok <- validate_ast(do_clause),
          :ok <- validate_ast(else_clause) do
@@ -589,7 +611,7 @@ defmodule Lavash.Rx.Transpiler do
     end
   end
 
-  defp validate_ast({:if, _, [condition, [do: do_clause]]}) do
+  def validate_ast({:if, _, [condition, [do: do_clause]]}) do
     with :ok <- validate_ast(condition),
          :ok <- validate_ast(do_clause) do
       :ok
@@ -597,7 +619,7 @@ defmodule Lavash.Rx.Transpiler do
   end
 
   # cond expression
-  defp validate_ast({:cond, _, [[do: clauses]]}) do
+  def validate_ast({:cond, _, [[do: clauses]]}) do
     Enum.reduce_while(clauses, :ok, fn {:->, _, [[condition], result]}, _acc ->
       with :ok <- validate_ast(condition),
            :ok <- validate_ast(result) do
@@ -609,7 +631,7 @@ defmodule Lavash.Rx.Transpiler do
   end
 
   # rem/2
-  defp validate_ast({:rem, _, [left, right]}) do
+  def validate_ast({:rem, _, [left, right]}) do
     with :ok <- validate_ast(left),
          :ok <- validate_ast(right) do
       :ok
@@ -617,30 +639,30 @@ defmodule Lavash.Rx.Transpiler do
   end
 
   # @variable references are always transpilable
-  defp validate_ast({:@, _, [{_var_name, _, _}]}), do: :ok
+  def validate_ast({:@, _, [{_var_name, _, _}]}), do: :ok
 
   # Supported Enum functions
-  defp validate_ast({{:., _, [{:__aliases__, _, [:Enum]}, func]}, _, args})
+  def validate_ast({{:., _, [{:__aliases__, _, [:Enum]}, func]}, _, args})
        when func in [:member?, :count, :join, :map, :filter, :reject, :reverse, :sum, :with_index, :reduce] do
     validate_all_args(args)
   end
 
   # Supported Map functions
-  defp validate_ast({{:., _, [{:__aliases__, _, [:Map]}, :get]}, _, args}) do
+  def validate_ast({{:., _, [{:__aliases__, _, [:Map]}, :get]}, _, args}) do
     validate_all_args(args)
   end
 
   # length/1
-  defp validate_ast({:length, _, [arg]}), do: validate_ast(arg)
+  def validate_ast({:length, _, [arg]}), do: validate_ast(arg)
 
   # humanize/1
-  defp validate_ast({:humanize, _, [arg]}), do: validate_ast(arg)
+  def validate_ast({:humanize, _, [arg]}), do: validate_ast(arg)
 
   # is_nil/1
-  defp validate_ast({:is_nil, _, [arg]}), do: validate_ast(arg)
+  def validate_ast({:is_nil, _, [arg]}), do: validate_ast(arg)
 
   # get_in/2
-  defp validate_ast({:get_in, _, [map, keys]}) do
+  def validate_ast({:get_in, _, [map, keys]}) do
     with :ok <- validate_ast(map),
          :ok <- validate_ast(keys) do
       :ok
@@ -648,20 +670,20 @@ defmodule Lavash.Rx.Transpiler do
   end
 
   # Supported String functions
-  defp validate_ast({{:., _, [{:__aliases__, _, modules}, func]}, _, args})
+  def validate_ast({{:., _, [{:__aliases__, _, modules}, func]}, _, args})
        when modules in [[:String], [:Lavash, :String]] and
             func in [:length, :to_float, :to_integer, :trim, :match?, :contains?, :starts_with?, :ends_with?, :replace, :slice, :chunk, :graphemes, :split] do
     validate_all_args(args)
   end
 
   # Supported Float functions
-  defp validate_ast({{:., _, [{:__aliases__, _, [:Float]}, func]}, _, args})
+  def validate_ast({{:., _, [{:__aliases__, _, [:Float]}, func]}, _, args})
        when func in [:round, :floor, :ceil] do
     validate_all_args(args)
   end
 
   # Binary operators
-  defp validate_ast({op, _, [left, right]})
+  def validate_ast({op, _, [left, right]})
        when op in [:==, :!=, :&&, :||, :and, :or, :>, :<, :>=, :<=, :+, :-, :*, :/, :<>, :++, :in, :|>] do
     with :ok <- validate_ast(left),
          :ok <- validate_ast(right) do
@@ -670,21 +692,21 @@ defmodule Lavash.Rx.Transpiler do
   end
 
   # Unary operators
-  defp validate_ast({op, _, [expr]}) when op in [:not, :!] do
+  def validate_ast({op, _, [expr]}) when op in [:not, :!] do
     validate_ast(expr)
   end
 
   # Dot access (field access)
-  defp validate_ast({{:., _, [_obj, _field]}, _, []}) do
+  def validate_ast({{:., _, [_obj, _field]}, _, []}) do
     :ok
   end
 
-  defp validate_ast({:., _, [obj, _field]}) do
+  def validate_ast({:., _, [obj, _field]}) do
     validate_ast(obj)
   end
 
   # Access syntax
-  defp validate_ast({{:., _, [Access, :get]}, _, [obj, key]}) do
+  def validate_ast({{:., _, [Access, :get]}, _, [obj, key]}) do
     with :ok <- validate_ast(obj),
          :ok <- validate_ast(key) do
       :ok
@@ -692,23 +714,23 @@ defmodule Lavash.Rx.Transpiler do
   end
 
   # Variable reference
-  defp validate_ast({var_name, _, nil}) when is_atom(var_name), do: :ok
-  defp validate_ast({var_name, _, context}) when is_atom(var_name) and is_atom(context), do: :ok
+  def validate_ast({var_name, _, nil}) when is_atom(var_name), do: :ok
+  def validate_ast({var_name, _, context}) when is_atom(var_name) and is_atom(context), do: :ok
 
   # Literals
-  defp validate_ast(str) when is_binary(str), do: :ok
-  defp validate_ast(num) when is_number(num), do: :ok
-  defp validate_ast(bool) when is_boolean(bool), do: :ok
-  defp validate_ast(nil), do: :ok
-  defp validate_ast(atom) when is_atom(atom), do: :ok
+  def validate_ast(str) when is_binary(str), do: :ok
+  def validate_ast(num) when is_number(num), do: :ok
+  def validate_ast(bool) when is_boolean(bool), do: :ok
+  def validate_ast(nil), do: :ok
+  def validate_ast(atom) when is_atom(atom), do: :ok
 
   # List literal
-  defp validate_ast(list) when is_list(list) do
+  def validate_ast(list) when is_list(list) do
     validate_all_args(list)
   end
 
   # Map literal
-  defp validate_ast({:%{}, _, pairs}) when is_list(pairs) do
+  def validate_ast({:%{}, _, pairs}) when is_list(pairs) do
     Enum.reduce_while(pairs, :ok, fn {key, value}, :ok ->
       with :ok <- validate_ast(key),
            :ok <- validate_ast(value) do
@@ -720,7 +742,7 @@ defmodule Lavash.Rx.Transpiler do
   end
 
   # String interpolation
-  defp validate_ast({:<<>>, _, parts}) do
+  def validate_ast({:<<>>, _, parts}) do
     Enum.reduce_while(parts, :ok, fn
       str, :ok when is_binary(str) ->
         {:cont, :ok}
@@ -746,36 +768,36 @@ defmodule Lavash.Rx.Transpiler do
   end
 
   # Anonymous function with single arg (used in Enum.map, etc.)
-  defp validate_ast({:fn, _, [{:->, _, [[_arg], body]}]}) do
+  def validate_ast({:fn, _, [{:->, _, [[_arg], body]}]}) do
     validate_ast(body)
   end
 
   # Anonymous function with two args (used in Enum.reduce, etc.)
-  defp validate_ast({:fn, _, [{:->, _, [[_arg1, _arg2], body]}]}) do
+  def validate_ast({:fn, _, [{:->, _, [[_arg1, _arg2], body]}]}) do
     validate_ast(body)
   end
 
   # Anonymous function with tuple destructuring in reduce (used in Enum.reduce with with_index)
-  defp validate_ast({:fn, _, [{:->, _, [[{_var1, _var2}, _acc], body]}]}) do
+  def validate_ast({:fn, _, [{:->, _, [[{_var1, _var2}, _acc], body]}]}) do
     validate_ast(body)
   end
 
   # Anonymous function with single tuple arg (used in Enum.map with with_index result)
-  defp validate_ast({:fn, _, [{:->, _, [[{_var1, _var2}], body]}]}) do
+  def validate_ast({:fn, _, [{:->, _, [[{_var1, _var2}], body]}]}) do
     validate_ast(body)
   end
 
   # Capture syntax &(&1 == val)
-  defp validate_ast({:&, _, [{op, _, [{:&, _, [1]}, val]}]}) when op in [:==, :!=] do
+  def validate_ast({:&, _, [{op, _, [{:&, _, [1]}, val]}]}) when op in [:==, :!=] do
     validate_ast(val)
   end
 
-  defp validate_ast({:&, _, [_]}) do
+  def validate_ast({:&, _, [_]}) do
     :ok
   end
 
   # Two-element tuples (keyword-like)
-  defp validate_ast({left, right}) do
+  def validate_ast({left, right}) do
     with :ok <- validate_ast(left),
          :ok <- validate_ast(right) do
       :ok
@@ -783,13 +805,13 @@ defmodule Lavash.Rx.Transpiler do
   end
 
   # Generic function call - not supported unless explicitly handled above
-  defp validate_ast({{:., _, [{:__aliases__, _, modules}, func]}, _, _args}) do
+  def validate_ast({{:., _, [{:__aliases__, _, modules}, func]}, _, _args}) do
     module_name = Enum.join(modules, ".")
     {:error, "#{module_name}.#{func}"}
   end
 
   # Local function call - not transpilable
-  defp validate_ast({func, _, args}) when is_atom(func) and is_list(args) do
+  def validate_ast({func, _, args}) when is_atom(func) and is_list(args) do
     if func in [:length, :humanize, :if, :not, :!, :round, :trunc, :floor, :ceil, :abs, :rem, :is_nil, :get_in] do
       validate_all_args(args)
     else
@@ -798,7 +820,7 @@ defmodule Lavash.Rx.Transpiler do
   end
 
   # Fallback - unknown construct
-  defp validate_ast(other) do
+  def validate_ast(other) do
     {:error, inspect(other)}
   end
 

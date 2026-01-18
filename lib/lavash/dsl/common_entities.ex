@@ -294,7 +294,24 @@ defmodule Lavash.Dsl.CommonEntities do
         default: true,
         doc: """
         Whether to transpile to JavaScript for client-side updates.
-        Set to false for expressions that can't be transpiled.
+        Auto-set to false if the expression can't be transpiled.
+        """
+      ],
+      async: [
+        type: :boolean,
+        default: false,
+        doc: """
+        Whether to compute asynchronously. When true, spawns a Task and
+        returns a Phoenix.LiveView.AsyncResult (loading/ok/error states).
+        Async calculations are always server-only (optimistic is ignored).
+        """
+      ],
+      reads: [
+        type: {:list, :atom},
+        default: [],
+        doc: """
+        Ash resources this calculation depends on for PubSub invalidation.
+        When any of these resources change, the calculation is recomputed.
         """
       ]
     ]

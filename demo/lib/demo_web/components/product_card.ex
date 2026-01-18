@@ -15,11 +15,7 @@ defmodule DemoWeb.ProductCard do
   state :expanded, :boolean, from: :socket, default: false
   state :hovered, :boolean, from: :ephemeral, default: false
 
-  derive :show_details do
-    argument :expanded, state(:expanded)
-    argument :hovered, state(:hovered)
-    run fn %{expanded: e, hovered: h}, _ -> e or h end
-  end
+  calculate :show_details, rx(@expanded or @hovered)
 
   actions do
     action :toggle_expand do
