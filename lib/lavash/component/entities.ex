@@ -46,6 +46,8 @@ end
 
 defmodule Lavash.Component.Template do
   @moduledoc """
+  DEPRECATED: Use Lavash.Component.Render instead.
+
   A component template that compiles to both HEEx and JS.
 
   The template source is parsed and transformed during compilation
@@ -53,6 +55,28 @@ defmodule Lavash.Component.Template do
   JavaScript for optimistic updates.
   """
   defstruct [:source, :deprecated_name, __spark_metadata__: nil]
+end
+
+defmodule Lavash.Component.Render do
+  @moduledoc """
+  A render function for LiveViews and Components.
+
+  The render function receives assigns and returns HEEx markup.
+  Used in place of string-based templates for better editor support.
+
+  ## Fields
+
+  - `:template` - The render function (fn assigns -> ~H"..." end)
+
+  ## Usage
+
+      render fn assigns ->
+        ~H\"""
+        <div>{@count}</div>
+        \"""
+      end
+  """
+  defstruct [:template, __spark_metadata__: nil]
 end
 
 defmodule Lavash.Component.Calculate do

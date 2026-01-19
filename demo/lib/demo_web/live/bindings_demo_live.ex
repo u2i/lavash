@@ -35,53 +35,55 @@ defmodule DemoWeb.BindingsDemoLive do
               end
             )
 
-  template """
-  <div class="max-w-4xl mx-auto p-6">
-    <div class="flex items-center justify-between mb-6">
-      <div>
-        <h1 class="text-3xl font-bold">Bindings Demo</h1>
-        <p class="text-gray-500 mt-1">
-          ChipSet component bound to parent :roast state
+  render fn assigns ->
+    ~H"""
+    <div class="max-w-4xl mx-auto p-6">
+      <div class="flex items-center justify-between mb-6">
+        <div>
+          <h1 class="text-3xl font-bold">Bindings Demo</h1>
+          <p class="text-gray-500 mt-1">
+            ChipSet component bound to parent :roast state
+          </p>
+        </div>
+        <a href="/" class="text-indigo-600 hover:text-indigo-800">&larr; Demos</a>
+      </div>
+
+      <div class="bg-gray-50 p-6 rounded-lg mb-6">
+        <h2 class="font-semibold mb-4">Roast Level Filter (Shadow DOM + morphdom)</h2>
+
+        <.live_component
+          module={Lavash.Components.ChipSet}
+          id="roast-filter"
+          bind={[selected: :roast]}
+          selected={@roast}
+          __lavash_parent_version__={@__lavash_parent_version__}
+          values={["light", "medium", "medium_dark", "dark"]}
+          labels={%{"medium_dark" => "Med-Dark"}}
+        />
+      </div>
+
+      <div class="bg-blue-50 p-6 rounded-lg">
+        <h2 class="font-semibold mb-2">State from Parent Graph</h2>
+        <div class="space-y-2">
+          <p class="text-gray-600">
+            Selected roasts: <code class="bg-gray-200 px-2 py-1 rounded">{inspect(@roast)}</code>
+          </p>
+          <p class="text-gray-600">
+            Count (Level 1 calc): <code class="bg-gray-200 px-2 py-1 rounded">{@selected_count}</code>
+          </p>
+          <p class="text-gray-600">
+            Has selection (Level 2 calc): <code class="bg-gray-200 px-2 py-1 rounded">{inspect(@has_selection)}</code>
+          </p>
+          <p class="text-gray-600">
+            Summary (Level 3 calc): <code class="bg-gray-200 px-2 py-1 rounded">{@summary_text}</code>
+          </p>
+        </div>
+        <p class="text-sm text-gray-500 mt-4">
+          The ChipSet component binds its <code>selected</code> to the parent's <code>:roast</code> state.
+          When you toggle chips, the parent state updates and the calculation chain recomputes in order.
         </p>
       </div>
-      <a href="/" class="text-indigo-600 hover:text-indigo-800">&larr; Demos</a>
     </div>
-
-    <div class="bg-gray-50 p-6 rounded-lg mb-6">
-      <h2 class="font-semibold mb-4">Roast Level Filter (Shadow DOM + morphdom)</h2>
-
-      <.live_component
-        module={Lavash.Components.ChipSet}
-        id="roast-filter"
-        bind={[selected: :roast]}
-        selected={@roast}
-        __lavash_parent_version__={@__lavash_parent_version__}
-        values={["light", "medium", "medium_dark", "dark"]}
-        labels={%{"medium_dark" => "Med-Dark"}}
-      />
-    </div>
-
-    <div class="bg-blue-50 p-6 rounded-lg">
-      <h2 class="font-semibold mb-2">State from Parent Graph</h2>
-      <div class="space-y-2">
-        <p class="text-gray-600">
-          Selected roasts: <code class="bg-gray-200 px-2 py-1 rounded">{inspect(@roast)}</code>
-        </p>
-        <p class="text-gray-600">
-          Count (Level 1 calc): <code class="bg-gray-200 px-2 py-1 rounded">{@selected_count}</code>
-        </p>
-        <p class="text-gray-600">
-          Has selection (Level 2 calc): <code class="bg-gray-200 px-2 py-1 rounded">{inspect(@has_selection)}</code>
-        </p>
-        <p class="text-gray-600">
-          Summary (Level 3 calc): <code class="bg-gray-200 px-2 py-1 rounded">{@summary_text}</code>
-        </p>
-      </div>
-      <p class="text-sm text-gray-500 mt-4">
-        The ChipSet component binds its <code>selected</code> to the parent's <code>:roast</code> state.
-        When you toggle chips, the parent state updates and the calculation chain recomputes in order.
-      </p>
-    </div>
-  </div>
-  """
+    """
+  end
 end

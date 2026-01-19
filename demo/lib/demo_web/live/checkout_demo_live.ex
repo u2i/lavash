@@ -257,34 +257,35 @@ defmodule DemoWeb.CheckoutDemoLive do
   # Template
   # ─────────────────────────────────────────────────────────────────
 
-  template """
-  <div id="checkout-demo" data-theme="shopify" class="bg-base-200 min-h-screen">
-    <main class="mx-auto max-w-6xl p-4 lg:p-8">
-      <%= if @submitted do %>
-        <div class="card border border-base-300 bg-base-100 shadow-sm max-w-lg mx-auto">
-          <div class="card-body text-center">
-            <div class="text-6xl mb-4 text-success">✓</div>
-            <h2 class="text-2xl font-bold mb-2">Payment Complete!</h2>
-            <p class="text-base-content/70 mb-4">Thank you for your order.</p>
-            <div class="bg-base-200 rounded-xl p-4 mb-4">
-              <div class="flex justify-between mb-2">
-                <span>Subtotal</span>
-                <span>{@subtotal_display}</span>
+  render fn assigns ->
+    ~H"""
+    <div id="checkout-demo" data-theme="shopify" class="bg-base-200 min-h-screen">
+      <main class="mx-auto max-w-6xl p-4 lg:p-8">
+        <%= if @submitted do %>
+          <div class="card border border-base-300 bg-base-100 shadow-sm max-w-lg mx-auto">
+            <div class="card-body text-center">
+              <div class="text-6xl mb-4 text-success">✓</div>
+              <h2 class="text-2xl font-bold mb-2">Payment Complete!</h2>
+              <p class="text-base-content/70 mb-4">Thank you for your order.</p>
+              <div class="bg-base-200 rounded-xl p-4 mb-4">
+                <div class="flex justify-between mb-2">
+                  <span>Subtotal</span>
+                  <span>{@subtotal_display}</span>
+                </div>
+                <div class="flex justify-between mb-2">
+                  <span>Shipping</span>
+                  <span>{@shipping_display}</span>
+                </div>
+                <div class="divider my-2"></div>
+                <div class="flex justify-between font-bold text-lg">
+                  <span>Total</span>
+                  <span data-lavash-display="total_display">{@total_display}</span>
+                </div>
               </div>
-              <div class="flex justify-between mb-2">
-                <span>Shipping</span>
-                <span>{@shipping_display}</span>
-              </div>
-              <div class="divider my-2"></div>
-              <div class="flex justify-between font-bold text-lg">
-                <span>Total</span>
-                <span data-lavash-display="total_display">{@total_display}</span>
-              </div>
+              <button phx-click="reset" class="btn btn-primary">Start Over</button>
             </div>
-            <button phx-click="reset" class="btn btn-primary">Start Over</button>
           </div>
-        </div>
-      <% else %>
+        <% else %>
         <div class="grid grid-cols-1 gap-6 lg:grid-cols-[1.6fr_1fr]">
           <!-- LEFT COLUMN -->
           <section class="card border border-base-300 bg-base-100 shadow-sm">
@@ -671,7 +672,8 @@ defmodule DemoWeb.CheckoutDemoLive do
         id="address-edit-modal"
         session_id={@session_id}
       />
-    </main>
-  </div>
-  """
+      </main>
+    </div>
+    """
+  end
 end

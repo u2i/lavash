@@ -41,142 +41,144 @@ defmodule DemoWeb.ProductEditLive do
     end
   end
 
-  template """
-  <div class="max-w-2xl mx-auto p-6">
-    <div class="flex items-center justify-between mb-6">
-      <div>
-        <h1 class="text-3xl font-bold">
-          {if @form_action == :create, do: "New Product", else: "Edit Product"}
-        </h1>
-        <p class="text-gray-500 mt-1">Form handling with Lavash + Ash changesets</p>
+  render fn assigns ->
+    ~H"""
+    <div class="max-w-2xl mx-auto p-6">
+      <div class="flex items-center justify-between mb-6">
+        <div>
+          <h1 class="text-3xl font-bold">
+            {if @form_action == :create, do: "New Product", else: "Edit Product"}
+          </h1>
+          <p class="text-gray-500 mt-1">Form handling with Lavash + Ash changesets</p>
+        </div>
+        <a href="/products" class="text-indigo-600 hover:text-indigo-800">&larr; Back to Products</a>
       </div>
-      <a href="/products" class="text-indigo-600 hover:text-indigo-800">&larr; Back to Products</a>
-    </div>
 
-    <.async_result :let={form} assign={@form}>
-      <:loading>
-        <div class="bg-white rounded-lg shadow p-6">
-          <div class="animate-pulse">
-            <div class="h-4 bg-gray-200 rounded w-1/4 mb-4"></div>
-            <div class="h-10 bg-gray-200 rounded mb-4"></div>
-            <div class="h-4 bg-gray-200 rounded w-1/4 mb-4"></div>
-            <div class="h-10 bg-gray-200 rounded mb-4"></div>
+      <.async_result :let={form} assign={@form}>
+        <:loading>
+          <div class="bg-white rounded-lg shadow p-6">
+            <div class="animate-pulse">
+              <div class="h-4 bg-gray-200 rounded w-1/4 mb-4"></div>
+              <div class="h-10 bg-gray-200 rounded mb-4"></div>
+              <div class="h-4 bg-gray-200 rounded w-1/4 mb-4"></div>
+              <div class="h-10 bg-gray-200 rounded mb-4"></div>
+            </div>
           </div>
-        </div>
-      </:loading>
-      <:failed :let={_reason}>
-        <div class="bg-white rounded-lg shadow p-6 text-center">
-          <p class="text-gray-500 text-lg">Product not found</p>
-          <a href="/products" class="mt-4 inline-block text-indigo-600 hover:text-indigo-800">
-            Back to Products
-          </a>
-        </div>
-      </:failed>
-      <div class="bg-white rounded-lg shadow p-6">
-        <.form for={form} phx-change="validate" phx-submit="save" class="space-y-4">
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Name</label>
-            <input
-              type="text"
-              name={form[:name].name}
-              value={form[:name].value}
-              class={[
-                "input input-bordered w-full",
-                form[:name].errors != [] && "input-error"
-              ]}
-            />
-            <.error :for={error <- form[:name].errors}>{translate_error(error)}</.error>
-          </div>
-
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Category</label>
-            <input
-              type="text"
-              name={form[:category].name}
-              value={form[:category].value}
-              class={[
-                "input input-bordered w-full",
-                form[:category].errors != [] && "input-error"
-              ]}
-            />
-            <.error :for={error <- form[:category].errors}>{translate_error(error)}</.error>
-          </div>
-
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Price</label>
-            <input
-              type="number"
-              step="0.01"
-              name={form[:price].name}
-              value={form[:price].value}
-              class={[
-                "input input-bordered w-full",
-                form[:price].errors != [] && "input-error"
-              ]}
-            />
-            <.error :for={error <- form[:price].errors}>{translate_error(error)}</.error>
-          </div>
-
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Rating</label>
-            <input
-              type="number"
-              step="0.1"
-              min="0"
-              max="5"
-              name={form[:rating].name}
-              value={form[:rating].value}
-              class="input input-bordered w-full"
-            />
-          </div>
-
-          <div class="flex items-center gap-2">
-            <input
-              type="checkbox"
-              name={form[:in_stock].name}
-              value="true"
-              checked={form[:in_stock].value == true}
-              class="checkbox"
-            />
-            <label class="text-sm font-medium text-gray-700">In Stock</label>
-          </div>
-
-          <div class="flex gap-4 pt-4">
-            <button
-              type="submit"
-              disabled={@submitting}
-              class={["btn btn-primary", @submitting && "btn-disabled"]}
-            >
-              {cond do
-                @submitting -> "Saving..."
-                @form_action == :create -> "Create Product"
-                true -> "Save Changes"
-              end}
-            </button>
-            <a href="/products" class="btn btn-outline">
-              Cancel
+        </:loading>
+        <:failed :let={_reason}>
+          <div class="bg-white rounded-lg shadow p-6 text-center">
+            <p class="text-gray-500 text-lg">Product not found</p>
+            <a href="/products" class="mt-4 inline-block text-indigo-600 hover:text-indigo-800">
+              Back to Products
             </a>
           </div>
-        </.form>
-      </div>
+        </:failed>
+        <div class="bg-white rounded-lg shadow p-6">
+          <.form for={form} phx-change="validate" phx-submit="save" class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Name</label>
+              <input
+                type="text"
+                name={form[:name].name}
+                value={form[:name].value}
+                class={[
+                  "input input-bordered w-full",
+                  form[:name].errors != [] && "input-error"
+                ]}
+              />
+              <.error :for={error <- form[:name].errors}>{translate_error(error)}</.error>
+            </div>
 
-  <!-- Debug info -->
-      <div class="mt-6 bg-gray-100 rounded-lg p-4">
-        <h3 class="font-medium mb-2">State Debug</h3>
-        <dl class="text-sm space-y-1">
-          <div class="flex gap-2">
-            <dt class="text-gray-500">product_id:</dt>
-            <dd class="font-mono">{@product_id}</dd>
-          </div>
-          <div class="flex gap-2">
-            <dt class="text-gray-500">submitting:</dt>
-            <dd class="font-mono">{@submitting}</dd>
-          </div>
-        </dl>
-      </div>
-    </.async_result>
-  </div>
-  """
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Category</label>
+              <input
+                type="text"
+                name={form[:category].name}
+                value={form[:category].value}
+                class={[
+                  "input input-bordered w-full",
+                  form[:category].errors != [] && "input-error"
+                ]}
+              />
+              <.error :for={error <- form[:category].errors}>{translate_error(error)}</.error>
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Price</label>
+              <input
+                type="number"
+                step="0.01"
+                name={form[:price].name}
+                value={form[:price].value}
+                class={[
+                  "input input-bordered w-full",
+                  form[:price].errors != [] && "input-error"
+                ]}
+              />
+              <.error :for={error <- form[:price].errors}>{translate_error(error)}</.error>
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Rating</label>
+              <input
+                type="number"
+                step="0.1"
+                min="0"
+                max="5"
+                name={form[:rating].name}
+                value={form[:rating].value}
+                class="input input-bordered w-full"
+              />
+            </div>
+
+            <div class="flex items-center gap-2">
+              <input
+                type="checkbox"
+                name={form[:in_stock].name}
+                value="true"
+                checked={form[:in_stock].value == true}
+                class="checkbox"
+              />
+              <label class="text-sm font-medium text-gray-700">In Stock</label>
+            </div>
+
+            <div class="flex gap-4 pt-4">
+              <button
+                type="submit"
+                disabled={@submitting}
+                class={["btn btn-primary", @submitting && "btn-disabled"]}
+              >
+                {cond do
+                  @submitting -> "Saving..."
+                  @form_action == :create -> "Create Product"
+                  true -> "Save Changes"
+                end}
+              </button>
+              <a href="/products" class="btn btn-outline">
+                Cancel
+              </a>
+            </div>
+          </.form>
+        </div>
+
+        <!-- Debug info -->
+        <div class="mt-6 bg-gray-100 rounded-lg p-4">
+          <h3 class="font-medium mb-2">State Debug</h3>
+          <dl class="text-sm space-y-1">
+            <div class="flex gap-2">
+              <dt class="text-gray-500">product_id:</dt>
+              <dd class="font-mono">{@product_id}</dd>
+            </div>
+            <div class="flex gap-2">
+              <dt class="text-gray-500">submitting:</dt>
+              <dd class="font-mono">{@submitting}</dd>
+            </div>
+          </dl>
+        </div>
+      </.async_result>
+    </div>
+    """
+  end
 
   defp translate_error({msg, opts}) when is_list(opts) do
     Enum.reduce(opts, msg, fn {key, value}, acc ->
