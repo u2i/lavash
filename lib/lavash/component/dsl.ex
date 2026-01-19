@@ -236,6 +236,7 @@ defmodule Lavash.Component.Dsl do
 
   # Use shared action sub-entities
   @set_entity CommonEntities.set_entity()
+  @run_entity CommonEntities.run_entity()
   @update_entity CommonEntities.update_entity()
   @effect_entity CommonEntities.effect_entity()
   @submit_entity CommonEntities.submit_entity()
@@ -259,6 +260,7 @@ defmodule Lavash.Component.Dsl do
     args: [:name, {:optional, :params}, {:optional, :when}],
     entities: [
       sets: [@set_entity],
+      runs: [@run_entity],
       updates: [@update_entity],
       effects: [@effect_entity],
       submits: [@submit_entity],

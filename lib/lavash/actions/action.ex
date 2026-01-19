@@ -3,8 +3,9 @@ defmodule Lavash.Actions.Action do
   An action that transforms state in response to events.
 
   Actions can contain:
-  - `set` - Set a state field to a value
-  - `update` - Update a state field with a function
+  - `set` - Set a state field to a value using @field syntax
+  - `run` - Execute a function that returns updated assigns
+  - `update` - (deprecated) Update a state field with a function
   - `effect` - Run a side effect
   - `submit` - Submit a form (async, with on_error branching)
   - `navigate` - Navigate to a URL on success
@@ -14,8 +15,10 @@ defmodule Lavash.Actions.Action do
   defstruct [
     :name,
     :params,
+    :reads,
     :when,
     :sets,
+    :runs,
     :updates,
     :effects,
     :submits,

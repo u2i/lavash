@@ -87,6 +87,134 @@ defmodule Lavash.Rx.Transpiler do
   end
 
   @doc """
+  Transpiles a run function body to JavaScript statements.
+
+  This handles the `run [:reads], fn assigns -> ... end` pattern, where:
+  - `assigns.field` accesses → `state.field`
+  - `x = expr` bindings → `const x = expr;`
+  - `assign(assigns, :field, value)` → adds to return object
+  - Piped assigns with multiple `assign/3` calls → combined return object
+
+  Returns a tuple of `{statements, return_expr}` where statements is a list
+  of JS statements (const declarations) and return_expr is the return object.
+
+  ## Examples
+
+      # Simple case
+      iex> body = quote do
+      ...>   discount = assigns.subtotal * assigns.discount_rate
+      ...>   assigns |> assign(:discount_amount, discount) |> assign(:total, assigns.subtotal - discount)
+      ...> end
+      iex> Lavash.Rx.Transpiler.transpile_run_body(body)
+      {["const discount = (state.subtotal * state.discount_rate);"],
+       "{discount_amount: discount, total: (state.subtotal - discount)}"}
+  """
+  @spec transpile_run_body(Macro.t()) :: {[String.t()], String.t()}
+  def transpile_run_body(ast) do
+    # Handle __block__ for multiple statements, or single expression
+    statements = case ast do
+      {:__block__, _, stmts} -> stmts
+      single -> [single]
+    end
+
+    # Separate variable bindings from the final return expression
+    {bindings, final_expr} = extract_bindings_and_return(statements)
+
+    # Transpile variable bindings to const declarations
+    js_bindings = Enum.map(bindings, fn {var, expr} ->
+      "const #{var} = #{ast_to_js_with_assigns(expr)};"
+    end)
+
+    # Extract assign calls from the final expression
+    assigns_map = extract_assigns(final_expr)
+
+    # Build return object
+    return_obj = if map_size(assigns_map) > 0 do
+      pairs = Enum.map(assigns_map, fn {field, value_ast} ->
+        "#{field}: #{ast_to_js_with_assigns(value_ast)}"
+      end)
+      "{#{Enum.join(pairs, ", ")}}"
+    else
+      # Fallback: transpile the whole final expression
+      ast_to_js_with_assigns(final_expr)
+    end
+
+    {js_bindings, return_obj}
+  end
+
+  # Extract variable bindings from statements, leaving the final return expression
+  defp extract_bindings_and_return(statements) do
+    {bindings, [final | _]} = Enum.split(statements, length(statements) - 1)
+
+    parsed_bindings = Enum.flat_map(bindings, fn
+      {:=, _, [{var_name, _, nil}, expr]} when is_atom(var_name) ->
+        [{to_string(var_name), expr}]
+      {:=, _, [{var_name, _, ctx}, expr]} when is_atom(var_name) and is_atom(ctx) ->
+        [{to_string(var_name), expr}]
+      _ ->
+        []
+    end)
+
+    {parsed_bindings, final}
+  end
+
+  # Extract assign calls from piped expression or direct calls
+  # Returns a map of field -> value_ast
+  defp extract_assigns(ast) do
+    extract_assigns(ast, %{})
+  end
+
+  # Pipe chain: assigns |> assign(:field, value) |> assign(:field2, value2)
+  defp extract_assigns({:|>, _, [left, right]}, acc) do
+    acc = extract_assigns(left, acc)
+    extract_assigns(right, acc)
+  end
+
+  # Direct assign call: assign(assigns, :field, value)
+  defp extract_assigns({{:., _, [{:__aliases__, _, [:Phoenix, :Component]}, :assign]}, _, [_assigns, field, value]}, acc) when is_atom(field) do
+    Map.put(acc, field, value)
+  end
+
+  defp extract_assigns({{:., _, [Phoenix.Component, :assign]}, _, [_assigns, field, value]}, acc) when is_atom(field) do
+    Map.put(acc, field, value)
+  end
+
+  # Kernel-style assign call (imported): assign(assigns, :field, value)
+  defp extract_assigns({:assign, _, [_assigns, field, value]}, acc) when is_atom(field) do
+    Map.put(acc, field, value)
+  end
+
+  # Piped assign: |> assign(:field, value)
+  defp extract_assigns({:assign, _, [field, value]}, acc) when is_atom(field) do
+    Map.put(acc, field, value)
+  end
+
+  # Base case: assigns variable (start of pipe)
+  defp extract_assigns({:assigns, _, _}, acc), do: acc
+
+  # Anything else: return accumulated assigns
+  defp extract_assigns(_, acc), do: acc
+
+  # Transpile AST to JS, treating `assigns.field` as `state.field`
+  defp ast_to_js_with_assigns(ast) do
+    ast
+    |> transform_assigns_to_state()
+    |> ast_to_js()
+  end
+
+  # Transform assigns.field to @field for standard transpilation
+  defp transform_assigns_to_state(ast) do
+    Macro.prewalk(ast, fn
+      # assigns.field -> @field
+      {{:., _, [{:assigns, _, _}, field]}, _, []} when is_atom(field) ->
+        {:@, [], [{field, [], nil}]}
+
+      other ->
+        other
+    end)
+  end
+
+  @doc """
   Translates an Elixir AST to JavaScript.
 
   This is the lower-level function that works directly with AST.

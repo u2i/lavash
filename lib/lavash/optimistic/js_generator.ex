@@ -235,7 +235,8 @@ defmodule Lavash.Optimistic.JsGenerator do
 
   # An action is optimistic if:
   # 1. It has no side effects (no submits, navigates, effects, invokes)
-  # 2. It only uses set/update on optimistic fields
+  # 2. It only uses set/update/run on optimistic fields
+  # 3. For runs, the action must have `reads` declared for transpilation
   defp action_is_optimistic?(action) do
     has_side_effects =
       (action.submits || []) != [] or
@@ -243,7 +244,14 @@ defmodule Lavash.Optimistic.JsGenerator do
       (action.effects || []) != [] or
       (action.invokes || []) != []
 
-    has_operations = (action.sets || []) != [] or (action.updates || []) != []
+    has_set_or_update = (action.sets || []) != [] or (action.updates || []) != []
+
+    # Check if action has runs with reads declared at action level
+    runs = action.runs || []
+    reads = action.reads || []
+    has_transpilable_runs = runs != [] and reads != []
+
+    has_operations = has_set_or_update or has_transpilable_runs
 
     !has_side_effects and has_operations
   end
@@ -252,41 +260,140 @@ defmodule Lavash.Optimistic.JsGenerator do
     name = action.name
     sets = action.sets || []
     updates = action.updates || []
+    runs = action.runs || []
     params = action.params || []
+    reads = action.reads || []
 
     # Check if we can generate this action
     # We can only generate actions where values/fns are simple transformations
     set_exprs = Enum.map(sets, &generate_set_js/1)
     update_exprs = Enum.map(updates, &generate_update_js/1)
 
-    all_exprs = set_exprs ++ update_exprs
+    # Handle runs - they may return statements + return object pairs
+    # Pass action-level reads to determine if transpilation is possible
+    run_results = Enum.map(runs, &generate_run_js(&1, reads))
 
-    # If any expression is nil (not generatable), skip this action
-    if Enum.any?(all_exprs, &is_nil/1) do
+    # Check if any run returned nil (not transpilable) or all sets/updates are nil
+    all_simple_exprs = set_exprs ++ update_exprs
+    run_failed = Enum.any?(run_results, fn
+      {:ok, _statements, _return_parts} -> false
+      nil -> true
+    end)
+
+    if Enum.any?(all_simple_exprs, &is_nil/1) or run_failed do
       nil
     else
-      expr_pairs = Enum.join(all_exprs, ", ")
+      # Collect all JS statements from runs
+      all_statements = Enum.flat_map(run_results, fn
+        {:ok, statements, _return_parts} -> statements
+        _ -> []
+      end)
+
+      # Collect all return parts from runs
+      run_return_parts = Enum.flat_map(run_results, fn
+        {:ok, _statements, return_parts} -> return_parts
+        _ -> []
+      end)
+
+      # Combine all return expressions
+      all_return_exprs = all_simple_exprs ++ run_return_parts
+      expr_pairs = Enum.join(all_return_exprs, ", ")
 
       # Include value param if action has params
       param_str = if params != [], do: ", value", else: ""
 
-      """
-        #{name}(state#{param_str}) {
-          return { #{expr_pairs} };
-        }
-      """
+      if all_statements == [] do
+        # Simple case: just return object
+        """
+          #{name}(state#{param_str}) {
+            return { #{expr_pairs} };
+          }
+        """
+      else
+        # Complex case: statements before return
+        statements_str = Enum.join(all_statements, "\n    ")
+        """
+          #{name}(state#{param_str}) {
+            #{statements_str}
+            return { #{expr_pairs} };
+          }
+        """
+      end
+    end
+  end
+
+  # Generate JS for a run operation
+  # Transpilable when action has reads declared
+  # Returns {:ok, statements, return_parts} or nil
+  defp generate_run_js(run, action_reads) do
+    if action_reads != [] do
+      # Extract function body from AST: {:fn, _, [{:->, _, [[_arg], body]}]}
+      case run.fun do
+        {:fn, _, [{:->, _, [[_arg], body]}]} ->
+          # Use the transpiler to convert the body to JS
+          case transpile_run_body_to_js(body) do
+            {:ok, js_statements, return_obj} ->
+              # Parse the return object to extract individual field assignments
+              # return_obj is like "{count: 0, multiplier: 2}"
+              # We need to extract the inner parts: "count: 0, multiplier: 2"
+              return_parts = parse_return_object(return_obj)
+              {:ok, js_statements, return_parts}
+
+            {:error, _reason} ->
+              nil
+          end
+
+        _ ->
+          # Unexpected AST format
+          nil
+      end
+    else
+      # Action without reads - runs cannot be transpiled
+      nil
+    end
+  end
+
+  # Parse a JS return object like "{count: 0, multiplier: 2}" into parts
+  defp parse_return_object(return_obj) do
+    # Remove surrounding braces and split into individual assignments
+    inner = return_obj
+            |> String.trim()
+            |> String.trim_leading("{")
+            |> String.trim_trailing("}")
+            |> String.trim()
+
+    if inner == "" do
+      []
+    else
+      [inner]
+    end
+  end
+
+  # Transpile a run function body to JS statements and return expression
+  defp transpile_run_body_to_js(body) do
+    try do
+      {statements, return_obj} = Lavash.Rx.Transpiler.transpile_run_body(body)
+      {:ok, statements, return_obj}
+    rescue
+      _ -> {:error, :transpilation_failed}
     end
   end
 
   # Generate JS for a set operation
-  # We can only generate JS for:
+  # We can generate JS for:
   # 1. Literal values: set :count, 0
-  # 2. Functions that access params.value: set :count, &String.to_integer(&1.params.value)
+  # 2. rx() expressions: set :count, rx(@count + 1)
+  # 3. Functions that access params.value: set :count, &String.to_integer(&1.params.value) (legacy)
   defp generate_set_js(set) do
     field = set.field
     value = set.value
 
     case analyze_value(value) do
+      {:rx, source} ->
+        # rx() expression - transpile to JS
+        js_expr = Lavash.Rx.Transpiler.to_js(source)
+        "#{field}: #{js_expr}"
+
       {:literal, v} ->
         "#{field}: #{Jason.encode!(v)}"
 
@@ -319,6 +426,10 @@ defmodule Lavash.Optimistic.JsGenerator do
   end
 
   # Analyze a value to see if we can generate JS for it
+  defp analyze_value(%Lavash.Rx{source: source}) do
+    {:rx, source}
+  end
+
   defp analyze_value(value) when is_number(value) or is_binary(value) or is_boolean(value) do
     {:literal, value}
   end

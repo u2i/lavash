@@ -5,7 +5,8 @@ defmodule Lavash.Action.Runtime do
   This module contains the common logic for executing actions:
   - `guards_pass?/3` - Check if action guards are satisfied
   - `apply_sets/4` - Apply set operations to state
-  - `apply_updates/3` - Apply update operations to state
+  - `apply_runs/4` - Apply run operations (fn assigns -> assigns end)
+  - `apply_updates/3` - Apply update operations to state (deprecated)
   - `apply_effects/3` - Execute side effect functions
   - `coerce_value/2` - Coerce values to declared types
 
@@ -31,7 +32,8 @@ defmodule Lavash.Action.Runtime do
 
   Each set has a field and a value. The value can be:
   - A literal value
-  - A function that receives `%{params: params, state: state}`
+  - An rx() struct (reactive expression with @field syntax)
+  - A function that receives `%{params: params, state: state}` (legacy)
 
   Values are coerced to the field's declared type.
   """
@@ -39,14 +41,7 @@ defmodule Lavash.Action.Runtime do
     states = module.__lavash__(:states)
 
     Enum.reduce(sets, socket, fn set, sock ->
-      value =
-        case set.value do
-          fun when is_function(fun, 1) ->
-            fun.(%{params: params, state: LSocket.state(sock)})
-
-          value ->
-            value
-        end
+      value = evaluate_set_value(set.value, sock, params)
 
       # Coerce value to the field's declared type
       state_field = Enum.find(states, &(&1.name == set.field))
@@ -54,6 +49,72 @@ defmodule Lavash.Action.Runtime do
 
       LSocket.put_state(sock, set.field, coerced)
     end)
+  end
+
+  # Evaluate a set value based on its type
+  defp evaluate_set_value(%Lavash.Rx{ast: ast}, sock, params) do
+    # Build state map from socket state + params (same as template assigns)
+    state = Map.merge(LSocket.state(sock), params)
+    {result, _} = Code.eval_quoted(ast, [state: state], __ENV__)
+    result
+  end
+
+  defp evaluate_set_value(fun, sock, params) when is_function(fun, 1) do
+    # Legacy function format: fn %{params: params, state: state} -> value end
+    fun.(%{params: params, state: LSocket.state(sock)})
+  end
+
+  defp evaluate_set_value(literal, _sock, _params) do
+    # Literal value
+    literal
+  end
+
+  @doc """
+  Apply run operations to state.
+
+  Each run has a function (as quoted AST) that receives an assigns map (state + params merged)
+  and returns updated assigns using Phoenix.Component.assign/3.
+
+  This enables proper change tracking via the assigns mechanism.
+  """
+  def apply_runs(socket, runs, params, _module) do
+    Enum.reduce(runs || [], socket, fn run, sock ->
+      state = LSocket.state(sock)
+      assigns = Map.merge(state, params) |> Map.put(:__changed__, %{})
+
+      # Compile and execute the function from its AST
+      fun = compile_run_fun(run.fun)
+      updated_assigns = fun.(assigns)
+
+      # Extract changed fields and apply them to socket
+      changed = Map.get(updated_assigns, :__changed__, %{})
+
+      Enum.reduce(changed, sock, fn {field, true}, acc_sock ->
+        value = Map.get(updated_assigns, field)
+        LSocket.put_state(acc_sock, field, value)
+      end)
+    end)
+  end
+
+  # Compile a function from its quoted AST
+  # Caches compiled functions for performance
+  defp compile_run_fun(fun_ast) when is_function(fun_ast, 1) do
+    # Already compiled (legacy support)
+    fun_ast
+  end
+
+  defp compile_run_fun(fun_ast) do
+    # Fun AST is in the form {:fn, _, [{:->, _, [[arg], body]}]}
+    # We need to eval it with Phoenix.Component imported for assign/3
+    # Wrap the AST with an import statement
+    wrapped_ast =
+      quote do
+        import Phoenix.Component, only: [assign: 3]
+        unquote(fun_ast)
+      end
+
+    {fun, _bindings} = Code.eval_quoted(wrapped_ast, [], __ENV__)
+    fun
   end
 
   @doc """

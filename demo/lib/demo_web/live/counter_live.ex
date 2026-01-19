@@ -12,24 +12,29 @@ defmodule DemoWeb.CounterLive do
 
   actions do
     action :increment do
-      update :count, &(&1 + 1)
+      set :count, rx(@count + 1)
     end
 
     action :decrement do
-      update :count, &(&1 - 1)
+      set :count, rx(@count - 1)
     end
 
     action :set_count, [:amount] do
-      set :count, &String.to_integer(&1.params.amount)
+      set :count, rx(String.to_integer(@amount))
     end
 
     action :set_multiplier, [:value] do
-      set :multiplier, &String.to_integer(&1.params.value)
+      set :multiplier, rx(String.to_integer(@value))
     end
 
+    # Using reads + run for multi-field transpilable updates
     action :reset do
-      set :count, 0
-      set :multiplier, 2
+      reads [:count, :multiplier]
+      run fn assigns ->
+        assigns
+        |> assign(:count, 0)
+        |> assign(:multiplier, 2)
+      end
     end
   end
 

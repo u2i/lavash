@@ -500,6 +500,7 @@ defmodule Lavash.Component.Runtime do
       socket =
         socket
         |> ActionRuntime.apply_sets(action.sets || [], params, module)
+        |> ActionRuntime.apply_runs(action.runs || [], params, module)
         |> ActionRuntime.apply_updates(action.updates || [], params)
         |> ActionRuntime.apply_effects(action.effects || [], params)
 
