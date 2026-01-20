@@ -20,7 +20,7 @@ defmodule DemoWeb.AddressEditModal do
   use Lavash.Component, extensions: [Lavash.Overlay.Modal.Dsl]
 
   alias DemoWeb.CoreComponents
-  import Lavash.LiveView.Components, only: [input: 1]
+  import Lavash.LiveView.Components, only: [input: 1, select: 1]
   import Lavash.Overlay.Modal.Helpers, only: [modal_close_button: 1]
 
   alias Demo.Forms.Address
@@ -49,11 +49,11 @@ defmodule DemoWeb.AddressEditModal do
 
       <.form for={@address_form} phx-change="validate" phx-submit="save" phx-target={@myself} class="space-y-4">
         <!-- Country dropdown -->
-        <CoreComponents.input
+        <.select
           field={@address_form[:country]}
-          type="select"
           label="Country/Region"
           options={[{"United States", "United States"}, {"Canada", "Canada"}]}
+          prompt="Select..."
         />
 
         <!-- Name row -->
@@ -100,9 +100,8 @@ defmodule DemoWeb.AddressEditModal do
             errors={@address_form_city_errors}
             show_errors={assigns[:address_form_city_show_errors]}
           />
-          <CoreComponents.input
+          <.select
             field={@address_form[:state]}
-            type="select"
             label="State"
             options={us_states()}
             prompt="Select..."
@@ -155,7 +154,6 @@ defmodule DemoWeb.AddressEditModal do
     end
   end
 
-  # US states for dropdown
   defp us_states do
     [
       {"Alabama", "AL"},

@@ -229,4 +229,98 @@ defmodule Lavash.LiveView.Components do
       true -> ""
     end
   end
+
+  @doc """
+  Renders a select dropdown with label and optimistic validation.
+
+  ## Examples
+
+      <.select field={@form[:country]} label="Country" options={[{"US", "us"}, {"Canada", "ca"}]} />
+
+      <.select field={@form[:state]} label="State" options={us_states()} prompt="Select..." />
+  """
+  attr :field, Phoenix.HTML.FormField,
+    required: true,
+    doc: "The form field from `@form[:field]`"
+
+  attr :label, :string,
+    required: true,
+    doc: "The label text"
+
+  attr :options, :list,
+    required: true,
+    doc: "List of {label, value} tuples for the options"
+
+  attr :prompt, :string,
+    default: nil,
+    doc: "Optional prompt text for the first empty option"
+
+  attr :valid, :boolean,
+    default: nil,
+    doc: "Validation state. If nil, derives from form_field_valid assign"
+
+  attr :valid_field, :string,
+    default: nil,
+    doc: "Custom valid field name for JS"
+
+  attr :errors, :list,
+    default: nil,
+    doc: "Error list. If nil, derives from form_field_errors assign"
+
+  attr :show_errors, :boolean,
+    default: nil,
+    doc: "Whether to show errors"
+
+  attr :class, :string,
+    default: nil,
+    doc: "Additional CSS classes for the select"
+
+  attr :wrapper_class, :string,
+    default: nil,
+    doc: "Additional CSS classes for the wrapper div"
+
+  attr :rest, :global,
+    include: ~w(autocomplete disabled form required),
+    doc: "Additional HTML attributes for the select"
+
+  def select(assigns) do
+    assigns = prepare_field_assigns(assigns)
+
+    # Selects always show the label in floated position (like Bootstrap 5)
+    # because they always display text content.
+    # We use inline style to force the span to floated position since
+    # DaisyUI's :placeholder-shown CSS doesn't work for selects.
+    ~H"""
+    <div class={@wrapper_class}>
+      <label class="floating-label w-full">
+        <select
+          name={@field.name}
+          data-lavash-bind={"#{@form_str}_params.#{@field_str}"}
+          data-lavash-form={@form_str}
+          data-lavash-field={@field_str}
+          data-lavash-valid={@lavash_valid_field}
+          class={["select select-bordered w-full", select_validation_class(assigns), @class]}
+          {@rest}
+        >
+          <option :if={@prompt} value="" disabled selected={is_nil(@field.value) or @field.value == ""}>{@prompt}</option>
+          <option :for={{label, value} <- @options} value={value} selected={@field.value == value}>
+            {label}
+          </option>
+        </select>
+        <span style="opacity: 100%; top: 0; translate: -12.5% calc(-50% - 0.125em); scale: 0.75; pointer-events: auto;">
+          {@label}
+        </span>
+      </label>
+      <.field_errors form={@form_name} field={@field_name} errors={@errors || []} />
+    </div>
+    """
+  end
+
+  defp select_validation_class(assigns) do
+    cond do
+      not (assigns.show_errors || false) -> ""
+      assigns.valid == false -> "select-error"
+      true -> ""
+    end
+  end
 end
