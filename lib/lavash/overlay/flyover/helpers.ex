@@ -234,9 +234,12 @@ defmodule Lavash.Overlay.Flyover.Helpers do
       # Get the async assign value
       async_value = Map.get(assigns.assigns, assigns.async_assign)
 
+      async_assign_field = assigns.async_assign
+
       assigns =
         assigns
         |> assign(:async_value, async_value)
+        |> assign(:async_assign_field, async_assign_field)
         |> assign(:inner_assigns, assigns.assigns)
         |> assign(:render_fn, assigns.render)
 
@@ -247,7 +250,7 @@ defmodule Lavash.Overlay.Flyover.Helpers do
       ~H"""
       <.async_result :let={data} assign={@async_value}>
         <:loading></:loading>
-        <% render_assigns = assign(@inner_assigns, :form, data) %>
+        <% render_assigns = assign(@inner_assigns, @async_assign_field, data) %>
         {@render_fn.(render_assigns)}
       </.async_result>
       """

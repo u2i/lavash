@@ -42,6 +42,9 @@ defmodule DemoWeb.CheckoutDemoLive do
   # Selected address ID (nil = use default address)
   state :selected_address_id, :string, from: :ephemeral, default: nil, optimistic: true
 
+  # Address modal state: nil | :create | {:edit, id}
+  state :address_modal, :any, from: :ephemeral, default: nil, optimistic: true
+
   # Order data (would come from cart in real app)
   state :subtotal, :decimal, from: :ephemeral, default: Decimal.new("20.00"), optimistic: false
   state :shipping, :decimal, from: :ephemeral, default: Decimal.new("8.00"), optimistic: false
@@ -251,6 +254,15 @@ defmodule DemoWeb.CheckoutDemoLive do
     action :select_address, [:id] do
       set :selected_address_id, &(&1.params.id)
     end
+
+    # Address modal actions
+    action :add_address do
+      set :address_modal, :create
+    end
+
+    action :edit_address, [:id] do
+      set :address_modal, &{:edit, &1.params.id}
+    end
   end
 
   # ─────────────────────────────────────────────────────────────────
@@ -371,13 +383,20 @@ defmodule DemoWeb.CheckoutDemoLive do
                           <div class="text-sm opacity-70">{address.city}, {address.state} {address.zip}, US</div>
                         </div>
                       </div>
+                      <button
+                        class="btn btn-ghost btn-sm text-base-content/70 hover:text-primary"
+                        phx-click="edit_address"
+                        phx-value-id={address.id}
+                      >
+                        Edit
+                      </button>
                     </div>
                   <% end %>
                 </div>
 
                 <a
                   class="link link-primary inline-flex items-center gap-2 text-sm font-semibold cursor-pointer"
-                  phx-click={Phoenix.LiveView.JS.dispatch("open-panel", to: "#address-edit-modal-modal", detail: %{open: true})}
+                  phx-click="add_address"
                 >
                   <span class="text-lg leading-none">＋</span>
                   Add a new address
@@ -671,6 +690,8 @@ defmodule DemoWeb.CheckoutDemoLive do
         module={DemoWeb.AddressEditModal}
         id="address-edit-modal"
         session_id={@session_id}
+        open={@address_modal}
+        bind={[open: :address_modal]}
       />
       </main>
     </div>

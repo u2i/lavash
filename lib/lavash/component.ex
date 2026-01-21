@@ -73,42 +73,17 @@ defmodule Lavash.Component do
   @impl Spark.Dsl
   def handle_opts(opts) do
     quote do
-      use Phoenix.LiveComponent, unquote(Keyword.drop(opts, [:extensions]))
+      # Replicate Phoenix.LiveComponent's __using__ but override sigil_H
+      import Phoenix.LiveView
+      @behaviour Phoenix.LiveComponent
+      @before_compile Phoenix.LiveView.Renderer
+      use Phoenix.Component, Keyword.merge([global_prefixes: []], Keyword.take(unquote(opts), [:global_prefixes]))
 
-      require Phoenix.Component
-      import Phoenix.Component
+      @doc false
+      def __live__, do: %{kind: :component, layout: false}
 
-      # Define ~L sigil for Lavash-enhanced HEEx templates
-      # Uses Lavash.TagEngine with token transformer for unified processing
-      defmacro sigil_L({:<<>>, _meta, [template]}, _modifiers) when is_binary(template) do
-        caller = __CALLER__
-        module = caller.module
-
-        # Get metadata for token transformation (component context)
-        metadata =
-          try do
-            case Lavash.Sigil.get_compile_time_metadata(module) do
-              nil -> %{context: :component}
-              m -> Map.put(m, :context, :component)
-            end
-          rescue
-            _ -> %{context: :component}
-          end
-
-        # Compile with Lavash.TagEngine and token transformer
-        opts = [
-          engine: Lavash.TagEngine,
-          file: caller.file,
-          line: caller.line + 1,
-          caller: caller,
-          source: template,
-          tag_handler: Phoenix.LiveView.HTMLEngine,
-          token_transformer: Lavash.Template.TokenTransformer,
-          lavash_metadata: metadata
-        ]
-
-        EEx.compile_string(template, opts)
-      end
+      # Override ~H sigil with Lavash version (shadows Phoenix.Component.sigil_H)
+      import Lavash.Component.Sigil, only: [sigil_H: 2]
 
       @before_compile Lavash.Component.Compiler
     end

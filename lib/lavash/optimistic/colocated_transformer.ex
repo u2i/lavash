@@ -102,6 +102,24 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
     multi_selects = Enum.filter(all_states, &match?(%Lavash.State.MultiSelect{}, &1))
     toggles = Enum.filter(all_states, &match?(%Lavash.State.Toggle{}, &1))
 
+    # Get actions (for optimistic action JS generation)
+    actions = Transformer.get_entities(dsl_state, [:actions]) || []
+
+    # Filter to optimistic actions (exclude those handled by multi_select/toggle)
+    multi_select_names = Enum.map(multi_selects, & &1.name)
+    toggle_names = Enum.map(toggles, & &1.name)
+    excluded_names =
+      (Enum.map(multi_select_names, &:"toggle_#{&1}") ++
+       Enum.map(multi_select_names, &:"set_#{&1}") ++
+       Enum.map(toggle_names, &:"toggle_#{&1}") ++
+       Enum.map(toggle_names, &:"set_#{&1}"))
+      |> MapSet.new()
+
+    optimistic_actions =
+      actions
+      |> Enum.filter(&action_is_optimistic?/1)
+      |> Enum.reject(&MapSet.member?(excluded_names, &1.name))
+
     # Get calculations (only those with optimistic: true)
     calculations =
       (Transformer.get_entities(dsl_state, [:calculations]) || [])
@@ -121,14 +139,14 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
     defrx_map = get_defrx_map(dsl_state)
 
     # If nothing to generate, return nil
-    if multi_selects == [] and toggles == [] and calculations == [] and forms == [] and animated_fields == [] do
+    if multi_selects == [] and toggles == [] and calculations == [] and forms == [] and animated_fields == [] and optimistic_actions == [] do
       nil
     else
       # Use JsGenerator's internal logic to generate JS
       # We need to call it with the module so it can access __lavash__ functions
       # But since we're in a transformer, the module isn't compiled yet.
       # So we need to generate the JS ourselves from the DSL state.
-      generate_js_code(multi_selects, toggles, calculations, forms, extend_errors, animated_fields, defrx_map, module)
+      generate_js_code(multi_selects, toggles, calculations, forms, extend_errors, animated_fields, defrx_map, optimistic_actions, module)
     end
   end
 
@@ -150,7 +168,7 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
     end
   end
 
-  defp generate_js_code(multi_selects, toggles, calculations, forms, extend_errors, animated_fields, defrx_map, _module) do
+  defp generate_js_code(multi_selects, toggles, calculations, forms, extend_errors, animated_fields, defrx_map, optimistic_actions, _module) do
     # Generate JS for each type
     multi_select_action_fns = Enum.map(multi_selects, &generate_multi_select_action_js/1)
     multi_select_derive_fns = Enum.map(multi_selects, &generate_multi_select_derive_js/1)
@@ -158,12 +176,16 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
     toggle_derive_fns = Enum.map(toggles, &generate_toggle_derive_js/1)
     calculation_fns = Enum.map(calculations, &generate_calculation_js(&1, defrx_map)) |> Enum.filter(& &1)
 
+    # Generate JS for optimistic actions
+    action_fns = Enum.map(optimistic_actions, &generate_action_js/1) |> Enum.filter(& &1)
+
     # Generate form validation JS
     {form_validation_fns, form_error_fns, validation_derives, error_derives} =
       generate_form_validation_js(forms, extend_errors, defrx_map)
 
     fns =
-      multi_select_action_fns ++
+      action_fns ++
+        multi_select_action_fns ++
         multi_select_derive_fns ++
         toggle_action_fns ++
         toggle_derive_fns ++
@@ -224,6 +246,139 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
       }
     end)
   end
+
+  # Check if an action is optimistic (has simple set/update, no side effects)
+  defp action_is_optimistic?(action) do
+    has_side_effects =
+      (action.submits || []) != [] or
+      (action.navigates || []) != [] or
+      (action.effects || []) != [] or
+      (action.invokes || []) != []
+
+    has_set_or_update = (action.sets || []) != [] or (action.updates || []) != []
+
+    # Check if action has runs with reads declared at action level
+    runs = action.runs || []
+    reads = action.reads || []
+    has_transpilable_runs = runs != [] and reads != []
+
+    has_operations = has_set_or_update or has_transpilable_runs
+
+    !has_side_effects and has_operations
+  end
+
+  # Generate JS for an action
+  defp generate_action_js(action) do
+    name = action.name
+    sets = action.sets || []
+    updates = action.updates || []
+    params = action.params || []
+
+    # Generate JS expressions for sets and updates
+    set_exprs = Enum.map(sets, &generate_set_js/1)
+    update_exprs = Enum.map(updates, &generate_update_js/1)
+
+    all_exprs = set_exprs ++ update_exprs
+
+    # If any expression is nil (not transpilable), skip this action
+    if Enum.any?(all_exprs, &is_nil/1) do
+      nil
+    else
+      expr_pairs = Enum.join(all_exprs, ", ")
+      param_str = if params != [], do: ", value", else: ""
+
+      """
+        #{name}(state#{param_str}) {
+          return { #{expr_pairs} };
+        }
+      """
+    end
+  end
+
+  # Generate JS for a set operation
+  defp generate_set_js(set) do
+    field = set.field
+    value = set.value
+
+    case analyze_value(value) do
+      {:literal, v} ->
+        "#{field}: #{Jason.encode!(v)}"
+
+      :from_params_value ->
+        "#{field}: Number(value)"
+
+      :unknown ->
+        nil
+    end
+  end
+
+  # Generate JS for an update operation (increment/decrement)
+  defp generate_update_js(update) do
+    field = update.field
+    fun = update.fun
+
+    case analyze_update_function(fun) do
+      {:increment, n} ->
+        "#{field}: state.#{field} + #{n}"
+
+      {:decrement, n} ->
+        "#{field}: state.#{field} - #{n}"
+
+      :unknown ->
+        nil
+    end
+  end
+
+  # Analyze a value to determine how to generate JS
+  defp analyze_value(value)
+       when is_number(value) or is_binary(value) or is_boolean(value) or is_atom(value) do
+    {:literal, value}
+  end
+
+  defp analyze_value(value) when is_function(value, 1) do
+    # Test with a mock context that has params.value
+    try do
+      test_ctx = %{params: %{value: "__TEST_VALUE__"}, state: %{}}
+      result = value.(test_ctx)
+
+      if result == "__TEST_VALUE__" do
+        :from_params_value
+      else
+        :unknown
+      end
+    rescue
+      _ -> :unknown
+    end
+  end
+
+  defp analyze_value(_), do: :unknown
+
+  # Analyze update functions to detect simple patterns
+  defp analyze_update_function(fun) when is_function(fun, 1) do
+    try do
+      result_0 = fun.(0)
+      result_10 = fun.(10)
+      result_100 = fun.(100)
+
+      delta1 = result_0 - 0
+      delta2 = result_10 - 10
+      delta3 = result_100 - 100
+
+      if delta1 == delta2 and delta2 == delta3 do
+        if delta1 >= 0 do
+          {:increment, delta1}
+        else
+          {:decrement, -delta1}
+        end
+      else
+        :unknown
+      end
+    rescue
+      _ -> :unknown
+    end
+  end
+
+  defp analyze_update_function(_), do: :unknown
 
   # ============================================
   # JS Generation helpers (copied from JsGenerator)

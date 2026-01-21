@@ -100,6 +100,21 @@ defmodule Demo.Forms.Address do
       ]
     end
 
+    update :update do
+      accept [
+        :country,
+        :first_name,
+        :last_name,
+        :company,
+        :address,
+        :apartment,
+        :city,
+        :state,
+        :zip,
+        :phone
+      ]
+    end
+
     read :list do
       argument :session_id, :string, allow_nil?: true
 

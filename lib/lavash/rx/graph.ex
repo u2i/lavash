@@ -171,32 +171,65 @@ defmodule Lavash.Rx.Graph do
 
   # Get-by-ID mode: load a single record
   defp expand_read_by_id(read) do
-    id_dep = extract_dependency(read.id)
     resource = read.resource
     action = read.action || :read
     is_async = read.async != false
 
-    %Lavash.Derived.Field{
-      name: read.name,
-      depends_on: [id_dep, :__actor__],
-      async: is_async,
-      compute: fn deps ->
-        id = Map.get(deps, id_dep)
-        actor = Map.get(deps, :__actor__)
+    case read.id do
+      # Function-based id: receives full state, extracts id dynamically
+      # The function itself must handle nil checks and return nil for no-load cases
+      id_fun when is_function(id_fun, 1) ->
+        %Lavash.Derived.Field{
+          name: read.name,
+          # Depend on all state fields since we can't statically determine dependencies
+          # The compute function will evaluate the id_fun with current state
+          depends_on: [:__all_state__, :__actor__],
+          async: is_async,
+          compute: fn deps ->
+            state = Map.get(deps, :__all_state__, deps)
+            actor = Map.get(deps, :__actor__)
+            id = id_fun.(state)
 
-        case id do
-          nil ->
-            nil
+            case id do
+              nil ->
+                nil
 
-          id ->
-            case Ash.get(resource, id, action: action, actor: actor) do
-              {:ok, record} -> record
-              {:error, %Ash.Error.Query.NotFound{}} -> nil
-              {:error, error} -> raise error
+              id ->
+                case Ash.get(resource, id, action: action, actor: actor) do
+                  {:ok, record} -> record
+                  {:error, %Ash.Error.Query.NotFound{}} -> nil
+                  {:error, error} -> raise error
+                end
             end
-        end
-      end
-    }
+          end
+        }
+
+      # Static dependency: state(:x), result(:x), etc.
+      id_source ->
+        id_dep = extract_dependency(id_source)
+
+        %Lavash.Derived.Field{
+          name: read.name,
+          depends_on: [id_dep, :__actor__],
+          async: is_async,
+          compute: fn deps ->
+            id = Map.get(deps, id_dep)
+            actor = Map.get(deps, :__actor__)
+
+            case id do
+              nil ->
+                nil
+
+              id ->
+                case Ash.get(resource, id, action: action, actor: actor) do
+                  {:ok, record} -> record
+                  {:error, %Ash.Error.Query.NotFound{}} -> nil
+                  {:error, error} -> raise error
+                end
+            end
+          end
+        }
+    end
   end
 
   # Query mode: run an action with auto-mapped arguments
@@ -958,6 +991,10 @@ defmodule Lavash.Rx.Graph do
           # Special reserved key for actor - reads from socket assigns
           dep == :__actor__ ->
             socket.assigns[:current_user]
+
+          # Special reserved key for full state - used by function-based id in reads
+          dep == :__all_state__ ->
+            Map.merge(state, derived)
 
           Map.has_key?(state, dep) ->
             Map.get(state, dep)

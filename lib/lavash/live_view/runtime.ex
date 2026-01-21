@@ -36,7 +36,7 @@ defmodule Lavash.LiveView.Runtime do
       # Build optimistic state
       optimistic_state = Lavash.LiveView.Helpers.optimistic_state(module, assigns)
       module_name = inspect(module)
-      optimistic_json = Jason.encode!(optimistic_state)
+      optimistic_json = Lavash.JSON.encode!(optimistic_state)
 
       # Get the optimistic version from socket (passed via assigns.__changed__ context)
       # We need to get it from the socket which is available in assigns

@@ -3,11 +3,12 @@ defmodule DemoWeb.AddressEditModal do
   A Lavash Component for adding/editing a shipping address in a modal.
 
   Uses the Lavash.Modal plugin for modal behavior:
-  - open controls open state (nil = closed, truthy = open)
+  - open controls open state: nil | :create | {:edit, id}
   - Modal chrome, wrapper are auto-generated
 
-  Opening the modal from client-side:
-  - JS.dispatch("open-panel", to: "#address-edit-modal-modal", detail: %{open: true})
+  Opening via parent binding:
+  - Parent sets :address_modal to :create or {:edit, id}
+  - Modal binds open to parent's :address_modal
 
   ## Example usage
 
@@ -15,6 +16,8 @@ defmodule DemoWeb.AddressEditModal do
         module={DemoWeb.AddressEditModal}
         id="address-edit-modal"
         session_id={@session_id}
+        open={@address_modal}
+        bind={[open: :address_modal]}
       />
   """
   use Lavash.Component, extensions: [Lavash.Overlay.Modal.Dsl]
@@ -28,22 +31,37 @@ defmodule DemoWeb.AddressEditModal do
   # Session ID from parent for scoping addresses
   prop :session_id, :string, required: true
 
-  # Configure modal behavior
+  # Configure modal behavior - open is nil | :create | {:edit, id}
   modal do
     open_field :open
+    async_assign :address_form
     max_width :md
   end
 
-  # Form for address entry (create mode)
-  form :address_form, Address do
-    create :save
+  render_loading fn assigns ->
+    ~H"""
+    <div class="p-6">
+      <div class="animate-pulse">
+        <div class="h-6 bg-gray-200 rounded w-1/3 mb-6"></div>
+        <div class="h-10 bg-gray-200 rounded mb-4"></div>
+        <div class="grid grid-cols-2 gap-4 mb-4">
+          <div class="h-10 bg-gray-200 rounded"></div>
+          <div class="h-10 bg-gray-200 rounded"></div>
+        </div>
+        <div class="h-10 bg-gray-200 rounded mb-4"></div>
+        <div class="h-10 bg-gray-200 rounded"></div>
+      </div>
+    </div>
+    """
   end
 
   render fn assigns ->
     ~H"""
     <div class="p-6">
       <div class="flex items-center justify-between mb-6">
-        <h2 class="text-xl font-bold">Add address</h2>
+        <h2 class="text-xl font-bold">
+          {if @address_form_action == :create, do: "Add address", else: "Edit address"}
+        </h2>
         <.modal_close_button id={@__modal_id__} myself={@myself} />
       </div>
 
@@ -124,7 +142,7 @@ defmodule DemoWeb.AddressEditModal do
         <!-- Submit -->
         <div class="flex gap-3 pt-4 border-t">
           <CoreComponents.button type="submit" phx-disable-with="Saving..." class="flex-1 btn-primary">
-            Save address
+            {if @address_form_action == :create, do: "Save address", else: "Update address"}
           </CoreComponents.button>
           <CoreComponents.button
             type="button"
@@ -139,17 +157,39 @@ defmodule DemoWeb.AddressEditModal do
     """
   end
 
+  # Extract address ID from open state: {:edit, id} -> id, otherwise nil
+  defp extract_address_id({:edit, id}), do: id
+  defp extract_address_id(_), do: nil
+
+  # Load the address when editing (open = {:edit, id})
+  read :address, Address do
+    id fn state -> extract_address_id(state.open) end
+  end
+
+  # Form for address entry/editing
+  form :address_form, Address do
+    data result(:address)
+    create :save
+    update :update
+  end
+
   actions do
     action :save do
-      # Inject session_id into form params before submit
+      # Only inject session_id for create (update already has it from the loaded record)
       set :address_form_params, fn %{state: state} ->
-        Map.put(state.address_form_params || %{}, "session_id", state.session_id)
+        if is_nil(state.address) do
+          # Create mode - inject session_id
+          Map.put(state.address_form_params || %{}, "session_id", state.session_id)
+        else
+          # Update mode - no need to inject session_id
+          state.address_form_params || %{}
+        end
       end
       submit :address_form, on_success: :on_saved
     end
 
     action :on_saved do
-      # Close modal - PubSub will notify the parent to refresh the address list
+      # Close modal - this propagates back to parent via binding
       set :open, nil
     end
   end

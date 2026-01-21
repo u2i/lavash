@@ -430,7 +430,8 @@ defmodule Lavash.Optimistic.JsGenerator do
     {:rx, source}
   end
 
-  defp analyze_value(value) when is_number(value) or is_binary(value) or is_boolean(value) do
+  defp analyze_value(value)
+       when is_number(value) or is_binary(value) or is_boolean(value) or is_atom(value) do
     {:literal, value}
   end
 

@@ -177,7 +177,7 @@ defmodule Lavash.Component.Compiler do
         # Build optimistic state for data attribute (passive, no hook)
         optimistic_state = Lavash.Component.Helpers.optimistic_state(__MODULE__, var!(assigns))
         module_name = inspect(__MODULE__)
-        optimistic_json = Jason.encode!(optimistic_state)
+        optimistic_json = Lavash.JSON.encode!(optimistic_state)
 
         # Get optimistic version from socket
         version = Lavash.Socket.optimistic_version(var!(assigns).socket)
@@ -297,7 +297,7 @@ defmodule Lavash.Component.Compiler do
         # Build optimistic state for data attribute (passive, no hook)
         optimistic_state = Lavash.Component.Helpers.optimistic_state(__MODULE__, var!(assigns))
         module_name = inspect(__MODULE__)
-        optimistic_json = Jason.encode!(optimistic_state)
+        optimistic_json = Lavash.JSON.encode!(optimistic_state)
 
         # Get optimistic version from socket
         version = Lavash.Socket.optimistic_version(var!(assigns).socket)

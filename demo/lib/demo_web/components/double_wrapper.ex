@@ -16,7 +16,7 @@ defmodule DemoWeb.Components.DoubleWrapper do
   state :count, :integer, from: :ephemeral, default: 0, optimistic: true
 
   def render(assigns) do
-    ~L"""
+    ~H"""
     <div class="p-4 border-2 border-dashed border-secondary/30 rounded-lg bg-secondary/5">
       <div class="text-xs text-secondary/70 mb-2 font-semibold">
         Double Wrapper (Level 2)
