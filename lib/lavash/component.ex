@@ -82,6 +82,9 @@ defmodule Lavash.Component do
       @doc false
       def __live__, do: %{kind: :component, layout: false}
 
+      # Import Lavash sigil (~L) for templates with automatic data-lavash-* injection
+      import Lavash.Sigil, only: [sigil_L: 2]
+
       # Override ~H sigil with Lavash version (shadows Phoenix.Component.sigil_H)
       import Lavash.Component.Sigil, only: [sigil_H: 2]
 

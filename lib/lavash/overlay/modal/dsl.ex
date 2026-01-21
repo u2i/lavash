@@ -118,5 +118,6 @@ defmodule Lavash.Overlay.Modal.Dsl do
     transformers: [
       Lavash.Overlay.Modal.Transformers.InjectState,
       Lavash.Overlay.Modal.Transformers.GenerateRender
-    ]
+    ],
+    imports: [Lavash.Sigil]
 end

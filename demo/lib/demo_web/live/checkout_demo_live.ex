@@ -270,7 +270,7 @@ defmodule DemoWeb.CheckoutDemoLive do
   # ─────────────────────────────────────────────────────────────────
 
   render fn assigns ->
-    ~H"""
+    ~L"""
     <div id="checkout-demo" data-theme="shopify" class="bg-base-200 min-h-screen">
       <main class="mx-auto max-w-6xl p-4 lg:p-8">
         <%= if @submitted do %>

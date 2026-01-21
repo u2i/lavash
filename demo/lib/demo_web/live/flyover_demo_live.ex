@@ -35,7 +35,7 @@ defmodule DemoWeb.FlyoverDemoLive do
   end
 
   render fn assigns ->
-    ~H"""
+    ~L"""
     <div class="max-w-4xl mx-auto p-6">
       <div class="flex items-center justify-between mb-6">
         <div>

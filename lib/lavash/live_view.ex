@@ -53,6 +53,9 @@ defmodule Lavash.LiveView do
       import Lavash.LiveView.Helpers
       import Lavash.Optimistic.Macros, only: [optimistic_action: 3]
 
+      # Import Lavash sigil (~L) for templates with automatic data-lavash-* injection
+      import Lavash.Sigil, only: [sigil_L: 2]
+
       # Override ~H sigil with Lavash version (shadows Phoenix.Component.sigil_H)
       import Lavash.LiveView.Sigil, only: [sigil_H: 2]
     end

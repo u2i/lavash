@@ -22,7 +22,7 @@ defmodule DemoWeb.ComponentsDemoLive do
   end
 
   render fn assigns ->
-    ~H"""
+    ~L"""
     <div class="max-w-6xl mx-auto p-6">
       <div class="flex items-center justify-between mb-6">
         <div>

@@ -26,7 +26,7 @@ defmodule DemoWeb.CartFlyover do
   prop :item_count, :integer, default: 0
 
   render fn assigns ->
-    ~H"""
+    ~L"""
     <div class="h-full flex flex-col">
       <!-- Header -->
       <div class="flex items-center justify-between p-4 border-b border-base-300">

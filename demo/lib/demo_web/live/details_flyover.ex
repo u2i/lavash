@@ -26,7 +26,7 @@ defmodule DemoWeb.DetailsFlyover do
   end
 
   render fn assigns ->
-    ~H"""
+    ~L"""
     <div class="h-full flex flex-col">
       <div class="flex items-center justify-between p-4 border-b border-base-300">
         <h2 class="text-lg font-bold">Product Details</h2>

@@ -31,7 +31,7 @@ defmodule DemoWeb.ProductEditModal do
   end
 
   render_loading fn assigns ->
-    ~H"""
+    ~L"""
     <div class="p-6">
       <div class="animate-pulse">
         <div class="h-6 bg-gray-200 rounded w-1/3 mb-4"></div>
@@ -44,7 +44,7 @@ defmodule DemoWeb.ProductEditModal do
   end
 
   render fn assigns ->
-    ~H"""
+    ~L"""
     <div class="p-6">
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-xl font-bold">Edit Product</h2>

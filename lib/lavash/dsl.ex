@@ -621,5 +621,5 @@ defmodule Lavash.Dsl do
       Lavash.Optimistic.DefrxExpander,
       Lavash.Optimistic.ColocatedTransformer
     ],
-    imports: [Phoenix.Component, Lavash.DslHelpers, Lavash.Rx]
+    imports: [Phoenix.Component, Lavash.DslHelpers, Lavash.Rx, Lavash.Sigil]
 end

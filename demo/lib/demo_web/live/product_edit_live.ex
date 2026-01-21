@@ -42,7 +42,7 @@ defmodule DemoWeb.ProductEditLive do
   end
 
   render fn assigns ->
-    ~H"""
+    ~L"""
     <div class="max-w-2xl mx-auto p-6">
       <div class="flex items-center justify-between mb-6">
         <div>
@@ -193,7 +193,7 @@ defmodule DemoWeb.ProductEditLive do
   defp translate_error(msg) when is_binary(msg), do: msg
 
   defp error(assigns) do
-    ~H"""
+    ~L"""
     <p class="text-error text-sm mt-1">{render_slot(@inner_block)}</p>
     """
   end
