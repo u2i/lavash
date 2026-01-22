@@ -1,5 +1,9 @@
 # Claude Development Notes
 
+## Git Commits
+
+Do not include co-author attribution in commit messages.
+
 ## Colocated Hooks Development Workflow
 
 The demo app is configured for automatic reloading of colocated JS hooks from the lavash library.
