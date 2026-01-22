@@ -81,8 +81,9 @@ const LavashOptimistic = {
     // Maps field path -> { touched: boolean, serverErrors: [], validationRequestId: number }
     this.fieldState = {};
 
-    // Form submitted state (for showing all errors)
-    this.formSubmitted = false;
+    // Per-form submitted state: Set of form IDs that have been submitted
+    // This prevents a child component's form submit from affecting parent forms
+    this.submittedForms = new Set();
 
     // Server validation debounce timers: field path -> timeout ID
     this.validationTimers = {};
@@ -568,16 +569,31 @@ const LavashOptimistic = {
   },
 
   handleFormSubmit(e) {
-    // Mark form as submitted - this shows all errors
-    this.formSubmitted = true;
+    // Get the actual form that was submitted
+    const form = e.target.closest("form");
+    if (!form) return;
 
-    // Mark all fields as touched
-    for (const path of Object.keys(this.fieldState)) {
-      this.fieldState[path].touched = true;
+    // Track submitted forms instead of global flag
+    // This prevents a child component's form submit from affecting parent forms
+    if (!this.submittedForms) this.submittedForms = new Set();
+
+    // Track both the form ID and the form name (derived from first input's params field)
+    // This allows isFormSubmitted() to match either the ID or the logical form name
+    const formId = form.id || "default";
+    this.submittedForms.add(formId);
+
+    // Also try to derive the form name from bound inputs (e.g., "payment" from "payment_params.card_number")
+    const firstInput = form.querySelector("[data-lavash-bind]");
+    if (firstInput) {
+      const fieldPath = firstInput.dataset.lavashBind;
+      const { formName } = this.getFormField(firstInput, fieldPath);
+      if (formName) {
+        this.submittedForms.add(formName);
+      }
     }
 
-    // Collect all bound inputs and mark them as touched
-    const boundInputs = this.el.querySelectorAll("[data-lavash-bind]");
+    // Collect bound inputs only within the submitted form
+    const boundInputs = form.querySelectorAll("[data-lavash-bind]");
     const inputElements = [];
     boundInputs.forEach(input => {
       const fieldPath = input.dataset.lavashBind;
@@ -614,7 +630,7 @@ const LavashOptimistic = {
         input.focus();
 
         // Scroll error summary into view if present
-        const errorSummary = this.el.querySelector("[data-lavash-error-summary]");
+        const errorSummary = form.querySelector("[data-lavash-error-summary]");
         if (errorSummary) {
           errorSummary.scrollIntoView({ behavior: "smooth", block: "nearest" });
         }
@@ -789,13 +805,31 @@ const LavashOptimistic = {
    * @param {string} fieldName - e.g., "name"
    */
   updateShowErrors(fieldPath, formName, fieldName) {
-    // Compute show_errors: touched || formSubmitted
+    // Compute show_errors: touched || (this form was submitted)
     const touched = this.fieldState[fieldPath]?.touched || false;
-    const showErrors = touched || this.formSubmitted;
+    const formSubmitted = this.isFormSubmitted(formName);
+    const showErrors = touched || formSubmitted;
 
     // Update state
     const showErrorsKey = `${formName}_${fieldName}_show_errors`;
     this.state[showErrorsKey] = showErrors;
+  },
+
+  /**
+   * Check if a specific form has been submitted.
+   * @param {string} formName - The form name (e.g., "payment", "address_form")
+   * @returns {boolean}
+   */
+  isFormSubmitted(formName) {
+    if (!this.submittedForms) return false;
+    // Check both the form name and any form IDs that contain the form name
+    // This handles both "payment-form" (id) and "payment" (form name)
+    for (const id of this.submittedForms) {
+      if (id === formName || id.startsWith(formName + "-") || id.includes(formName)) {
+        return true;
+      }
+    }
+    return false;
   },
 
   handleInput(e) {
@@ -869,7 +903,7 @@ const LavashOptimistic = {
     if (formName && fieldName) {
       // Only trigger server validation if field is already touched or form was submitted
       const touched = this.fieldState[fieldPath]?.touched || false;
-      if (touched || this.formSubmitted) {
+      if (touched || this.isFormSubmitted(formName)) {
         this.triggerServerValidation(fieldPath, formName, fieldName, /* immediate */ false, target);
       }
     }
@@ -1289,8 +1323,8 @@ const LavashOptimistic = {
 
       const formName = el.dataset.lavashErrorSummary; // e.g., "registration"
 
-      // Only show if form has been submitted
-      if (!this.formSubmitted) {
+      // Only show if this specific form has been submitted
+      if (!this.isFormSubmitted(formName)) {
         el.classList.add("hidden");
         el.innerHTML = "";
         return;
