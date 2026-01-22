@@ -182,6 +182,11 @@ defmodule Lavash.Component.Compiler do
         # Get optimistic version from socket
         version = Lavash.Socket.optimistic_version(var!(assigns).socket)
 
+        # Get client bindings for parent-to-child propagation
+        # This maps local field -> parent field for optimistic updates
+        client_bindings = Map.get(var!(assigns), :__lavash_client_bindings__) || %{}
+        bindings_json = Lavash.JSON.encode!(client_bindings)
+
         var!(assigns) =
           var!(assigns)
           |> Phoenix.Component.assign(:__modal_id__, modal_id)
@@ -199,6 +204,7 @@ defmodule Lavash.Component.Compiler do
           |> Phoenix.Component.assign(:__lavash_state__, optimistic_json)
           |> Phoenix.Component.assign(:__lavash_version__, version)
           |> Phoenix.Component.assign(:__lavash_animated__, unquote(animated_json))
+          |> Phoenix.Component.assign(:__lavash_bindings__, bindings_json)
 
         ~H"""
         <div
@@ -209,6 +215,7 @@ defmodule Lavash.Component.Compiler do
           data-lavash-state={@__lavash_state__}
           data-lavash-version={@__lavash_version__}
           data-lavash-animated={@__lavash_animated__}
+          data-lavash-bindings={@__lavash_bindings__}
           class="contents"
         >
           <.modal_chrome
@@ -302,6 +309,10 @@ defmodule Lavash.Component.Compiler do
         # Get optimistic version from socket
         version = Lavash.Socket.optimistic_version(var!(assigns).socket)
 
+        # Get client bindings for parent-to-child propagation
+        client_bindings = Map.get(var!(assigns), :__lavash_client_bindings__) || %{}
+        bindings_json = Lavash.JSON.encode!(client_bindings)
+
         var!(assigns) =
           var!(assigns)
           |> Phoenix.Component.assign(:__flyover_id__, flyover_id)
@@ -321,6 +332,7 @@ defmodule Lavash.Component.Compiler do
           |> Phoenix.Component.assign(:__lavash_state__, optimistic_json)
           |> Phoenix.Component.assign(:__lavash_version__, version)
           |> Phoenix.Component.assign(:__lavash_animated__, unquote(animated_json))
+          |> Phoenix.Component.assign(:__lavash_bindings__, bindings_json)
 
         ~H"""
         <div
@@ -331,6 +343,7 @@ defmodule Lavash.Component.Compiler do
           data-lavash-state={@__lavash_state__}
           data-lavash-version={@__lavash_version__}
           data-lavash-animated={@__lavash_animated__}
+          data-lavash-bindings={@__lavash_bindings__}
           class="contents"
         >
           <.flyover_chrome

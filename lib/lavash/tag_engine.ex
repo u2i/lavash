@@ -9,20 +9,23 @@ defmodule Lavash.TagEngine do
 
   ## Changes from upstream
 
-  The ONLY change from upstream is in `handle_body/1` (around line 230):
+  1. In `init/1`: Accept `:token_transformer` and `:lavash_metadata` options
 
+  2. In `handle_body/1`: Apply token transformer to top-level tokens
+
+  3. In `handle_end/1`: Apply token transformer to nested block tokens (EEx do-blocks)
+     This is critical because content inside `<%= if ... do %>` blocks is compiled
+     through `handle_end`, not `handle_body`.
+
+  Example change (in both handle_body and handle_end):
   ```elixir
-  # LAVASH CHANGE START - token transformer hook
   tokens =
     if transformer = state[:token_transformer] do
       transformer.transform(tokens, state)
     else
       tokens
     end
-  # LAVASH CHANGE END
   ```
-
-  And in `init/1` to accept the `:token_transformer` option.
 
   ## Why this fork exists
 
@@ -247,8 +250,7 @@ defmodule Lavash.TagEngine do
     tokens = Tokenizer.finalize(tokens, file, cont, source)
 
     # LAVASH CHANGE START - token transformer hook
-    # This is the only functional change from upstream Phoenix.LiveView.TagEngine.
-    # It allows a token_transformer module to modify the token list before processing.
+    # This allows a token_transformer module to modify the token list before processing.
     # The transformer receives the finalized tokens and the engine state,
     # and returns a (possibly modified) token list.
     tokens =
@@ -312,9 +314,19 @@ defmodule Lavash.TagEngine do
 
   @impl true
   def handle_end(state) do
+    # LAVASH CHANGE - Apply token transformer to nested blocks (do-blocks in EEx)
+    # This ensures that all tags in conditional branches, loops, etc. get transformed
+    tokens = Enum.reverse(state.tokens)
+    tokens =
+      if transformer = state[:token_transformer] do
+        transformer.transform(tokens, state)
+      else
+        tokens
+      end
+
     state
     |> token_state(false)
-    |> continue(Enum.reverse(state.tokens))
+    |> continue(tokens)
     |> validate_unclosed_tags!("do-block")
     |> invoke_subengine(:handle_end, [])
   end

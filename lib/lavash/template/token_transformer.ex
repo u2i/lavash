@@ -233,8 +233,9 @@ defmodule Lavash.Template.TokenTransformer do
       case get_attr_value(attrs, "phx-click") do
         {:string, action_name, _meta} ->
           action_atom = String.to_atom(action_name)
+          actions_map = metadata[:actions] || %{}
 
-          if is_map_key(metadata[:actions] || %{}, action_atom) do
+          if is_map_key(actions_map, action_atom) do
             attrs
             |> add_attr_if_missing("data-lavash-action", {:string, action_name})
             |> maybe_inject_action_value()

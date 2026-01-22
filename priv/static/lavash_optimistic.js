@@ -73,6 +73,10 @@ const LavashOptimistic = {
     // URL fields that should be synced to the browser URL
     this.urlFields = JSON.parse(this.el.dataset.lavashUrlFields || "[]");
 
+    // Bindings map: local field -> parent field (for parent-to-child propagation)
+    // When parent state changes, we update our local state and animate
+    this.bindings = JSON.parse(this.el.dataset.lavashBindings || "{}");
+
     // Form field state tracking (client-side only)
     // Maps field path -> { touched: boolean, serverErrors: [], validationRequestId: number }
     this.fieldState = {};
@@ -1443,6 +1447,45 @@ const LavashOptimistic = {
         hook.refreshFromParent(this);
       }
     });
+  },
+
+  /**
+   * Called by parent hook when parent state changes.
+   * Updates local state for bound fields and triggers animations.
+   */
+  refreshFromParent(parentHook) {
+    if (!this.bindings || Object.keys(this.bindings).length === 0) return;
+
+    const changedFields = [];
+
+    // Check each binding for changes
+    for (const [localField, parentField] of Object.entries(this.bindings)) {
+      const parentValue = parentHook.state[parentField];
+      const localValue = this.state[localField];
+
+      if (parentValue !== localValue) {
+        console.log(`[LavashOptimistic] refreshFromParent: ${localField} = ${JSON.stringify(parentValue)} (was ${JSON.stringify(localValue)})`);
+        this.state[localField] = parentValue;
+        changedFields.push(localField);
+
+        // Update SyncedVar if exists
+        const syncedVar = this.store.get(localField, parentValue, (newVal) => {
+          this.state[localField] = newVal;
+        });
+        syncedVar.setOptimistic(parentValue);
+      }
+    }
+
+    if (changedFields.length > 0) {
+      // Notify animated states (this triggers modal animations!)
+      this.notifyAnimatedStates(changedFields);
+
+      // Recompute derives affected by changed fields
+      this.recomputeDerives(changedFields);
+
+      // Update DOM
+      this.updateDOM();
+    }
   },
 
   // Convert snake_case field name to Title Case
