@@ -161,6 +161,14 @@ defmodule Lavash.Type do
     end
   end
 
+  # :any type - uses Lavash.JSON to restore Elixir types from JSON values
+  # Handles atoms (:create), tuples ({:edit, id}), and other complex values
+  def parse(:any, value) when is_binary(value) or is_list(value) do
+    {:ok, Lavash.JSON.restore_from_json(value)}
+  end
+
+  def parse(:any, value), do: {:ok, value}
+
   # Custom type module
   def parse(type, value) when is_atom(type) and is_binary(value) do
     if lavash_type?(type) do
