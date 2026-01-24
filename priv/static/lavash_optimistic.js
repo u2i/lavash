@@ -145,7 +145,7 @@ const LavashOptimistic = {
   /**
    * Initialize AnimatedState managers for fields with animated: true.
    * Reads configuration from __animated__ metadata in the generated optimistic module.
-   * For type: "modal" fields, creates a ModalAnimator as the delegate.
+   * For type: "modal" or "flyover" fields, creates an OverlayAnimator as the delegate.
    */
   initAnimatedFields() {
     this.animatedStates = {};
@@ -170,9 +170,9 @@ const LavashOptimistic = {
       let delegate = null;
 
       if (config.type === "modal") {
-        // For modal type, create ModalAnimator targeting the modal chrome element
-        const ModalAnimator = window.Lavash?.ModalAnimator;
-        if (ModalAnimator) {
+        // For modal type, create OverlayAnimator targeting the modal chrome element
+        const OverlayAnimator = window.Lavash?.OverlayAnimator;
+        if (OverlayAnimator) {
           // Modal chrome ID is "{component_id}-modal" where component_id is extracted from wrapper ID
           // Wrapper ID is "lavash-{component_id}", so modal ID is "{component_id}-modal"
           const wrapperId = this.el.id; // e.g., "lavash-product-edit-modal"
@@ -181,12 +181,13 @@ const LavashOptimistic = {
           const modalChrome = document.getElementById(modalChromeId);
 
           if (modalChrome) {
-            delegate = new ModalAnimator(modalChrome, {
+            delegate = new OverlayAnimator(modalChrome, {
+              type: 'modal',
               duration: config.duration || 200,
               openField: config.field,
               js: this.js()
             });
-            console.debug(`[LavashOptimistic] Created ModalAnimator for ${config.field} on #${modalChromeId}`);
+            console.debug(`[LavashOptimistic] Created OverlayAnimator (modal) for ${config.field} on #${modalChromeId}`);
 
             // Register content element IDs for ghost detection in onBeforeElUpdated
             const mainContentId = `${modalChromeId}-main_content`;
@@ -232,12 +233,12 @@ const LavashOptimistic = {
             console.warn(`[LavashOptimistic] Modal chrome element #${modalChromeId} not found for animated field ${config.field}`);
           }
         } else {
-          console.warn("[LavashOptimistic] ModalAnimator not found in window.Lavash for type:modal field");
+          console.warn("[LavashOptimistic] OverlayAnimator not found in window.Lavash for type:modal field");
         }
       } else if (config.type === "flyover") {
-        // For flyover type, create FlyoverAnimator targeting the flyover chrome element
-        const FlyoverAnimator = window.Lavash?.FlyoverAnimator;
-        if (FlyoverAnimator) {
+        // For flyover type, create OverlayAnimator targeting the flyover chrome element
+        const OverlayAnimator = window.Lavash?.OverlayAnimator;
+        if (OverlayAnimator) {
           // Flyover chrome ID is "{component_id}-flyover" where component_id is extracted from wrapper ID
           // Wrapper ID is "lavash-{component_id}", so flyover ID is "{component_id}-flyover"
           const wrapperId = this.el.id; // e.g., "lavash-nav-flyover"
@@ -246,13 +247,14 @@ const LavashOptimistic = {
           const flyoverChrome = document.getElementById(flyoverChromeId);
 
           if (flyoverChrome) {
-            delegate = new FlyoverAnimator(flyoverChrome, {
+            delegate = new OverlayAnimator(flyoverChrome, {
+              type: 'flyover',
               duration: config.duration || 200,
               slideFrom: flyoverChrome.dataset.slideFrom || 'right',
               openField: config.field,
               js: this.js()
             });
-            console.debug(`[LavashOptimistic] Created FlyoverAnimator for ${config.field} on #${flyoverChromeId}`);
+            console.debug(`[LavashOptimistic] Created OverlayAnimator (flyover) for ${config.field} on #${flyoverChromeId}`);
 
             // Register content element IDs for ghost detection in onBeforeElUpdated
             const mainContentId = `${flyoverChromeId}-main_content`;
@@ -294,7 +296,7 @@ const LavashOptimistic = {
             console.warn(`[LavashOptimistic] Flyover chrome element #${flyoverChromeId} not found for animated field ${config.field}`);
           }
         } else {
-          console.warn("[LavashOptimistic] FlyoverAnimator not found in window.Lavash for type:flyover field");
+          console.warn("[LavashOptimistic] OverlayAnimator not found in window.Lavash for type:flyover field");
         }
       }
 
@@ -331,8 +333,8 @@ const LavashOptimistic = {
   },
 
   /**
-   * Register modal content element IDs for ghost detection.
-   * This is called when creating ModalAnimator delegates.
+   * Register overlay content element IDs for ghost detection.
+   * This is called when creating OverlayAnimator delegates.
    */
   _registerModalContentIds(contentId, innerId, field) {
     // Store mapping from content ID to this hook and field

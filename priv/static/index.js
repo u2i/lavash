@@ -5,19 +5,17 @@
  *
  * - SyncedVar: Optimistic state synchronization with version tracking and animation support
  * - SyncedVarStore: Collection of SyncedVars with dependency tracking
- * - ModalAnimator: Modal-specific animation delegate (includes FLIP animation)
- * - FlyoverAnimator: Flyover-specific animation delegate (slide animations)
+ * - OverlayAnimator: Unified animation delegate for modals and flyovers
  * - LavashOptimistic: Main Phoenix LiveView hook
  *
  * Usage in your app.js:
  *
- *   import { LavashOptimistic, SyncedVar, ModalAnimator, FlyoverAnimator } from "lavash";
+ *   import { LavashOptimistic, SyncedVar, OverlayAnimator } from "lavash";
  *
  *   // Register on window for colocated hooks
  *   window.Lavash = window.Lavash || {};
  *   window.Lavash.SyncedVar = SyncedVar;
- *   window.Lavash.ModalAnimator = ModalAnimator;
- *   window.Lavash.FlyoverAnimator = FlyoverAnimator;
+ *   window.Lavash.OverlayAnimator = OverlayAnimator;
  *
  *   // Add to LiveSocket hooks
  *   const liveSocket = new LiveSocket("/live", Socket, {
@@ -26,6 +24,9 @@
  */
 
 export { SyncedVar, SyncedVarStore } from "./synced_var.js";
-export { ModalAnimator } from "./modal_animator.js";
-export { FlyoverAnimator } from "./flyover_animator.js";
+export { OverlayAnimator } from "./overlay_animator.js";
 export { LavashOptimistic } from "./lavash_optimistic.js";
+
+// Backward compatibility aliases
+export { OverlayAnimator as ModalAnimator } from "./overlay_animator.js";
+export { OverlayAnimator as FlyoverAnimator } from "./overlay_animator.js";
