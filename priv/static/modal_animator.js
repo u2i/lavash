@@ -329,31 +329,16 @@ export class ModalAnimator {
       this._transitionHandler = null;
     }
 
-    // 3. Crossfade loading → content
-    // Both are in CSS grid overlay, so they stack. Fade content in, loading out.
+    // 3. Measure target content size BEFORE starting any animations
+    // Temporarily remove size constraints to measure natural CSS-defined size
+    // Use visibility:hidden to prevent flash during measurement
+    // Show main content (hidden) so it contributes to size calculation
     if (mainContent) {
       this.js.removeClass(mainContent, "hidden");
       mainContent.classList.remove("hidden");
       mainContent.style.opacity = "0";
-      mainContent.style.transition = `opacity ${this.duration}ms ease-out`;
-      mainContent.offsetHeight;
-      mainContent.style.opacity = "1";
     }
 
-    if (loadingContent) {
-      loadingContent.style.transition = `opacity ${this.duration}ms ease-out`;
-      loadingContent.offsetHeight;
-      loadingContent.style.opacity = "0";
-      // Hide after fade completes
-      setTimeout(() => {
-        this.js.addClass(loadingContent, "hidden");
-        loadingContent.style.removeProperty("transition");
-      }, this.duration);
-    }
-
-    // 4. Measure target content size
-    // Temporarily remove size constraints to measure natural CSS-defined size
-    // Use visibility:hidden to prevent flash during measurement
     const lockedWidth = this.panelContent.style.width;
     const lockedHeight = this.panelContent.style.height;
     this.panelContent.style.visibility = "hidden";
@@ -370,38 +355,55 @@ export class ModalAnimator {
     this.panelContent.offsetHeight; // Force reflow
     this.panelContent.style.visibility = "";
 
-    // 5. Force reflow to apply locked state
+    // 4. Start ALL animations together in the same frame
+    // Panel: opacity, transform, width, height
+    // Content: fade in
+    // Loading: fade out
+    this.panelContent.style.transition = `opacity ${this.duration}ms ease-out, transform ${this.duration}ms ease-out, width ${this.duration}ms ease-out, height ${this.duration}ms ease-out`;
+    if (mainContent) {
+      mainContent.style.transition = `opacity ${this.duration}ms ease-out`;
+    }
+    if (loadingContent) {
+      loadingContent.style.transition = `opacity ${this.duration}ms ease-out`;
+    }
+
+    // Force reflow to apply transitions before changing values
     this.panelContent.offsetHeight;
 
-    // 6. Animate to final state
-    requestAnimationFrame(() => {
-      // Transition all properties together
-      this.panelContent.style.transition = `opacity ${this.duration}ms ease-out, transform ${this.duration}ms ease-out, width ${this.duration}ms ease-out, height ${this.duration}ms ease-out`;
-      this.panelContent.offsetHeight;
+    // Now trigger all animations simultaneously
+    this.panelContent.style.opacity = "1";
+    this.panelContent.style.transform = "scale(1)";
+    this.panelContent.style.width = `${targetWidth}px`;
+    this.panelContent.style.height = `${targetHeight}px`;
+    if (mainContent) {
+      mainContent.style.opacity = "1";
+    }
+    if (loadingContent) {
+      loadingContent.style.opacity = "0";
+      // Hide after fade completes
+      setTimeout(() => {
+        this.js.addClass(loadingContent, "hidden");
+        loadingContent.style.removeProperty("transition");
+      }, this.duration);
+    }
 
-      this.panelContent.style.opacity = "1";
-      this.panelContent.style.transform = "scale(1)";
-      this.panelContent.style.width = `${targetWidth}px`;
-      this.panelContent.style.height = `${targetHeight}px`;
-
-      // Clean up after animation
-      const cleanup = (e) => {
-        if (e.target !== this.panelContent) return;
-        // Wait for transform to complete (last property)
-        if (e.propertyName !== "transform") return;
-        this.panelContent.removeEventListener("transitionend", cleanup);
-        this.panelContent.style.removeProperty("transition");
-        this.panelContent.style.removeProperty("width");
-        this.panelContent.style.removeProperty("height");
-        this.panelContent.style.removeProperty("overflow");
-        console.log(`[ModalAnimator] _transitionToContent: animation complete`);
-        // Notify state machine if still in entering phase
-        if (syncedVar && syncedVar.getPhase() === "entering") {
-          syncedVar.notifyTransitionEnd();
-        }
-      };
-      this.panelContent.addEventListener("transitionend", cleanup);
-    });
+    // Clean up after animation
+    const cleanup = (e) => {
+      if (e.target !== this.panelContent) return;
+      // Wait for transform to complete (last property)
+      if (e.propertyName !== "transform") return;
+      this.panelContent.removeEventListener("transitionend", cleanup);
+      this.panelContent.style.removeProperty("transition");
+      this.panelContent.style.removeProperty("width");
+      this.panelContent.style.removeProperty("height");
+      this.panelContent.style.removeProperty("overflow");
+      console.log(`[ModalAnimator] _transitionToContent: animation complete`);
+      // Notify state machine if still in entering phase
+      if (syncedVar && syncedVar.getPhase() === "entering") {
+        syncedVar.notifyTransitionEnd();
+      }
+    };
+    this.panelContent.addEventListener("transitionend", cleanup);
 
     // Mark that we've handled the content transition
     this._loadingFadedOut = true;
