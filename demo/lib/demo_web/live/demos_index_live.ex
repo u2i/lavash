@@ -45,6 +45,11 @@ defmodule DemoWeb.DemosIndexLive do
               description="Sliding panels from screen edges with optimistic open/close animations."
             />
             <.demo_card
+              href={~p"/demos/modal"}
+              title="Modal"
+              description="Modal dialogs with optimistic open, loading skeleton, and async content."
+            />
+            <.demo_card
               href={~p"/demos/nesting"}
               title="Nested Bindings"
               description="Component binding chains at 1, 2, and 3 levels deep with bidirectional sync."

@@ -46,7 +46,34 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
       dsl_state = Spark.Dsl.Transformer.persist(dsl_state, :lavash_optimistic_colocated_data, colocated_data)
       {:ok, dsl_state}
     else
+      # No optimistic JS to generate - clean up any stale directory from previous compilations
+      cleanup_stale_optimistic_dir(module)
       {:ok, dsl_state}
+    end
+  end
+
+  # Remove stale optimistic directory when module no longer generates JS
+  defp cleanup_stale_optimistic_dir(module) do
+    target_dir = Lavash.Component.CompilerHelpers.get_target_dir()
+    module_dir = Path.join(target_dir, inspect(module))
+
+    if File.dir?(module_dir) do
+      # Remove all optimistic_*.js files
+      case File.ls(module_dir) do
+        {:ok, files} ->
+          for file <- files, String.starts_with?(file, "optimistic_") do
+            File.rm(Path.join(module_dir, file))
+          end
+
+        _ ->
+          :ok
+      end
+
+      # Remove directory if empty
+      case File.ls(module_dir) do
+        {:ok, []} -> File.rmdir(module_dir)
+        _ -> :ok
+      end
     end
   end
 

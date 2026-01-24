@@ -183,7 +183,8 @@ const LavashOptimistic = {
           if (modalChrome) {
             delegate = new ModalAnimator(modalChrome, {
               duration: config.duration || 200,
-              openField: config.field
+              openField: config.field,
+              js: this.js()
             });
             console.debug(`[LavashOptimistic] Created ModalAnimator for ${config.field} on #${modalChromeId}`);
 

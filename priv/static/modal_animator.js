@@ -28,12 +28,14 @@ export class ModalAnimator {
    * @param {Object} config - Configuration options
    * @param {number} config.duration - Animation duration in ms (default: 200)
    * @param {string} config.openField - The open state field name (for logging)
+   * @param {Object} config.js - LiveView JS commands interface (this.js() from hook)
    */
   constructor(el, config = {}) {
     this.el = el;
     this.config = config;
     this.duration = config.duration || 200;
     this.panelIdForLog = `#${el.id}`;
+    this.js = config.js;
 
     // Cache element references
     const id = el.id;
@@ -96,21 +98,19 @@ export class ModalAnimator {
       this._resetDOM(false);
     }
 
-    // Make wrapper visible
-    this.el.classList.remove("invisible", "pointer-events-none");
+    // Make wrapper visible (structural classes via js for patch safety)
+    this.js.removeClass(this.el, "invisible pointer-events-none");
 
     // Show loading content with fade-in (can be interrupted by content arriving)
     const loadingContent = this.getLoadingContent();
     if (loadingContent) {
-      loadingContent.classList.remove("hidden");
-      // Start at opacity 0, animate to full opacity
-      loadingContent.classList.add("opacity-0");
-      loadingContent.classList.add("transition-opacity");
-      loadingContent.style.transitionDuration = `${this.duration}ms`;
+      this.js.removeClass(loadingContent, "hidden");
+      // Start at opacity 0, animate to full opacity (inline styles for animation)
+      loadingContent.style.opacity = "0";
+      loadingContent.style.transition = `opacity ${this.duration}ms ease-out`;
       // Force reflow before changing opacity
       loadingContent.offsetHeight;
-      loadingContent.classList.remove("opacity-0");
-      loadingContent.classList.add("opacity-100");
+      loadingContent.style.opacity = "1";
     }
 
     // Capture loading skeleton rect NOW - after showing loading but BEFORE scale animation
@@ -128,50 +128,56 @@ export class ModalAnimator {
       this._enterAnimationStartTime = performance.now();
     }
 
-    // Animate panel open
+    // Animate panel open (all animation via inline styles)
     if (this.panelContent) {
       // Check current state before animating
       const currentScale = getComputedStyle(this.panelContent).transform;
       const currentOpacity = getComputedStyle(this.panelContent).opacity;
-      console.log(`[ModalAnimator] onEntering: before transition, opacity=${currentOpacity}, transform=${currentScale}`);
+      const alreadyVisible = parseFloat(currentOpacity) > 0.5;
+      console.log(`[ModalAnimator] onEntering: before transition, opacity=${currentOpacity}, transform=${currentScale}, alreadyVisible=${alreadyVisible}`);
 
-      // CRITICAL: Force starting state with inline styles to ensure transition will fire
-      // This handles the case where classes might already be in the wrong state
-      this.panelContent.style.opacity = "0";
-      this.panelContent.style.transform = "scale(0.95)";
-      // Remove any conflicting classes
-      this.panelContent.classList.remove("opacity-100", "scale-100", "opacity-0", "scale-95");
-      // Force reflow to apply starting state
-      this.panelContent.offsetHeight;
+      if (alreadyVisible) {
+        // Panel is already visible (reopen case) - don't animate scale, just ensure it's at full opacity/scale
+        this.panelContent.style.opacity = "1";
+        this.panelContent.style.transform = "scale(1)";
+        this.panelContent.style.transition = "none";
+        // Still need to notify transition end since we're skipping the animation
+        setTimeout(() => syncedVar.notifyTransitionEnd(), 0);
+      } else {
+        // Force starting state with inline styles
+        this.panelContent.style.opacity = "0";
+        this.panelContent.style.transform = "scale(0.95)";
+        // Force reflow to apply starting state
+        this.panelContent.offsetHeight;
 
-      // Now set up the transition
-      this.panelContent.classList.add("transition-all", "duration-200", "ease-out");
-      // Force another reflow
-      this.panelContent.offsetHeight;
+        // Set transition and animate to visible state
+        this.panelContent.style.transition = `opacity ${this.duration}ms ease-out, transform ${this.duration}ms ease-out`;
+        this.panelContent.offsetHeight;
+        this.panelContent.style.opacity = "1";
+        this.panelContent.style.transform = "scale(1)";
 
-      // Animate to visible state by removing inline styles and adding target classes
-      this.panelContent.style.removeProperty("opacity");
-      this.panelContent.style.removeProperty("transform");
-      this.panelContent.classList.add("opacity-100", "scale-100");
-
-      // Set up transition end handler
-      this._transitionHandler = (e) => {
-        console.log(`[ModalAnimator] transitionend fired, property=${e.propertyName}, target=${e.target === this.panelContent ? 'panelContent' : 'other'}`);
-        if (e.target !== this.panelContent) return;
-        this.panelContent.removeEventListener("transitionend", this._transitionHandler);
-        this._transitionHandler = null;
-        // Notify SyncedVar that transition completed
-        syncedVar.notifyTransitionEnd();
-      };
-      this.panelContent.addEventListener("transitionend", this._transitionHandler);
+        // Set up transition end handler - wait for TRANSFORM specifically
+        // Opacity and transform animate together, but we need to wait for transform
+        // to complete before transitioning state (transform defines the visual "open" state)
+        this._transitionHandler = (e) => {
+          console.log(`[ModalAnimator] transitionend fired, property=${e.propertyName}, target=${e.target === this.panelContent ? 'panelContent' : 'other'}`);
+          if (e.target !== this.panelContent) return;
+          // Only proceed when transform completes (not opacity)
+          if (e.propertyName !== "transform") return;
+          this.panelContent.removeEventListener("transitionend", this._transitionHandler);
+          this._transitionHandler = null;
+          // Notify SyncedVar that transition completed
+          syncedVar.notifyTransitionEnd();
+        };
+        this.panelContent.addEventListener("transitionend", this._transitionHandler);
+      }
     }
 
-    // Animate overlay open
+    // Animate overlay open (inline styles)
     if (this.overlay) {
-      this.overlay.classList.add("transition-opacity", "duration-200", "ease-out");
+      this.overlay.style.transition = `opacity ${this.duration}ms ease-out`;
       this.overlay.offsetHeight;
-      this.overlay.classList.remove("opacity-0");
-      this.overlay.classList.add("opacity-50");
+      this.overlay.style.opacity = "0.5";
     }
   }
 
@@ -189,8 +195,8 @@ export class ModalAnimator {
    */
   onVisible(_syncedVar) {
     console.log(`[ModalAnimator] onVisible called, _pendingFlipRect=${JSON.stringify(this._pendingFlipRect)}`);
-    // Panel is now fully visible
-    this.el.classList.remove("invisible");
+    // Panel is now fully visible (ensure structural class removed via js)
+    this.js.removeClass(this.el, "invisible");
 
     // Check if there's a pending FLIP animation queued from the entering phase
     // This happens when content arrives before the enter transition completes
@@ -209,8 +215,8 @@ export class ModalAnimator {
    */
   onExiting(_syncedVar) {
 
-    // Disable pointer events immediately
-    this.el.classList.add("pointer-events-none");
+    // Disable pointer events immediately (structural class via js)
+    this.js.addClass(this.el, "pointer-events-none");
 
     // Remove any pending transition handlers
     if (this.panelContent && this._transitionHandler) {
@@ -322,11 +328,11 @@ export class ModalAnimator {
     // This creates a proper crossfade where main content fades in as loading fades out
     // Panel is locked so it won't resize yet
     const mainContent = this.getMainContentContainer();
-    if (mainContent && mainContent.classList.contains("hidden")) {
+    if (mainContent && getComputedStyle(mainContent).display === "none") {
       console.log(`[ModalAnimator] onContentReadyDuringEnter: fading in main content underneath loading`);
-      // Start at opacity 0
-      mainContent.classList.remove("hidden");
-      mainContent.classList.add("opacity-0");
+      // Start at opacity 0 (structural class via js, animation via inline style)
+      this.js.removeClass(mainContent, "hidden");
+      mainContent.style.opacity = "0";
       mainContent.style.transition = "none";
       mainContent.offsetHeight; // Force reflow
 
@@ -336,11 +342,10 @@ export class ModalAnimator {
         : 0;
       const fadeInDuration = Math.max(50, this.duration - elapsed);
 
-      // Fade in
+      // Fade in (inline styles)
       mainContent.style.transition = `opacity ${fadeInDuration}ms ease-out`;
       mainContent.offsetHeight;
-      mainContent.classList.remove("opacity-0");
-      mainContent.classList.add("opacity-100");
+      mainContent.style.opacity = "1";
 
       // Clean up transition after complete
       setTimeout(() => {
@@ -350,7 +355,7 @@ export class ModalAnimator {
 
     // Now fade out loading to reveal main content
     const loadEl = this.getLoadingContent();
-    if (loadEl && !loadEl.classList.contains("hidden")) {
+    if (loadEl && getComputedStyle(loadEl).display !== "none") {
       const elapsed = this._enterAnimationStartTime
         ? performance.now() - this._enterAnimationStartTime
         : 0;
@@ -368,12 +373,11 @@ export class ModalAnimator {
       loadEl.offsetHeight;
       loadEl.style.opacity = "0";
 
+      // After fade, hide with structural class and clean up styles
+      const self = this;
       setTimeout(() => {
-        loadEl.classList.add("hidden");
-        loadEl.classList.remove("transition-opacity", "opacity-100");
-        loadEl.classList.add("opacity-0");
+        self.js.addClass(loadEl, "hidden");
         loadEl.style.removeProperty("transition");
-        loadEl.style.removeProperty("transition-duration");
         loadEl.style.removeProperty("opacity");
       }, fadeOutDuration);
 
@@ -504,14 +508,14 @@ export class ModalAnimator {
       this._flipPreRect = null;
       releaseSizeLock();
 
-      // Still need to swap content visibility
-      if (loadEl && !loadEl.classList.contains("hidden")) {
-        loadEl.classList.add("hidden", "opacity-0");
-        loadEl.classList.remove("opacity-100");
+      // Still need to swap content visibility (structural via js, animation via inline styles)
+      if (loadEl && getComputedStyle(loadEl).display !== "none") {
+        this.js.addClass(loadEl, "hidden");
+        loadEl.style.opacity = "0";
       }
       if (mainContent) {
-        mainContent.classList.remove("hidden", "opacity-0");
-        mainContent.classList.add("opacity-100");
+        this.js.removeClass(mainContent, "hidden");
+        mainContent.style.opacity = "1";
       }
       return;
     }
@@ -520,17 +524,30 @@ export class ModalAnimator {
     this._flipPreRect = null;
 
     // Check if main content is already visible (e.g., shown by onContentReadyDuringEnter setTimeout)
-    const mainContentAlreadyVisible = mainContent && mainContent.classList.contains("opacity-100");
-    console.log(`[ModalAnimator] _runFlipAnimation: mainContentAlreadyVisible=${mainContentAlreadyVisible}`);
+    // Must check both display (not hidden) AND opacity to determine true visibility
+    const mainContentStyle = mainContent ? getComputedStyle(mainContent) : null;
+    const mainContentAlreadyVisible = mainContent &&
+      mainContentStyle.display !== "none" &&
+      parseFloat(mainContentStyle.opacity) > 0.5;
+    console.log(`[ModalAnimator] _runFlipAnimation: mainContentAlreadyVisible=${mainContentAlreadyVisible}, display=${mainContentStyle?.display}, opacity=${mainContentStyle?.opacity}`);
 
     // Unhide main content so we can measure it (it was hidden in _resetDOM)
     // Only set opacity-0 if it's not already visible - otherwise we'd cause a blink
     if (mainContent && !mainContentAlreadyVisible) {
+      console.log(`[ModalAnimator] _runFlipAnimation: removing hidden class, before: classList=${mainContent.className}`);
+      this.js.removeClass(mainContent, "hidden");
+      // Also directly remove in case js.removeClass doesn't apply immediately
       mainContent.classList.remove("hidden");
-      mainContent.classList.add("opacity-0");
+      mainContent.style.opacity = "0";
+      mainContent.offsetHeight; // Force reflow after removing hidden
+      console.log(`[ModalAnimator] _runFlipAnimation: after removing hidden: classList=${mainContent.className}, display=${getComputedStyle(mainContent).display}`);
     } else if (mainContent) {
       // Just ensure it's not hidden for measurement
+      console.log(`[ModalAnimator] _runFlipAnimation: ensuring not hidden, before: classList=${mainContent.className}`);
+      this.js.removeClass(mainContent, "hidden");
       mainContent.classList.remove("hidden");
+      mainContent.offsetHeight; // Force reflow after removing hidden
+      console.log(`[ModalAnimator] _runFlipAnimation: after: classList=${mainContent.className}, display=${getComputedStyle(mainContent).display}`);
     }
 
     // Measure the new content size while panel is still locked at old size
@@ -544,6 +561,7 @@ export class ModalAnimator {
       // Get the scroll dimensions of the content
       targetWidth = mainInnerEl.scrollWidth;
       targetHeight = mainInnerEl.scrollHeight;
+      console.log(`[ModalAnimator] _runFlipAnimation: mainInnerEl measurements - scrollWidth=${targetWidth}, scrollHeight=${targetHeight}, offsetWidth=${mainInnerEl.offsetWidth}, offsetHeight=${mainInnerEl.offsetHeight}, display=${getComputedStyle(mainInnerEl).display}`);
 
       // Account for panel padding by measuring the difference
       const panelStyle = getComputedStyle(this.panelContent);
@@ -572,28 +590,36 @@ export class ModalAnimator {
     ) {
       console.log(`[ModalAnimator] _runFlipAnimation: sizes similar, skipping animation`);
       releaseSizeLock();
-      // Still swap content visibility
-      if (loadEl && !loadEl.classList.contains("hidden")) {
-        loadEl.classList.add("hidden", "opacity-0");
-        loadEl.classList.remove("opacity-100");
+      // Still swap content visibility (structural via js, animation via inline styles)
+      if (loadEl && getComputedStyle(loadEl).display !== "none") {
+        this.js.addClass(loadEl, "hidden");
+        loadEl.style.opacity = "0";
       }
       if (mainContent) {
-        mainContent.classList.remove("hidden", "opacity-0");
-        mainContent.classList.add("opacity-100");
+        this.js.removeClass(mainContent, "hidden");
+        mainContent.style.opacity = "1";
       }
       return;
     }
     console.log(`[ModalAnimator] _runFlipAnimation: animating size change`);
 
-    // Show main content instantly (it's behind loading in the grid)
+    // Show main content with fade-in (it's behind loading in the grid, crossfade effect)
     if (mainContent) {
-      mainContent.classList.remove("hidden", "opacity-0");
-      mainContent.classList.add("opacity-100");
+      this.js.removeClass(mainContent, "hidden");
+      // If not already visible, set up a fade-in
+      if (!mainContentAlreadyVisible) {
+        mainContent.style.opacity = "0";
+        mainContent.style.transition = `opacity ${this.duration}ms ease-out`;
+        mainContent.offsetHeight; // Force reflow
+      }
+      mainContent.style.opacity = "1";
     }
     // Fade out loading content - if panel is still fading in, fade out quickly
     // to counteract the partial fade-in that already happened
     // Skip if we already started fading in onContentReadyDuringEnter
-    if (loadEl && !loadEl.classList.contains("hidden") && !this._loadingFadedOut) {
+    console.log(`[ModalAnimator] _runFlipAnimation: checking loading fade-out - loadEl=${!!loadEl}, display=${loadEl ? getComputedStyle(loadEl).display : 'N/A'}, _loadingFadedOut=${this._loadingFadedOut}`);
+    if (loadEl && getComputedStyle(loadEl).display !== "none" && !this._loadingFadedOut) {
+      console.log(`[ModalAnimator] _runFlipAnimation: fading out loading content`);
       // Fade out loading at 2x the rate the panel is fading in
       // This makes the apparent fade-out mirror the apparent fade-in
       // (loading opacity × panel opacity decays at the same rate it grew)
@@ -618,12 +644,10 @@ export class ModalAnimator {
       loadEl.offsetHeight; // Force reflow
       loadEl.style.opacity = "0";
       // Hide after fade completes to remove from layout
+      const self = this;
       setTimeout(() => {
-        loadEl.classList.add("hidden");
-        loadEl.classList.remove("transition-opacity", "opacity-100");
-        loadEl.classList.add("opacity-0");
+        self.js.addClass(loadEl, "hidden");
         loadEl.style.removeProperty("transition");
-        loadEl.style.removeProperty("transition-duration");
         loadEl.style.removeProperty("opacity");
       }, fadeOutDuration);
     }
@@ -644,14 +668,11 @@ export class ModalAnimator {
     this.panelContent.offsetHeight; // Force reflow
 
     requestAnimationFrame(() => {
-      // Now set up the transition and animate to target
-      this.panelContent.style.transition = "";
+      // Set up the transition and animate to target
+      this.panelContent.style.transition = `width ${this.duration}ms ease-in-out, height ${this.duration}ms ease-in-out`;
       if (this.overlay) {
-        this.overlay.style.transition = "";
+        this.overlay.style.removeProperty("transition");
       }
-
-      this.panelContent.classList.add("transition-all", "ease-in-out");
-      this.panelContent.style.transitionDuration = `${this.duration}ms`;
 
       // Force another reflow before setting target
       this.panelContent.offsetHeight;
@@ -665,8 +686,7 @@ export class ModalAnimator {
         (e) => {
           if (e.target !== this.panelContent) return;
           console.log(`[ModalAnimator] _runFlipAnimation: size transition complete`);
-          this.panelContent.classList.remove("transition-all", "ease-in-out");
-          this.panelContent.style.removeProperty("transition-duration");
+          this.panelContent.style.removeProperty("transition");
           this.panelContent.style.removeProperty("width");
           this.panelContent.style.removeProperty("height");
           this.panelContent.style.removeProperty("overflow");
@@ -746,16 +766,17 @@ export class ModalAnimator {
       this._preUpdateContentClone = null;
       this._ghostInsertedInBeforeUpdate = false;
 
-      // Animate ghost overlay out
+      // Animate ghost overlay out (inline styles)
       if (this._ghostOverlay) {
-        this._ghostOverlay.classList.add("transition-opacity", "duration-200", "ease-out");
+        this._ghostOverlay.style.transition = `opacity ${this.duration}ms ease-out`;
         this._ghostOverlay.offsetHeight;
         this._ghostOverlay.style.opacity = "0";
       }
 
-      // Animate ghost panel out
+      // Animate ghost panel out (inline styles)
       requestAnimationFrame(() => {
-        this.ghostElement.classList.add("transition-all", "duration-200", "ease-out", "origin-center");
+        this.ghostElement.style.transition = `opacity ${this.duration}ms ease-out, transform ${this.duration}ms ease-out`;
+        this.ghostElement.style.transformOrigin = "center";
         this.ghostElement.offsetHeight;
         requestAnimationFrame(() => {
           this.ghostElement.style.opacity = "0";
@@ -765,10 +786,10 @@ export class ModalAnimator {
 
       // Also animate the real panel out (it's hidden but we need it reset for next open)
       if (this.panelContent) {
-        this.panelContent.classList.add("transition-all", "duration-200", "ease-out");
+        this.panelContent.style.transition = `opacity ${this.duration}ms ease-out, transform ${this.duration}ms ease-out`;
         this.panelContent.offsetHeight;
-        this.panelContent.classList.remove("opacity-100", "scale-100");
-        this.panelContent.classList.add("opacity-0", "scale-95");
+        this.panelContent.style.opacity = "0";
+        this.panelContent.style.transform = "scale(0.95)";
       }
       return;
     }
@@ -805,28 +826,28 @@ export class ModalAnimator {
       return;
     }
 
-    // Animate ghost out
+    // Animate ghost out (inline styles)
     requestAnimationFrame(() => {
-      this.ghostElement.classList.add("transition-all", "duration-200", "ease-out", "origin-center");
+      this.ghostElement.style.transition = `opacity ${this.duration}ms ease-out, transform ${this.duration}ms ease-out`;
+      this.ghostElement.style.transformOrigin = "center";
       this.ghostElement.offsetHeight;
       this.ghostElement.style.opacity = "0";
       this.ghostElement.style.transform = "scale(0.95)";
     });
 
-    // Animate panel out
+    // Animate panel out (inline styles)
     if (this.panelContent) {
-      this.panelContent.classList.add("transition-all", "duration-200", "ease-out");
+      this.panelContent.style.transition = `opacity ${this.duration}ms ease-out, transform ${this.duration}ms ease-out`;
       this.panelContent.offsetHeight;
-      this.panelContent.classList.remove("opacity-100", "scale-100");
-      this.panelContent.classList.add("opacity-0", "scale-95");
+      this.panelContent.style.opacity = "0";
+      this.panelContent.style.transform = "scale(0.95)";
     }
 
-    // Animate overlay out
+    // Animate overlay out (inline styles)
     if (this.overlay) {
-      this.overlay.classList.add("transition-opacity", "duration-200", "ease-out");
+      this.overlay.style.transition = `opacity ${this.duration}ms ease-out`;
       this.overlay.offsetHeight;
-      this.overlay.classList.remove("opacity-50");
-      this.overlay.classList.add("opacity-0");
+      this.overlay.style.opacity = "0";
     }
   }
 
@@ -886,50 +907,31 @@ export class ModalAnimator {
       this._transitionHandler = null;
     }
 
-    // Wrapper - invisible
-    this.el.classList.add("invisible", "pointer-events-none");
+    // Wrapper - invisible (structural classes via js for patch safety)
+    this.js.addClass(this.el, "invisible pointer-events-none");
 
-    // Panel - reset to closed state
+    // Panel - reset to closed state (set starting animation state via inline styles)
     if (this.panelContent) {
-      this.panelContent.classList.remove(
-        "opacity-100", "scale-100",
-        "transition-all", "transition-opacity", "transition-none",
-        "ease-out", "ease-in-out", "origin-center"
-      );
-      // Remove duration-* classes
-      [...this.panelContent.classList]
-        .filter(c => c.startsWith("duration-"))
-        .forEach(c => this.panelContent.classList.remove(c));
-
-      this.panelContent.classList.add("opacity-0", "scale-95");
-      this.panelContent.style.removeProperty("transform");
+      this.panelContent.style.opacity = "0";
+      this.panelContent.style.transform = "scale(0.95)";
       this.panelContent.style.removeProperty("transition");
-      this.panelContent.style.removeProperty("transition-duration");
       this.panelContent.style.removeProperty("width");
       this.panelContent.style.removeProperty("height");
     }
 
-    // Overlay - reset
+    // Overlay - reset (clear inline styles, set starting opacity)
     if (this.overlay) {
       this.overlay.style.visibility = "";
-      this.overlay.classList.remove("opacity-50", "transition-opacity", "ease-out");
-      [...this.overlay.classList]
-        .filter(c => c.startsWith("duration-"))
-        .forEach(c => this.overlay.classList.remove(c));
-      this.overlay.classList.add("opacity-0");
+      this.overlay.style.opacity = "0";
+      this.overlay.style.removeProperty("transition");
     }
 
     // Loading - reset to hidden (will be shown in onEntering)
     const loadingContent = this.getLoadingContent();
     if (loadingContent) {
-      loadingContent.classList.add("hidden", "opacity-0");
-      loadingContent.classList.remove("opacity-100", "transition-opacity", "ease-out");
-      [...loadingContent.classList]
-        .filter(c => c.startsWith("duration-"))
-        .forEach(c => loadingContent.classList.remove(c));
-      loadingContent.style.removeProperty("transform");
+      this.js.addClass(loadingContent, "hidden");
+      loadingContent.style.opacity = "0";
       loadingContent.style.removeProperty("transition");
-      loadingContent.style.removeProperty("transform-origin");
     }
 
     // Main content - hide so panel measures only loading skeleton on next open
@@ -937,7 +939,7 @@ export class ModalAnimator {
     // The server will eventually remove main_content_inner, but that may not have arrived yet
     const mainContent = this.getMainContentContainer();
     if (mainContent) {
-      mainContent.classList.add("hidden");
+      this.js.addClass(mainContent, "hidden");
     }
   }
 

@@ -87,11 +87,13 @@ defmodule Lavash.Overlay.Modal.Helpers do
         phx-click={@close_on_backdrop && @on_close}
       />
 
-      <%!-- Panel - client controls opacity/scale/transform via JS commands --%>
+      <%!-- Panel - client controls opacity/scale/transform via inline styles --%>
+      <%!-- Animation classes (opacity-0, scale-95) removed - client owns animation state via style attr --%>
       <div
         id={"#{@id}-panel_content"}
         phx-mounted={JS.ignore_attributes(["class", "style"])}
-        class={"inline-grid z-10 bg-base-100 rounded-lg shadow-xl overflow-hidden #{@max_width_class} w-full opacity-0 scale-95"}
+        class={"inline-grid z-10 bg-base-100 rounded-lg shadow-xl overflow-hidden #{@max_width_class} w-full"}
+        style="opacity: 0; transform: scale(0.95)"
         phx-click="noop"
         phx-target={@myself}
         phx-window-keydown={@close_on_escape && @on_close}
