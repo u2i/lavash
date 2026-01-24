@@ -237,19 +237,21 @@ export class AnimatedState {
    * Handle value changes from the hook.
    */
   onValueChange(newValue, oldValue, source) {
+    // Ignore "confirmed" callbacks - animation already started from optimistic update
+    // The confirmed callback just means the server acknowledged our change
+    if (source === "confirmed") {
+      return;
+    }
+
     const wasOpen = oldValue != null;
     const isOpen = newValue != null;
 
-    console.log(`[AnimatedState ${this.config.field}] onValueChange: wasOpen=${wasOpen}, isOpen=${isOpen}, currentPhase=${this.currentPhase?.name}`);
-
     if (isOpen && !wasOpen) {
       // Opening
-      console.log(`[AnimatedState ${this.config.field}] Opening - calling onOpen()`);
       this.isAsyncReady = false; // Reset async state for new open
       this.currentPhase.onOpen();
     } else if (!isOpen && wasOpen) {
       // Closing
-      console.log(`[AnimatedState ${this.config.field}] Closing - calling onClose()`);
       this.currentPhase.onClose();
     }
   }

@@ -66,10 +66,35 @@ export class ModalAnimator {
    * Shows loading content and animates panel open.
    */
   onEntering(syncedVar) {
-    console.log(`ModalAnimator ${this.panelIdForLog}: onEntering`);
+    console.log(`[ModalAnimator] onEntering called`);
 
-    // Reset DOM state before opening
-    this._resetDOM();
+    // Check if we're reopening from an interrupted close
+    // If wrapper is still visible (not invisible), we're reopening before close completed
+    const isReopen = !!this._ghostOverlay || !this.el.classList.contains("invisible");
+    console.log(`[ModalAnimator] onEntering: isReopen=${isReopen}, hasGhostOverlay=${!!this._ghostOverlay}, wrapperVisible=${!this.el.classList.contains("invisible")}`);
+
+    // If reopening, don't make wrapper invisible - just clean up and continue
+    if (isReopen) {
+      // Clean up any ghost elements with fade
+      this._cleanupCloseAnimation(false);
+      // Reset internal state but don't touch wrapper visibility
+      this._flipPreRect = null;
+      this._sizeLockApplied = false;
+      this._pendingFlipRect = null;
+      this._enteringLoadingRect = null;
+      this._enterAnimationStartTime = null;
+      this._loadingFadedOut = false;
+      this._ghostInsertedInBeforeUpdate = false;
+      this._preUpdateContentClone = null;
+      // Clean up transition handler
+      if (this.panelContent && this._transitionHandler) {
+        this.panelContent.removeEventListener("transitionend", this._transitionHandler);
+        this._transitionHandler = null;
+      }
+    } else {
+      // Normal open from idle - full reset
+      this._resetDOM(false);
+    }
 
     // Make wrapper visible
     this.el.classList.remove("invisible", "pointer-events-none");
@@ -101,22 +126,38 @@ export class ModalAnimator {
       };
       // Track when enter animation started for computing remaining time
       this._enterAnimationStartTime = performance.now();
-      console.log(`ModalAnimator ${this.panelIdForLog}: captured entering loading rect (layout) ${this._enteringLoadingRect.width}x${this._enteringLoadingRect.height}`);
     }
 
     // Animate panel open
     if (this.panelContent) {
-      this.panelContent.classList.add("transition-all", "duration-200", "ease-out");
-      // Force reflow
+      // Check current state before animating
+      const currentScale = getComputedStyle(this.panelContent).transform;
+      const currentOpacity = getComputedStyle(this.panelContent).opacity;
+      console.log(`[ModalAnimator] onEntering: before transition, opacity=${currentOpacity}, transform=${currentScale}`);
+
+      // CRITICAL: Force starting state with inline styles to ensure transition will fire
+      // This handles the case where classes might already be in the wrong state
+      this.panelContent.style.opacity = "0";
+      this.panelContent.style.transform = "scale(0.95)";
+      // Remove any conflicting classes
+      this.panelContent.classList.remove("opacity-100", "scale-100", "opacity-0", "scale-95");
+      // Force reflow to apply starting state
       this.panelContent.offsetHeight;
-      // Animate to visible state
-      this.panelContent.classList.remove("opacity-0", "scale-95");
+
+      // Now set up the transition
+      this.panelContent.classList.add("transition-all", "duration-200", "ease-out");
+      // Force another reflow
+      this.panelContent.offsetHeight;
+
+      // Animate to visible state by removing inline styles and adding target classes
+      this.panelContent.style.removeProperty("opacity");
+      this.panelContent.style.removeProperty("transform");
       this.panelContent.classList.add("opacity-100", "scale-100");
 
       // Set up transition end handler
       this._transitionHandler = (e) => {
+        console.log(`[ModalAnimator] transitionend fired, property=${e.propertyName}, target=${e.target === this.panelContent ? 'panelContent' : 'other'}`);
         if (e.target !== this.panelContent) return;
-        console.log(`ModalAnimator ${this.panelIdForLog}: transitionend fired`);
         this.panelContent.removeEventListener("transitionend", this._transitionHandler);
         this._transitionHandler = null;
         // Notify SyncedVar that transition completed
@@ -139,7 +180,6 @@ export class ModalAnimator {
    * Panel is open but waiting for async data.
    */
   onLoading(_syncedVar) {
-    console.log(`ModalAnimator ${this.panelIdForLog}: onLoading - waiting for async data`);
     // Panel is already open, just waiting for content
   }
 
@@ -148,14 +188,14 @@ export class ModalAnimator {
    * Modal is fully open and visible.
    */
   onVisible(_syncedVar) {
-    console.log(`ModalAnimator ${this.panelIdForLog}: onVisible`);
+    console.log(`[ModalAnimator] onVisible called, _pendingFlipRect=${JSON.stringify(this._pendingFlipRect)}`);
     // Panel is now fully visible
     this.el.classList.remove("invisible");
 
     // Check if there's a pending FLIP animation queued from the entering phase
     // This happens when content arrives before the enter transition completes
     if (this._pendingFlipRect) {
-      console.log(`ModalAnimator ${this.panelIdForLog}: onVisible - running queued FLIP from loading rect`);
+      console.log(`[ModalAnimator] onVisible: running queued FLIP animation`);
       // Use the captured loading rect as the "from" size
       this._flipPreRect = this._pendingFlipRect;
       this._pendingFlipRect = null;
@@ -168,7 +208,6 @@ export class ModalAnimator {
    * Sets up ghost element and animates close.
    */
   onExiting(_syncedVar) {
-    console.log(`ModalAnimator ${this.panelIdForLog}: onExiting`);
 
     // Disable pointer events immediately
     this.el.classList.add("pointer-events-none");
@@ -188,7 +227,6 @@ export class ModalAnimator {
    * Resets DOM to closed state and cleans up ghost.
    */
   onIdle(_syncedVar) {
-    console.log(`ModalAnimator ${this.panelIdForLog}: onIdle`);
     this._resetDOM();
     this._cleanupCloseAnimation();
   }
@@ -199,7 +237,6 @@ export class ModalAnimator {
    * using the rect stored on the SyncedVar, not from here.
    */
   onAsyncReady(_syncedVar) {
-    console.log(`ModalAnimator ${this.panelIdForLog}: onAsyncReady`);
     // FLIP animation is handled by the hook's updated() method
     // which has access to the pre-captured rect on the SyncedVar
   }
@@ -212,34 +249,45 @@ export class ModalAnimator {
    * @param {string} _phase - Current animation phase (unused, we get fresh phase from syncedVar)
    */
   onUpdated(animated, _phase) {
-    // Check if main content has actually loaded (has height)
+    // Check if main content has actually loaded
+    // We check for children rather than height, because main_content may be hidden
+    // (we hide it in _resetDOM so panel measures only loading skeleton)
     const mainInner = this.getMainContentInner();
-    const mainContentLoaded = mainInner && mainInner.offsetHeight > 10;
+    const mainContentLoaded = mainInner && mainInner.children.length > 0;
 
     const currentPhase = animated.getPhase();
     const loadingContent = this.getLoadingContent();
     const loadingVisible = loadingContent && !loadingContent.classList.contains("hidden");
 
-    console.log(`ModalAnimator ${this.panelIdForLog}: onUpdated - phase=${currentPhase}, mainContentLoaded=${mainContentLoaded}, loadingVisible=${loadingVisible}`);
+    console.log(`[ModalAnimator] onUpdated: phase=${currentPhase}, mainContentLoaded=${mainContentLoaded}, loadingVisible=${loadingVisible}, isAsyncReady=${animated.isAsyncReady}`);
 
     // Handle content arrival during entering phase
     // Notify state machine so it can call onContentReadyDuringEnter
     if (mainContentLoaded && currentPhase === "entering" && !animated.isAsyncReady) {
-      console.log(`ModalAnimator ${this.panelIdForLog}: onUpdated - content arrived during entering, notifying state machine`);
+      console.log(`[ModalAnimator] onUpdated: content ready during entering phase, calling onAsyncDataReady`);
       animated.onAsyncDataReady();
-      // onContentReadyDuringEnter will handle the FLIP queuing and early loading fadeout
-      this.releaseSizeLockIfNeeded();
+      console.log(`[ModalAnimator] onUpdated: after onAsyncDataReady in entering, phase=${animated.getPhase()}, isAsyncReady=${animated.isAsyncReady}`);
+      // onContentReadyDuringEnter locks the panel size and queues FLIP for onVisible
+      // Do NOT release the size lock here - FLIP needs it to animate from loading size to content size
       return;
+    }
+
+    // For loading phase with content ready, notify state machine to transition to visible
+    // This handles the case where transitionend fired before async data arrived,
+    // putting us in loading phase, but then detectAsyncFieldsReady() didn't trigger
+    // because the data was already cached (oldValue == newValue).
+    if (mainContentLoaded && currentPhase === "loading" && !animated.isAsyncReady) {
+      console.log(`[ModalAnimator] onUpdated: calling onAsyncDataReady for loading phase with content ready`);
+      animated.onAsyncDataReady();
+      console.log(`[ModalAnimator] onUpdated: after onAsyncDataReady, phase=${animated.getPhase()}, isAsyncReady=${animated.isAsyncReady}`);
+      // Don't return - fall through to run FLIP animation since we're now visible with content ready
     }
 
     // For loading/visible phases with content ready, run FLIP animation
     if (mainContentLoaded && (currentPhase === "loading" || currentPhase === "visible")) {
       // Content is ready - run FLIP if loading is still visible
       if (loadingVisible) {
-        console.log(`ModalAnimator ${this.panelIdForLog}: onUpdated - running FLIP animation`);
         this._runFlipAnimation();
-      } else {
-        console.log(`ModalAnimator ${this.panelIdForLog}: onUpdated - loading already hidden, skipping FLIP`);
       }
     }
 
@@ -253,20 +301,63 @@ export class ModalAnimator {
    * after the enter transition completes.
    */
   onContentReadyDuringEnter(_syncedVar) {
-    console.log(`ModalAnimator ${this.panelIdForLog}: onContentReadyDuringEnter`);
+    console.log(`[ModalAnimator] onContentReadyDuringEnter called, _enteringLoadingRect=${JSON.stringify(this._enteringLoadingRect)}`);
     // Capture the loading rect immediately - this is the "first" rect for FLIP
     // We must capture it now before any more DOM updates overwrite _flipPreRect
     this._queueFlipWithLoadingRect();
+    console.log(`[ModalAnimator] onContentReadyDuringEnter: after queueFlip, _pendingFlipRect=${JSON.stringify(this._pendingFlipRect)}`);
 
-    // Start fading out loading NOW - don't wait for onVisible
-    // This way the loading starts disappearing while the panel is still scaling in
+    // CRITICAL: Lock the panel to the loading skeleton size BEFORE showing main content
+    // This prevents the panel from immediately resizing when content is revealed
+    // We'll animate the size change later in _runFlipAnimation (via onVisible)
+    if (this.panelContent && this._enteringLoadingRect) {
+      console.log(`[ModalAnimator] onContentReadyDuringEnter: locking panel to loading size ${this._enteringLoadingRect.width}x${this._enteringLoadingRect.height}`);
+      this.panelContent.style.width = `${this._enteringLoadingRect.width}px`;
+      this.panelContent.style.height = `${this._enteringLoadingRect.height}px`;
+      this.panelContent.style.overflow = "hidden";
+      this._sizeLockApplied = true;
+    }
+
+    // Show main content underneath loading, but fade it in to avoid flash
+    // This creates a proper crossfade where main content fades in as loading fades out
+    // Panel is locked so it won't resize yet
+    const mainContent = this.getMainContentContainer();
+    if (mainContent && mainContent.classList.contains("hidden")) {
+      console.log(`[ModalAnimator] onContentReadyDuringEnter: fading in main content underneath loading`);
+      // Start at opacity 0
+      mainContent.classList.remove("hidden");
+      mainContent.classList.add("opacity-0");
+      mainContent.style.transition = "none";
+      mainContent.offsetHeight; // Force reflow
+
+      // Calculate fade duration - sync with loading fade-out
+      const elapsed = this._enterAnimationStartTime
+        ? performance.now() - this._enterAnimationStartTime
+        : 0;
+      const fadeInDuration = Math.max(50, this.duration - elapsed);
+
+      // Fade in
+      mainContent.style.transition = `opacity ${fadeInDuration}ms ease-out`;
+      mainContent.offsetHeight;
+      mainContent.classList.remove("opacity-0");
+      mainContent.classList.add("opacity-100");
+
+      // Clean up transition after complete
+      setTimeout(() => {
+        mainContent.style.removeProperty("transition");
+      }, fadeInDuration);
+    }
+
+    // Now fade out loading to reveal main content
     const loadEl = this.getLoadingContent();
     if (loadEl && !loadEl.classList.contains("hidden")) {
       const elapsed = this._enterAnimationStartTime
         ? performance.now() - this._enterAnimationStartTime
-        : this.duration;
-      const fadeOutDuration = Math.max(1, Math.min(elapsed / 2, this.duration));
-      console.log(`ModalAnimator: starting early loading fade-out, duration=${fadeOutDuration.toFixed(0)}ms (elapsed=${elapsed.toFixed(0)}ms)`);
+        : 0;
+      // Fade should complete when enter animation completes (duration - elapsed)
+      const remainingEnterTime = Math.max(50, this.duration - elapsed);
+      const fadeOutDuration = remainingEnterTime;
+      console.log(`[ModalAnimator] onContentReadyDuringEnter: elapsed=${elapsed}, remainingEnterTime=${remainingEnterTime}, fadeOutDuration=${fadeOutDuration}`);
 
       const currentOpacity = getComputedStyle(loadEl).opacity;
       loadEl.style.transition = "none";
@@ -296,7 +387,6 @@ export class ModalAnimator {
    * This is for internal tracking, SyncedVar handles the phase transition.
    */
   onTransitionEnd(_syncedVar) {
-    console.log(`ModalAnimator ${this.panelIdForLog}: onTransitionEnd`);
     // SyncedVar handles the phase transition
   }
 
@@ -311,7 +401,6 @@ export class ModalAnimator {
   capturePreUpdateRect(phase) {
     // Don't overwrite if we already have a pending FLIP queued
     if (this._pendingFlipRect) {
-      console.log(`ModalAnimator ${this.panelIdForLog}: capturePreUpdateRect skipped - pending FLIP already queued`);
       return;
     }
 
@@ -325,7 +414,6 @@ export class ModalAnimator {
       this.panelContent.style.width = `${this._enteringLoadingRect.width}px`;
       this.panelContent.style.height = `${this._enteringLoadingRect.height}px`;
       // Don't touch transition - let scale animation continue!
-      console.log(`ModalAnimator ${this.panelIdForLog}: capturePreUpdateRect (entering) - locked to entering rect ${this._enteringLoadingRect.width}x${this._enteringLoadingRect.height}`);
       return;
     }
 
@@ -343,7 +431,6 @@ export class ModalAnimator {
       if (this.overlay) {
         this.overlay.style.transition = "none";
       }
-      console.log(`ModalAnimator ${this.panelIdForLog}: capturePreUpdateRect ${this._flipPreRect.width}x${this._flipPreRect.height}`);
     }
   }
 
@@ -354,19 +441,19 @@ export class ModalAnimator {
    */
   _queueFlipWithLoadingRect() {
     // Only queue once - if we already have a pending rect, don't overwrite
-    if (this._pendingFlipRect) return;
+    if (this._pendingFlipRect) {
+      return;
+    }
 
     // Use the rect captured at the start of entering (the canonical loading skeleton size)
     // This is immune to any DOM updates that happen during the entering phase
     if (this._enteringLoadingRect) {
       this._pendingFlipRect = this._enteringLoadingRect;
-      console.log(`ModalAnimator ${this.panelIdForLog}: queued FLIP with entering loading rect ${this._pendingFlipRect.width}x${this._pendingFlipRect.height}`);
     } else {
       // Fallback - capture now (less ideal)
       const loadEl = this.getLoadingContent();
       if (this.panelContent && loadEl) {
         this._pendingFlipRect = this.panelContent.getBoundingClientRect();
-        console.log(`ModalAnimator ${this.panelIdForLog}: queued FLIP with current rect (fallback) ${this._pendingFlipRect.width}x${this._pendingFlipRect.height}`);
       }
     }
   }
@@ -399,8 +486,6 @@ export class ModalAnimator {
     const mainInnerEl = this.getMainContentInner();
     const mainContent = this.getMainContentContainer();
 
-    console.log(`ModalAnimator _runFlipAnimation: mainInnerEl=${!!mainInnerEl}, loadEl=${!!loadEl}, _flipPreRect=${!!this._flipPreRect}`);
-
     // Helper to release size lock and restore transitions
     const releaseSizeLock = () => {
       this._sizeLockApplied = false;
@@ -425,7 +510,7 @@ export class ModalAnimator {
         loadEl.classList.remove("opacity-100");
       }
       if (mainContent) {
-        mainContent.classList.remove("opacity-0");
+        mainContent.classList.remove("hidden", "opacity-0");
         mainContent.classList.add("opacity-100");
       }
       return;
@@ -434,12 +519,28 @@ export class ModalAnimator {
     const firstRect = this._flipPreRect;
     this._flipPreRect = null;
 
+    // Check if main content is already visible (e.g., shown by onContentReadyDuringEnter setTimeout)
+    const mainContentAlreadyVisible = mainContent && mainContent.classList.contains("opacity-100");
+    console.log(`[ModalAnimator] _runFlipAnimation: mainContentAlreadyVisible=${mainContentAlreadyVisible}`);
+
+    // Unhide main content so we can measure it (it was hidden in _resetDOM)
+    // Only set opacity-0 if it's not already visible - otherwise we'd cause a blink
+    if (mainContent && !mainContentAlreadyVisible) {
+      mainContent.classList.remove("hidden");
+      mainContent.classList.add("opacity-0");
+    } else if (mainContent) {
+      // Just ensure it's not hidden for measurement
+      mainContent.classList.remove("hidden");
+    }
+
     // Measure the new content size while panel is still locked at old size
     // We measure the main content inner element to get the natural size
     let targetWidth = firstRect.width;
     let targetHeight = firstRect.height;
 
     if (mainInnerEl) {
+      // Force layout to get accurate measurements
+      mainInnerEl.offsetHeight;
       // Get the scroll dimensions of the content
       targetWidth = mainInnerEl.scrollWidth;
       targetHeight = mainInnerEl.scrollHeight;
@@ -453,13 +554,11 @@ export class ModalAnimator {
       targetWidth = targetWidth + paddingX;
       targetHeight = targetHeight + paddingY;
     }
-
-    console.log(`ModalAnimator FLIP: firstRect=${firstRect.width}x${firstRect.height}, target=${targetWidth}x${targetHeight}`);
+    console.log(`[ModalAnimator] _runFlipAnimation: firstRect=${firstRect.width}x${firstRect.height}, target=${targetWidth}x${targetHeight}`)
 
     // If target height is 0 or very small, main content hasn't loaded yet - skip FLIP
     // This happens when async data hasn't arrived (mainInnerEl exists but is empty)
     if (targetHeight < 10) {
-      console.log(`ModalAnimator _runFlipAnimation: target height too small (${targetHeight}), content not loaded yet - skipping`);
       // DON'T release size lock or swap content - wait for next update with actual content
       // But DO restore the flipPreRect so we can try again
       this._flipPreRect = firstRect;
@@ -471,6 +570,7 @@ export class ModalAnimator {
       Math.abs(firstRect.width - targetWidth) < 1 &&
       Math.abs(firstRect.height - targetHeight) < 1
     ) {
+      console.log(`[ModalAnimator] _runFlipAnimation: sizes similar, skipping animation`);
       releaseSizeLock();
       // Still swap content visibility
       if (loadEl && !loadEl.classList.contains("hidden")) {
@@ -478,17 +578,16 @@ export class ModalAnimator {
         loadEl.classList.remove("opacity-100");
       }
       if (mainContent) {
-        mainContent.classList.remove("opacity-0");
+        mainContent.classList.remove("hidden", "opacity-0");
         mainContent.classList.add("opacity-100");
       }
       return;
     }
-
-    console.log(`ModalAnimator _runFlipAnimation: animating size change`);
+    console.log(`[ModalAnimator] _runFlipAnimation: animating size change`);
 
     // Show main content instantly (it's behind loading in the grid)
     if (mainContent) {
-      mainContent.classList.remove("opacity-0");
+      mainContent.classList.remove("hidden", "opacity-0");
       mainContent.classList.add("opacity-100");
     }
     // Fade out loading content - if panel is still fading in, fade out quickly
@@ -502,27 +601,22 @@ export class ModalAnimator {
       if (this._enterAnimationStartTime) {
         const elapsed = performance.now() - this._enterAnimationStartTime;
         // Fade out in half the elapsed time (2x speed), capped at full duration for late arrivals
-        fadeOutDuration = Math.min(elapsed / 2, this.duration);
-        console.log(`ModalAnimator: loading fade-out duration=${fadeOutDuration.toFixed(0)}ms (elapsed=${elapsed.toFixed(0)}ms)`);
+        // Ensure minimum 100ms to avoid jarring blink when data arrives quickly
+        fadeOutDuration = Math.max(100, Math.min(elapsed / 2, this.duration));
       }
 
       // Interrupt current fade-in transition and start fade-out with new duration
       // First, capture current computed opacity and kill the transition
       const currentOpacity = getComputedStyle(loadEl).opacity;
-      console.log(`ModalAnimator: loading currentOpacity=${currentOpacity}, will fade to 0 in ${fadeOutDuration.toFixed(0)}ms`);
 
       loadEl.style.transition = "none";
       loadEl.style.opacity = currentOpacity; // Lock at current value
       loadEl.offsetHeight; // Force reflow
 
-      console.log(`ModalAnimator: after lock, opacity=${getComputedStyle(loadEl).opacity}`);
-
       // Now start fade-out with calculated duration
       loadEl.style.transition = `opacity ${fadeOutDuration}ms ease-out`;
       loadEl.offsetHeight; // Force reflow
       loadEl.style.opacity = "0";
-
-      console.log(`ModalAnimator: after setting opacity=0, computed=${getComputedStyle(loadEl).opacity}, style.opacity=${loadEl.style.opacity}`);
       // Hide after fade completes to remove from layout
       setTimeout(() => {
         loadEl.classList.add("hidden");
@@ -538,8 +632,19 @@ export class ModalAnimator {
     this._sizeLockApplied = false;
 
     // Animate to new size
+    // First, ensure panel is at the "from" size and force a reflow
+    const currentWidth = this.panelContent.style.width;
+    const currentHeight = this.panelContent.style.height;
+    console.log(`[ModalAnimator] _runFlipAnimation: current inline size=${currentWidth}x${currentHeight}, animating to ${targetWidth}x${targetHeight}`);
+
+    // Clear any existing transitions and ensure we're at the starting size
+    this.panelContent.style.transition = "none";
+    this.panelContent.style.width = `${firstRect.width}px`;
+    this.panelContent.style.height = `${firstRect.height}px`;
+    this.panelContent.offsetHeight; // Force reflow
+
     requestAnimationFrame(() => {
-      // Re-enable transitions for the animation
+      // Now set up the transition and animate to target
       this.panelContent.style.transition = "";
       if (this.overlay) {
         this.overlay.style.transition = "";
@@ -547,6 +652,11 @@ export class ModalAnimator {
 
       this.panelContent.classList.add("transition-all", "ease-in-out");
       this.panelContent.style.transitionDuration = `${this.duration}ms`;
+
+      // Force another reflow before setting target
+      this.panelContent.offsetHeight;
+
+      console.log(`[ModalAnimator] _runFlipAnimation: setting target size ${targetWidth}x${targetHeight}`);
       this.panelContent.style.width = `${targetWidth}px`;
       this.panelContent.style.height = `${targetHeight}px`;
 
@@ -554,10 +664,12 @@ export class ModalAnimator {
         "transitionend",
         (e) => {
           if (e.target !== this.panelContent) return;
+          console.log(`[ModalAnimator] _runFlipAnimation: size transition complete`);
           this.panelContent.classList.remove("transition-all", "ease-in-out");
           this.panelContent.style.removeProperty("transition-duration");
           this.panelContent.style.removeProperty("width");
           this.panelContent.style.removeProperty("height");
+          this.panelContent.style.removeProperty("overflow");
         },
         { once: true }
       );
@@ -622,7 +734,6 @@ export class ModalAnimator {
     }
 
     this._ghostInsertedInBeforeUpdate = true;
-    console.log(`ModalAnimator ${this.panelIdForLog}: Ghost inserted via onBeforeElUpdated`);
   }
 
   /**
@@ -631,7 +742,6 @@ export class ModalAnimator {
   _setupGhostElementAnimation() {
     // Check if ghost was already inserted via onBeforeElUpdated
     if (this._ghostInsertedInBeforeUpdate && this._preUpdateContentClone) {
-      console.log(`ModalAnimator ${this.panelIdForLog}: Using ghost from onBeforeElUpdated`);
       this.ghostElement = this._preUpdateContentClone;
       this._preUpdateContentClone = null;
       this._ghostInsertedInBeforeUpdate = false;
@@ -722,29 +832,45 @@ export class ModalAnimator {
 
   /**
    * Clean up ghost elements after close animation.
+   * @param {boolean} instant - If true, remove instantly. If false, fade out first.
    */
-  _cleanupCloseAnimation() {
+  _cleanupCloseAnimation(instant = true) {
     if (this.ghostElement?.parentNode) {
       this.ghostElement.remove();
     }
     this.ghostElement = null;
 
     if (this._ghostOverlay?.parentNode) {
-      this._ghostOverlay.remove();
+      if (instant) {
+        this._ghostOverlay.remove();
+        this._ghostOverlay = null;
+      } else {
+        // Fade out the ghost overlay to avoid flash when reopening
+        const ghostOverlay = this._ghostOverlay;
+        this._ghostOverlay = null; // Clear reference so we don't try to remove again
+        ghostOverlay.style.transition = `opacity ${this.duration}ms ease-out`;
+        ghostOverlay.style.opacity = "0";
+        setTimeout(() => {
+          if (ghostOverlay.parentNode) {
+            ghostOverlay.remove();
+          }
+        }, this.duration);
+      }
+    } else {
+      this._ghostOverlay = null;
     }
-    this._ghostOverlay = null;
   }
 
   // --- DOM Reset ---
 
   /**
    * Reset all DOM state to closed/invisible.
+   * @param {boolean} isReopen - If true, this is a reopen from exiting phase, fade ghost overlay
    */
-  _resetDOM() {
-    console.log(`ModalAnimator ${this.panelIdForLog}: _resetDOM`);
+  _resetDOM(isReopen = false) {
 
-    // Clean up animations
-    this._cleanupCloseAnimation();
+    // Clean up animations - fade ghost overlay if reopening to avoid flash
+    this._cleanupCloseAnimation(!isReopen);
     this._flipPreRect = null;
     this._sizeLockApplied = false;
     this._pendingFlipRect = null;
@@ -793,7 +919,7 @@ export class ModalAnimator {
       this.overlay.classList.add("opacity-0");
     }
 
-    // Loading - reset
+    // Loading - reset to hidden (will be shown in onEntering)
     const loadingContent = this.getLoadingContent();
     if (loadingContent) {
       loadingContent.classList.add("hidden", "opacity-0");
@@ -804,6 +930,14 @@ export class ModalAnimator {
       loadingContent.style.removeProperty("transform");
       loadingContent.style.removeProperty("transition");
       loadingContent.style.removeProperty("transform-origin");
+    }
+
+    // Main content - hide so panel measures only loading skeleton on next open
+    // This is critical for FLIP: we need the panel to start at loading size, not content size
+    // The server will eventually remove main_content_inner, but that may not have arrived yet
+    const mainContent = this.getMainContentContainer();
+    if (mainContent) {
+      mainContent.classList.add("hidden");
     }
   }
 
