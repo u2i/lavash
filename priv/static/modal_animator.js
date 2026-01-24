@@ -306,16 +306,29 @@ export class ModalAnimator {
       return;
     }
 
-    // 1. Capture current computed state
-    // Use computedStyle for width/height to preserve sub-pixel precision
+    // 1. Capture AND FREEZE both panel and loading state IMMEDIATELY
+    // Must capture and freeze in the same breath before any other work
+
+    // Capture loading first and freeze it immediately
+    let loadingCurrentOpacity = "0";
+    if (loadingContent) {
+      loadingCurrentOpacity = getComputedStyle(loadingContent).opacity;
+      loadingContent.style.transition = "none";
+      loadingContent.offsetHeight; // Force reflow to stop the fade-in transition NOW
+      loadingContent.style.opacity = loadingCurrentOpacity;
+    }
+
+    // Now capture and freeze panel
     const computedStyle = getComputedStyle(this.panelContent);
     const currentOpacity = computedStyle.opacity;
     const currentTransform = computedStyle.transform;
     const currentWidth = parseFloat(computedStyle.width);
     const currentHeight = parseFloat(computedStyle.height);
-    console.log(`[ModalAnimator] _transitionToContent: current state - opacity=${currentOpacity}, transform=${currentTransform}, size=${currentWidth}x${currentHeight}`);
 
-    // 2. Stop all transitions and lock to current state
+    console.log(`[ModalAnimator] _transitionToContent: current state - opacity=${currentOpacity}, transform=${currentTransform}, size=${currentWidth}x${currentHeight}`);
+    console.log(`[ModalAnimator] _transitionToContent: loading opacity when content arrives: ${loadingCurrentOpacity}`);
+
+    // 2. Freeze panel to current state
     this.panelContent.style.transition = "none";
     this.panelContent.style.opacity = currentOpacity;
     this.panelContent.style.transform = currentTransform;
@@ -363,8 +376,37 @@ export class ModalAnimator {
     if (mainContent) {
       mainContent.style.transition = `opacity ${this.duration}ms ease-out`;
     }
+    // Counter-fade loading to negate the panel's fade-in effect
+    //
+    // Problem: Loading is INSIDE the panel, so apparent_loading = panel_opacity × loading_opacity
+    // As panel fades in (0→1), loading appears to fade in too, even at opacity 1.
+    //
+    // Ideal: To fade apparent_loading linearly from P to 0 while panel goes P to 1:
+    //   loading(t) = P × (1 - t/T) / (P + (1-P) × t/T)
+    // This is non-linear and can't be done with CSS transitions.
+    //
+    // Approximation: Set loading to panel's current opacity, then fade it to 0 faster.
+    // - At content arrival: panel=P, we set loading=P, so apparent = P × P = P²
+    // - This causes a slight dip (P² < P), but it's barely noticeable
+    // - Loading fades to 0 over duration×P, reaching 0 while panel is still fading
+    // - Result: apparent loading quickly fades to 0, then stays at 0
+    //
+    // For zero-latency (P≈0): loading is hidden immediately, content just fades in
+    // For high-latency (P≈1): loading crossfades naturally with content
+    const panelOpacityNum = parseFloat(currentOpacity);
+    const shouldFadeLoading = loadingContent && panelOpacityNum >= 0.1;
+
     if (loadingContent) {
-      loadingContent.style.transition = `opacity ${this.duration}ms ease-out`;
+      // Set loading's actual opacity to panel's opacity so apparent stays constant momentarily
+      loadingContent.style.opacity = currentOpacity;
+      if (shouldFadeLoading) {
+        // Fade loading out faster than panel fades in, so apparent fades to 0
+        // Use half the duration so loading reaches 0 while panel is still fading
+        const loadingFadeDuration = this.duration * panelOpacityNum;
+        loadingContent.style.transition = `opacity ${loadingFadeDuration}ms ease-out`;
+      } else {
+        loadingContent.style.transition = "none";
+      }
     }
 
     // Force reflow to apply transitions before changing values
@@ -380,11 +422,18 @@ export class ModalAnimator {
     }
     if (loadingContent) {
       loadingContent.style.opacity = "0";
-      // Hide after fade completes
-      setTimeout(() => {
+      if (shouldFadeLoading) {
+        const loadingFadeDuration = this.duration * panelOpacityNum;
+        // Hide after fade completes
+        setTimeout(() => {
+          this.js.addClass(loadingContent, "hidden");
+          loadingContent.style.removeProperty("transition");
+        }, loadingFadeDuration);
+      } else {
+        // Hide immediately since panel is barely visible
         this.js.addClass(loadingContent, "hidden");
         loadingContent.style.removeProperty("transition");
-      }, this.duration);
+      }
     }
 
     // Clean up after animation
