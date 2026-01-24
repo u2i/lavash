@@ -249,7 +249,8 @@ const LavashOptimistic = {
             delegate = new FlyoverAnimator(flyoverChrome, {
               duration: config.duration || 200,
               slideFrom: flyoverChrome.dataset.slideFrom || 'right',
-              openField: config.field
+              openField: config.field,
+              js: this.js()
             });
             console.debug(`[LavashOptimistic] Created FlyoverAnimator for ${config.field} on #${flyoverChromeId}`);
 

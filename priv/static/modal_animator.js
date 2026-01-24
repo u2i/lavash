@@ -260,20 +260,20 @@ export class ModalAnimator {
     console.log(`[ModalAnimator] onUpdated: phase=${currentPhase}, mainContentLoaded=${mainContentLoaded}, loadingVisible=${loadingVisible}, isAsyncReady=${animated.isAsyncReady}`);
 
     // Handle content arrival - use unified transition approach
-    // This works for both entering and loading phases
+    // This works for entering, loading, and visible phases
     if (mainContentLoaded && !animated.isAsyncReady) {
       console.log(`[ModalAnimator] onUpdated: content ready during ${currentPhase} phase, calling onAsyncDataReady`);
       animated.onAsyncDataReady();
       console.log(`[ModalAnimator] onUpdated: after onAsyncDataReady, phase=${animated.getPhase()}, isAsyncReady=${animated.isAsyncReady}`);
       // onContentReadyDuringEnter handles the transition for entering phase
-      // For loading phase, we need to trigger transition here
-      if (currentPhase === "loading" && loadingVisible) {
+      // For loading or visible phase with loading showing, trigger transition here
+      if ((currentPhase === "loading" || currentPhase === "visible") && loadingVisible) {
         this._transitionToContent(animated);
       }
       return;
     }
 
-    // For visible phase with loading still showing (edge case), run transition
+    // For visible phase with loading still showing (edge case after isAsyncReady), run transition
     if (mainContentLoaded && currentPhase === "visible" && loadingVisible) {
       this._transitionToContent(animated);
     }

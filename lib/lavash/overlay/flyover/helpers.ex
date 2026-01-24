@@ -70,23 +70,24 @@ defmodule Lavash.Overlay.Flyover.Helpers do
 
   def flyover_chrome(assigns) do
     # Get position and size classes based on slide direction
-    {position_class, size_class, transform_class, open_transform} =
+    # transform_value is the CSS transform for the closed state
+    {position_class, size_class, transform_value} =
       case assigns.slide_from do
         :left ->
           width_class = Map.get(@width_classes, assigns.width, "max-w-md")
-          {"inset-y-0 left-0", "w-full #{width_class}", "-translate-x-full", "translate-x-0"}
+          {"inset-y-0 left-0", "w-full #{width_class}", "translateX(-100%)"}
 
         :right ->
           width_class = Map.get(@width_classes, assigns.width, "max-w-md")
-          {"inset-y-0 right-0", "w-full #{width_class}", "translate-x-full", "translate-x-0"}
+          {"inset-y-0 right-0", "w-full #{width_class}", "translateX(100%)"}
 
         :top ->
           height_class = Map.get(@height_classes, assigns.height, "max-h-96")
-          {"inset-x-0 top-0", "h-auto #{height_class}", "-translate-y-full", "translate-y-0"}
+          {"inset-x-0 top-0", "h-auto #{height_class}", "translateY(-100%)"}
 
         :bottom ->
           height_class = Map.get(@height_classes, assigns.height, "max-h-96")
-          {"inset-x-0 bottom-0", "h-auto #{height_class}", "translate-y-full", "translate-y-0"}
+          {"inset-x-0 bottom-0", "h-auto #{height_class}", "translateY(100%)"}
       end
 
     # Build the close command: dispatch close-panel event
@@ -100,8 +101,7 @@ defmodule Lavash.Overlay.Flyover.Helpers do
       assigns
       |> assign(:position_class, position_class)
       |> assign(:size_class, size_class)
-      |> assign(:transform_class, transform_class)
-      |> assign(:open_transform, open_transform)
+      |> assign(:transform_value, transform_value)
       |> assign(:on_close, on_close)
       |> assign(:is_open, assigns.open != nil)
 
@@ -114,42 +114,46 @@ defmodule Lavash.Overlay.Flyover.Helpers do
       phx-target={@myself}
       data-open-value={Jason.encode!(@open)}
       data-slide-from={to_string(@slide_from)}
-      data-open-transform={@open_transform}
-      data-closed-transform={@transform_class}
     >
       <%!-- Backdrop overlay - client controls opacity and visibility --%>
       <div
         id={"#{@id}-overlay"}
         phx-mounted={JS.ignore_attributes(["class", "style"])}
-        class="absolute inset-0 bg-black opacity-0"
+        class="absolute inset-0 bg-black"
+        style="opacity: 0"
         phx-click={@close_on_backdrop && @on_close}
       />
 
-      <%!-- Panel - client controls opacity/transform via JS commands --%>
+      <%!-- Panel - client controls transform via inline styles --%>
+      <%!-- Animation classes removed - client owns animation state via style attr --%>
+      <%!-- Uses CSS grid to stack loading and main content for crossfade --%>
       <div
         id={"#{@id}-panel_content"}
         phx-mounted={JS.ignore_attributes(["class", "style"])}
-        class={"fixed z-10 bg-base-100 shadow-xl overflow-hidden #{@position_class} #{@size_class} #{@transform_class}"}
+        class={"fixed z-10 bg-base-100 shadow-xl overflow-hidden grid #{@position_class} #{@size_class}"}
+        style={"transform: #{@transform_value}"}
         phx-click="noop"
         phx-target={@myself}
         phx-window-keydown={@close_on_escape && @on_close}
         phx-key={@close_on_escape && "Escape"}
       >
         <%!-- Loading content - client controls visibility via class/style --%>
+        <%!-- Stacked in same grid cell as main content for crossfade effect --%>
         <div
           :if={@loading != []}
           id={"#{@id}-loading_content"}
           phx-mounted={JS.ignore_attributes(["class", "style"])}
-          class="h-full hidden opacity-0 pointer-events-none"
+          class="row-start-1 col-start-1 h-full hidden opacity-0 pointer-events-none"
         >
           {render_slot(@loading)}
         </div>
         <%!-- Main content - client controls opacity via class/style --%>
+        <%!-- Stacked in same grid cell as loading for crossfade effect --%>
         <div
           id={"#{@id}-main_content"}
           phx-mounted={JS.ignore_attributes(["class", "style"])}
           data-active-if-open={to_string(@is_open)}
-          class="h-full overflow-auto"
+          class="row-start-1 col-start-1 h-full overflow-auto"
         >
           <div :if={@is_open} id={"#{@id}-main_content_inner"}>
             {render_slot(@inner_block)}
