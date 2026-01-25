@@ -26,6 +26,46 @@ defmodule Lavash.Overlay.Modal.Transformers.GenerateRender do
     render_template = render_entity && render_entity.template
     render_loading_template = render_loading_entity && render_loading_entity.template
 
+    # If no Spark entity, check for @__lavash_renders__ module attribute
+    # This happens when RenderMacro's `render` macro shadows Spark's entity
+    module = Transformer.get_persisted(dsl_state, :module)
+
+    {render_template, render_loading_template} =
+      if render_template do
+        {render_template, render_loading_template}
+      else
+        lavash_renders = Module.get_attribute(module, :__lavash_renders__) || []
+        renders_map = Map.new(lavash_renders)
+
+        # Check for legacy function-based render
+        render_fn =
+          case Map.get(renders_map, :__legacy_fn__) do
+            nil ->
+              # Check for :default from new syntax
+              case Map.get(renders_map, :default) do
+                %{source: _source} -> nil  # Will be handled by Component compiler
+                _ -> nil
+              end
+
+            escaped_fn ->
+              # Legacy function-based render - evaluate the escaped AST
+              {fn_value, _} = Code.eval_quoted(escaped_fn)
+              fn_value
+          end
+
+        # Check for render_loading in @__lavash_renders__
+        loading_fn =
+          case Map.get(renders_map, :loading) do
+            nil -> render_loading_template
+            escaped_fn when is_tuple(escaped_fn) ->
+              {fn_value, _} = Code.eval_quoted(escaped_fn)
+              fn_value
+            %{source: _source} -> nil
+          end
+
+        {render_fn, loading_fn}
+      end
+
     # Only generate render if a render template is provided
     if render_template do
       open_field = Transformer.get_option(dsl_state, [:modal], :open_field) || :open

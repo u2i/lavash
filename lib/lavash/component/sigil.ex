@@ -24,10 +24,7 @@ defmodule Lavash.Component.Sigil do
     # Get metadata for token transformation (component context)
     metadata =
       try do
-        case Lavash.Sigil.get_compile_time_metadata(module) do
-          nil -> %{context: :component}
-          m -> Map.put(m, :context, :component)
-        end
+        Lavash.Sigil.get_compile_time_metadata(module, :component)
       rescue
         _ -> %{context: :component}
       end

@@ -1,25 +1,29 @@
 defmodule Lavash.Sigil do
   @moduledoc """
-  Provides the `~L` sigil for Lavash-enhanced HEEx templates.
+  Unified `~L` sigil for Lavash-enhanced HEEx templates.
 
-  The `~L` sigil works like `~H` but automatically injects `data-lavash-*` attributes
-  based on the module's DSL declarations.
+  The `~L` sigil works like `~H` but automatically:
+  - Injects `data-lavash-*` attributes based on DSL declarations
+  - Injects `__lavash_client_bindings__` for nested component binding propagation
+  - Works with both legacy `render fn assigns -> ~L\"\"\"...\"\"\" end` and new `render :default do ~L\"\"\"...\"\"\" end` syntax
+
+  ## Context Auto-Detection
+
+  The sigil automatically detects whether it's being used in a LiveView,
+  Component, or ClientComponent based on the `@__lavash_module_type__` attribute:
+
+  - `:live_view` - Standard data-lavash-* injection
+  - `:component` - Also injects binding propagation for nested components
+  - `:client_component` - Source is preserved for JS generation
 
   ## Usage
 
       defmodule MyApp.CounterLive do
         use Lavash.LiveView
-        import Lavash.Sigil  # Add this import
 
-        state :count, :integer, from: :url, default: 0, optimistic: true
+        state :count, :integer, default: 0, optimistic: true
 
-        actions do
-          action :increment do
-            update :count, &(&1 + 1)
-          end
-        end
-
-        def render(assigns) do
+        render :default do
           ~L\"\"\"
           <div>
             <span>{@count}</span>
@@ -29,54 +33,66 @@ defmodule Lavash.Sigil do
         end
       end
 
-  The `~L` sigil will automatically add:
-  - `data-lavash-display="count"` to the span (since it contains `{@count}`)
-  - `data-lavash-action="increment"` to the button (since `increment` is a declared action)
-
-  ## How It Works
-
-  The sigil stores the template source, then at render time the module's
-  `__before_compile__` transforms it with full metadata access.
-
-  For simpler use cases, the sigil can also work directly if the module
-  already has the `__lavash__/1` function available.
-
   ## Opting Out
 
   To skip auto-injection for a specific element, add `data-lavash-manual`:
 
       <button phx-click="increment" data-lavash-manual>+</button>
-
-  Or use the regular `~H` sigil for the entire template.
   """
 
   @doc """
   Handles the `~L` sigil for Lavash-enhanced HEEx templates.
 
-  Uses Lavash.TagEngine with token transformer for unified processing.
-  This approach handles both data-lavash-* attributes on HTML elements
-  and __lavash_client_bindings__ on component calls at the token level.
+  Returns compiled HEEx content directly (a `%Phoenix.LiveView.Rendered{}` struct).
+  The template source is preserved via AST extraction in `RenderMacro.extract_template`
+  for use with the `render :name do ~L\"\"\"...\"\"\" end` syntax.
   """
   defmacro sigil_L({:<<>>, _meta, [template]}, _modifiers) when is_binary(template) do
     caller = __CALLER__
     module = caller.module
 
-    # Get metadata for token transformation
-    metadata =
-      try do
-        if Code.ensure_loaded?(module) and function_exported?(module, :__lavash__, 1) do
-          Lavash.Template.TokenTransformer.build_metadata(module, context: :live_view)
-        else
-          case get_compile_time_metadata(module) do
-            nil -> %{context: :live_view}
-            m -> m
-          end
-        end
-      rescue
-        _ -> %{context: :live_view}
-      end
+    # Detect context from module type attribute
+    context = detect_context(module)
+
+    # Build metadata for token transformation
+    metadata = build_metadata(module, context)
 
     # Compile with Lavash.TagEngine and token transformer
+    compiled = compile_template(template, caller, metadata)
+
+    # Return compiled content directly (not wrapped in struct)
+    # The RenderMacro.extract_template function extracts source from AST directly
+    compiled
+  end
+
+  @doc false
+  def detect_context(module) do
+    try do
+      case Module.get_attribute(module, :__lavash_module_type__) do
+        :live_view -> :live_view
+        :component -> :component
+        :client_component -> :client_component
+        nil -> :live_view  # Default fallback
+      end
+    rescue
+      _ -> :live_view
+    end
+  end
+
+  @doc false
+  def build_metadata(module, context) do
+    try do
+      if Code.ensure_loaded?(module) and function_exported?(module, :__lavash__, 1) do
+        Lavash.Template.TokenTransformer.build_metadata(module, context: context)
+      else
+        get_compile_time_metadata(module, context)
+      end
+    rescue
+      _ -> %{context: context}
+    end
+  end
+
+  defp compile_template(template, caller, metadata) do
     opts = [
       engine: Lavash.TagEngine,
       file: caller.file,
@@ -93,8 +109,7 @@ defmodule Lavash.Sigil do
 
   @doc false
   # Build metadata from module attributes during compilation
-  # This is a best-effort approach since not all metadata may be available
-  def get_compile_time_metadata(module) do
+  def get_compile_time_metadata(module, context) do
     try do
       # Try to get states from Spark DSL
       states = Spark.Dsl.Extension.get_entities(module, [:states]) || []
@@ -141,7 +156,7 @@ defmodule Lavash.Sigil do
         |> Map.new()
 
       %{
-        context: :live_view,
+        context: context,
         optimistic_fields: optimistic_fields,
         optimistic_derives: %{},
         calculations: %{},
@@ -150,7 +165,7 @@ defmodule Lavash.Sigil do
         optimistic_actions: %{}
       }
     rescue
-      _ -> nil
+      _ -> %{context: context}
     end
   end
 end

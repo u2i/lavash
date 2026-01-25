@@ -20,6 +20,9 @@ defmodule Lavash.ClientComponent.Compiler do
     props = Spark.Dsl.Extension.get_entities(env.module, [:props]) || []
     templates = Spark.Dsl.Extension.get_entities(env.module, [:template]) || []
 
+    # Check for render definitions from the new macro-based approach
+    lavash_renders = Module.get_attribute(env.module, :__lavash_renders__) || []
+
     # Get calculations from Spark DSL entities and convert to tuple format
     # Each Calculate struct has :name and :rx (a Lavash.Rx struct with :source, :ast, :deps)
     spark_calculations = Spark.Dsl.Extension.get_entities(env.module, [:calculations]) || []
@@ -35,11 +38,26 @@ defmodule Lavash.ClientComponent.Compiler do
       %{name: name, field: field, key: key, run_source: run_source, validate_source: validate_source, max: max}
     end)
 
-    {template_source, deprecated_name} = case templates do
-      [%{source: source, deprecated_name: deprecated} | _] -> {source, deprecated}
-      [%{source: source} | _] -> {source, nil}
-      _ -> {nil, nil}
-    end
+    # Determine template source: prefer new macro-based render, fall back to DSL template
+    {template_source, deprecated_name} =
+      case lavash_renders do
+        [] ->
+          # Fall back to legacy template DSL
+          case templates do
+            [%{source: source, deprecated_name: deprecated} | _] -> {source, deprecated}
+            [%{source: source} | _] -> {source, nil}
+            _ -> {nil, nil}
+          end
+
+        renders ->
+          # New macro-based renders - find :default and extract source
+          renders_map = Map.new(renders)
+          case Map.get(renders_map, :default) do
+            %Lavash.Template.Compiled{source: source} -> {source, nil}
+            source when is_binary(source) -> {source, nil}
+            _ -> {nil, nil}
+          end
+      end
 
     # Emit deprecation warning if client_template was used
     if deprecated_name == :client_template do

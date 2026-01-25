@@ -270,11 +270,17 @@ defmodule Lavash.TagEngine do
 
     opts = [root: token_state.root || false]
 
+    # LAVASH CHANGE - wrap annotate_body call in try/rescue for compatibility
+    # Phoenix's annotate_body may fail with certain caller contexts (e.g., function: nil)
     opts =
-      if annotation = caller && has_tags?(tokens) && state.tag_handler.annotate_body(caller) do
-        [meta: [template_annotation: annotation]] ++ opts
-      else
-        opts
+      try do
+        if annotation = caller && has_tags?(tokens) && state.tag_handler.annotate_body(caller) do
+          [meta: [template_annotation: annotation]] ++ opts
+        else
+          opts
+        end
+      rescue
+        _ -> opts
       end
 
     ast = invoke_subengine(token_state, :handle_body, [opts])

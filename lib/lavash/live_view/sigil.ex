@@ -11,10 +11,7 @@ defmodule Lavash.LiveView.Sigil do
         if Code.ensure_loaded?(module) and function_exported?(module, :__lavash__, 1) do
           Lavash.Template.TokenTransformer.build_metadata(module, context: :live_view)
         else
-          case Lavash.Sigil.get_compile_time_metadata(module) do
-            nil -> %{context: :live_view}
-            m -> m
-          end
+          Lavash.Sigil.get_compile_time_metadata(module, :live_view)
         end
       rescue
         _ -> %{context: :live_view}

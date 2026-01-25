@@ -548,61 +548,11 @@ defmodule Lavash.Dsl do
   }
 
   # ============================================
-  # Render - HEEx template function for render/1
-  # ============================================
-
-  @render_entity %Spark.Dsl.Entity{
-    name: :render,
-    describe: """
-    Declares the render function for this LiveView.
-
-    When using `render`, the framework generates the `render/1` callback automatically.
-    You cannot define your own `render/1` when using this DSL.
-
-    ## Example
-
-        defmodule MyApp.CounterLive do
-          use Lavash.LiveView
-
-          state :count, :integer, from: :url, default: 0, optimistic: true
-
-          actions do
-            action :increment do
-              set :count, rx(@count + 1)
-            end
-          end
-
-          render fn assigns ->
-            ~H\"""
-            <div>
-              <span>{@count}</span>
-              <button phx-click="increment">+</button>
-            </div>
-            \"""
-          end
-        end
-    """,
-    target: Lavash.Component.Render,
-    args: [:template],
-    schema: [
-      template: [
-        type: {:fun, 1},
-        required: true,
-        doc: "Function (assigns) -> HEEx"
-      ]
-    ]
-  }
-
-  @render_section %Spark.Dsl.Section{
-    name: :render_section,
-    top_level?: true,
-    describe: "Render function for the LiveView.",
-    entities: [@render_entity]
-  }
-
-  # ============================================
   # Extension setup
   # ============================================
+
+  # Note: Render is handled by Lavash.Template.RenderMacro instead of Spark DSL
+  # This enables `render :name do ~L"""...""" end` syntax without Spark entity conflicts
 
   use Spark.Dsl.Extension,
     sections: [
@@ -612,8 +562,7 @@ defmodule Lavash.Dsl do
       @extend_errors_section,
       @calculations_section,
       @derives_section,
-      @actions_section,
-      @render_section
+      @actions_section
     ],
     transformers: [
       Lavash.Transformers.DeprecateDerive,
@@ -621,5 +570,5 @@ defmodule Lavash.Dsl do
       Lavash.Optimistic.DefrxExpander,
       Lavash.Optimistic.ColocatedTransformer
     ],
-    imports: [Phoenix.Component, Lavash.DslHelpers, Lavash.Rx, Lavash.Sigil]
+    imports: [Phoenix.Component, Lavash.DslHelpers, Lavash.Rx, Lavash.Sigil, Lavash.Template.RenderMacro]
 end

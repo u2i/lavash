@@ -45,13 +45,18 @@ defmodule Lavash.LiveView do
     quote do
       use Phoenix.LiveView, unquote(opts)
 
-      # Register module attributes for optimistic macros (optimistic_action only)
+      # Mark module type for sigil context detection
+      @__lavash_module_type__ :live_view
+
+      # Register module attributes for optimistic macros and render definitions
       Module.register_attribute(__MODULE__, :__lavash_optimistic_actions__, accumulate: true)
+      Module.register_attribute(__MODULE__, :__lavash_renders__, accumulate: true)
 
       @before_compile Lavash.LiveView.Compiler
 
       import Lavash.LiveView.Helpers
       import Lavash.Optimistic.Macros, only: [optimistic_action: 3]
+      import Lavash.Template.RenderMacro
 
       # Import Lavash sigil (~L) for templates with automatic data-lavash-* injection
       import Lavash.Sigil, only: [sigil_L: 2]

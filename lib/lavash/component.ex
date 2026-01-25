@@ -82,10 +82,17 @@ defmodule Lavash.Component do
       @doc false
       def __live__, do: %{kind: :component, layout: false}
 
+      # Mark module type for sigil context detection
+      @__lavash_module_type__ :component
+
+      # Register module attribute for render definitions
+      Module.register_attribute(__MODULE__, :__lavash_renders__, accumulate: true)
+
       # Import ~L sigil for Lavash component templates (context: :component)
       # This ensures proper binding injection for nested components
       # ~H still uses Phoenix.Component.sigil_H for standard HEEx
       import Lavash.Component.Sigil, only: [sigil_L: 2]
+      import Lavash.Template.RenderMacro
 
       @before_compile Lavash.Component.Compiler
     end
