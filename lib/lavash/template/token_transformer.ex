@@ -58,12 +58,12 @@ defmodule Lavash.Template.TokenTransformer do
   end
 
   defp transform_token({:remote_component, name, attrs, meta}, metadata, state) do
-    new_attrs = maybe_inject_component_attrs(attrs, meta, metadata, state)
+    new_attrs = maybe_inject_component_attrs(name, attrs, meta, metadata, state)
     {:remote_component, name, new_attrs, meta}
   end
 
   defp transform_token({:local_component, name, attrs, meta}, metadata, state) do
-    new_attrs = maybe_inject_component_attrs(attrs, meta, metadata, state)
+    new_attrs = maybe_inject_component_attrs(name, attrs, meta, metadata, state)
     {:local_component, name, new_attrs, meta}
   end
 
@@ -73,15 +73,22 @@ defmodule Lavash.Template.TokenTransformer do
   # Component Transformations (__lavash_client_bindings__)
   # ===========================================================================
 
+  # Lavash component names that should receive __lavash_client_bindings__
+  @lavash_components ~w(lavash_component child_component)
+
   # Only inject __lavash_client_bindings__ when:
   # 1. Context is :component (Lavash.Component) - these receive bindings from parent
-  # 2. Not already present
+  # 2. Component is a Lavash component (lavash_component, child_component)
+  # 3. Not already present
   # LiveViews are top-level and don't have __lavash_client_bindings__ to pass down
-  defp maybe_inject_component_attrs(attrs, meta, metadata, _state) do
+  # Regular Phoenix components (form, input, link, etc.) should NOT receive this
+  defp maybe_inject_component_attrs(name, attrs, meta, metadata, _state) do
     context = metadata[:context]
 
-    # Only inject in component context (not live_view)
-    if context == :component and not has_attr?(attrs, "__lavash_client_bindings__") do
+    # Only inject in component context for Lavash components
+    if context == :component and
+         name in @lavash_components and
+         not has_attr?(attrs, "__lavash_client_bindings__") do
       binding_attr =
         {"__lavash_client_bindings__",
          {:expr, "@__lavash_client_bindings__", meta},
