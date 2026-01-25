@@ -121,6 +121,5 @@ defmodule Lavash.Overlay.Flyover.Dsl do
     transformers: [
       Lavash.Overlay.Flyover.Transformers.InjectState,
       Lavash.Overlay.Flyover.Transformers.GenerateRender
-    ],
-    imports: [Lavash.Sigil]
+    ]
 end

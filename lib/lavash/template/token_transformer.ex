@@ -84,7 +84,7 @@ defmodule Lavash.Template.TokenTransformer do
     if context == :component and not has_attr?(attrs, "__lavash_client_bindings__") do
       binding_attr =
         {"__lavash_client_bindings__",
-         {:expr, "assigns.__lavash_client_bindings__", meta},
+         {:expr, "@__lavash_client_bindings__", meta},
          meta}
 
       attrs ++ [binding_attr]

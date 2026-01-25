@@ -1,8 +1,24 @@
 defmodule Lavash.Component.Sigil do
-  @moduledoc false
+  @moduledoc """
+  Provides the ~L sigil for Lavash Components with `context: :component`.
 
-  defmacro sigil_H({:<<>>, _meta, [template]}, _modifiers) when is_binary(template) do
-    caller = __CALLER__
+  This sigil ensures that component calls get `__lavash_client_bindings__` injected
+  for proper binding propagation in nested component hierarchies.
+
+  Note: Only defines `sigil_L`, not `sigil_H`, to avoid conflicts with
+  `Phoenix.Component.sigil_H` which is imported via `use Phoenix.Component`.
+  """
+
+  @doc """
+  Component-specific ~L sigil with context: :component.
+
+  Uses context: :component for proper binding injection in nested components.
+  """
+  defmacro sigil_L({:<<>>, _meta, [template]}, _modifiers) when is_binary(template) do
+    compile_template(template, __CALLER__)
+  end
+
+  defp compile_template(template, caller) do
     module = caller.module
 
     # Get metadata for token transformation (component context)

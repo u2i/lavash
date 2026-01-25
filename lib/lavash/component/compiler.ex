@@ -15,7 +15,8 @@ defmodule Lavash.Component.Compiler do
         data -> Macro.escape(data)
       end
 
-    # Let the overlay's render generator produce the render function
+    # Let the overlay's render generator produce the render function,
+    # or fall back to user-defined render/1
     render_function =
       if render_generator do
         render_generator.generate(env.module)

@@ -184,7 +184,10 @@ defmodule Lavash.Component.Runtime do
   defp resolve_bindings(socket, assigns) do
     case Map.get(assigns, :bind) do
       nil ->
-        socket
+        # Even without bindings, ensure __lavash_client_bindings__ exists for child components
+        # This is needed because the TokenTransformer injects assigns.__lavash_client_bindings__
+        # into all child component calls within templates compiled with context: :component
+        Phoenix.Component.assign(socket, :__lavash_client_bindings__, %{})
 
       bindings when is_list(bindings) ->
         # Build a map of local_name -> parent_field
