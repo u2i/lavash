@@ -1733,6 +1733,7 @@ const LavashOptimistic = {
 
   /**
    * Merge server state into this.state, skipping paths that are pending.
+   * Also skips _show_errors fields which are exclusively client-managed.
    * Returns array of top-level changed field names.
    */
   mergeServerState(obj, prefix, pendingPaths, changedFields = null) {
@@ -1745,6 +1746,12 @@ const LavashOptimistic = {
     for (const [key, value] of Object.entries(obj)) {
       const path = prefix ? `${prefix}.${key}` : key;
       const topLevelField = prefix ? prefix.split(".")[0] : key;
+
+      // Skip _show_errors fields - they're exclusively client-managed
+      // (based on touched/submitted state, not server state)
+      if (key.endsWith("_show_errors")) {
+        continue;
+      }
 
       // Check if this exact path or any child path is pending
       const hasPendingChild = [...pendingPaths].some(p => p === path || p.startsWith(path + "."));
