@@ -16,6 +16,22 @@ defmodule Lavash.Overlay.Flyover.RenderGenerator do
   @impl true
   def helpers_path, do: @helpers_path
 
+  # Generate code for render function based on template type
+  # For function AST, we unquote it so the ~L sigil compiles in the module's context
+  # with access to DSL metadata (forms, states, etc.)
+  defp generate_render_fn_code({:render_ast, escaped_fn}, _field, _module) do
+    # Unquote the escaped AST - this injects it into the module code
+    # so ~L sigil is expanded during module compilation with proper context
+    escaped_fn
+  end
+
+  defp generate_render_fn_code(_other, field, _module) do
+    # For direct functions or nil, retrieve at runtime
+    quote do
+      Spark.Dsl.Extension.get_persisted(__MODULE__, unquote(field))
+    end
+  end
+
   @impl true
   def generate(module) do
     open_field = Spark.Dsl.Extension.get_persisted(module, :flyover_open_field) || :open
@@ -26,6 +42,10 @@ defmodule Lavash.Overlay.Flyover.RenderGenerator do
     height = Spark.Dsl.Extension.get_persisted(module, :flyover_height) || :md
     async_assign = Spark.Dsl.Extension.get_persisted(module, :flyover_async_assign)
     helpers_path = @helpers_path
+
+    # Get render templates - may be {:render_ast, escaped_fn} or direct functions
+    render_template = Spark.Dsl.Extension.get_persisted(module, :flyover_render_template)
+    loading_template = Spark.Dsl.Extension.get_persisted(module, :flyover_render_loading_template)
 
     # Get animated fields config at compile time for JS consumption
     animated_fields = Spark.Dsl.Extension.get_persisted(module, :lavash_animated_fields) || []
@@ -44,6 +64,10 @@ defmodule Lavash.Overlay.Flyover.RenderGenerator do
       end)
       |> Jason.encode!()
 
+    # Generate code to define render_fn based on template type
+    render_fn_code = generate_render_fn_code(render_template, :flyover_render_template, module)
+    loading_fn_code = generate_render_fn_code(loading_template, :flyover_render_loading_template, module)
+
     quote do
       # Track helpers.ex so changes trigger recompilation of this module
       @external_resource unquote(helpers_path)
@@ -55,9 +79,9 @@ defmodule Lavash.Overlay.Flyover.RenderGenerator do
         open_field = unquote(open_field)
         open_value = Map.get(var!(assigns), open_field)
 
-        # Get the render functions from the DSL at runtime
-        render_fn = Spark.Dsl.Extension.get_persisted(__MODULE__, :flyover_render_template)
-        loading_fn = Spark.Dsl.Extension.get_persisted(__MODULE__, :flyover_render_loading_template)
+        # Define render functions - either from unquoted AST, compiled source, or runtime lookup
+        render_fn = unquote(render_fn_code)
+        loading_fn = unquote(loading_fn_code)
         async_assign_field = unquote(async_assign)
 
         # Default loading function

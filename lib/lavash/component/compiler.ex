@@ -139,29 +139,25 @@ defmodule Lavash.Component.Compiler do
   @doc """
   Generate render/1 function from macro-based render definitions.
 
-  Handles both:
-  - New syntax: `render :name do ~L\"\"\"...\"\"\" end`
-  - Legacy syntax: `render fn assigns -> ~L\"\"\"...\"\"\" end`
+  Syntax: `render fn assigns -> ~L\"\"\"...\"\"\" end`
   """
-  def generate_render_from_macros(renders, env) do
+  def generate_render_from_macros(renders, _env) do
     renders_map = Map.new(renders)
 
-    # Check for legacy function-based render
-    case Map.get(renders_map, :__legacy_fn__) do
+    # Check for function-based render
+    case Map.get(renders_map, :__render_fn__) do
       nil ->
-        # New macro-based renders - find :default
-        default = Map.get(renders_map, :default)
-        others = renders_map |> Map.delete(:default) |> Map.delete(:__legacy_fn__) |> Map.to_list()
-        generate_named_renders(default, others, env)
+        # No render defined via macro
+        quote do end
 
       escaped_fn ->
-        # Legacy function-based render - function AST is escaped
-        generate_legacy_render(escaped_fn)
+        # Function-based render - function AST is escaped
+        generate_render_from_fn(escaped_fn)
     end
   end
 
-  # Generate render from legacy function syntax: render fn assigns -> ~L"..." end
-  defp generate_legacy_render(escaped_fn) do
+  # Generate render from function syntax: render fn assigns -> ~L"..." end
+  defp generate_render_from_fn(escaped_fn) do
     quote do
       @impl Phoenix.LiveComponent
       def render(var!(assigns)) do
@@ -171,67 +167,4 @@ defmodule Lavash.Component.Compiler do
     end
   end
 
-  # Generate named renders (new syntax)
-  defp generate_named_renders(default, others, env) do
-    # Generate helper functions for non-default renders
-    other_render_fns =
-      Enum.map(others, fn {name, tmpl} ->
-        fn_name = :"render_#{name}"
-        compiled = compile_render_template(tmpl, env)
-
-        quote do
-          @doc "Render the #{unquote(name)} template variant"
-          def unquote(fn_name)(var!(assigns)) do
-            unquote(compiled)
-          end
-        end
-      end)
-
-    main_render =
-      if default do
-        compiled = compile_render_template(default, env)
-
-        quote do
-          @impl Phoenix.LiveComponent
-          def render(var!(assigns)) do
-            unquote(compiled)
-          end
-        end
-      else
-        quote do
-        end
-      end
-
-    quote do
-      unquote_splicing(other_render_fns)
-      unquote(main_render)
-    end
-  end
-
-  # Compile a render template map to HEEx AST
-  defp compile_render_template(%{source: source}, env) when is_binary(source) do
-    compile_template_source(source, env, :component)
-  end
-
-  defp compile_render_template(_other, _env) do
-    quote do: nil
-  end
-
-  # Compile template source string with Lavash token transformation
-  defp compile_template_source(source, env, context) do
-    metadata = Lavash.Sigil.get_compile_time_metadata(env.module, context)
-
-    opts = [
-      engine: Lavash.TagEngine,
-      file: env.file,
-      line: env.line,
-      caller: env,
-      source: source,
-      tag_handler: Phoenix.LiveView.HTMLEngine,
-      token_transformer: Lavash.Template.TokenTransformer,
-      lavash_metadata: metadata
-    ]
-
-    EEx.compile_string(source, opts)
-  end
 end

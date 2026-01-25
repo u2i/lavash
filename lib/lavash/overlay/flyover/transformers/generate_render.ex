@@ -26,6 +26,41 @@ defmodule Lavash.Overlay.Flyover.Transformers.GenerateRender do
     render_template = render_entity && render_entity.template
     render_loading_template = render_loading_entity && render_loading_entity.template
 
+    # If no Spark entity, check for @__lavash_renders__ module attribute
+    # This happens when RenderMacro's `render` macro shadows Spark's entity
+    module = Transformer.get_persisted(dsl_state, :module)
+
+    {render_template, render_loading_template} =
+      if render_template do
+        {render_template, render_loading_template}
+      else
+        lavash_renders = Module.get_attribute(module, :__lavash_renders__) || []
+        renders_map = Map.new(lavash_renders)
+
+        # Check for function-based render
+        render_fn =
+          case Map.get(renders_map, :__render_fn__) do
+            nil -> nil
+            escaped_fn ->
+              # Function-based render - persist the escaped AST
+              # DON'T use Code.eval_quoted - that evaluates outside module context
+              # and the ~L sigil won't find DSL metadata for forms, etc.
+              # RenderGenerator will unquote this into the module code.
+              {:render_ast, escaped_fn}
+          end
+
+        # Check for render_loading in @__lavash_renders__
+        loading_fn =
+          case Map.get(renders_map, :__loading_fn__) do
+            nil -> render_loading_template
+            escaped_fn ->
+              # Same pattern for loading - preserve AST for proper compilation
+              {:render_ast, escaped_fn}
+          end
+
+        {render_fn, loading_fn}
+      end
+
     # Only generate render if a render template is provided
     if render_template do
       open_field = Transformer.get_option(dsl_state, [:flyover], :open_field) || :open

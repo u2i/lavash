@@ -17,15 +17,15 @@ defmodule Lavash.Overlay.Modal.RenderGenerator do
   def helpers_path, do: @helpers_path
 
   # Generate code for render function based on template type
-  # For legacy AST, we unquote it so the ~L sigil compiles in the module's context
+  # For function AST, we unquote it so the ~L sigil compiles in the module's context
   # with access to DSL metadata (forms, states, etc.)
-  defp generate_render_fn_code({:__legacy_ast__, escaped_fn}, _field) do
+  defp generate_render_fn_code({:render_ast, escaped_fn}, _field, _module) do
     # Unquote the escaped AST - this injects it into the module code
     # so ~L sigil is expanded during module compilation with proper context
     escaped_fn
   end
 
-  defp generate_render_fn_code(_other, field) do
+  defp generate_render_fn_code(_other, field, _module) do
     # For direct functions or nil, retrieve at runtime
     quote do
       Spark.Dsl.Extension.get_persisted(__MODULE__, unquote(field))
@@ -41,7 +41,7 @@ defmodule Lavash.Overlay.Modal.RenderGenerator do
     async_assign = Spark.Dsl.Extension.get_persisted(module, :modal_async_assign)
     helpers_path = @helpers_path
 
-    # Get render templates - may be functions or {:__legacy_ast__, escaped_fn} tuples
+    # Get render templates - may be {:render_ast, escaped_fn} or direct functions
     render_template = Spark.Dsl.Extension.get_persisted(module, :modal_render_template)
     loading_template = Spark.Dsl.Extension.get_persisted(module, :modal_render_loading_template)
 
@@ -62,10 +62,10 @@ defmodule Lavash.Overlay.Modal.RenderGenerator do
       end)
       |> Jason.encode!()
 
-    # Generate code to define render_fn based on whether it's legacy AST or a direct function
-    # For legacy AST, we unquote it so ~L sigil compiles in the module's context
-    render_fn_code = generate_render_fn_code(render_template, :modal_render_template)
-    loading_fn_code = generate_render_fn_code(loading_template, :modal_render_loading_template)
+    # Generate code to define render_fn based on template type
+    # For render AST, we compile in the module's context
+    render_fn_code = generate_render_fn_code(render_template, :modal_render_template, module)
+    loading_fn_code = generate_render_fn_code(loading_template, :modal_render_loading_template, module)
 
     quote do
       # Track helpers.ex so changes trigger recompilation of this module

@@ -5,7 +5,6 @@ defmodule Lavash.Sigil do
   The `~L` sigil works like `~H` but automatically:
   - Injects `data-lavash-*` attributes based on DSL declarations
   - Injects `__lavash_client_bindings__` for nested component binding propagation
-  - Works with both legacy `render fn assigns -> ~L\"\"\"...\"\"\" end` and new `render :default do ~L\"\"\"...\"\"\" end` syntax
 
   ## Context Auto-Detection
 
@@ -23,7 +22,7 @@ defmodule Lavash.Sigil do
 
         state :count, :integer, default: 0, optimistic: true
 
-        render :default do
+        render fn assigns ->
           ~L\"\"\"
           <div>
             <span>{@count}</span>
@@ -44,8 +43,8 @@ defmodule Lavash.Sigil do
   Handles the `~L` sigil for Lavash-enhanced HEEx templates.
 
   Returns compiled HEEx content directly (a `%Phoenix.LiveView.Rendered{}` struct).
-  The template source is preserved via AST extraction in `RenderMacro.extract_template`
-  for use with the `render :name do ~L\"\"\"...\"\"\" end` syntax.
+  Use inside `render fn assigns -> ~L\"\"\"...\"\"\" end` for automatic data-lavash-*
+  attribute injection.
   """
   defmacro sigil_L({:<<>>, _meta, [template]}, _modifiers) when is_binary(template) do
     caller = __CALLER__

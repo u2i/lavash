@@ -37,32 +37,25 @@ defmodule Lavash.Overlay.Modal.Transformers.GenerateRender do
         lavash_renders = Module.get_attribute(module, :__lavash_renders__) || []
         renders_map = Map.new(lavash_renders)
 
-        # Check for legacy function-based render
+        # Check for function-based render
         render_fn =
-          case Map.get(renders_map, :__legacy_fn__) do
-            nil ->
-              # Check for :default from new syntax
-              case Map.get(renders_map, :default) do
-                %{source: _source} -> nil  # Will be handled by Component compiler
-                _ -> nil
-              end
-
+          case Map.get(renders_map, :__render_fn__) do
+            nil -> nil
             escaped_fn ->
-              # Legacy function-based render - persist the escaped AST
+              # Function-based render - persist the escaped AST
               # DON'T use Code.eval_quoted - that evaluates outside module context
               # and the ~L sigil won't find DSL metadata for forms, etc.
               # RenderGenerator will unquote this into the module code.
-              {:__legacy_ast__, escaped_fn}
+              {:render_ast, escaped_fn}
           end
 
         # Check for render_loading in @__lavash_renders__
         loading_fn =
-          case Map.get(renders_map, :loading) do
+          case Map.get(renders_map, :__loading_fn__) do
             nil -> render_loading_template
-            escaped_fn when is_tuple(escaped_fn) ->
+            escaped_fn ->
               # Same pattern for loading - preserve AST for proper compilation
-              {:__legacy_ast__, escaped_fn}
-            %{source: _source} -> nil
+              {:render_ast, escaped_fn}
           end
 
         {render_fn, loading_fn}

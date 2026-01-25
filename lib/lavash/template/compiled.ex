@@ -2,19 +2,15 @@ defmodule Lavash.Template.Compiled do
   @moduledoc """
   Represents a compiled Lavash template with source preservation.
 
-  This struct is returned by the `~L` sigil and consumed by the `render` DSL.
-  It contains both the compiled HEEx AST and the original source string,
+  This struct holds both the compiled HEEx AST and the original source string,
   enabling:
 
   - Server-side rendering via the compiled HEEx
   - Client-side JS generation for ClientComponent (from source)
-  - Named render variants (`:default`, `:loading`, etc.)
 
   ## Usage
 
-  The `~L` sigil automatically creates this struct:
-
-      render :default do
+      render fn assigns ->
         ~L\"\"\"
         <div>{@count}</div>
         \"\"\"
@@ -44,14 +40,14 @@ end
 
 defmodule Lavash.Render do
   @moduledoc """
-  A named render function declaration.
+  A render function declaration.
 
-  Created by the `render :name do ... end` DSL entity.
+  Created by the `render fn assigns -> ... end` macro.
 
   ## Fields
 
-  - `:name` - Atom identifying the render variant (e.g., `:default`, `:loading`)
-  - `:template` - The `Lavash.Template.Compiled` struct containing source and compiled HEEx
+  - `:name` - Atom identifying the render variant
+  - `:template` - The template function AST or compiled struct
   """
 
   defstruct [:name, :template, __spark_metadata__: nil]

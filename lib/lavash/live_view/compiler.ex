@@ -19,38 +19,33 @@ defmodule Lavash.LiveView.Compiler do
     lavash_renders = Module.get_attribute(env.module, :__lavash_renders__) || []
 
     # Determine render source from macro-based renders
-    {render_template, other_renders} =
+    render_template =
       case lavash_renders do
         [] ->
-          {nil, []}
+          nil
 
         renders ->
           renders_map = Map.new(renders)
 
-          # Check for legacy function-based render
-          case Map.get(renders_map, :__legacy_fn__) do
-            nil ->
-              # New macro-based renders - find :default
-              default = Map.get(renders_map, :default)
-              others = renders_map |> Map.delete(:default) |> Map.delete(:__legacy_fn__) |> Map.to_list()
-              {default, others}
-
+          # Check for function-based render
+          case Map.get(renders_map, :__render_fn__) do
+            nil -> nil
             escaped_fn ->
-              # Legacy function-based render - function AST is escaped
-              {{:legacy_fn, escaped_fn}, []}
+              # Function-based render - function AST is escaped
+              {:render_fn, escaped_fn}
           end
       end
 
-    # Error if both render DSL and render/1 are defined
+    # Error if both render macro and render/1 are defined
     if render_template && has_render do
       raise CompileError,
         file: env.file,
         line: env.line,
         description: """
-        Cannot define both `render` DSL and `render/1` in the same LiveView.
+        Cannot define both `render fn assigns ->` macro and `render/1` in the same LiveView.
 
-        When using the `render` DSL, the framework generates the render/1 function automatically.
-        Remove your `def render(assigns)` function, or remove the `render :default do ... end` DSL.
+        When using the `render` macro, the framework generates the render/1 function automatically.
+        Remove your `def render(assigns)` function, or remove the `render fn assigns -> ... end` macro.
         """
     end
 
@@ -72,12 +67,12 @@ defmodule Lavash.LiveView.Compiler do
         end
       end
 
-    # Generate render from render DSL, or wrap user-defined render
+    # Generate render from render macro, or wrap user-defined render
     render_code =
       cond do
         render_template ->
           # Generate render/1 from render template
-          generate_render_from_template(render_template, other_renders, env)
+          generate_render_from_template(render_template, env)
 
         has_render ->
           # Wrap user-defined render with optimistic state
@@ -222,107 +217,42 @@ defmodule Lavash.LiveView.Compiler do
   end
 
   # ============================================
-  # Render function from DSL
+  # Render function generation
   # ============================================
 
   @doc """
   Generate render/1 function from render template.
 
-  Handles:
-  - Legacy: `render fn assigns -> ~H\"\"\"...\"\"\" end` (function-based)
-  - New: `render :default do ~L\"\"\"...\"\"\" end` (source string stored, compiled here)
+  Handles `render fn assigns -> ~L\"\"\"...\"\"\" end` (function-based)
 
   This wraps the template output with optimistic state handling.
   """
-  def generate_render_from_template(template, other_renders, env) do
-    # Generate helper functions for non-default renders
-    other_render_fns =
-      Enum.map(other_renders, fn {name, tmpl} ->
-        fn_name = :"render_#{name}"
-        compiled = compile_render_template(tmpl, env)
-
-        quote do
-          @doc "Render the #{unquote(name)} template variant"
-          def unquote(fn_name)(var!(assigns)) do
-            unquote(compiled)
-          end
-        end
-      end)
-
-    main_render =
-      case template do
-        {:legacy_fn, escaped_fn} ->
-          # Legacy function-based render - function AST was escaped
-          # Inject the function directly into the render definition
-          quote do
-            @impl Phoenix.LiveView
-            def render(var!(assigns)) do
-              # Call the user's render function (injected at compile time)
-              render_fn = unquote(escaped_fn)
-              inner_content = render_fn.(var!(assigns))
-
-              # Wrap with optimistic state
-              Lavash.LiveView.Runtime.wrap_render(__MODULE__, var!(assigns), inner_content)
-            end
-          end
-
-        %{source: source} when is_binary(source) ->
-          # New syntax - compile from source
-          compiled = compile_template_source(source, env, :live_view)
-
-          quote do
-            @impl Phoenix.LiveView
-            def render(var!(assigns)) do
-              inner_content = unquote(compiled)
-              Lavash.LiveView.Runtime.wrap_render(__MODULE__, var!(assigns), inner_content)
-            end
-          end
-
-        _other ->
-          quote do
-          end
-      end
-
+  def generate_render_from_template({:render_fn, escaped_fn}, _env) do
+    # Function-based render - function AST was escaped
+    # Inject the function directly into the render definition
     quote do
-      unquote_splicing(other_render_fns)
-      unquote(main_render)
+      @impl Phoenix.LiveView
+      def render(var!(assigns)) do
+        # Call the user's render function (injected at compile time)
+        render_fn = unquote(escaped_fn)
+        inner_content = render_fn.(var!(assigns))
+
+        # Wrap with optimistic state
+        Lavash.LiveView.Runtime.wrap_render(__MODULE__, var!(assigns), inner_content)
+      end
     end
   end
 
-  # Compile a render template map to HEEx AST
-  defp compile_render_template(%{source: source}, env) when is_binary(source) do
-    compile_template_source(source, env, :live_view)
-  end
-
-  defp compile_render_template(_other, _env) do
-    quote do: nil
-  end
-
-  # Compile template source string with Lavash token transformation
-  defp compile_template_source(source, env, context) do
-    # Build metadata for token transformation
-    metadata = Lavash.Sigil.get_compile_time_metadata(env.module, context)
-
-    opts = [
-      engine: Lavash.TagEngine,
-      file: env.file,
-      line: env.line,
-      caller: env,
-      source: source,
-      tag_handler: Phoenix.LiveView.HTMLEngine,
-      token_transformer: Lavash.Template.TokenTransformer,
-      lavash_metadata: metadata
-    ]
-
-    EEx.compile_string(source, opts)
+  def generate_render_from_template(_other, _env) do
+    quote do
+    end
   end
 
   @doc """
-  Legacy: Generate render/1 function from render DSL function.
-  Kept for backwards compatibility.
+  Generate render/1 function from render function.
   """
   def generate_render_from_fn(render_fn, env) do
-    generate_render_from_template({:legacy_fn, render_fn}, [], env)
+    generate_render_from_template({:render_fn, render_fn}, env)
   end
 
   @doc """
