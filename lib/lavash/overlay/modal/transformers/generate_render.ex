@@ -48,9 +48,11 @@ defmodule Lavash.Overlay.Modal.Transformers.GenerateRender do
               end
 
             escaped_fn ->
-              # Legacy function-based render - evaluate the escaped AST
-              {fn_value, _} = Code.eval_quoted(escaped_fn)
-              fn_value
+              # Legacy function-based render - persist the escaped AST
+              # DON'T use Code.eval_quoted - that evaluates outside module context
+              # and the ~L sigil won't find DSL metadata for forms, etc.
+              # RenderGenerator will unquote this into the module code.
+              {:__legacy_ast__, escaped_fn}
           end
 
         # Check for render_loading in @__lavash_renders__
@@ -58,8 +60,8 @@ defmodule Lavash.Overlay.Modal.Transformers.GenerateRender do
           case Map.get(renders_map, :loading) do
             nil -> render_loading_template
             escaped_fn when is_tuple(escaped_fn) ->
-              {fn_value, _} = Code.eval_quoted(escaped_fn)
-              fn_value
+              # Same pattern for loading - preserve AST for proper compilation
+              {:__legacy_ast__, escaped_fn}
             %{source: _source} -> nil
           end
 
