@@ -260,7 +260,7 @@ defmodule Lavash.LiveView.Helpers do
   """
   attr(:module, :atom, required: true, doc: "The Lavash component module")
   attr(:id, :string, required: true, doc: "The component ID (used for state namespacing)")
-  attr(:rest, :global, doc: "Additional assigns passed to the component")
+  attr(:rest, :global, include: ~w(bind items item_count count open), doc: "Additional assigns passed to the component")
 
   def lavash_component(assigns) do
     # Get component states from process dictionary (set by parent during render)

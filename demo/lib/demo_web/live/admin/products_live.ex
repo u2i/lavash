@@ -1,7 +1,6 @@
 defmodule DemoWeb.Admin.ProductsLive do
   use Lavash.LiveView
   use Phoenix.VerifiedRoutes, endpoint: DemoWeb.Endpoint, router: DemoWeb.Router
-  import Lavash.LiveView.Helpers
 
   alias Demo.Catalog.{Category, Product}
 

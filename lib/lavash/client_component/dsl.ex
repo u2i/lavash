@@ -245,7 +245,7 @@ defmodule Lavash.ClientComponent.Dsl do
         """
       ],
       run: [
-        type: {:or, [{:fun, 2}, {:in, [:remove]}]},
+        type: {:or, [{:fun, 2}, {:in, [:remove, :set]}]},
         required: true,
         doc: """
         Function that transforms the field value.
@@ -256,6 +256,10 @@ defmodule Lavash.ClientComponent.Dsl do
         With :key - receives (item, value) and returns updated item or :remove:
             fn item, delta -> %{item | quantity: item.quantity + delta} end
             fn _item, _id -> :remove end
+
+        Shorthands:
+            :set - sets the field directly to the provided value
+            :remove - removes the item (only valid with :key)
 
         Can also be the atom :remove as shorthand for removal actions.
         """

@@ -19,7 +19,7 @@ defmodule Lavash.Optimistic.ActionMacro do
 
   - `:run` - Required. Function `fn current, value -> new_value end` that transforms the field.
              For key-based actions, receives `fn item, value -> updated_item | :remove end`.
-             Can also be the atom `:remove` as shorthand for removal actions.
+             Shorthands: `:remove` for removal actions, `:set` to directly set the value.
   - `:validate` - Optional. Function `fn current, value -> boolean end` for validation
   - `:key` - Optional. For array-of-objects: the field used to identify items (e.g., :id).
              When specified, the run function operates on the matched item instead of the array.
@@ -52,10 +52,11 @@ defmodule Lavash.Optimistic.ActionMacro do
     key_field = Keyword.get(opts, :key)
     max_field = Keyword.get(opts, :max)
 
-    # Handle :remove shorthand - store as string ":remove" for JS detection
+    # Handle :remove and :set shorthands - store as string for JS detection
     run_source =
       case run_expr do
         :remove -> ":remove"
+        :set -> ":set"
         expr when is_tuple(expr) -> Macro.to_string(expr)
         _ -> nil
       end

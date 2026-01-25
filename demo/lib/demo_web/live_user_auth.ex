@@ -13,18 +13,19 @@ defmodule DemoWeb.LiveUserAuth do
   import Phoenix.LiveView
 
   @doc """
-  Loads the current user from session if present.
-  Does not require a user to be present.
+  LiveView on_mount callback with different behaviors based on the hook name:
+
+  - `:live_user_optional` - Loads user if present, nil otherwise
+  - `:live_user_required` - Requires a registered (non-anonymous) user, redirects to sign-in otherwise
+  - `:live_user_ensure` - Ensures a user exists, creating anonymous if needed
   """
+  def on_mount(name, params, session, socket)
+
   def on_mount(:live_user_optional, _params, session, socket) do
     socket = assign_user_from_session(socket, session)
     {:cont, socket}
   end
 
-  @doc """
-  Requires a registered (non-anonymous) user.
-  Redirects to sign-in if no user or user is anonymous.
-  """
   def on_mount(:live_user_required, _params, session, socket) do
     socket = assign_user_from_session(socket, session)
 
@@ -42,11 +43,6 @@ defmodule DemoWeb.LiveUserAuth do
     end
   end
 
-  @doc """
-  Ensures a user exists in the session.
-  Creates an anonymous user if no user is present.
-  This is useful for storefront pages that need a user for cart functionality.
-  """
   def on_mount(:live_user_ensure, _params, session, socket) do
     socket = assign_user_from_session(socket, session)
 

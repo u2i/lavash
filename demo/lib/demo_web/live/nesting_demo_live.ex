@@ -12,7 +12,6 @@ defmodule DemoWeb.NestingDemoLive do
   """
   use Lavash.LiveView
 
-  import Lavash.Component.Helpers, only: [child_component: 1]
   import Lavash.LiveView.Helpers, only: [o: 1]
 
   # Three separate counters to demo different nesting levels
