@@ -480,6 +480,7 @@ defmodule Lavash.Component.Runtime do
 
     Enum.reduce(forms, socket, fn form, sock ->
       params_field = :"#{form.name}_params"
+      server_errors_field = :"#{form.name}_server_errors"
       # Use the form name as the params namespace (e.g., "form" for :form input)
       param_key = to_string(form.name)
 
@@ -488,7 +489,9 @@ defmodule Lavash.Component.Runtime do
           sock
 
         form_params when is_map(form_params) ->
-          LSocket.put_state(sock, params_field, form_params)
+          sock
+          |> LSocket.put_state(params_field, form_params)
+          |> LSocket.put_state(server_errors_field, %{})
 
         _ ->
           sock
@@ -619,12 +622,21 @@ defmodule Lavash.Component.Runtime do
           {:ok, socket, notify_events}
         end
 
-      {:error, _form_with_errors} ->
+      {:error, form_with_errors} ->
+        # Extract per-field errors from the submit failure and store in server_errors
+        server_errors = extract_submit_errors(form_with_errors)
+        server_errors_field = :"#{submit.field}_server_errors"
+
+        socket =
+          socket
+          |> LSocket.put_state(server_errors_field, server_errors)
+          |> Graph.recompute_dirty(module)
+          |> Assigns.project(module)
+
         # Failure - trigger on_error action if specified
         if submit.on_error do
           {:error, socket, submit.on_error}
         else
-          # No on_error handler, just return ok with current socket
           {:ok, socket, notify_events}
         end
     end
@@ -663,4 +675,25 @@ defmodule Lavash.Component.Runtime do
   defp decode_type(value, :boolean), do: !!value
   defp decode_type(value, _type), do: value
 
+  # Extract per-field errors from Ash submit failure for storage in server_errors state.
+  # Returns a map of %{"field_name" => ["error message", ...]}
+  defp extract_submit_errors(%Ash.Error.Invalid{errors: errors}) do
+    Enum.reduce(errors, %{}, fn error, acc ->
+      case error do
+        %{field: field, message: msg} when not is_nil(field) ->
+          field_str = to_string(field)
+          message = case msg do
+            {m, _opts} -> m
+            m when is_binary(m) -> m
+            _ -> "Invalid value"
+          end
+          Map.update(acc, field_str, [message], &[message | &1])
+
+        _ ->
+          acc
+      end
+    end)
+  end
+
+  defp extract_submit_errors(_), do: %{}
 end

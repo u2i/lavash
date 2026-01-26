@@ -280,7 +280,7 @@ defmodule Lavash.LiveView.Runtime do
     cond do
       # Per-field validation from Lavash client
       field_name != nil ->
-        handle_per_field_validation(socket, form, form_name, params)
+        handle_per_field_validation(module, socket, form, form_name, params)
 
       # Full form change (e.g., from Phoenix form recovery)
       Map.has_key?(params, param_key) ->
@@ -294,10 +294,12 @@ defmodule Lavash.LiveView.Runtime do
   # Handle Phoenix form change events (form recovery, standard phx-change)
   defp handle_form_change(module, socket, form_name, form_params) when is_map(form_params) do
     params_field = :"#{form_name}_params"
+    server_errors_field = :"#{form_name}_server_errors"
 
     socket =
       socket
       |> LSocket.put_state(params_field, form_params)
+      |> LSocket.put_state(server_errors_field, %{})
       |> Graph.recompute_dirty(module)
       |> Assigns.project(module)
 
@@ -307,10 +309,12 @@ defmodule Lavash.LiveView.Runtime do
   defp handle_form_change(_module, socket, _form_name, _), do: {:noreply, socket}
 
   # Handle per-field validation from Lavash client
-  defp handle_per_field_validation(socket, form, form_name, params) do
+  # Server validates the field and stores errors in #{form}_server_errors state.
+  # The _errors derive merges these with client-computed errors.
+  # Result flows to client via normal re-render → data-lavash-server-errors attribute.
+  defp handle_per_field_validation(module, socket, form, form_name, params) do
     field_name = params["field"]
     value = params["value"]
-    request_id = params["_validation_request_id"]
 
     # Convert field name to atom for Ash
     field = String.to_existing_atom(field_name)
@@ -359,14 +363,16 @@ defmodule Lavash.LiveView.Runtime do
         _ -> []
       end
 
-    # Push the validation result back to client
+    # Store errors in server_errors state → triggers _errors derive recomputation → re-render
+    server_errors_field = :"#{form_name}_server_errors"
+    current_errors = LSocket.get_state(socket, server_errors_field) || %{}
+    updated_errors = Map.put(current_errors, field_name, errors)
+
     socket =
-      Phoenix.LiveView.push_event(socket, "validation_result", %{
-        form: to_string(form_name),
-        field: field_name,
-        errors: errors,
-        _validation_request_id: request_id
-      })
+      socket
+      |> LSocket.put_state(server_errors_field, updated_errors)
+      |> Graph.recompute_dirty(module)
+      |> Assigns.project(module)
 
     {:noreply, socket}
   end
@@ -845,12 +851,21 @@ defmodule Lavash.LiveView.Runtime do
           {:ok, socket}
         end
 
-      {:error, _form_with_errors} ->
+      {:error, form_with_errors} ->
+        # Extract per-field errors from the submit failure and store in server_errors
+        server_errors = extract_submit_errors(form_with_errors)
+        server_errors_field = :"#{submit.field}_server_errors"
+
+        socket =
+          socket
+          |> LSocket.put_state(server_errors_field, server_errors)
+          |> Graph.recompute_dirty(module)
+          |> Assigns.project(module)
+
         # Failure - trigger on_error action if specified
         if submit.on_error do
           {:error, socket, submit.on_error}
         else
-          # No on_error handler, just return ok with current socket
           {:ok, socket}
         end
     end
@@ -905,4 +920,25 @@ defmodule Lavash.LiveView.Runtime do
     end
   end
 
+  # Extract per-field errors from Ash submit failure for storage in server_errors state.
+  # Returns a map of %{"field_name" => ["error message", ...]}
+  defp extract_submit_errors(%Ash.Error.Invalid{errors: errors}) do
+    Enum.reduce(errors, %{}, fn error, acc ->
+      case error do
+        %{field: field, message: msg} when not is_nil(field) ->
+          field_str = to_string(field)
+          message = case msg do
+            {m, _opts} -> m
+            m when is_binary(m) -> m
+            _ -> "Invalid value"
+          end
+          Map.update(acc, field_str, [message], &[message | &1])
+
+        _ ->
+          acc
+      end
+    end)
+  end
+
+  defp extract_submit_errors(_), do: %{}
 end

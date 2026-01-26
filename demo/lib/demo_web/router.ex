@@ -85,5 +85,6 @@ defmodule DemoWeb.Router do
     live "/flyover", FlyoverDemoLive
     live "/modal", ModalDemoLive
     live "/nesting", NestingDemoLive
+    live "/validation", ValidationDemoLive
   end
 end

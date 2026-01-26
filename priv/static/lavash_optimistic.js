@@ -49,6 +49,10 @@ import { AnimatedState } from "./animated_state.js";
 window.Lavash = window.Lavash || {};
 window.Lavash.optimistic = window.Lavash.optimistic || {};
 
+// Registry for preserving client-only state across hook remounts
+// Keys are element IDs, values contain fieldState and submittedForms
+const _preservedClientState = new Map();
+
 // Helper to register custom optimistic functions for a module
 window.Lavash.registerOptimistic = function(moduleName, fns) {
   window.Lavash.optimistic[moduleName] = fns;
@@ -56,6 +60,7 @@ window.Lavash.registerOptimistic = function(moduleName, fns) {
 
 const LavashOptimistic = {
   mounted() {
+    // Parse state from server
     this.state = JSON.parse(this.el.dataset.lavashState || "{}");
 
     // SyncedVarStore for flattened path-based state management
@@ -78,18 +83,22 @@ const LavashOptimistic = {
     this.bindings = JSON.parse(this.el.dataset.lavashBindings || "{}");
 
     // Form field state tracking (client-side only)
-    // Maps field path -> { touched: boolean, serverErrors: [], validationRequestId: number }
-    this.fieldState = {};
-
-    // Per-form submitted state: Set of form IDs that have been submitted
-    // This prevents a child component's form submit from affecting parent forms
-    this.submittedForms = new Set();
+    // Maps field path -> { touched: boolean }
+    // Restore from preserved state if this is a remount
+    const preservedState = _preservedClientState.get(this.el.id);
+    if (preservedState) {
+      this.fieldState = preservedState.fieldState || {};
+      this.submittedForms = preservedState.submittedForms || new Set();
+      _preservedClientState.delete(this.el.id);
+    } else {
+      this.fieldState = {};
+      // Per-form submitted state: Set of form IDs that have been submitted
+      // This prevents a child component's form submit from affecting parent forms
+      this.submittedForms = new Set();
+    }
 
     // Server validation debounce timers: field path -> timeout ID
     this.validationTimers = {};
-
-    // Incremented for each validation request, used to detect stale responses
-    this.validationRequestId = 0;
 
     // Load generated functions from inline JSON script tag
     this.loadGeneratedFunctions();
@@ -128,12 +137,6 @@ const LavashOptimistic = {
     // This allows nested components to set bound state on parent components
     // Use bubbling mode (not capture) so the closest ancestor hook handles it first
     this.el.addEventListener("lavash-set", this.handleLavashSet.bind(this), false);
-
-    if (!this.isComponent) {
-
-      // Listen for server validation responses
-      this.handleEvent("validation_result", (payload) => this.handleValidationResult(payload));
-    }
 
     // Install global DOM callback for input preservation (only once globally)
     this._installGlobalDomCallback();
@@ -357,8 +360,8 @@ const LavashOptimistic = {
 
     const original = this.liveSocket.domCallbacks.onBeforeElUpdated;
     this.liveSocket.domCallbacks.onBeforeElUpdated = (fromEl, toEl) => {
-      // Preserve input values for form fields with data-lavash-bind
-      // This runs before morphdom patches the DOM, so we can prevent value overwrites
+      // Preserve input values and validation classes for form fields with data-lavash-bind
+      // This runs before morphdom patches the DOM, so we can prevent value/class overwrites
       if (fromEl.hasAttribute && fromEl.hasAttribute("data-lavash-bind")) {
         const fieldPath = fromEl.getAttribute("data-lavash-bind");
         // Find the LavashOptimistic hook that owns this input
@@ -372,6 +375,7 @@ const LavashOptimistic = {
             toEl.value = pendingValue;
           }
         }
+
       }
 
       // Check if any registered modal cares about this element
@@ -522,7 +526,7 @@ const LavashOptimistic = {
 
     // Mark field as touched
     if (!this.fieldState[fieldPath]) {
-      this.fieldState[fieldPath] = { serverErrors: [] };
+      this.fieldState[fieldPath] = {};
     }
     this.fieldState[fieldPath].touched = true;
 
@@ -532,10 +536,6 @@ const LavashOptimistic = {
 
     // Update show_errors state
     this.updateShowErrors(fieldPath, formName, fieldName);
-
-    // Recompute derives that depend on show_errors
-    const showErrorsKey = `${formName}_${fieldName}_show_errors`;
-    this.recomputeDerives([showErrorsKey]);
 
     // Trigger server validation if client validation passes
     this.triggerServerValidation(fieldPath, formName, fieldName, /* immediate */ true, target);
@@ -603,7 +603,7 @@ const LavashOptimistic = {
       const fieldPath = input.dataset.lavashBind;
       if (fieldPath) {
         if (!this.fieldState[fieldPath]) {
-          this.fieldState[fieldPath] = { serverErrors: [] };
+          this.fieldState[fieldPath] = {};
         }
         this.fieldState[fieldPath].touched = true;
 
@@ -618,17 +618,18 @@ const LavashOptimistic = {
     this.updateDOM();
 
     // Check if form is valid - if not, prevent submission and focus first invalid field
-    for (const { input, fieldPath, formName, fieldName } of inputElements) {
+    for (const { input, formName, fieldName } of inputElements) {
       if (!formName || !fieldName) continue;
 
       // Use custom valid field if specified on input, otherwise standard naming
       const customValidField = input.dataset?.lavashValid;
       const validField = customValidField || `${formName}_${fieldName}_valid`;
       const clientValid = this.state[validField] ?? true;
-      const serverErrors = this.fieldState[fieldPath]?.serverErrors || [];
+      const errorsField = `${formName}_${fieldName}_errors`;
+      const errors = this.state[errorsField] || [];
 
-      // Field is invalid if client validation fails or has server errors
-      if (!clientValid || serverErrors.length > 0) {
+      // Field is invalid if validation fails or has errors (client + server merged in derive)
+      if (!clientValid || errors.length > 0) {
         // Focus this field and prevent form submission
         e.preventDefault();
         input.focus();
@@ -743,23 +744,12 @@ const LavashOptimistic = {
     }
 
     const sendValidation = () => {
-      // Increment request ID to track staleness
-      this.validationRequestId++;
-      const requestId = this.validationRequestId;
-
-      // Store the request ID for this field to detect stale responses
-      if (!this.fieldState[fieldPath]) {
-        this.fieldState[fieldPath] = { serverErrors: [] };
-      }
-      this.fieldState[fieldPath].validationRequestId = requestId;
-
       // Send validation event to server
-      // The event name follows convention: validate_<form>
+      // Server stores result in #{form}_server_errors state → re-render → data attr updates
       const params = this.state[`${formName}_params`] || {};
       this.pushEvent(`validate_${formName}`, {
         field: fieldName,
-        value: params[fieldName],
-        _validation_request_id: requestId
+        value: params[fieldName]
       });
     };
 
@@ -769,36 +759,6 @@ const LavashOptimistic = {
       // Debounce for 500ms when typing
       this.validationTimers[fieldPath] = setTimeout(sendValidation, 500);
     }
-  },
-
-  /**
-   * Handle server validation response.
-   * Ignores stale responses based on request ID.
-   *
-   * @param {Object} payload - { form: string, field: string, errors: string[], _validation_request_id: number }
-   */
-  handleValidationResult(payload) {
-    const { form: formName, field: fieldName, errors, _validation_request_id: requestId } = payload;
-    const paramsField = `${formName}_params`;
-    const fieldPath = `${paramsField}.${fieldName}`;
-
-    // Check if this response is stale
-    const fieldState = this.fieldState[fieldPath];
-    if (fieldState && fieldState.validationRequestId !== undefined) {
-      if (requestId < fieldState.validationRequestId) {
-        // Stale response - ignore it
-        return;
-      }
-    }
-
-    // Store server errors
-    if (!this.fieldState[fieldPath]) {
-      this.fieldState[fieldPath] = { serverErrors: [] };
-    }
-    this.fieldState[fieldPath].serverErrors = errors || [];
-
-    // Update DOM to show server errors
-    this.updateDOM();
   },
 
   /**
@@ -884,11 +844,6 @@ const LavashOptimistic = {
 
     // Bump client version for stale patch rejection
     this.clientVersion++;
-
-    // Clear server errors on edit (user is fixing the issue)
-    if (this.fieldState[fieldPath]) {
-      this.fieldState[fieldPath].serverErrors = [];
-    }
 
     // Determine root field for derive recomputation
     const dotIndex = fieldPath.indexOf(".");
@@ -1287,20 +1242,8 @@ const LavashOptimistic = {
       const showErrorsField = el.dataset.lavashShowErrors || `${formName}_${fieldName}_show_errors`;
       const showErrors = this.state[showErrorsField] ?? false;
 
-      // Get server errors for this field
-      let serverErrors = [];
-      if (formName && fieldName) {
-        const fieldPath = `${formName}_params.${fieldName}`;
-        serverErrors = this.fieldState[fieldPath]?.serverErrors || [];
-      }
-
-      // Combine client and server errors (client errors first, deduplicated)
-      const allErrors = [...clientErrors];
-      for (const err of serverErrors) {
-        if (!allErrors.includes(err)) {
-          allErrors.push(err);
-        }
-      }
+      // Errors already include both client and server errors (merged in the derive)
+      const allErrors = clientErrors;
 
       // Clear existing error content
       el.innerHTML = "";
@@ -1337,26 +1280,14 @@ const LavashOptimistic = {
       // Collect all errors for this form
       const allErrors = [];
 
-      // Find all error fields for this form
+      // Find all error fields for this form (errors already include server errors from derive)
       for (const key of Object.keys(this.state)) {
         if (key.startsWith(`${formName}_`) && key.endsWith("_errors")) {
           const fieldErrors = this.state[key] || [];
           const fieldName = key.replace(`${formName}_`, "").replace(/_errors$/, "");
 
-          // Also check for server errors
-          const fieldPath = `${formName}_params.${fieldName}`;
-          const serverErrors = this.fieldState[fieldPath]?.serverErrors || [];
-
-          // Combine and dedupe
-          const combined = [...fieldErrors];
-          for (const err of serverErrors) {
-            if (!combined.includes(err)) {
-              combined.push(err);
-            }
-          }
-
-          if (combined.length > 0) {
-            allErrors.push({ field: fieldName, errors: combined });
+          if (fieldErrors.length > 0) {
+            allErrors.push({ field: fieldName, errors: fieldErrors });
           }
         }
       }
@@ -1406,23 +1337,13 @@ const LavashOptimistic = {
       const isValid = this.state[validField] ?? true;
       const showErrors = this.state[showErrorsField] ?? false;
 
-      // Check for server errors
-      let hasServerErrors = false;
-      if (explicitForm && explicitField) {
-        const fieldPath = `${explicitForm}_params.${explicitField}`;
-        hasServerErrors = (this.fieldState[fieldPath]?.serverErrors || []).length > 0;
-      } else {
-        const formFieldMatch = validField.match(/^(.+)_(.+)_valid$/);
-        if (formFieldMatch) {
-          const [, formName, fieldName] = formFieldMatch;
-          const fieldPath = `${formName}_params.${fieldName}`;
-          hasServerErrors = (this.fieldState[fieldPath]?.serverErrors || []).length > 0;
-        }
-      }
+      // Check for errors (client + server already merged in derive)
+      const errorsField = validField.replace(/_valid$/, "_errors");
+      const hasErrors = (this.state[errorsField] || []).length > 0;
 
       // Only show status if field has been touched/submitted and is invalid
       // (no success indicator - green checkmarks are distracting)
-      if (!showErrors || (isValid && !hasServerErrors)) {
+      if (!showErrors || (isValid && !hasErrors)) {
         el.textContent = "";
         el.className = el.className.replace(/text-red-\d+/g, "").trim();
       } else {
@@ -1453,8 +1374,9 @@ const LavashOptimistic = {
       const validField = customValidField || `${formName}_${fieldName}_valid`;
       const isValid = this.state[validField] ?? true;
 
-      // Check for server errors
-      const hasServerErrors = (this.fieldState[fieldPath]?.serverErrors || []).length > 0;
+      // Check for errors (client + server already merged in derive)
+      const errorsField = `${formName}_${fieldName}_errors`;
+      const hasErrors = (this.state[errorsField] || []).length > 0;
 
       // Remove existing validation state classes (DaisyUI semantic + Tailwind fallback)
       const validationClasses = [
@@ -1467,7 +1389,7 @@ const LavashOptimistic = {
       validationClasses.forEach(c => input.classList.remove(c));
 
       // Apply error class only when invalid (no success styling - green is distracting)
-      if (showErrors && !(isValid && !hasServerErrors)) {
+      if (showErrors && (!isValid || hasErrors)) {
         input.classList.add("input-error");
       }
     });
@@ -1733,7 +1655,6 @@ const LavashOptimistic = {
 
   /**
    * Merge server state into this.state, skipping paths that are pending.
-   * Also skips _show_errors fields which are exclusively client-managed.
    * Returns array of top-level changed field names.
    */
   mergeServerState(obj, prefix, pendingPaths, changedFields = null) {
@@ -1746,12 +1667,6 @@ const LavashOptimistic = {
     for (const [key, value] of Object.entries(obj)) {
       const path = prefix ? `${prefix}.${key}` : key;
       const topLevelField = prefix ? prefix.split(".")[0] : key;
-
-      // Skip _show_errors fields - they're exclusively client-managed
-      // (based on touched/submitted state, not server state)
-      if (key.endsWith("_show_errors")) {
-        continue;
-      }
 
       // Check if this exact path or any child path is pending
       const hasPendingChild = [...pendingPaths].some(p => p === path || p.startsWith(path + "."));
@@ -1818,6 +1733,19 @@ const LavashOptimistic = {
   },
 
   destroyed() {
+    // Preserve client-only state for potential remount
+    // This allows touched/submitted state to survive hook remounts during LiveView patches
+    if (this.el.id) {
+      _preservedClientState.set(this.el.id, {
+        fieldState: this.fieldState,
+        submittedForms: this.submittedForms
+      });
+      // Clear after a short delay if not reused (prevents memory leaks)
+      setTimeout(() => {
+        _preservedClientState.delete(this.el.id);
+      }, 1000);
+    }
+
     // Remove event listeners (attached for both LiveViews and components)
     this.el.removeEventListener("click", this.handleClick.bind(this), true);
     this.el.removeEventListener("input", this.handleInput.bind(this), true);

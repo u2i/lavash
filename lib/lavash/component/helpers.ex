@@ -63,12 +63,15 @@ defmodule Lavash.Component.Helpers do
         Map.put(acc, field.name, value)
       end)
 
-    # Add form params - forms are implicitly optimistic for client-side validation
+    # Add form params and server errors - forms are implicitly optimistic for client-side validation
     state_map =
       Enum.reduce(forms, state_map, fn form, acc ->
         params_field = :"#{form.name}_params"
-        value = Map.get(assigns, params_field, %{})
-        Map.put(acc, params_field, value)
+        server_errors_field = :"#{form.name}_server_errors"
+
+        acc
+        |> Map.put(params_field, Map.get(assigns, params_field, %{}))
+        |> Map.put(server_errors_field, Map.get(assigns, server_errors_field, %{}))
       end)
 
     # Add derives, unwrapping async values

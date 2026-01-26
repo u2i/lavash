@@ -497,15 +497,10 @@ export class SyncedVarStore {
   /**
    * Update SyncedVars from a nested server state object.
    * Only updates vars that are not pending.
-   * Skips _show_errors fields which are exclusively client-managed.
    */
   serverUpdate(serverState) {
     const flatState = flattenState(serverState);
     for (const [path, value] of Object.entries(flatState)) {
-      // Skip _show_errors fields - they're client-managed
-      if (path.endsWith("_show_errors")) {
-        continue;
-      }
       if (this.vars[path]) {
         this.vars[path].serverSet(value);
       }

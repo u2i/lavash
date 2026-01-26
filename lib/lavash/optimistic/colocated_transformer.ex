@@ -624,7 +624,7 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
               skip_field_constraints = validation.field in skip_constraints
 
               v_fn = generate_field_validation_js(v_name, params_field, validation, skip_field_constraints)
-              e_fn = generate_field_errors_js(e_name, params_field, validation, custom_errors, field_ash_validations, skip_field_constraints, defrx_map)
+              e_fn = generate_field_errors_js(e_name, params_field, form_name, validation, custom_errors, field_ash_validations, skip_field_constraints, defrx_map)
 
               {[v_fn | vf], [e_fn | ef], [to_string(v_name) | vd], [to_string(e_name) | ed]}
             end)
@@ -723,7 +723,7 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
     """
   end
 
-  defp generate_field_errors_js(name, params_field, validation, custom_errors, ash_validations, skip_constraints, defrx_map) do
+  defp generate_field_errors_js(name, params_field, form_name, validation, custom_errors, ash_validations, skip_constraints, defrx_map) do
     field = validation.field
     field_str = to_string(field)
     required = validation.required
@@ -784,15 +784,21 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
       end)
 
     checks_array = "[" <> Enum.join(Enum.reverse(error_checks), ", ") <> "]"
+    server_errors_field = "#{form_name}_server_errors"
+    field_str = to_string(validation.field)
 
     """
       #{name}(state) {
         const v = #{value_expr};
         const isEmpty = v == null || String(v).trim().length === 0;
         const checks = #{checks_array};
-        return checks
+        const clientErrors = checks
           .filter(c => !c.check && (#{required} || !isEmpty))
           .map(c => c.msg);
+        const serverErrors = state.#{server_errors_field}?.[#{Jason.encode!(field_str)}] || [];
+        const merged = [...clientErrors];
+        for (const e of serverErrors) { if (!merged.includes(e)) merged.push(e); }
+        return merged;
       }
     """
   end
@@ -971,12 +977,14 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
               {"#{form_name}_#{field}_valid", %{deps: [params_field]}}
             end)
 
+          server_errors_field = "#{form_name}_server_errors"
+
           field_e_entries =
             Enum.map(field_names, fn field ->
               e_name = :"#{form_name}_#{field}_errors"
               # Include deps from extend_errors if this field has custom errors
               extra_deps = Map.get(extend_errors_deps, e_name, [])
-              {"#{form_name}_#{field}_errors", %{deps: [params_field | extra_deps] |> Enum.uniq()}}
+              {"#{form_name}_#{field}_errors", %{deps: [params_field, server_errors_field | extra_deps] |> Enum.uniq()}}
             end)
 
           combined_v =

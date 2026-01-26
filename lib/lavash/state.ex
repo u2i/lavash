@@ -51,12 +51,12 @@ defmodule Lavash.State do
       Enum.reduce(forms, LSocket.state(socket), fn form, state ->
         # Create the params field (e.g., :form_params for form :form)
         params_field = :"#{form.name}_params"
+        # Create the server_errors field (e.g., :form_server_errors for form :form)
+        server_errors_field = :"#{form.name}_server_errors"
 
-        if Map.has_key?(state, params_field) do
-          state
-        else
-          Map.put(state, params_field, %{})
-        end
+        state
+        |> then(fn s -> if Map.has_key?(s, params_field), do: s, else: Map.put(s, params_field, %{}) end)
+        |> then(fn s -> if Map.has_key?(s, server_errors_field), do: s, else: Map.put(s, server_errors_field, %{}) end)
       end)
 
     LSocket.put(socket, :state, state)

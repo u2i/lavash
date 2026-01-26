@@ -421,6 +421,8 @@ defmodule Lavash.Rx.Graph do
         end)
 
       # Generate a _errors field for each attribute
+      server_errors_dep = :"#{form_name}_server_errors"
+
       field_errors_fields =
         Enum.map(validations, fn validation ->
           field_name = :"#{form_name}_#{validation.field}_errors"
@@ -450,25 +452,10 @@ defmodule Lavash.Rx.Graph do
 
           %Lavash.Derived.Field{
             name: field_name,
-            depends_on: [params_dep | custom_error_deps],
+            depends_on: [params_dep, server_errors_dep | custom_error_deps],
             async: false,
             optimistic: true,
-            compute: build_errors_compute(validation, params_dep, custom_errors, field_ash_validations)
-          }
-        end)
-
-      # Generate a _show_errors field for each attribute
-      # These are always false on server - JS manages them based on touched/submitted state
-      field_show_errors_fields =
-        Enum.map(validations, fn validation ->
-          field_name = :"#{form_name}_#{validation.field}_show_errors"
-
-          %Lavash.Derived.Field{
-            name: field_name,
-            depends_on: [],
-            async: false,
-            optimistic: true,
-            compute: fn _deps -> false end
+            compute: build_errors_compute(validation, params_dep, server_errors_dep, custom_errors, field_ash_validations)
           }
         end)
 
@@ -500,9 +487,9 @@ defmodule Lavash.Rx.Graph do
           end
         }
 
-        field_valid_fields ++ field_errors_fields ++ field_show_errors_fields ++ [form_valid_field, form_errors_field]
+        field_valid_fields ++ field_errors_fields ++ [form_valid_field, form_errors_field]
       else
-        field_valid_fields ++ field_errors_fields ++ field_show_errors_fields
+        field_valid_fields ++ field_errors_fields
       end
     else
       []
@@ -548,7 +535,7 @@ defmodule Lavash.Rx.Graph do
 
   # Build a compute function for an errors field
   # ash_validations: list of validation specs from ValidationTranspiler (with custom messages)
-  defp build_errors_compute(validation, params_dep, custom_errors, ash_validations) do
+  defp build_errors_compute(validation, params_dep, server_errors_dep, custom_errors, ash_validations) do
     field = validation.field
     field_str = to_string(field)
     type = validation.type
@@ -618,7 +605,12 @@ defmodule Lavash.Rx.Graph do
           end
         end)
 
-      Enum.reverse(errors) ++ custom_error_messages
+      # Merge server errors for this field (from server-side validation)
+      server_errors_map = Map.get(deps, server_errors_dep, %{})
+      server_errors = Map.get(server_errors_map, field_str, [])
+
+      client_errors = Enum.reverse(errors) ++ custom_error_messages
+      Enum.uniq(client_errors ++ server_errors)
     end
   end
 

@@ -86,10 +86,6 @@ defmodule Lavash.LiveView.Components do
     default: nil,
     doc: "Error list. If nil, derives from form_field_errors assign"
 
-  attr :show_errors, :boolean,
-    default: nil,
-    doc: "Whether to show errors. If nil, derives from form_field_show_errors assign"
-
   attr :class, :string,
     default: nil,
     doc: "Additional CSS classes for the input"
@@ -126,7 +122,8 @@ defmodule Lavash.LiveView.Components do
         data-lavash-field={@field_str}
         data-lavash-valid={@lavash_valid_field}
         data-lavash-format={@format}
-        class={["input input-bordered w-full", input_validation_class(assigns), @class]}
+        data-lavash-server-errors={Jason.encode!(@errors || [])}
+        class={["input input-bordered w-full", @class]}
         {@rest}
       />
     </.field_wrapper>
@@ -143,7 +140,6 @@ defmodule Lavash.LiveView.Components do
   attr :valid, :boolean, default: nil
   attr :valid_field, :string, default: nil
   attr :errors, :list, default: nil
-  attr :show_errors, :boolean, default: nil
   attr :class, :string, default: nil
   attr :wrapper_class, :string, default: nil
   attr :floating, :boolean, default: true
@@ -166,7 +162,8 @@ defmodule Lavash.LiveView.Components do
         data-lavash-form={@form_str}
         data-lavash-field={@field_str}
         data-lavash-valid={@lavash_valid_field}
-        class={["textarea textarea-bordered w-full", input_validation_class(assigns), @class]}
+        data-lavash-server-errors={Jason.encode!(@errors || [])}
+        class={["textarea textarea-bordered w-full", @class]}
         {@rest}
       >{@field.value || ""}</textarea>
     </.field_wrapper>
@@ -219,16 +216,6 @@ defmodule Lavash.LiveView.Components do
     |> assign(:lavash_valid_field, valid_field)
   end
 
-  defp input_validation_class(assigns) do
-    # show_errors must be explicitly passed for validation classes to apply
-    # (prevents flash of error styling before user interaction)
-    # Only show error styling, not success (green can be distracting)
-    cond do
-      not (assigns.show_errors || false) -> ""
-      assigns.valid == false -> "input-error"
-      true -> ""
-    end
-  end
 
   @doc """
   Renders a select dropdown with label and optimistic validation.
@@ -267,10 +254,6 @@ defmodule Lavash.LiveView.Components do
     default: nil,
     doc: "Error list. If nil, derives from form_field_errors assign"
 
-  attr :show_errors, :boolean,
-    default: nil,
-    doc: "Whether to show errors"
-
   attr :class, :string,
     default: nil,
     doc: "Additional CSS classes for the select"
@@ -299,7 +282,8 @@ defmodule Lavash.LiveView.Components do
           data-lavash-form={@form_str}
           data-lavash-field={@field_str}
           data-lavash-valid={@lavash_valid_field}
-          class={["select select-bordered w-full", select_validation_class(assigns), @class]}
+          data-lavash-server-errors={Jason.encode!(@errors || [])}
+          class={["select select-bordered w-full", @class]}
           {@rest}
         >
           <option :if={@prompt} value="" disabled selected={is_nil(@field.value) or @field.value == ""}>{@prompt}</option>
@@ -316,11 +300,4 @@ defmodule Lavash.LiveView.Components do
     """
   end
 
-  defp select_validation_class(assigns) do
-    cond do
-      not (assigns.show_errors || false) -> ""
-      assigns.valid == false -> "select-error"
-      true -> ""
-    end
-  end
 end

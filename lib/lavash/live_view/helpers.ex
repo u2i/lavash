@@ -63,12 +63,15 @@ defmodule Lavash.LiveView.Helpers do
         Map.put(acc, field.name, value)
       end)
 
-    # Add form params - forms are implicitly optimistic for client-side validation
+    # Add form params and server errors - forms are implicitly optimistic for client-side validation
     state_map =
       Enum.reduce(forms, state_map, fn form, acc ->
         params_field = :"#{form.name}_params"
-        value = Map.get(assigns, params_field, %{})
-        Map.put(acc, params_field, value)
+        server_errors_field = :"#{form.name}_server_errors"
+
+        acc
+        |> Map.put(params_field, Map.get(assigns, params_field, %{}))
+        |> Map.put(server_errors_field, Map.get(assigns, server_errors_field, %{}))
       end)
 
     # Add derives, unwrapping async values
@@ -92,7 +95,7 @@ defmodule Lavash.LiveView.Helpers do
       end)
 
     # Add auto-generated form validation fields BEFORE calculations
-    # Because calculations may reference *_show_errors fields
+    # Because calculations may reference *_valid or *_errors fields
     state_map = add_form_validation_fields(state_map, forms)
 
     # Add calculations - compute them from state
@@ -468,7 +471,7 @@ defmodule Lavash.LiveView.Helpers do
   def field_success(assigns) do
     # Use custom valid_field if provided, otherwise derive from form/field
     valid_field = assigns.valid_field || "#{assigns.form}_#{assigns.field}_valid"
-    # show_errors is always derived from form/field (the touched state of the actual field)
+    # show_errors key for JS to look up its internal touched/submitted state
     show_errors_field = "#{assigns.form}_#{assigns.field}_show_errors"
     form_name = to_string(assigns.form)
     field_name = to_string(assigns.field)

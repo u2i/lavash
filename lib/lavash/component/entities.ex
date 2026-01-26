@@ -119,7 +119,7 @@ defmodule Lavash.ExtendErrors do
 
   Used to add custom validation rules beyond what Ash resource constraints provide.
   The custom errors are merged with Ash-generated errors and visibility is handled
-  automatically via the field's show_errors state.
+  automatically via JS touched/submitted tracking.
 
   ## Fields
 

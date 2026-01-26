@@ -71,6 +71,11 @@ defmodule DemoWeb.DemosIndexLive do
               description="Client-side validation via transpiled rx() calculations. Instant feedback."
             />
             <.demo_card
+              href={~p"/demos/validation"}
+              title="Client + Server Validation"
+              description="Client errors instant from constraints, server errors after round-trip from custom validations."
+            />
+            <.demo_card
               href={~p"/demos/checkout"}
               title="Checkout (Shopify-style)"
               description="Full checkout form with card validation, Luhn check, and dynamic styling."

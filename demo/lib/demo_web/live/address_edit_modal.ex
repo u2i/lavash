@@ -80,13 +80,11 @@ defmodule DemoWeb.AddressEditModal do
             field={@address_form[:first_name]}
             label="First name"
             errors={@address_form_first_name_errors}
-            show_errors={assigns[:address_form_first_name_show_errors]}
           />
           <.input
             field={@address_form[:last_name]}
             label="Last name"
             errors={@address_form_last_name_errors}
-            show_errors={assigns[:address_form_last_name_show_errors]}
           />
         </div>
 
@@ -101,7 +99,6 @@ defmodule DemoWeb.AddressEditModal do
           field={@address_form[:address]}
           label="Address"
           errors={@address_form_address_errors}
-          show_errors={assigns[:address_form_address_show_errors]}
         />
 
         <!-- Apartment (optional - no validation) -->
@@ -116,7 +113,6 @@ defmodule DemoWeb.AddressEditModal do
             field={@address_form[:city]}
             label="City"
             errors={@address_form_city_errors}
-            show_errors={assigns[:address_form_city_show_errors]}
           />
           <.select
             field={@address_form[:state]}
@@ -128,7 +124,6 @@ defmodule DemoWeb.AddressEditModal do
             field={@address_form[:zip]}
             label="ZIP code"
             errors={@address_form_zip_errors}
-            show_errors={assigns[:address_form_zip_show_errors]}
           />
         </div>
 

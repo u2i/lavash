@@ -477,7 +477,6 @@ defmodule DemoWeb.CheckoutDemoLive do
                       valid={@card_number_valid}
                       valid_field="card_number_valid"
                       errors={@payment_card_number_errors}
-                      show_errors={assigns[:payment_card_number_show_errors]}
                       autocomplete="cc-number"
                       inputmode="numeric"
                       format="credit-card"
@@ -491,7 +490,6 @@ defmodule DemoWeb.CheckoutDemoLive do
                         valid={@expiry_valid}
                         valid_field="expiry_valid"
                         errors={@payment_expiry_errors}
-                        show_errors={assigns[:payment_expiry_show_errors]}
                         autocomplete="cc-exp"
                         inputmode="numeric"
                         maxlength="5"
@@ -505,7 +503,6 @@ defmodule DemoWeb.CheckoutDemoLive do
                         valid={@cvv_valid}
                         valid_field="cvv_valid"
                         errors={@payment_cvv_errors}
-                        show_errors={assigns[:payment_cvv_show_errors]}
                         autocomplete="cc-csc"
                         inputmode="numeric"
                         maxlength="4"
@@ -518,7 +515,6 @@ defmodule DemoWeb.CheckoutDemoLive do
                       label="Name on card"
                       valid={@payment_name_valid}
                       errors={@payment_name_errors}
-                      show_errors={assigns[:payment_name_show_errors]}
                       autocomplete="cc-name"
                     />
 

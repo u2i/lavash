@@ -11,5 +11,6 @@ defmodule Demo.Forms do
     resource Demo.Forms.Registration
     resource Demo.Forms.Payment
     resource Demo.Forms.Address
+    resource Demo.Forms.Account
   end
 end

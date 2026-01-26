@@ -18,7 +18,7 @@ defmodule DemoWeb.FormValidationDemoLive do
 
   The `extend_errors` DSL allows adding custom errors:
   - Custom errors are merged with auto-generated Ash errors
-  - Visibility is controlled by the same show_errors state (touched/submitted)
+  - Visibility is controlled by JS touched/submitted tracking
   - No need for separate visibility calculations
   """
   use Lavash.LiveView
@@ -120,8 +120,7 @@ defmodule DemoWeb.FormValidationDemoLive do
                 field={@registration[:name]}
                 autocomplete="off"
                 data-1p-ignore
-                class={"input input-bordered w-full pr-10 " <>
-                  if assigns[:registration_name_show_errors] && !@registration_name_valid, do: "input-error", else: ""}
+                class="input input-bordered w-full pr-10"
                 placeholder="Enter your name"
               />
             </div>
@@ -142,8 +141,7 @@ defmodule DemoWeb.FormValidationDemoLive do
                 data-lavash-valid="email_valid"
                 autocomplete="off"
                 data-1p-ignore
-                class={"input input-bordered w-full pr-10 " <>
-                  if assigns[:registration_email_show_errors] && !@email_valid, do: "input-error", else: ""}
+                class="input input-bordered w-full pr-10"
                 placeholder="you@example.com"
               />
             </div>
@@ -166,8 +164,7 @@ defmodule DemoWeb.FormValidationDemoLive do
                 data-1p-ignore
                 min="0"
                 max="150"
-                class={"input input-bordered w-full pr-10 " <>
-                  if assigns[:registration_age_show_errors] && !@registration_age_valid, do: "input-error", else: ""}
+                class="input input-bordered w-full pr-10"
                 placeholder="18"
               />
             </div>
