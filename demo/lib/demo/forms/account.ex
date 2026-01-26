@@ -4,13 +4,12 @@ defmodule Demo.Forms.Account do
 
   Demonstrates both client-evaluable and server-only validations:
 
-  - `username`: required, min 3, max 20 chars (all transpiled to client JS)
-  - `email`: required (client), custom format validation (server-only)
-  - `password`: required, min 8 chars (all transpiled to client JS)
+  - `username`: required, min 3, max 20 chars (client) + uniqueness check (server)
+  - `email`: required (client) + format validation (server)
+  - `password`: required, min 8 chars (client)
 
-  The custom email format validation uses `Demo.Validations.EmailFormat`,
-  which is an Ash validation module that cannot be transpiled to JS.
-  It runs on the server after a debounced round-trip.
+  Server-only validations use custom Ash validation modules that
+  cannot be transpiled to JS. They run after a debounced round-trip.
   """
   use Ash.Resource,
     domain: Demo.Forms,
@@ -60,7 +59,8 @@ defmodule Demo.Forms.Account do
     validate string_length(:password, min: 8),
       message: "Password must be at least 8 characters"
 
-    # Server-only: custom validation module that can't be transpiled to JS
+    # Server-only: custom validation modules that can't be transpiled to JS
     validate {Demo.Validations.EmailFormat, attribute: :email}
+    validate {Demo.Validations.UsernameAvailable, []}
   end
 end

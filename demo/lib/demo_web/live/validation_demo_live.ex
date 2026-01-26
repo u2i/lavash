@@ -2,7 +2,7 @@ defmodule DemoWeb.ValidationDemoLive do
   @moduledoc """
   Demo showcasing client-side vs server-side validation.
 
-  Demonstrates two error sources working together:
+  Demonstrates two error sources working together on the same fields:
 
   1. **Client errors** (instant): Transpiled from Ash resource constraints
      - username: required, 3-20 characters
@@ -10,11 +10,10 @@ defmodule DemoWeb.ValidationDemoLive do
      - password: required, min 8 characters
 
   2. **Server errors** (after debounced round-trip): From custom Ash validations
-     - email: format validation via `Demo.Validations.EmailFormat` module
-     - Cannot be transpiled to JS, so runs on server only
+     - username: uniqueness check via `Demo.Validations.UsernameAvailable`
+     - email: format validation via `Demo.Validations.EmailFormat`
 
-  Server errors are stored in `account_server_errors` state and merged into
-  the `_errors` derives alongside client constraint errors.
+  Both error sources merge into the same `_errors` derive per field.
   """
   use Lavash.LiveView
   import Lavash.LiveView.Helpers, only: [field_errors: 1, error_summary: 1]
@@ -73,7 +72,7 @@ defmodule DemoWeb.ValidationDemoLive do
         <.form for={@account} phx-submit="save" class="space-y-6">
           <.error_summary form={:account} />
 
-          <%!-- Username: client-evaluable (required, min 3, max 20) --%>
+          <%!-- Username: client (required, 3-20) + server (uniqueness) --%>
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">
               Username <span class="text-error">*</span>
@@ -86,15 +85,16 @@ defmodule DemoWeb.ValidationDemoLive do
               class="input input-bordered w-full"
               placeholder="3-20 characters"
             />
-            <div class="h-5 mt-1">
+            <div class="min-h-[1.25rem] mt-1">
               <.field_errors form={:account} field={:username} errors={@account_username_errors} />
             </div>
-            <p class="text-xs text-gray-400 mt-0.5">
-              Client-side: required, 3-20 chars
-            </p>
+            <div class="flex gap-2 mt-0.5">
+              <span class="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">client: length</span>
+              <span class="text-xs px-1.5 py-0.5 rounded bg-purple-100 text-purple-700">server: uniqueness</span>
+            </div>
           </div>
 
-          <%!-- Email: client (required) + server-only (format check) --%>
+          <%!-- Email: client (required) + server (format) --%>
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">
               Email <span class="text-error">*</span>
@@ -107,15 +107,16 @@ defmodule DemoWeb.ValidationDemoLive do
               class="input input-bordered w-full"
               placeholder="you@example.com"
             />
-            <div class="h-5 mt-1">
+            <div class="min-h-[1.25rem] mt-1">
               <.field_errors form={:account} field={:email} errors={@account_email_errors} />
             </div>
-            <p class="text-xs text-gray-400 mt-0.5">
-              Client-side: required &mdash; Server-side: email format
-            </p>
+            <div class="flex gap-2 mt-0.5">
+              <span class="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">client: required</span>
+              <span class="text-xs px-1.5 py-0.5 rounded bg-purple-100 text-purple-700">server: format</span>
+            </div>
           </div>
 
-          <%!-- Password: client-evaluable (required, min 8) --%>
+          <%!-- Password: client-only (required, min 8) --%>
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">
               Password <span class="text-error">*</span>
@@ -128,12 +129,12 @@ defmodule DemoWeb.ValidationDemoLive do
               class="input input-bordered w-full"
               placeholder="At least 8 characters"
             />
-            <div class="h-5 mt-1">
+            <div class="min-h-[1.25rem] mt-1">
               <.field_errors form={:account} field={:password} errors={@account_password_errors} />
             </div>
-            <p class="text-xs text-gray-400 mt-0.5">
-              Client-side: required, min 8 chars
-            </p>
+            <div class="flex gap-2 mt-0.5">
+              <span class="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">client: length</span>
+            </div>
           </div>
 
           <div class="pt-4">
@@ -155,35 +156,48 @@ defmodule DemoWeb.ValidationDemoLive do
         </.form>
       <% end %>
 
-      <div class="mt-8 p-4 bg-gray-50 rounded-lg">
+      <div class="mt-8 p-4 bg-blue-50 rounded-lg">
+        <h3 class="font-semibold text-blue-800 mb-2">Try it</h3>
+        <ol class="text-sm text-gray-700 space-y-2 list-decimal list-inside">
+          <li>
+            Type <code class="bg-gray-200 px-1 rounded">ab</code> in username
+            &mdash; <strong class="text-blue-600">instant</strong> "must be at least 3 characters"
+          </li>
+          <li>
+            Type <code class="bg-gray-200 px-1 rounded">admin</code> in username
+            &mdash; length passes instantly, then <strong class="text-purple-600">server</strong> returns "is already taken"
+          </li>
+          <li>
+            Type <code class="bg-gray-200 px-1 rounded">notanemail</code> in email
+            &mdash; <strong class="text-purple-600">server</strong> returns "must be a valid email address"
+          </li>
+          <li>
+            Type <code class="bg-gray-200 px-1 rounded">short</code> in password
+            &mdash; <strong class="text-blue-600">instant</strong> "must be at least 8 characters"
+          </li>
+        </ol>
+      </div>
+
+      <div class="mt-4 p-4 bg-gray-50 rounded-lg">
         <h3 class="font-semibold text-gray-700 mb-2">How it works</h3>
         <ul class="text-sm text-gray-600 space-y-2">
           <li>
-            <strong class="text-blue-600">Client errors</strong> &mdash;
+            <span class="inline-block px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 text-xs mr-1">client</span>
             Transpiled from Ash <code class="bg-gray-200 px-1 rounded">constraints</code>
             (min_length, max_length, allow_nil?). Evaluated instantly in JS.
           </li>
           <li>
-            <strong class="text-purple-600">Server errors</strong> &mdash;
-            From custom Ash <code class="bg-gray-200 px-1 rounded">validations</code>
-            that can't be transpiled (e.g. regex module, DB lookups). Arrive after debounced server round-trip.
+            <span class="inline-block px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 text-xs mr-1">server</span>
+            Custom Ash <code class="bg-gray-200 px-1 rounded">validations</code>
+            that can't be transpiled (uniqueness checks, regex modules, DB lookups).
+            Arrive after debounced round-trip.
           </li>
           <li>
-            Both error sources are merged into the same
-            <code class="bg-gray-200 px-1 rounded">_errors</code> derive.
-            JS owns display; server re-renders don't wipe error state.
+            Both sources merge into the same
+            <code class="bg-gray-200 px-1 rounded">_errors</code> derive per field.
+            JS owns display; server re-renders never wipe error state.
           </li>
         </ul>
-      </div>
-
-      <div class="mt-4 p-4 bg-blue-50 rounded-lg">
-        <h3 class="font-semibold text-blue-700 mb-2">Try it</h3>
-        <ol class="text-sm text-blue-600 space-y-1 list-decimal list-inside">
-          <li>Type "ab" in username &mdash; instant "must be at least 3 characters"</li>
-          <li>Type "notanemail" in email &mdash; server error "must be a valid email address" after brief delay</li>
-          <li>Type "short" in password &mdash; instant "must be at least 8 characters"</li>
-          <li>Fix all fields and submit &mdash; account created</li>
-        </ol>
       </div>
 
       <div class="mt-4 text-center">
