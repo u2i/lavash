@@ -125,7 +125,9 @@ const LavashOptimistic = {
     this.el.addEventListener("click", this.handleClick.bind(this), true);
 
     // Intercept input/change on elements with data-lavash-bind
+    // Listen for both: "input" fires on text keystroke, "change" fires on select/checkbox
     this.el.addEventListener("input", this.handleInput.bind(this), true);
+    this.el.addEventListener("change", this.handleInput.bind(this), true);
 
     // Track blur events for touched state
     this.el.addEventListener("blur", this.handleBlur.bind(this), true);
@@ -1749,6 +1751,7 @@ const LavashOptimistic = {
     // Remove event listeners (attached for both LiveViews and components)
     this.el.removeEventListener("click", this.handleClick.bind(this), true);
     this.el.removeEventListener("input", this.handleInput.bind(this), true);
+    this.el.removeEventListener("change", this.handleInput.bind(this), true);
     this.el.removeEventListener("blur", this.handleBlur.bind(this), true);
     this.el.removeEventListener("submit", this.handleFormSubmit.bind(this), true);
 
