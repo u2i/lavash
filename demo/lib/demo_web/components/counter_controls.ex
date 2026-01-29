@@ -13,23 +13,25 @@ defmodule DemoWeb.Components.CounterControls do
   optimistic_action :decrement, :count,
     run: fn count, _params -> max(0, count - 1) end
 
-  template """
-  <div class="flex items-center gap-3">
-    <button
-      type="button"
-      class="btn btn-sm btn-outline"
-      data-lavash-action="decrement"
-    >
-      −
-    </button>
-    <span class="text-xl font-mono w-12 text-center">{@count || 0}</span>
-    <button
-      type="button"
-      class="btn btn-sm btn-outline"
-      data-lavash-action="increment"
-    >
-      +
-    </button>
-  </div>
-  """
+  render fn assigns ->
+    ~L"""
+    <div class="flex items-center gap-3">
+      <button
+        type="button"
+        class="btn btn-sm btn-outline"
+        data-lavash-action="decrement"
+      >
+        −
+      </button>
+      <span class="text-xl font-mono w-12 text-center">{@count || 0}</span>
+      <button
+        type="button"
+        class="btn btn-sm btn-outline"
+        data-lavash-action="increment"
+      >
+        +
+      </button>
+    </div>
+    """
+  end
 end

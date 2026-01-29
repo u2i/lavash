@@ -59,9 +59,21 @@ defmodule Lavash.Sigil do
     # Compile with Lavash.TagEngine and token transformer
     compiled = compile_template(template, caller, metadata)
 
-    # Return compiled content directly (not wrapped in struct)
-    # The RenderMacro.extract_template function extracts source from AST directly
-    compiled
+    # For ClientComponents, wrap with source for JS transpilation
+    # For other contexts, return compiled content directly
+    if context == :client_component do
+      quote do
+        %Lavash.Template.Compiled{
+          source: unquote(template),
+          compiled: unquote(compiled),
+          context: unquote(context),
+          file: unquote(caller.file),
+          line: unquote(caller.line)
+        }
+      end
+    else
+      compiled
+    end
   end
 
   @doc false

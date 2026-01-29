@@ -50,12 +50,17 @@ defmodule Lavash.ClientComponent.Compiler do
           end
 
         renders ->
-          # New macro-based renders - find :default and extract source
+          # New macro-based renders - find :__render_fn__ and extract source
           renders_map = Map.new(renders)
-          case Map.get(renders_map, :default) do
-            %Lavash.Template.Compiled{source: source} -> {source, nil}
-            source when is_binary(source) -> {source, nil}
-            _ -> {nil, nil}
+          case Map.get(renders_map, :__render_fn__) do
+            nil ->
+              {nil, nil}
+
+            escaped_fn ->
+              # The escaped function contains the ~L sigil expansion
+              # For ClientComponents, ~L returns %Lavash.Template.Compiled{source: "..."}
+              # We need to extract the source from the function body AST
+              extract_source_from_render_fn(escaped_fn)
           end
       end
 
@@ -956,6 +961,39 @@ defmodule Lavash.ClientComponent.Compiler do
         {to_string(var), Lavash.Rx.Transpiler.to_js(Macro.to_string(collection))}
       _ ->
         {"item", "[]"}
+    end
+  end
+
+  # Extract template source from render function AST
+  # The function looks like: fn assigns -> %Lavash.Template.Compiled{source: "...", ...} end
+  defp extract_source_from_render_fn(escaped_fn) do
+    case escaped_fn do
+      # Match the function structure: fn assigns -> body end
+      {:fn, _, [{:->, _, [[{:assigns, _, _}], body]}]} ->
+        extract_compiled_source(body)
+
+      # Also handle the case where assigns might have a different context
+      {:fn, _, [{:->, _, [[_assigns_var], body]}]} ->
+        extract_compiled_source(body)
+
+      _ ->
+        {nil, nil}
+    end
+  end
+
+  # Extract source from the Compiled struct construction in the function body
+  defp extract_compiled_source(body) do
+    case body do
+      # Match: %Lavash.Template.Compiled{source: "...", ...}
+      {:%, _, [{:__aliases__, _, [:Lavash, :Template, :Compiled]}, {:%{}, _, fields}]} ->
+        case Keyword.get(fields, :source) do
+          source when is_binary(source) -> {source, nil}
+          _ -> {nil, nil}
+        end
+
+      # If it's not a Compiled struct, render fn syntax not compatible with ClientComponent yet
+      _ ->
+        {nil, nil}
     end
   end
 end
