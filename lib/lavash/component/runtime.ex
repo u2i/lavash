@@ -471,7 +471,31 @@ defmodule Lavash.Component.Runtime do
 
   defp update_state_with_props(socket, prop_values) do
     # Merge props into state so derived fields can depend on them
-    state = Map.merge(LSocket.state(socket), prop_values)
+    # For props that are also state fields (bound props), only update state
+    # when the prop changed from parent - otherwise preserve state value
+    # so child's local modifications aren't overwritten
+    old_props = LSocket.get(socket, :props) || %{}
+    state = LSocket.state(socket)
+
+    state =
+      Enum.reduce(prop_values, state, fn {name, new_value}, acc ->
+        old_value = Map.get(old_props, name)
+
+        # If prop changed from parent, always update state
+        if old_value != new_value do
+          Map.put(acc, name, new_value)
+        else
+          # Prop didn't change - keep existing state value if present
+          # This preserves child's local modifications (e.g., on_saved setting open: nil)
+          if Map.has_key?(acc, name) do
+            acc
+          else
+            # State doesn't have this field yet, initialize from prop
+            Map.put(acc, name, new_value)
+          end
+        end
+      end)
+
     LSocket.put(socket, :state, state)
   end
 
