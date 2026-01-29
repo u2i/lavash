@@ -984,12 +984,26 @@ defmodule Lavash.ClientComponent.Compiler do
   # Extract source from the Compiled struct construction in the function body
   defp extract_compiled_source(body) do
     case body do
+      # Match the ~L sigil call directly (before macro expansion)
+      # The sigil AST is: {:sigil_L, meta, [{:<<>>, _, [template_string]}, modifiers]}
+      {:sigil_L, _, [{:<<>>, _, [template_string]}, _modifiers]} when is_binary(template_string) ->
+        {template_string, nil}
+
       # Match: %Lavash.Template.Compiled{source: "...", ...}
       {:%, _, [{:__aliases__, _, [:Lavash, :Template, :Compiled]}, {:%{}, _, fields}]} ->
         case Keyword.get(fields, :source) do
           source when is_binary(source) -> {source, nil}
           _ -> {nil, nil}
         end
+
+      # Match: {:__block__, _, [contents]} - unwrap block and recurse
+      {:__block__, _, [inner]} ->
+        extract_compiled_source(inner)
+
+      # Match the quote block that sigil_L returns for client components
+      # This is the AST of: quote do %Lavash.Template.Compiled{...} end
+      {:quote, _, [[do: struct_ast]]} ->
+        extract_compiled_source(struct_ast)
 
       # If it's not a Compiled struct, render fn syntax not compatible with ClientComponent yet
       _ ->
