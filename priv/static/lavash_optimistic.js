@@ -144,6 +144,10 @@ const LavashOptimistic = {
     // Install global DOM callback for input preservation (only once globally)
     this._installGlobalDomCallback();
 
+    // Initialize form params from DOM values (for prepopulated/default values)
+    // This ensures validation works correctly for fields with defaults
+    this.initializeFormParamsFromDOM();
+
     // Initialize animated state managers
     this.initAnimatedFields();
   },
@@ -336,6 +340,64 @@ const LavashOptimistic = {
     return Object.values(this.animatedStates).some(
       a => a.getPhase() === "entering" || a.getPhase() === "exiting"
     );
+  },
+
+  /**
+   * Initialize form params from DOM values for prepopulated/default fields.
+   * This ensures validation works correctly for fields that have defaults
+   * (e.g., a country select defaulting to "United States").
+   *
+   * Without this, form_params starts empty and validation fails because
+   * state.form_params?.["country"] is undefined even though the input shows a value.
+   */
+  initializeFormParamsFromDOM() {
+    const boundInputs = this.el.querySelectorAll("[data-lavash-bind]");
+    let initialized = false;
+
+    console.log(`[initFormParams] Found ${boundInputs.length} bound inputs`);
+
+    boundInputs.forEach(input => {
+      const fieldPath = input.dataset.lavashBind;
+
+      // Skip elements inside nested child hooks - they manage their own state
+      if (this.isInsideChildHook(input)) {
+        console.log(`[initFormParams] Skipping (child hook): ${fieldPath}`);
+        return;
+      }
+
+      // Only handle form params paths (e.g., "address_form_params.country")
+      if (!fieldPath || !fieldPath.includes("_params.")) {
+        console.log(`[initFormParams] Skipping (not params): ${fieldPath}`);
+        return;
+      }
+
+      const dotIndex = fieldPath.indexOf(".");
+      if (dotIndex === -1) return;
+
+      const paramsField = fieldPath.substring(0, dotIndex);  // e.g., "address_form_params"
+      const field = fieldPath.substring(dotIndex + 1);        // e.g., "country"
+
+      // Get current input value
+      const currentValue = input.value;
+
+      console.log(`[initFormParams] ${fieldPath}: value="${currentValue}", existing=${this.state[paramsField]?.[field]}`);
+
+      // Only set if input has a non-empty value and state doesn't have it yet
+      if (currentValue != null && currentValue !== "") {
+        this.state[paramsField] = this.state[paramsField] || {};
+        if (this.state[paramsField][field] === undefined) {
+          this.state[paramsField][field] = currentValue;
+          initialized = true;
+          console.log(`[initFormParams] Initialized ${paramsField}.${field} = "${currentValue}"`);
+        }
+      }
+    });
+
+    // If we initialized any params, recompute derives so validation reflects correct state
+    if (initialized) {
+      console.log(`[initFormParams] Recomputing derives...`);
+      this.recomputeDerives();
+    }
   },
 
   /**
@@ -570,14 +632,31 @@ const LavashOptimistic = {
     const target = e.target.closest("[data-lavash-bind]");
     if (!target) return;
 
+    // Skip if input is inside a child component (has its own hook)
+    if (this.isInsideChildHook(target)) {
+      return;
+    }
+
     const fieldPath = target.dataset.lavashBind;
     if (!fieldPath) return;
 
-    // Mark field as touched
     if (!this.fieldState[fieldPath]) {
       this.fieldState[fieldPath] = {};
     }
-    this.fieldState[fieldPath].touched = true;
+
+    // For selects, only mark as touched if value was actually modified
+    // This prevents Chrome's dropdown interaction from triggering error display
+    // (Chrome fires blur events during arrow key navigation in open dropdowns)
+    if (target.tagName === "SELECT") {
+      const wasModified = this.store.isPending(fieldPath);
+      console.log(`[handleBlur] SELECT ${fieldPath}: wasModified=${wasModified}`);
+      if (wasModified) {
+        this.fieldState[fieldPath].touched = true;
+      }
+    } else {
+      // For text inputs, mark as touched on any blur (standard UX)
+      this.fieldState[fieldPath].touched = true;
+    }
 
     // Get form/field from explicit attributes or derive from path
     const { formName, fieldName } = this.getFormField(target, fieldPath);
@@ -927,7 +1006,12 @@ const LavashOptimistic = {
     // Recompute derives affected by the root field
     this.recomputeDerives([rootField]);
 
-    this.updateDOM();
+    // For selects, defer DOM update to blur - Chrome fires change events during
+    // arrow key navigation in open dropdowns, which causes flickering errors.
+    // State and derives are updated, but visual error display waits for blur.
+    if (target.tagName !== "SELECT") {
+      this.updateDOM();
+    }
 
     // Sync URL fields immediately (optimistic URL update)
     this.syncUrl();
@@ -1647,6 +1731,10 @@ const LavashOptimistic = {
 
     // Let animated state delegates handle post-update logic (e.g., modal FLIP animations)
     this.notifyAnimatedStatesDelegatesUpdated();
+
+    // Initialize form params from any newly-added inputs (e.g., async modal content)
+    // This ensures prepopulated/default values are in form_params before validation
+    this.initializeFormParamsFromDOM();
 
     // Recompute derives based on current state
     this.recomputeDerives();
