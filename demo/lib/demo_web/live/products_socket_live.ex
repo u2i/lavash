@@ -164,8 +164,8 @@ defmodule DemoWeb.ProductsSocketLive do
               <form phx-change="set_category">
                 <select name="value" class="w-full px-3 py-2 border rounded-md text-sm">
                   <option value="">All Categories</option>
-                  <option :for={cat <- @categories} value={cat} selected={@category == cat}>
-                    {cat}
+                  <option :for={cat <- @categories} value={cat.slug} selected={@category == cat.slug}>
+                    {cat.name}
                   </option>
                 </select>
               </form>
