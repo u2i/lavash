@@ -688,20 +688,22 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
 
     checks = []
 
-    # Required check is always included (it's about presence, not constraints)
-    checks =
-      if required do
-        check = "(#{value_expr} != null && String(#{value_expr}).trim().length > 0)"
-        [check | checks]
-      else
-        checks
-      end
-
-    # Type-specific constraint checks are skipped if skip_constraints is true
+    # If skip_constraints is true, skip all validation (required + type constraints)
+    # This is used for fields that are programmatically populated (e.g., session_id)
     checks =
       if skip_constraints do
         checks
       else
+        # Required check
+        checks =
+          if required do
+            check = "(#{value_expr} != null && String(#{value_expr}).trim().length > 0)"
+            [check | checks]
+          else
+            checks
+          end
+
+        # Type-specific constraint checks
         case type do
           :string -> build_string_constraint_checks(value_expr, constraints, checks)
           :integer -> build_integer_constraint_checks(value_expr, constraints, checks)
@@ -737,25 +739,27 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
 
     error_checks = []
 
-    # Required check is always included (it's about presence, not constraints)
-    error_checks =
-      if required do
-        msg = Map.get(ash_messages, :required) ||
-              Lavash.Form.ConstraintTranspiler.error_message(:required, nil)
-
-        check =
-          "{check: #{value_expr} != null && String(#{value_expr}).trim().length > 0, msg: #{Jason.encode!(msg)}}"
-
-        [check | error_checks]
-      else
-        error_checks
-      end
-
-    # Type-specific constraint error checks are skipped if skip_constraints is true
+    # If skip_constraints is true, skip all validation (required + type constraints)
+    # This is used for fields that are programmatically populated (e.g., session_id)
     error_checks =
       if skip_constraints do
         error_checks
       else
+        # Required check
+        error_checks =
+          if required do
+            msg = Map.get(ash_messages, :required) ||
+                  Lavash.Form.ConstraintTranspiler.error_message(:required, nil)
+
+            check =
+              "{check: #{value_expr} != null && String(#{value_expr}).trim().length > 0, msg: #{Jason.encode!(msg)}}"
+
+            [check | error_checks]
+          else
+            error_checks
+          end
+
+        # Type-specific constraint error checks
         case type do
           :string -> build_string_error_checks(value_expr, constraints, error_checks, ash_messages)
           :integer -> build_integer_error_checks(value_expr, constraints, error_checks, ash_messages)

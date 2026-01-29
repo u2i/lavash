@@ -72,7 +72,12 @@ defmodule DemoWeb.ProductEditModal do
         <CoreComponents.input field={@form[:in_stock]} type="checkbox" label="In Stock" />
 
         <div class="flex gap-3 pt-4 border-t">
-          <CoreComponents.button type="submit" phx-disable-with="Saving..." class="flex-1 btn-primary">
+          <CoreComponents.button
+            type="submit"
+            data-lavash-enabled="edit_form_valid"
+            phx-disable-with="Saving..."
+            class="flex-1 btn-primary"
+          >
             Save Changes
           </CoreComponents.button>
           <CoreComponents.button

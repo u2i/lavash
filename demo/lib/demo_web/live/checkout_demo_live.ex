@@ -529,18 +529,12 @@ defmodule DemoWeb.CheckoutDemoLive do
                       <span class="text-sm">Use shipping address as billing address</span>
                     </label>
 
-                    <!-- Pay Button (inside form for submit) -->
+                    <!-- Pay Button (inside form for submit) - disabled when invalid via data-lavash-enabled -->
                     <button
                       type="submit"
-                      disabled={not @form_valid}
                       data-lavash-enabled="form_valid"
-                      class={"btn btn-lg w-full " <>
-                        if @form_valid do
-                          "btn-primary"
-                        else
-                          "btn-disabled opacity-50 cursor-not-allowed"
-                        end}
-                      data-lavash-toggle="form_valid|btn-primary|btn-disabled opacity-50 cursor-not-allowed"
+                      class="btn btn-lg w-full"
+                      data-lavash-toggle="form_valid|btn-primary|btn-disabled"
                     >
                       Pay now
                     </button>

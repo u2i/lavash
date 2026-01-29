@@ -340,6 +340,18 @@ defmodule Lavash.Dsl.CommonEntities do
         type: :atom,
         default: :update,
         doc: "The update action name"
+      ],
+      skip_constraints: [
+        type: {:list, :atom},
+        default: [],
+        doc: """
+        Fields to skip constraint-based validation for in client-side optimistic updates.
+        Use when a field is populated programmatically (e.g., session_id injected at save time)
+        or when you want to handle validation entirely via extend_errors with custom logic.
+        The Ash resource constraints still apply server-side.
+
+        Example: skip_constraints [:session_id]
+        """
       ]
     ]
   end

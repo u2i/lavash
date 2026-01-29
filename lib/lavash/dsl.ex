@@ -260,27 +260,11 @@ defmodule Lavash.Dsl do
   # Form - AshPhoenix.Form creation
   # ============================================
 
-  # LiveView form extends base schema with skip_constraints
-  @form_schema CommonEntities.base_form_schema() ++
-                 [
-                   skip_constraints: [
-                     type: {:list, :atom},
-                     default: [],
-                     doc: """
-                     Fields to skip constraint-based validation for in client-side optimistic updates.
-                     Use when you want to handle validation entirely via extend_errors with custom logic.
-                     The Ash resource constraints still apply server-side.
-
-                     Example: skip_constraints [:card_number, :expiry, :cvv]
-                     """
-                   ]
-                 ]
-
   @form_entity %Spark.Dsl.Entity{
     name: :form,
     target: Lavash.Form.Step,
     args: [:name, :resource],
-    schema: @form_schema
+    schema: CommonEntities.base_form_schema()
   }
 
   @forms_section %Spark.Dsl.Section{

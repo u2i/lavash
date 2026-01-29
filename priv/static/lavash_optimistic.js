@@ -381,6 +381,52 @@ const LavashOptimistic = {
 
       }
 
+      // Apply client state to elements when server data is stale (dependencies have pending changes)
+      // This ensures morphdom applies the CLIENT's computed value, not the server's stale value
+      const hookEl = fromEl.closest("[phx-hook='LavashOptimistic']");
+      const hook = hookEl?.__lavash_hook__;
+
+      if (hook && hook.hasPendingSources && hook.state) {
+        // Check each attribute type and apply client state if stale
+        const fieldName = fromEl.getAttribute('data-lavash-enabled');
+        if (fieldName && hook.hasPendingSources(fieldName)) {
+          const enabled = hook.state[fieldName] === true;
+          toEl.disabled = !enabled;
+          if (enabled) {
+            toEl.classList.remove('btn-disabled', 'opacity-60', 'cursor-not-allowed');
+          } else {
+            toEl.classList.add('opacity-60', 'cursor-not-allowed');
+          }
+          console.log(`[LavashOptimistic] onBeforeElUpdated: Applied client state for data-lavash-enabled="${fieldName}" (enabled=${enabled})`);
+        }
+
+        const visibleField = fromEl.getAttribute('data-lavash-visible');
+        if (visibleField && hook.hasPendingSources(visibleField)) {
+          const visible = hook.state[visibleField];
+          if (visible) {
+            toEl.classList.remove('hidden');
+          } else {
+            toEl.classList.add('hidden');
+          }
+          console.log(`[LavashOptimistic] onBeforeElUpdated: Applied client state for data-lavash-visible="${visibleField}" (visible=${visible})`);
+        }
+
+        const displayField = fromEl.getAttribute('data-lavash-display');
+        if (displayField && hook.hasPendingSources(displayField)) {
+          toEl.textContent = hook.state[displayField] ?? '';
+          console.log(`[LavashOptimistic] onBeforeElUpdated: Applied client state for data-lavash-display="${displayField}"`);
+        }
+
+        const errorsField = fromEl.getAttribute('data-lavash-errors');
+        if (errorsField && hook.hasPendingSources(errorsField)) {
+          // For errors, preserve the current DOM since it's already rendered by updateDOM
+          // (errors have complex innerHTML with show_errors logic)
+          toEl.innerHTML = fromEl.innerHTML;
+          toEl.className = fromEl.className;
+          console.log(`[LavashOptimistic] onBeforeElUpdated: Preserved DOM for data-lavash-errors="${errorsField}" (stale)`);
+        }
+      }
+
       // Check if any registered modal cares about this element
       const registry = window.__lavashModalContentRegistry || {};
       const entry = registry[fromEl.id];
@@ -637,6 +683,9 @@ const LavashOptimistic = {
         e.preventDefault();
         input.focus();
 
+        // Scroll invalid field into view (center in viewport for visibility)
+        input.scrollIntoView({ behavior: "smooth", block: "center" });
+
         // Scroll error summary into view if present
         const errorSummary = form.querySelector("[data-lavash-error-summary]");
         if (errorSummary) {
@@ -779,7 +828,13 @@ const LavashOptimistic = {
 
     // Update state
     const showErrorsKey = `${formName}_${fieldName}_show_errors`;
+    const oldValue = this.state[showErrorsKey];
     this.state[showErrorsKey] = showErrors;
+
+    // Log changes to show_errors state for debugging flickering
+    if (oldValue !== showErrors) {
+      console.log(`[LavashOptimistic] ${showErrorsKey} changed: ${oldValue} → ${showErrors} (touched=${touched}, submitted=${formSubmitted})`);
+    }
   },
 
   /**
@@ -854,6 +909,17 @@ const LavashOptimistic = {
     // Bump client version for stale patch rejection
     this.clientVersion++;
 
+    // Optimistically clear server errors for this field
+    // This prevents stale server errors from displaying while user is editing
+    const { formName, fieldName } = this.getFormField(target, fieldPath);
+    if (formName && fieldName) {
+      // Clear the server error for this field immediately
+      const serverErrorsField = `${formName}_server_errors`;
+      const currentServerErrors = this.state[serverErrorsField] || {};
+      const updatedServerErrors = { ...currentServerErrors, [fieldName]: [] };
+      this.state[serverErrorsField] = updatedServerErrors;
+    }
+
     // Determine root field for derive recomputation
     const dotIndex = fieldPath.indexOf(".");
     const rootField = dotIndex > 0 ? fieldPath.substring(0, dotIndex) : fieldPath;
@@ -867,7 +933,7 @@ const LavashOptimistic = {
     this.syncUrl();
 
     // Schedule debounced server validation (if field is touched or form submitted)
-    const { formName, fieldName } = this.getFormField(target, fieldPath);
+    // formName and fieldName already extracted above
     if (formName && fieldName) {
       // Only trigger server validation if field is already touched or form was submitted
       const touched = this.fieldState[fieldPath]?.touched || false;
@@ -1058,8 +1124,17 @@ const LavashOptimistic = {
       const fn = this.fns[name];
       if (fn) {
         try {
+          const oldValue = this.state[name];
           const result = fn(this.state);
           this.state[name] = result;
+
+          // Log error field and validity changes for debugging
+          if (name.endsWith("_errors") && JSON.stringify(oldValue) !== JSON.stringify(result)) {
+            console.log(`[LavashOptimistic] Derive ${name} changed: ${JSON.stringify(oldValue)} → ${JSON.stringify(result)}`);
+          }
+          if (name.endsWith("_valid") && oldValue !== result) {
+            console.log(`[LavashOptimistic] Derive ${name} changed: ${oldValue} → ${result}`);
+          }
         } catch (err) {
           // Log error in development for debugging
           if (typeof console !== "undefined" && console.debug) {
@@ -1145,6 +1220,8 @@ const LavashOptimistic = {
   },
 
   updateDOM() {
+    console.log(`[LavashOptimistic] updateDOM() called`);
+
     // Update all elements with data-lavash-display attribute (text content)
     const displayElements = this.el.querySelectorAll("[data-lavash-display]");
     displayElements.forEach(el => {
@@ -1181,7 +1258,23 @@ const LavashOptimistic = {
 
       const fieldName = el.dataset.lavashEnabled;
       const value = this.state[fieldName];
-      el.disabled = !value;
+      const enabled = value === true;
+      const wasDisabled = el.disabled;
+
+      // Update disabled attribute
+      el.disabled = !enabled;
+
+      // Log state changes for debugging
+      if (wasDisabled !== el.disabled) {
+        console.log(`[LavashOptimistic] Button ${fieldName} enabled state changed: disabled=${wasDisabled} → ${el.disabled} (value=${value})`);
+      }
+
+      // Update classes for visual feedback
+      if (enabled) {
+        el.classList.remove('btn-disabled', 'opacity-60', 'cursor-not-allowed');
+      } else {
+        el.classList.add('opacity-60', 'cursor-not-allowed');
+      }
     });
 
     // Update all elements with data-lavash-toggle attribute
@@ -1254,11 +1347,15 @@ const LavashOptimistic = {
       // Errors already include both client and server errors (merged in the derive)
       const allErrors = clientErrors;
 
+      // Track previous visibility state
+      const wasVisible = !el.classList.contains("hidden");
+      const willBeVisible = showErrors && allErrors.length > 0;
+
       // Clear existing error content
       el.innerHTML = "";
 
       // Only render errors if showErrors is true and there are errors
-      if (showErrors && allErrors.length > 0) {
+      if (willBeVisible) {
         allErrors.forEach(error => {
           const p = document.createElement("p");
           p.className = "text-error text-sm";
@@ -1268,6 +1365,11 @@ const LavashOptimistic = {
         el.classList.remove("hidden");
       } else {
         el.classList.add("hidden");
+      }
+
+      // Log visibility changes for debugging flickering
+      if (wasVisible !== willBeVisible) {
+        console.log(`[LavashOptimistic] DOM error visibility changed for ${errorsField}: ${wasVisible} → ${willBeVisible} (showErrors=${showErrors}, errors=${JSON.stringify(allErrors)})`);
       }
     });
 
@@ -1639,16 +1741,44 @@ const LavashOptimistic = {
       const topLevelField = prefix ? prefix.split(".")[0] : key;
 
       // Check if this exact path or any child path is pending
-      const hasPendingChild = [...pendingPaths].some(p => p === path || p.startsWith(path + "."));
+      let hasPendingChild = [...pendingPaths].some(p => p === path || p.startsWith(path + "."));
+
+      // Special handling for server_errors paths:
+      // Skip merging server errors for a field if its corresponding params field is pending
+      // Example: skip "address_form_server_errors.city" if "address_form_params.city" is pending
+      if (prefix && prefix.endsWith("_server_errors")) {
+        const formName = prefix.replace(/_server_errors$/, "");
+        const paramPath = `${formName}_params.${key}`;
+        if (pendingPaths.has(paramPath)) {
+          console.log(`[LavashOptimistic] Skipping server error update for ${path} - corresponding param ${paramPath} is pending`);
+          hasPendingChild = true; // Treat as pending to skip this server error update
+        }
+      }
 
       if (value !== null && typeof value === "object" && !Array.isArray(value)) {
         // Empty server object replaces client object (clears stale keys like old server_errors)
         if (Object.keys(value).length === 0 && !hasPendingChild) {
-          const oldValue = this.getStateAtPath(path);
-          if (oldValue !== undefined && oldValue !== null && typeof oldValue === "object" && Object.keys(oldValue).length > 0) {
-            this.setStateAtPath(path, {});
-            if (changedFields && !changedFields.includes(topLevelField)) {
-              changedFields.push(topLevelField);
+          // Special case: Don't clear {form}_server_errors if ANY params for that form are pending
+          let shouldSkipClear = false;
+          if (key.endsWith("_server_errors") && prefix === "") {
+            const formName = key.replace(/_server_errors$/, "");
+            const paramsField = `${formName}_params`;
+            // Check if any params for this form are pending
+            const hasFormParamsPending = [...pendingPaths].some(p => p.startsWith(paramsField + "."));
+            if (hasFormParamsPending) {
+              console.log(`[LavashOptimistic] Skipping clear of ${key} - form has pending params`);
+              shouldSkipClear = true;
+            }
+          }
+
+          if (!shouldSkipClear) {
+            const oldValue = this.getStateAtPath(path);
+            if (oldValue !== undefined && oldValue !== null && typeof oldValue === "object" && Object.keys(oldValue).length > 0) {
+              console.log(`[LavashOptimistic] Clearing ${path}: empty object from server, no pending paths`);
+              this.setStateAtPath(path, {});
+              if (changedFields && !changedFields.includes(topLevelField)) {
+                changedFields.push(topLevelField);
+              }
             }
           }
         } else {

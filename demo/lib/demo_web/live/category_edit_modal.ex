@@ -42,7 +42,12 @@ defmodule DemoWeb.CategoryEditModal do
         <CoreComponents.input field={@form[:slug]} label="Slug" placeholder="category-slug" />
 
         <div class="flex gap-3 pt-4 border-t">
-          <CoreComponents.button type="submit" phx-disable-with="Saving..." class="flex-1 btn-primary">
+          <CoreComponents.button
+            type="submit"
+            data-lavash-enabled="form_valid"
+            phx-disable-with="Saving..."
+            class="flex-1 btn-primary"
+          >
             Save
           </CoreComponents.button>
           <CoreComponents.button

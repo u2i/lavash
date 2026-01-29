@@ -644,17 +644,18 @@ defmodule Lavash.Optimistic.JsGenerator do
              function_exported?(resource, :spark_dsl_config, 0) do
           validations = Lavash.Form.ConstraintTranspiler.extract_validations(resource)
 
-          # Generate per-field validation derives
+          # Filter out skipped fields and generate per-field validation derives
+          non_skipped_validations = Enum.reject(validations, fn v -> v.field in skip_constraints end)
+
           field_derives =
-            Enum.map(validations, fn validation ->
+            Enum.map(non_skipped_validations, fn validation ->
               derive_name = :"#{form_name}_#{validation.field}_valid"
-              skip_field = validation.field in skip_constraints
-              {derive_name, params_field, validation, skip_field}
+              {derive_name, params_field, validation, false}
             end)
 
-          # Generate overall form_valid derive if we have field validations
-          if length(validations) > 0 do
-            field_names = Enum.map(validations, & &1.field)
+          # Generate overall form_valid derive if we have field validations (excluding skipped)
+          if length(non_skipped_validations) > 0 do
+            field_names = Enum.map(non_skipped_validations, & &1.field)
             form_valid = {:"#{form_name}_valid", params_field, {:combined, form_name, field_names}, false}
             field_derives ++ [form_valid]
           else
@@ -689,22 +690,24 @@ defmodule Lavash.Optimistic.JsGenerator do
              function_exported?(resource, :spark_dsl_config, 0) do
           validations = Lavash.Form.ConstraintTranspiler.extract_validations(resource)
 
+          # Filter out skipped fields
+          non_skipped_validations = Enum.reject(validations, fn v -> v.field in skip_constraints end)
+
           # Also get Ash validations with custom messages
           ash_validations = Lavash.Form.ValidationTranspiler.extract_validations_for_action(resource, create_action)
 
-          # Generate per-field error derives with custom errors and ash validations
+          # Generate per-field error derives with custom errors and ash validations (excluding skipped)
           field_derives =
-            Enum.map(validations, fn validation ->
+            Enum.map(non_skipped_validations, fn validation ->
               derive_name = :"#{form_name}_#{validation.field}_errors"
               custom_errors = Map.get(extend_errors_map, derive_name, [])
               field_ash_validations = Map.get(ash_validations, validation.field, [])
-              skip_field = validation.field in skip_constraints
-              {derive_name, params_field, validation, custom_errors, field_ash_validations, skip_field}
+              {derive_name, params_field, validation, custom_errors, field_ash_validations, false}
             end)
 
-          # Generate overall form_errors derive if we have field validations
-          if length(validations) > 0 do
-            field_names = Enum.map(validations, & &1.field)
+          # Generate overall form_errors derive if we have field validations (excluding skipped)
+          if length(non_skipped_validations) > 0 do
+            field_names = Enum.map(non_skipped_validations, & &1.field)
             form_errors = {:"#{form_name}_errors", params_field, {:combined, form_name, field_names}, [], [], false}
             field_derives ++ [form_errors]
           else
@@ -761,21 +764,22 @@ defmodule Lavash.Optimistic.JsGenerator do
 
     checks = []
 
-    # Required check: not null/undefined and not empty after trim
-    # (always included - it's about presence, not constraints)
-    checks =
-      if required do
-        check = "(#{value_expr} != null && String(#{value_expr}).trim().length > 0)"
-        [check | checks]
-      else
-        checks
-      end
-
-    # Type-specific constraint checks (skipped if skip_constraints is true)
+    # If skip_constraints is true, skip all validation (required + type constraints)
+    # This is used for fields that are programmatically populated (e.g., session_id)
     checks =
       if skip_constraints do
         checks
       else
+        # Required check: not null/undefined and not empty after trim
+        checks =
+          if required do
+            check = "(#{value_expr} != null && String(#{value_expr}).trim().length > 0)"
+            [check | checks]
+          else
+            checks
+          end
+
+        # Type-specific constraint checks
         case type do
           :string ->
             build_string_constraint_checks(value_expr, constraints, checks)
@@ -879,21 +883,23 @@ defmodule Lavash.Optimistic.JsGenerator do
     # Build error checks - each returns error message if check fails
     error_checks = []
 
-    # Required check (always included - it's about presence, not constraints)
-    error_checks =
-      if required do
-        msg = Map.get(ash_messages, :required) || Lavash.Form.ConstraintTranspiler.error_message(:required, nil)
-        check = "{check: #{value_expr} != null && String(#{value_expr}).trim().length > 0, msg: #{Jason.encode!(msg)}}"
-        [check | error_checks]
-      else
-        error_checks
-      end
-
-    # Type-specific constraint checks (skipped if skip_constraints is true)
+    # If skip_constraints is true, skip all validation (required + type constraints)
+    # This is used for fields that are programmatically populated (e.g., session_id)
     error_checks =
       if skip_constraints do
         error_checks
       else
+        # Required check
+        error_checks =
+          if required do
+            msg = Map.get(ash_messages, :required) || Lavash.Form.ConstraintTranspiler.error_message(:required, nil)
+            check = "{check: #{value_expr} != null && String(#{value_expr}).trim().length > 0, msg: #{Jason.encode!(msg)}}"
+            [check | error_checks]
+          else
+            error_checks
+          end
+
+        # Type-specific constraint checks
         case type do
           :string ->
             build_string_error_checks(value_expr, constraints, error_checks, ash_messages)

@@ -136,7 +136,13 @@ defmodule DemoWeb.AddressEditModal do
 
         <!-- Submit -->
         <div class="flex gap-3 pt-4 border-t">
-          <CoreComponents.button type="submit" phx-disable-with="Saving..." class="flex-1 btn-primary">
+          <%!-- Submit button automatically disabled when form is invalid via data-lavash-enabled --%>
+          <CoreComponents.button
+            type="submit"
+            data-lavash-enabled="address_form_valid"
+            phx-disable-with="Saving..."
+            class="flex-1 btn-primary"
+          >
             {if @address_form_action == :create, do: "Save address", else: "Update address"}
           </CoreComponents.button>
           <CoreComponents.button
@@ -166,6 +172,8 @@ defmodule DemoWeb.AddressEditModal do
     data result(:address)
     create :save
     update :update
+    # Skip client-side validation for session_id - it's injected at save time from props
+    skip_constraints [:session_id]
   end
 
   actions do

@@ -173,19 +173,13 @@ defmodule DemoWeb.FormValidationDemoLive do
             </div>
           </div>
 
-          <%!-- Submit Button - auto-injected: data-lavash-enabled --%>
+          <%!-- Submit Button - disabled when form invalid via data-lavash-enabled --%>
           <div class="pt-4">
             <button
               type="submit"
-              disabled={not @form_valid}
               data-lavash-enabled="form_valid"
-              class={"w-full py-3 px-4 rounded-lg font-semibold transition-colors " <>
-                if @form_valid do
-                  "bg-primary text-primary-content hover:opacity-90"
-                else
-                  "bg-base-300 text-base-content opacity-50 cursor-not-allowed"
-                end}
-              data-lavash-toggle="form_valid|bg-primary text-primary-content hover:opacity-90|bg-base-300 text-base-content opacity-50 cursor-not-allowed"
+              class="w-full py-3 px-4 rounded-lg font-semibold transition-colors"
+              data-lavash-toggle="form_valid|bg-primary text-primary-content hover:opacity-90|bg-base-300 text-base-content"
             >
               Register
             </button>

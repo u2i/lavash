@@ -159,6 +159,21 @@ defmodule Lavash.Sigil do
         end)
         |> Map.new()
 
+      # Add implicit form fields to optimistic_fields
+      # Each form auto-generates {form}_params and {form}_server_errors as optimistic fields
+      implicit_form_fields =
+        forms
+        |> Enum.flat_map(fn form ->
+          [
+            {:"#{form.name}_params", %{name: :"#{form.name}_params", type: :map, optimistic: true, from: :ephemeral}},
+            {:"#{form.name}_server_errors", %{name: :"#{form.name}_server_errors", type: :map, optimistic: true, from: :ephemeral}}
+          ]
+        end)
+        |> Map.new()
+
+      # Merge implicit form fields into optimistic_fields
+      optimistic_fields = Map.merge(optimistic_fields, implicit_form_fields)
+
       # Get actions from Spark
       declared_actions = Spark.Dsl.Extension.get_entities(module, [:actions]) || []
       actions_map =
