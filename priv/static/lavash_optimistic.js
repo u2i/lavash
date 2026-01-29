@@ -804,6 +804,12 @@ const LavashOptimistic = {
       return;
     }
 
+    // Each element type should only process one event type to avoid double handling:
+    // - SELECT: process "change" (skip "input") — "change" is reliable cross-browser for selects
+    // - INPUT/TEXTAREA: process "input" (skip "change") — "change" fires on blur, redundant with handleBlur
+    if (target.tagName === "SELECT" && e.type === "input") return;
+    if ((target.tagName === "INPUT" || target.tagName === "TEXTAREA") && e.type === "change") return;
+
     // Skip if input is inside a child component (has its own hook)
     // Child components handle their own inputs and sync to parent via syncParentUrl()
     const childHook = target.closest("[data-lavash-state]");
@@ -1674,8 +1680,19 @@ const LavashOptimistic = {
       const hasPendingChild = [...pendingPaths].some(p => p === path || p.startsWith(path + "."));
 
       if (value !== null && typeof value === "object" && !Array.isArray(value)) {
-        // Recurse into nested objects
-        this.mergeServerState(value, path, pendingPaths, changedFields);
+        // Empty server object replaces client object (clears stale keys like old server_errors)
+        if (Object.keys(value).length === 0 && !hasPendingChild) {
+          const oldValue = this.getStateAtPath(path);
+          if (oldValue !== undefined && oldValue !== null && typeof oldValue === "object" && Object.keys(oldValue).length > 0) {
+            this.setStateAtPath(path, {});
+            if (changedFields && !changedFields.includes(topLevelField)) {
+              changedFields.push(topLevelField);
+            }
+          }
+        } else {
+          // Recurse into nested objects
+          this.mergeServerState(value, path, pendingPaths, changedFields);
+        }
       } else if (!hasPendingChild) {
         // Leaf value with no pending - update state
         const oldValue = this.getStateAtPath(path);
