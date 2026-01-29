@@ -249,11 +249,25 @@ defmodule Lavash.Component.CompilerHelpers do
   Converts a simple Elixir function source to a JS return statement.
 
   Used for simpler action functions where we just need to return the new value.
-  Handles common patterns like:
+
+  ## Supported Patterns
+
+  Simple patterns (string matching):
   - `fn value, _arg -> !value end` → `return !currentValue;`
   - `fn value, _arg -> value + 1 end` → `return currentValue + 1;`
+  - `fn value, _arg -> value - 1 end` → `return currentValue - 1;`
+  - `fn value, _arg -> value || default end` → `return currentValue || default;`
 
-  Falls back to a TODO comment for unrecognized patterns.
+  Complex patterns (AST-based via Lavash.Rx.Transpiler):
+  - Any expression parseable by `Lavash.Rx.Transpiler.to_js/1`
+
+  Falls back to identity function with TODO comment for unrecognized patterns.
+
+  ## Extending This Parser
+
+  To add support for new patterns:
+  1. Add a string matching clause for simple cases (like the `+ 1` pattern above)
+  2. Or enhance `Lavash.Rx.Transpiler` for complex AST transpilation
   """
   def fn_source_to_js_return(source) when is_binary(source) do
     cond do
@@ -266,6 +280,12 @@ defmodule Lavash.Component.CompilerHelpers do
       String.contains?(source, "- 1") ->
         "return currentValue - 1;"
 
+      # Handle nil coalescing: value || default_value
+      String.match?(source, ~r/value\s*\|\|\s*/) ->
+        [_, default] = String.split(source, "||", parts: 2)
+        default = String.trim(default) |> String.trim_trailing("end") |> String.trim()
+        "return currentValue || #{default};"
+
       true ->
         # Try to parse more complex expressions using the full parser
         case Code.string_to_quoted(source) do
@@ -275,6 +295,9 @@ defmodule Lavash.Component.CompilerHelpers do
             "return #{js_body};"
 
           _ ->
+            # Fallback: identity function with TODO marker
+            # To add support for this pattern, extend the pattern matching above
+            # or enhance Lavash.Rx.Transpiler for better AST transpilation
             "return currentValue; // TODO: parse #{inspect(source)}"
         end
     end
@@ -288,7 +311,7 @@ defmodule Lavash.Component.CompilerHelpers do
   Used for key-based array mutations where the function receives an item and value,
   and returns an updated item (or :remove).
 
-  ## Patterns supported
+  ## Supported Patterns
 
   - `fn item, delta -> %{item | quantity: item.quantity + delta} end`
     → `({...item, quantity: item.quantity + arg})`
@@ -304,6 +327,13 @@ defmodule Lavash.Component.CompilerHelpers do
   A JS expression that can be used inside a map function.
   Uses `item` for the current item and `arg` for the second argument.
 
+  ## Extending This Parser
+
+  To add support for new patterns:
+  1. Extend `transform_map_update_to_js/3` to handle additional AST patterns
+  2. Add special case handling in the case statement below
+  3. Or implement a full Elixir->JS transpiler (significant undertaking)
+
   ## Example
 
       fn_source_to_js_item_transform("fn item, delta -> %{item | quantity: item.quantity + delta} end")
@@ -316,6 +346,8 @@ defmodule Lavash.Component.CompilerHelpers do
         js_body
 
       _ ->
+        # Fallback: identity function with TODO marker
+        # To add support for this pattern, extend the AST parsing above
         "item // TODO: parse #{inspect(source)}"
     end
   end

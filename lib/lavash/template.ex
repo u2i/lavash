@@ -402,6 +402,8 @@ defmodule Lavash.Template do
   end
 
   # Infer the action body from the event name
+  # This provides convention-based actions for common event patterns.
+  # For custom logic, define an explicit optimistic_action in your module.
   defp infer_action_body(event, var, _id_param) do
     case event do
       "toggle" <> _ ->
@@ -413,7 +415,17 @@ defmodule Lavash.Template do
       "deselect" <> _ ->
         "return { ...#{var}, selected: false };"
 
+      "increment" <> _ ->
+        "return { ...#{var}, count: (#{var}.count || 0) + 1 };"
+
+      "decrement" <> _ ->
+        "return { ...#{var}, count: Math.max(0, (#{var}.count || 0) - 1) };"
+
       _ ->
+        # Fallback: identity function with TODO marker
+        # To add support for this event, either:
+        # 1. Add a pattern match above (for convention-based events), or
+        # 2. Define an explicit optimistic_action in your ClientComponent/LiveView
         "return { ...#{var} }; // TODO: implement for event '#{event}'"
     end
   end

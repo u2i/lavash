@@ -27,13 +27,8 @@ defmodule Lavash.LiveView.Compiler do
         renders ->
           renders_map = Map.new(renders)
 
-          # Check for function-based render
-          case Map.get(renders_map, :__render_fn__) do
-            nil -> nil
-            escaped_fn ->
-              # Function-based render - function AST is escaped
-              {:render_fn, escaped_fn}
-          end
+          # Check for function-based render - function AST is escaped
+          Map.get(renders_map, :__render_fn__)
       end
 
     # Error if both render macro and render/1 are defined
@@ -145,6 +140,19 @@ defmodule Lavash.LiveView.Compiler do
       end
 
       def __lavash__(:actions) do
+        # TODO: Move action generation to a compile-time transformer instead of runtime generation.
+        #
+        # Currently this function dynamically generates actions on every call. A better approach
+        # would be to use a Spark transformer (e.g., Lavash.Transformers.GenerateActions) that:
+        # - Runs at compile time during DSL processing
+        # - Adds generated actions as entities to [:actions] path using Transformer.add_entity
+        # - Eliminates runtime overhead of repeated generation
+        #
+        # See Lavash.Overlay.Modal.Transformers.InjectState for a similar pattern.
+        #
+        # Challenges:
+        # - Optimistic actions use Code.eval_quoted to create callable functions (line 369 below)
+        # - This runtime evaluation would need to be preserved or refactored
         declared_actions = Spark.Dsl.Extension.get_entities(__MODULE__, [:actions])
         setter_actions = Lavash.LiveView.Compiler.generate_setter_actions(__MODULE__)
         multi_select_actions = Lavash.LiveView.Compiler.generate_multi_select_actions(__MODULE__)
@@ -221,14 +229,14 @@ defmodule Lavash.LiveView.Compiler do
   # ============================================
 
   @doc """
-  Generate render/1 function from render template.
+  Generate render/1 function from render function macro.
 
-  Handles `render fn assigns -> ~L\"\"\"...\"\"\" end` (function-based)
+  Handles `render fn assigns -> ~L\"\"\"...\"\"\" end` (function-based render macro).
 
   This wraps the template output with optimistic state handling.
   """
-  def generate_render_from_template({:render_fn, escaped_fn}, _env) do
-    # Function-based render - function AST was escaped
+  def generate_render_from_template(escaped_fn, _env) do
+    # Function-based render - function AST was escaped by RenderMacro
     # Inject the function directly into the render definition
     quote do
       @impl Phoenix.LiveView
@@ -241,18 +249,6 @@ defmodule Lavash.LiveView.Compiler do
         Lavash.LiveView.Runtime.wrap_render(__MODULE__, var!(assigns), inner_content)
       end
     end
-  end
-
-  def generate_render_from_template(_other, _env) do
-    quote do
-    end
-  end
-
-  @doc """
-  Generate render/1 function from render function.
-  """
-  def generate_render_from_fn(render_fn, env) do
-    generate_render_from_template({:render_fn, render_fn}, env)
   end
 
   @doc """
@@ -369,6 +365,19 @@ defmodule Lavash.LiveView.Compiler do
       action :add_tag, params: [:value] do
         update :tags, fn current -> run_fn.(current, params.value) end
       end
+
+  ## Why Separate from Spark DSL Actions?
+
+  The `optimistic_action` macro exists separately from Spark's `action` DSL because it needs
+  to capture SOURCE CODE at compile time for JavaScript transpilation. The Spark DSL `action`
+  entity uses runtime function references which cannot be transpiled to JavaScript.
+
+  The `run_fn` referenced in the generated action is parsed from `run_source` (the function
+  source code captured by `Macro.to_string` in the `optimistic_action` macro). See
+  `Lavash.Optimistic.Macros` for the macro implementation and `Lavash.Optimistic.JsGenerator`
+  for JavaScript generation.
+
+  These optimistic actions are merged with declared actions in `__lavash__(:actions)`.
   """
   def generate_optimistic_actions(module) do
     if function_exported?(module, :__lavash_optimistic_actions__, 0) do

@@ -26,6 +26,11 @@ import topbar from "../vendor/topbar"
 // morphdom for efficient DOM diffing (used by Shadow DOM components)
 import morphdom from "../vendor/morphdom"
 window.morphdom = morphdom
+
+// Lavash - simplified initialization (see priv/static/lavash.js for the unified module)
+// Current approach: manual setup for demonstration purposes
+// Future: Use `import Lavash from "lavash"` and `hooks: Lavash.hooks, params: () => ({ _lavash_state: Lavash.state })`
+
 // Lavash optimistic UI library
 import { SyncedVar, LavashOptimistic, OverlayAnimator } from "lavash"
 // Colocated hooks from Lavash library

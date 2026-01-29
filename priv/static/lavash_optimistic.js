@@ -44,6 +44,7 @@
 
 import { SyncedVarStore } from "./synced_var.js";
 import { AnimatedState } from "./animated_state.js";
+import { syncStateToUrl } from "./url_sync.js";
 
 // Registry for optimistic function modules (for custom overrides)
 window.Lavash = window.Lavash || {};
@@ -1465,43 +1466,8 @@ const LavashOptimistic = {
   },
 
   // Sync URL fields to browser URL without triggering navigation
-  // Uses Elixir-style array params: field[]=val1&field[]=val2
   syncUrl() {
-    if (this.urlFields.length === 0) return;
-
-    const url = new URL(window.location.href);
-
-    // Build query string manually to avoid URLSearchParams encoding [] as %5B%5D
-    const params = [];
-
-    for (const field of this.urlFields) {
-      const value = this.state[field];
-
-      if (Array.isArray(value)) {
-        // Elixir-style array params: field[]=val1&field[]=val2
-        for (const v of value) {
-          params.push(`${encodeURIComponent(field)}[]=${encodeURIComponent(v)}`);
-        }
-      } else if (value !== null && value !== undefined && value !== "") {
-        params.push(`${encodeURIComponent(field)}=${encodeURIComponent(value)}`);
-      }
-    }
-
-    // Preserve non-lavash params from the current URL
-    for (const [key, val] of url.searchParams.entries()) {
-      // Skip lavash-managed fields (both scalar and array forms)
-      const baseKey = key.replace(/\[\]$/, "");
-      if (!this.urlFields.includes(baseKey)) {
-        params.push(`${encodeURIComponent(key)}=${encodeURIComponent(val)}`);
-      }
-    }
-
-    const newSearch = params.length > 0 ? `?${params.join("&")}` : "";
-    const newUrl = url.origin + url.pathname + newSearch + url.hash;
-
-    if (newUrl !== window.location.href) {
-      window.history.replaceState(window.history.state, "", newUrl);
-    }
+    syncStateToUrl(this.urlFields, this.state);
   },
 
   // Check if a field has pending sources (for derives)
@@ -1557,7 +1523,7 @@ const LavashOptimistic = {
 
     // Also update our state object for fields without pending changes
     const pendingPaths = new Set(this.store.getPendingPaths());
-    const changedFields = this.mergeServerState(serverState, "", pendingPaths);
+    const changedFields = this.mergeServerState(serverState, "", pendingPaths, []);
 
     // Update version tracking
     if (newServerVersion >= this.clientVersion) {
@@ -1665,12 +1631,8 @@ const LavashOptimistic = {
    * Merge server state into this.state, skipping paths that are pending.
    * Returns array of top-level changed field names.
    */
-  mergeServerState(obj, prefix, pendingPaths, changedFields = null) {
+  mergeServerState(obj, prefix, pendingPaths, changedFields = []) {
     // Track changed fields at the top level only
-    const isTopLevel = prefix === "";
-    if (isTopLevel && changedFields === null) {
-      changedFields = [];
-    }
 
     for (const [key, value] of Object.entries(obj)) {
       const path = prefix ? `${prefix}.${key}` : key;
@@ -1706,7 +1668,7 @@ const LavashOptimistic = {
       }
     }
 
-    return isTopLevel ? changedFields : null;
+    return prefix === "" ? changedFields : null;
   },
 
   /**
