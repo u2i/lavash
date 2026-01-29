@@ -39,16 +39,18 @@ defmodule Lavash.ClientComponent.Dsl do
         optimistic_action :remove, :tags,
           run: fn tags, tag -> Enum.reject(tags, &(&1 == tag)) end
 
-        # Template compiles to both HEEx and JS render function
-        client_template \"\"\"
-        <div>
-          <span :for={tag <- @tags}>
-            {tag}
-            <button data-lavash-action="remove" data-lavash-state-field="tags" data-lavash-value={tag}>×</button>
-          </span>
-          <input :if={@can_add} data-lavash-action="add" data-lavash-state-field="tags" />
-        </div>
-        \"\"\"
+        # Render function compiles to both HEEx and JS render function
+        render fn assigns ->
+          ~L\"\"\"
+          <div>
+            <span :for={tag <- @tags}>
+              {tag}
+              <button data-lavash-action="remove" data-lavash-state-field="tags" data-lavash-value={tag}>×</button>
+            </span>
+            <input :if={@can_add} data-lavash-action="add" data-lavash-state-field="tags" />
+          </div>
+          \"\"\"
+        end
       end
   """
 

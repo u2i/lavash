@@ -38,27 +38,29 @@ defmodule Lavash.ClientComponent do
         optimistic_action :remove, :tags,
           run: fn tags, tag -> Enum.reject(tags, &(&1 == tag)) end
 
-        # Template compiles to both HEEx and JS render function
-        client_template \"\"\"
-        <div class="flex flex-wrap gap-2 items-center">
-          <span :for={tag <- @tags} class={@tag_class}>
-            {tag}
-            <button
-              type="button"
-              data-lavash-action="remove"
+        # Render function compiles to both HEEx and JS render function
+        render fn assigns ->
+          ~L\"\"\"
+          <div class="flex flex-wrap gap-2 items-center">
+            <span :for={tag <- @tags} class={@tag_class}>
+              {tag}
+              <button
+                type="button"
+                data-lavash-action="remove"
+                data-lavash-state-field="tags"
+                data-lavash-value={tag}
+              >×</button>
+            </span>
+            <input
+              :if={@can_add}
+              type="text"
+              placeholder={@placeholder}
+              data-lavash-action="add"
               data-lavash-state-field="tags"
-              data-lavash-value={tag}
-            >×</button>
-          </span>
-          <input
-            :if={@can_add}
-            type="text"
-            placeholder={@placeholder}
-            data-lavash-action="add"
-            data-lavash-state-field="tags"
-          />
-        </div>
-        \"\"\"
+            />
+          </div>
+          \"\"\"
+        end
       end
 
   ## Key Features
