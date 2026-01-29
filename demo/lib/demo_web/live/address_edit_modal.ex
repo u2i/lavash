@@ -147,7 +147,7 @@ defmodule DemoWeb.AddressEditModal do
           </CoreComponents.button>
           <CoreComponents.button
             type="button"
-            phx-click={Phoenix.LiveView.JS.dispatch("close-panel", to: "#address-edit-modal-modal")}
+            data-lavash-action="close"
             class="btn-outline"
           >
             Cancel

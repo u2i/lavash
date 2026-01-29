@@ -606,7 +606,13 @@ const LavashOptimistic = {
     const actionName = target.dataset.lavashAction;
     const value = target.dataset.lavashValue;
 
+    // Run optimistic action for instant UI update
     this.runOptimisticAction(actionName, value);
+
+    // Push the action event to the server
+    // This ensures server-side action handlers run (e.g., for bound field updates)
+    const payload = value !== undefined ? { value } : {};
+    this.pushEventTo(this.el, actionName, payload, () => {});
 
     // Clear LiveView's element lock so rapid clicks on the same element work.
     // LiveView sets data-phx-ref-src during click handling to prevent duplicate
@@ -623,8 +629,6 @@ const LavashOptimistic = {
       target.removeAttribute("data-phx-ref-src");
       target.removeAttribute("data-phx-ref-lock");
     }, 0);
-
-    // Let the normal phx-click propagate to the server
   },
 
   handleBlur(e) {
@@ -1110,6 +1114,10 @@ const LavashOptimistic = {
 
       // Notify animated states of value changes
       this.notifyAnimatedStates(changedFields);
+
+      // Propagate bound field changes to parent
+      // When client action updates a bound field, parent needs to know immediately
+      this.propagateBoundFieldsToParent(changedFields);
 
       // Recompute derives affected by the changed fields
       this.recomputeDerives(changedFields);
@@ -1643,6 +1651,32 @@ const LavashOptimistic = {
     }
   },
 
+  /**
+   * Propagate bound field changes to parent hook via lavash-set events.
+   * When the server updates a bound field (e.g., on_saved sets open: nil),
+   * the parent needs to update its corresponding state.
+   */
+  propagateBoundFieldsToParent(changedFields) {
+    if (!this.bindings || Object.keys(this.bindings).length === 0) return;
+    if (!changedFields || changedFields.length === 0) return;
+
+    for (const localField of changedFields) {
+      const parentField = this.bindings[localField];
+      if (parentField) {
+        const value = this.state[localField];
+        console.log(`[LavashOptimistic] propagateBoundFieldsToParent: ${localField} -> parent.${parentField} = ${JSON.stringify(value)}`);
+
+        // Dispatch lavash-set event to parent
+        // The event bubbles up to the parent hook which handles it via handleLavashSet
+        const event = new CustomEvent("lavash-set", {
+          bubbles: true,
+          detail: { field: parentField, value }
+        });
+        this.el.dispatchEvent(event);
+      }
+    }
+  },
+
   // Convert snake_case field name to Title Case
   humanizeFieldName(name) {
     return name
@@ -1722,6 +1756,10 @@ const LavashOptimistic = {
     // Notify animated states of server-side value changes
     if (changedFields && changedFields.length > 0) {
       this.notifyAnimatedStatesServerUpdate(changedFields);
+
+      // Propagate bound field changes to parent
+      // When server updates a bound field, parent needs to know
+      this.propagateBoundFieldsToParent(changedFields);
     }
 
     // Notify animated states that async data is ready
