@@ -391,7 +391,7 @@ defmodule Lavash.ClientComponent.Dsl do
       Lavash.Optimistic.ExpandAnimatedStates,
       Lavash.Optimistic.ColocatedTransformer
     ],
-    imports: [Lavash.Rx, Lavash.Optimistic.ActionMacro]
+    imports: [Lavash.Rx, Lavash.Optimistic.ActionMacro, Lavash.Template.RenderMacro]
 end
 
 # Backwards compatibility alias
