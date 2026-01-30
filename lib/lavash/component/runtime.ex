@@ -464,17 +464,17 @@ defmodule Lavash.Component.Runtime do
       end)
 
     # Store props separately and also merge into state for derived field access
+    # Pass old_props BEFORE storing new ones so we can detect changes
     socket
+    |> update_state_with_props(prop_values, old_props)
     |> LSocket.put(:props, prop_values)
-    |> update_state_with_props(prop_values)
   end
 
-  defp update_state_with_props(socket, prop_values) do
+  defp update_state_with_props(socket, prop_values, old_props) do
     # Merge props into state so derived fields can depend on them
     # For props that are also state fields (bound props), only update state
     # when the prop changed from parent - otherwise preserve state value
     # so child's local modifications aren't overwritten
-    old_props = LSocket.get(socket, :props) || %{}
     state = LSocket.state(socket)
 
     state =
