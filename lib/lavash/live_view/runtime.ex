@@ -384,24 +384,43 @@ defmodule Lavash.LiveView.Runtime do
     # First, check for form bindings and update state if params match
     socket = apply_form_bindings(socket, module, params)
 
-    # Then try to find and execute a matching action
-    # Look up by string comparison to avoid atom creation DoS
-    actions = module.__lavash__(:actions)
+    # Check for set_{field} events from child component binding propagation
+    # When a child component sets a bound field, it propagates via lavash-set event
+    # which the JS hook converts to a set_{field} server event
+    case parse_set_field_event(module, event) do
+      {:set, field_name} ->
+        # Update the state field with the provided value
+        value = params["value"]
+        socket = LSocket.put_state(socket, field_name, value)
 
-    case Enum.find(actions, &(Atom.to_string(&1.name) == event)) do
-      nil ->
-        # No matching action - but form bindings may have updated state
-        if LSocket.dirty?(socket) do
-          socket =
-            socket
-            |> Graph.recompute_dirty(module)
-            |> Assigns.project(module)
+        socket =
+          socket
+          |> LSocket.bump_optimistic_version()
+          |> Graph.recompute_dirty(module)
+          |> Assigns.project(module)
 
-          update_combination_subscriptions(socket, module, old_state)
-          {:noreply, socket}
-        else
-          {:noreply, socket}
-        end
+        update_combination_subscriptions(socket, module, old_state)
+        {:noreply, socket}
+
+      :not_set_field ->
+        # Then try to find and execute a matching action
+        # Look up by string comparison to avoid atom creation DoS
+        actions = module.__lavash__(:actions)
+
+        case Enum.find(actions, &(Atom.to_string(&1.name) == event)) do
+          nil ->
+            # No matching action - but form bindings may have updated state
+            if LSocket.dirty?(socket) do
+              socket =
+                socket
+                |> Graph.recompute_dirty(module)
+                |> Assigns.project(module)
+
+              update_combination_subscriptions(socket, module, old_state)
+              {:noreply, socket}
+            else
+              {:noreply, socket}
+            end
 
       action ->
         # Bump optimistic version - client will use this to detect stale patches
@@ -447,6 +466,32 @@ defmodule Lavash.LiveView.Runtime do
             {:noreply, socket}
         end
     end
+    end
+  end
+
+  # Check if event is a set_{field} event for a valid ephemeral state field
+  # Returns {:set, field_atom} if valid, :not_set_field otherwise
+  defp parse_set_field_event(module, event) do
+    case event do
+      "set_" <> field_str ->
+        # Get all ephemeral state fields that can be set via binding propagation
+        ephemeral_fields = module.__lavash__(:ephemeral_fields)
+        field_names = Enum.map(ephemeral_fields, & &1.name)
+
+        # Only accept if this is a known state field (prevents atom creation attacks)
+        if String.to_existing_atom(field_str) in field_names do
+          {:set, String.to_existing_atom(field_str)}
+        else
+          :not_set_field
+        end
+
+      _ ->
+        :not_set_field
+    end
+  rescue
+    ArgumentError ->
+      # String.to_existing_atom raised - atom doesn't exist
+      :not_set_field
   end
 
   defp apply_form_bindings(socket, module, params) do

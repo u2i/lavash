@@ -192,7 +192,7 @@ defmodule DemoWeb.AddressEditModal do
     end
 
     action :on_saved do
-      # Close modal - this propagates back to parent via binding
+      # Close modal - set open to nil, binding propagates to parent's address_modal
       set :open, nil
     end
   end

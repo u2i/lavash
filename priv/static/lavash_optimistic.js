@@ -1664,7 +1664,6 @@ const LavashOptimistic = {
       const parentField = this.bindings[localField];
       if (parentField) {
         const value = this.state[localField];
-        console.log(`[LavashOptimistic] propagateBoundFieldsToParent: ${localField} -> parent.${parentField} = ${JSON.stringify(value)}`);
 
         // Dispatch lavash-set event to parent
         // The event bubbles up to the parent hook which handles it via handleLavashSet
@@ -1731,11 +1730,8 @@ const LavashOptimistic = {
     const newServerVersion = parseInt(this.el.dataset.lavashVersion || "0", 10);
     const serverState = JSON.parse(this.el.dataset.lavashState || "{}");
 
-    console.log(`[LavashOptimistic] updated() - serverState keys:`, Object.keys(serverState));
-
     // Track which async fields got populated (for animated state coordination)
     const asyncFieldsReady = this.detectAsyncFieldsReady(serverState);
-    console.log(`[LavashOptimistic] updated() - asyncFieldsReady:`, asyncFieldsReady);
 
     // Update SyncedVars from server state (flattened paths)
     // serverUpdate only updates vars that are not pending
@@ -1757,9 +1753,10 @@ const LavashOptimistic = {
     if (changedFields && changedFields.length > 0) {
       this.notifyAnimatedStatesServerUpdate(changedFields);
 
-      // Propagate bound field changes to parent
-      // When server updates a bound field, parent needs to know
-      this.propagateBoundFieldsToParent(changedFields);
+      // NOTE: Server-side bound field propagation is now handled in Component.Runtime
+      // after action execution. Client-side propagation here is no longer needed
+      // and would cause double-updates. Keep propagateBoundFieldsToParent only
+      // for client-initiated optimistic changes in runOptimisticAction().
     }
 
     // Notify animated states that async data is ready

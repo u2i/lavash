@@ -221,14 +221,39 @@ defmodule Lavash.Component.Runtime do
             parent_version -> Phoenix.Component.assign(socket, :__lavash_version__, parent_version)
           end
 
-        # For each binding, look up the parent's current value and update our state
-        Enum.reduce(bindings, socket, fn {local, _parent}, sock ->
-          value = Map.get(assigns, local)
-          # Update both the assign and the internal state
-          sock
-          |> Phoenix.Component.assign(local, value)
-          |> LSocket.put_state(local, value)
-        end)
+        # For bound fields, we need to update state when the prop changes from parent,
+        # but preserve child's local modifications when the prop hasn't changed.
+        # Bound fields are not declared props, so we track their previous values separately.
+        old_bound_props = LSocket.get(socket, :bound_props) || %{}
+
+        {socket, new_bound_props} =
+          Enum.reduce(bindings, {socket, %{}}, fn {local, _parent}, {sock, bound_acc} ->
+            new_value = Map.get(assigns, local)
+            old_value = Map.get(old_bound_props, local)
+            state = LSocket.state(sock)
+            state_value = Map.get(state, local)
+
+            # Track this value for next update
+            bound_acc = Map.put(bound_acc, local, new_value)
+
+            # Only update state if the prop actually changed from parent
+            # This preserves child's local modifications (e.g., on_saved setting open: nil)
+            sock =
+              if old_value != new_value do
+                # Prop changed from parent - update state
+                sock
+                |> Phoenix.Component.assign(local, new_value)
+                |> LSocket.put_state(local, new_value)
+              else
+                # Prop didn't change - preserve existing state value
+                Phoenix.Component.assign(sock, local, state_value)
+              end
+
+            {sock, bound_acc}
+          end)
+
+        # Store bound prop values for next update
+        LSocket.put(socket, :bound_props, new_bound_props)
     end
   end
 
@@ -242,6 +267,10 @@ defmodule Lavash.Component.Runtime do
         {:ok, socket}
 
       action ->
+        # Capture bound field state before action execution for change detection
+        binding_map = socket.assigns[:__lavash_binding_map__] || %{}
+        bound_state_before = capture_bound_field_state(socket, binding_map)
+
         case execute_action(socket, module, action, params) do
           {:ok, socket, notify_events} ->
             socket =
@@ -250,6 +279,7 @@ defmodule Lavash.Component.Runtime do
               |> Graph.recompute_dirty(module)
               |> Assigns.project(module)
               |> apply_notify_parents(notify_events)
+              |> propagate_bound_field_changes(binding_map, bound_state_before)
 
             {:ok, socket}
 
@@ -273,6 +303,7 @@ defmodule Lavash.Component.Runtime do
               |> maybe_sync_socket_state(module)
               |> Graph.recompute_dirty(module)
               |> Assigns.project(module)
+              |> propagate_bound_field_changes(binding_map, bound_state_before)
 
             {:ok, socket}
         end
@@ -301,6 +332,10 @@ defmodule Lavash.Component.Runtime do
         end
 
       action ->
+        # Capture bound field state before action execution for change detection
+        binding_map = socket.assigns[:__lavash_binding_map__] || %{}
+        bound_state_before = capture_bound_field_state(socket, binding_map)
+
         case execute_action(socket, module, action, params) do
           {:ok, socket, notify_events} ->
             socket =
@@ -309,6 +344,7 @@ defmodule Lavash.Component.Runtime do
               |> Graph.recompute_dirty(module)
               |> Assigns.project(module)
               |> apply_notify_parents(notify_events)
+              |> propagate_bound_field_changes(binding_map, bound_state_before)
 
             # Return reply so pushEventTo callbacks are triggered
             {:reply, %{}, socket}
@@ -333,6 +369,7 @@ defmodule Lavash.Component.Runtime do
               |> maybe_sync_socket_state(module)
               |> Graph.recompute_dirty(module)
               |> Assigns.project(module)
+              |> propagate_bound_field_changes(binding_map, bound_state_before)
 
             # Return reply so pushEventTo callbacks are triggered
             {:reply, %{}, socket}
@@ -720,4 +757,40 @@ defmodule Lavash.Component.Runtime do
   end
 
   defp extract_submit_errors(_), do: %{}
+
+  # Capture bound field state before action execution for change detection
+  defp capture_bound_field_state(socket, binding_map) do
+    state = LSocket.state(socket)
+
+    Enum.into(binding_map, %{}, fn {local_field, _parent_field} ->
+      {local_field, Map.get(state, local_field)}
+    end)
+  end
+
+  # Propagate bound field changes to parent after action execution
+  defp propagate_bound_field_changes(socket, binding_map, bound_state_before) do
+    state = LSocket.state(socket)
+
+    Enum.each(binding_map, fn {local_field, parent_field} ->
+      old_value = Map.get(bound_state_before, local_field)
+      new_value = Map.get(state, local_field)
+
+      if old_value != new_value do
+        # Propagate to parent using same mechanism as handle_binding_update
+        case socket.assigns[:__lavash_parent_cid__] do
+          nil ->
+            # Parent is LiveView - send message directly
+            send(self(), {:lavash_component_set, parent_field, new_value})
+
+          parent_cid ->
+            # Parent is another Lavash.Component - use send_update
+            Phoenix.LiveView.send_update(parent_cid,
+              __lavash_binding_update__: {:lavash_component_set, parent_field, new_value}
+            )
+        end
+      end
+    end)
+
+    socket
+  end
 end
