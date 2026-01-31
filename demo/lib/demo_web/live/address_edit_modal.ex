@@ -180,11 +180,19 @@ defmodule DemoWeb.AddressEditModal do
     action :save do
       # Only inject session_id for create (update already has it from the loaded record)
       set :address_form_params, fn %{state: state} ->
-        if is_nil(state.address) do
+        # Check if we're in create mode - address will be nil or an AsyncResult with nil result
+        is_create = case state.address do
+          nil -> true
+          %Phoenix.LiveView.AsyncResult{ok?: true, result: nil} -> true
+          %Phoenix.LiveView.AsyncResult{ok?: false} -> true
+          _ -> false
+        end
+
+        if is_create do
           # Create mode - inject session_id
           Map.put(state.address_form_params || %{}, "session_id", state.session_id)
         else
-          # Update mode - no need to inject session_id
+          # Update mode - address already has session_id from the loaded record
           state.address_form_params || %{}
         end
       end
