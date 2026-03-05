@@ -1,56 +1,41 @@
 /**
- * SyncedVar - Client-server state synchronization primitive with optional animation support.
+ * SyncedVar - Client-server state synchronization with optional animation.
  *
- * Models an eventually consistent variable with optimistic updates.
- * Tracks version numbers to detect and reject stale server patches.
+ * Models an eventually consistent variable with optimistic updates and
+ * version tracking. Optionally drives a phase state machine for animated
+ * open/close transitions (modals, flyovers, etc.).
  *
- * Basic Usage:
- *   const counter = new SyncedVar(0, { onChange: (newVal, oldVal, source) => { ... } });
+ * Basic usage:
+ *   const counter = new SyncedVar(0, { onChange: (val, old, src) => {} });
  *   counter.setOptimistic(5);
  *   counter.set(5, pushFn);
  *
- * With Animation (for modals, panels, etc.):
- *   const modalState = new SyncedVar(null, {
- *     animated: {
- *       field: "product_id",
- *       phaseField: "product_id_phase",
- *       async: "edit_form",    // optional: wait for async data
- *       preserveDom: true,     // optional: ghost element during exit
- *       duration: 200          // animation duration in ms
- *     },
- *     onChange: (newVal, oldVal, source) => { ... }
+ * Animated usage:
+ *   const modal = new SyncedVar(null, {
+ *     animated: { duration: 200, async: "edit_form" },
+ *     onChange: (val, old, src) => { hook.state.open = val; },
+ *     onPhaseChange: (phase) => { hook.state.open_phase = phase; },
  *   });
- *   modalState.setDelegate(modalAnimator); // receives onEntering, onVisible, etc.
+ *   modal.setDelegate(overlayAnimator);
  *
- * Animation Phases:
- * - "idle" - closed/hidden state
- * - "entering" - enter animation in progress
- * - "loading" - waiting for async data (when async option set)
- * - "visible" - fully open/visible
- * - "exiting" - exit animation in progress
+ * Animation phases: idle -> entering -> [loading] -> visible -> exiting -> idle
  *
  * Delegate callbacks:
- * - onEntering(syncedVar) - start enter animation
- * - onLoading(syncedVar) - entered loading state
- * - onVisible(syncedVar) - fully visible
- * - onExiting(syncedVar) - start exit animation
- * - onIdle(syncedVar) - back to closed
- * - onAsyncReady(syncedVar) - async data arrived (in loading or visible phase)
- * - onContentReadyDuringEnter(syncedVar) - content arrived while enter animation running
- * - onTransitionEnd(syncedVar) - enter animation completed
+ *   onEntering(syncedVar)  - start enter animation
+ *   onLoading(syncedVar)   - entered loading phase
+ *   onVisible(syncedVar)   - fully visible
+ *   onExiting(syncedVar)   - start exit animation
+ *   onIdle(syncedVar)      - back to closed
+ *   onAsyncReady(syncedVar) - async data arrived (loading or visible)
+ *   onContentReadyDuringEnter(syncedVar) - async arrived during enter
+ *   onUpdated(syncedVar, phase) - LiveView patch applied
  */
 
-// --- Phase State Classes ---
+// --- Phase classes ---
 
 class Phase {
-  constructor(syncedVar) {
-    this.syncedVar = syncedVar;
-  }
-
-  get name() {
-    return this.constructor.name.replace(/Phase$/, "").toLowerCase();
-  }
-
+  constructor(sv) { this.sv = sv; }
+  get name() { return this._name; }
   onOpen() {}
   onClose() {}
   onAsyncReady() {}
@@ -60,147 +45,119 @@ class Phase {
 }
 
 class IdlePhase extends Phase {
+  _name = "idle";
   onEnter() {
-    this.syncedVar._setPhase("idle");
-    this.syncedVar._notifyDelegate("onIdle");
+    this.sv._setPhase("idle");
+    this.sv._notifyDelegate("onIdle");
   }
-
   onOpen() {
-    this.syncedVar._transitionTo(this.syncedVar._phases.entering);
+    this.sv._transitionTo(this.sv._phases.entering);
   }
 }
 
 class EnteringPhase extends Phase {
+  _name = "entering";
   onEnter() {
-    this.syncedVar._setPhase("entering");
-    this.syncedVar._notifyDelegate("onEntering");
-
-    // Set up fallback timeout in case delegate doesn't call transitionEnd
-    this._timeout = setTimeout(() => {
-      this.onTransitionEnd();
-    }, this.syncedVar.animated.duration + 50);
+    this.sv._setPhase("entering");
+    this.sv._notifyDelegate("onEntering");
+    this._timeout = setTimeout(() => this.onTransitionEnd(), this.sv._animDuration + 50);
   }
-
   onExit() {
-    if (this._timeout) {
-      clearTimeout(this._timeout);
-    }
+    if (this._timeout) clearTimeout(this._timeout);
   }
-
   onTransitionEnd() {
-    if (this._timeout) {
-      clearTimeout(this._timeout);
-      this._timeout = null;
-    }
-
-    // If we have async configured and data isn't ready, go to loading
-    if (this.syncedVar.animated.async && !this.syncedVar.isAsyncReady) {
-      this.syncedVar._transitionTo(this.syncedVar._phases.loading);
+    if (this._timeout) { clearTimeout(this._timeout); this._timeout = null; }
+    if (this.sv._animAsync && !this.sv.isAsyncReady) {
+      this.sv._transitionTo(this.sv._phases.loading);
     } else {
-      this.syncedVar._transitionTo(this.syncedVar._phases.visible);
+      this.sv._transitionTo(this.sv._phases.visible);
     }
   }
-
   onClose() {
-    this.syncedVar._transitionTo(this.syncedVar._phases.exiting);
+    this.sv._transitionTo(this.sv._phases.exiting);
   }
-
   onAsyncReady() {
-    // Data arrived during enter animation - notify delegate to capture loading rect
-    this.syncedVar.isAsyncReady = true;
-    this.syncedVar._notifyDelegate("onContentReadyDuringEnter");
+    this.sv.isAsyncReady = true;
+    this.sv._notifyDelegate("onContentReadyDuringEnter");
   }
 }
 
 class LoadingPhase extends Phase {
+  _name = "loading";
   onEnter() {
-    this.syncedVar._setPhase("loading");
-    this.syncedVar._notifyDelegate("onLoading");
+    this.sv._setPhase("loading");
+    this.sv._notifyDelegate("onLoading");
   }
-
   onAsyncReady() {
-    this.syncedVar.isAsyncReady = true;
-    this.syncedVar._notifyDelegate("onAsyncReady");
-    this.syncedVar._transitionTo(this.syncedVar._phases.visible);
+    this.sv.isAsyncReady = true;
+    this.sv._notifyDelegate("onAsyncReady");
+    this.sv._transitionTo(this.sv._phases.visible);
   }
-
   onClose() {
-    this.syncedVar._transitionTo(this.syncedVar._phases.exiting);
+    this.sv._transitionTo(this.sv._phases.exiting);
   }
 }
 
 class VisiblePhase extends Phase {
+  _name = "visible";
   onEnter() {
-    this.syncedVar._setPhase("visible");
-    this.syncedVar._notifyDelegate("onVisible");
+    this.sv._setPhase("visible");
+    this.sv._notifyDelegate("onVisible");
   }
-
   onClose() {
-    this.syncedVar._transitionTo(this.syncedVar._phases.exiting);
+    this.sv._transitionTo(this.sv._phases.exiting);
   }
-
   onAsyncReady() {
-    // Data refresh while visible
-    this.syncedVar._notifyDelegate("onAsyncReady");
+    this.sv._notifyDelegate("onAsyncReady");
   }
 }
 
 class ExitingPhase extends Phase {
+  _name = "exiting";
   onEnter() {
-    this.syncedVar._setPhase("exiting");
-    this.syncedVar._notifyDelegate("onExiting");
-
-    // Transition to idle after animation duration
+    this.sv._setPhase("exiting");
+    this.sv._notifyDelegate("onExiting");
     this._timeout = setTimeout(() => {
-      this.syncedVar._transitionTo(this.syncedVar._phases.idle);
-    }, this.syncedVar.animated.duration + 50);
+      this.sv._transitionTo(this.sv._phases.idle);
+    }, this.sv._animDuration + 50);
   }
-
   onExit() {
-    if (this._timeout) {
-      clearTimeout(this._timeout);
-    }
+    if (this._timeout) clearTimeout(this._timeout);
   }
-
   onOpen() {
-    // Interrupted close - start opening again
-    this.syncedVar._transitionTo(this.syncedVar._phases.entering);
+    this.sv._transitionTo(this.sv._phases.entering);
   }
 }
 
-// --- SyncedVar Class ---
+// --- SyncedVar ---
 
 export class SyncedVar {
   /**
-   * Create a SyncedVar.
-   * @param {any} initialValue - Initial value
-   * @param {Object|Function} options - Options object or onChange callback (for backwards compat)
-   * @param {Function} options.onChange - Callback: (newValue, oldValue, source) => void
-   * @param {Object} options.animated - Animation config (field, phaseField, async, preserveDom, duration)
+   * @param {any} initialValue
+   * @param {Object} options
+   * @param {Function} options.onChange - (newValue, oldValue, source) => void
+   * @param {Object}  options.animated - { duration, async } or null
+   * @param {Function} options.onPhaseChange - (phaseName) => void (for hook state/derives)
    */
   constructor(initialValue, options = {}) {
-    // Support legacy (value, callback) signature
-    if (typeof options === "function") {
-      options = { onChange: options };
-    }
-
     this.value = initialValue;
     this.confirmedValue = initialValue;
     this.version = 0;
     this.confirmedVersion = 0;
     this.onChange = options.onChange || null;
 
-    // FLIP animation support - captured rect travels with the state transition
+    // FLIP support
     this.flipPreRect = null;
 
-    // Animation support
-    this.animated = options.animated || null;
+    // Animation
+    this.animated = !!options.animated;
     if (this.animated) {
+      this._animDuration = options.animated.duration || 200;
+      this._animAsync = options.animated.async || null;
+      this._onPhaseChange = options.onPhaseChange || null;
       this._delegate = null;
       this.isAsyncReady = false;
       this.phase = "idle";
-
-      // Initialize phase state machine
       this._phases = {
         idle: new IdlePhase(this),
         entering: new EnteringPhase(this),
@@ -213,16 +170,15 @@ export class SyncedVar {
     }
   }
 
-  // --- Basic SyncedVar Methods ---
+  // --- Value methods ---
 
   /**
-   * Optimistically set value without pushing to server.
-   * Use this when the push happens externally (e.g., via phx-click).
+   * Optimistic set without server push.
+   * Returns true if value changed.
    */
   setOptimistic(newValue) {
     const oldValue = this.value;
     if (newValue === oldValue) return false;
-
     this.version++;
     this.value = newValue;
     this._handleValueChange(newValue, oldValue, "optimistic");
@@ -230,28 +186,18 @@ export class SyncedVar {
   }
 
   /**
-   * Optimistically set value and push to server.
-   * @param newValue - The new value to set
-   * @param pushFn - Function to push to server: (params, replyCallback) => void
-   * @param extraParams - Additional params to include in the push
+   * Optimistic set + push to server.
    */
   set(newValue, pushFn, extraParams = {}) {
     const oldValue = this.value;
     if (newValue === oldValue) return;
-
     this.version++;
     const v = this.version;
     this.value = newValue;
-
-    // Handle value change (triggers animation if configured)
     this._handleValueChange(newValue, oldValue, "optimistic");
 
-    // Push to server with version tracking
     pushFn?.({ ...extraParams, _version: v }, (reply) => {
-      if (v !== this.version) {
-        // Stale response - a newer operation has started
-        return;
-      }
+      if (v !== this.version) return; // stale
       this.confirmedVersion = v;
       this.confirmedValue = newValue;
       this.onChange?.(newValue, oldValue, "confirmed");
@@ -259,99 +205,86 @@ export class SyncedVar {
   }
 
   /**
-   * Server-initiated change (e.g., from patch in updated()).
-   * Only accepts if client has no pending operations.
-   * @returns true if accepted, false if rejected due to pending ops
+   * Server-initiated change.
+   *
+   * For animated vars: always accepts (server is authoritative for open/close).
+   * For plain vars: rejects when client has pending ops, unless server
+   * confirms the same value we optimistically set.
+   *
+   * Returns true if value changed.
    */
   serverSet(newValue) {
+    if (this.animated) {
+      return this._serverSetAnimated(newValue);
+    }
+    return this._serverSetPlain(newValue);
+  }
+
+  _serverSetPlain(newValue) {
     if (this.isPending) {
-      // Client has pending operations - ignore server change
-      return false;
+      if (newValue === this.value) {
+        // Server confirmed our optimistic value
+        this.confirmedVersion = this.version;
+        this.confirmedValue = newValue;
+        return false;
+      }
+      return false; // reject — client has uncommitted work
     }
     const oldValue = this.value;
     if (newValue === oldValue) return false;
-
     this.value = newValue;
     this.confirmedValue = newValue;
     this._handleValueChange(newValue, oldValue, "server");
     return true;
   }
 
-  /**
-   * Confirm that server has caught up to our version.
-   * Call this when server version >= our version.
-   */
-  confirm(serverValue) {
+  _serverSetAnimated(newValue) {
+    const oldValue = this.value;
+    // Clear pending regardless — server is authoritative
     this.confirmedVersion = this.version;
-    this.confirmedValue = serverValue;
-    this.value = serverValue;
-    this.onChange?.(serverValue, this.value, "confirmed");
+    this.confirmedValue = newValue;
+    if (newValue === oldValue) return false;
+    this.value = newValue;
+    this._handleValueChange(newValue, oldValue, "server");
+    return true;
   }
 
-  /**
-   * Whether there are pending operations not yet confirmed by server.
-   */
   get isPending() {
     return this.version !== this.confirmedVersion;
   }
 
-  /**
-   * Get the current value.
-   */
   getValue() {
     return this.value;
   }
 
-  // --- Animation Methods (only available when animated config is set) ---
+  // --- Animation methods (no-op when not animated) ---
 
-  /**
-   * Set or update the delegate for lifecycle callbacks.
-   * @param {Object} delegate - Object implementing onEntering, onVisible, etc.
-   */
   setDelegate(delegate) {
-    if (this.animated) {
-      this._delegate = delegate;
-    }
+    if (this.animated) this._delegate = delegate;
   }
 
-  /**
-   * Get current animation phase name.
-   */
   getPhase() {
     if (!this.animated) return null;
     return this._currentPhase ? this._currentPhase.name : "idle";
   }
 
-  /**
-   * Check if currently in a transitioning phase.
-   */
   isAnimating() {
     if (!this.animated) return false;
-    const phase = this.getPhase();
-    return phase === "entering" || phase === "exiting";
+    const p = this.getPhase();
+    return p === "entering" || p === "exiting";
   }
 
-  /**
-   * Notify that async data has arrived.
-   */
   onAsyncDataReady() {
     if (!this.animated) return;
     this.isAsyncReady = true;
     this._currentPhase?.onAsyncReady();
   }
 
-  /**
-   * Notify that enter transition has completed.
-   * Call this from delegate's onEntering when animation finishes.
-   */
   notifyTransitionEnd() {
     if (!this.animated) return;
     this._currentPhase?.onTransitionEnd?.();
   }
 
-  /**
-   * Clean up when destroyed.
-   */
   destroy() {
     if (this.animated && this._currentPhase) {
       this._currentPhase.onExit();
@@ -359,185 +292,131 @@ export class SyncedVar {
     this._delegate = null;
   }
 
-  // --- Internal Methods ---
+  // --- Internal ---
 
-  /**
-   * Handle value changes - calls onChange and triggers animation if configured.
-   */
   _handleValueChange(newValue, oldValue, source) {
-    // Always call onChange
     this.onChange?.(newValue, oldValue, source);
 
-    // Handle animation phase transitions
-    if (this.animated) {
+    if (this.animated && source !== "confirmed") {
       const wasOpen = oldValue != null;
       const isOpen = newValue != null;
-
       if (isOpen && !wasOpen) {
-        // Opening
         this.isAsyncReady = false;
         this._currentPhase?.onOpen();
       } else if (!isOpen && wasOpen) {
-        // Closing
         this._currentPhase?.onClose();
       }
     }
   }
 
-  /**
-   * Transition to a new phase.
-   */
   _transitionTo(newPhase) {
     if (!this.animated) return;
-
-    const oldPhaseName = this._currentPhase ? this._currentPhase.name : "initial";
-    console.debug(
-      `[SyncedVar ${this.animated.field}] ${oldPhaseName} -> ${newPhase.name}`
-    );
-
-    if (this._currentPhase) {
-      this._currentPhase.onExit();
-    }
+    const old = this._currentPhase ? this._currentPhase.name : "init";
+    console.debug(`[SyncedVar] ${old} -> ${newPhase.name}`);
+    if (this._currentPhase) this._currentPhase.onExit();
     this._currentPhase = newPhase;
     this._currentPhase.onEnter();
   }
 
-  /**
-   * Update the phase (for external tracking/derives).
-   */
-  _setPhase(phaseName) {
+  _setPhase(name) {
     if (!this.animated) return;
-    this.phase = phaseName;
-    // Note: Hook integration for derives would go here if needed
+    this.phase = name;
+    this._onPhaseChange?.(name);
   }
 
-  /**
-   * Notify delegate of lifecycle event.
-   */
-  _notifyDelegate(methodName) {
+  _notifyDelegate(method) {
     if (!this.animated) return;
     try {
-      this._delegate?.[methodName]?.(this);
+      this._delegate?.[method]?.(this);
     } catch (e) {
-      console.error(
-        `[SyncedVar ${this.animated.field}] Delegate ${methodName} error:`,
-        e
-      );
+      console.error(`[SyncedVar] delegate ${method} error:`, e);
     }
   }
 }
 
 // --- SyncedVarStore ---
 
-/**
- * SyncedVarStore - Manages a collection of SyncedVars with flattened keys.
- *
- * Supports dotted path keys (e.g., "params.name") that map to nested state.
- * Each leaf path gets its own SyncedVar for independent pending tracking.
- */
 export class SyncedVarStore {
   constructor() {
-    this.vars = {}; // path -> SyncedVar
+    this.vars = {};
   }
 
   /**
    * Get or create a SyncedVar for a path.
-   * @param path - Dotted path like "count" or "params.name"
-   * @param initialValue - Initial value if creating new
-   * @param onChange - Change callback if creating new
+   * @param {string} path
+   * @param {any} initialValue
+   * @param {Object} options - { onChange, animated, onPhaseChange }
    */
-  get(path, initialValue = undefined, onChange = null) {
+  get(path, initialValue = undefined, options = null) {
     if (!this.vars[path]) {
-      this.vars[path] = new SyncedVar(initialValue, { onChange });
+      const opts = typeof options === "function"
+        ? { onChange: options }
+        : (options || {});
+      this.vars[path] = new SyncedVar(initialValue, opts);
     }
     return this.vars[path];
   }
 
-  /**
-   * Check if a path exists in the store.
-   */
   has(path) {
     return path in this.vars;
   }
 
-  /**
-   * Check if any SyncedVar in the store has pending changes.
-   */
   get hasPending() {
-    return Object.values(this.vars).some((v) => v.isPending);
+    return Object.values(this.vars).some(v => v.isPending);
   }
 
-  /**
-   * Get all pending paths.
-   */
   getPendingPaths() {
     return Object.entries(this.vars)
       .filter(([_, v]) => v.isPending)
-      .map(([path, _]) => path);
+      .map(([p]) => p);
   }
 
-  /**
-   * Check if a specific path has pending changes.
-   */
   isPending(path) {
     return this.vars[path]?.isPending ?? false;
   }
 
-  /**
-   * Clear pending state for a specific path.
-   * Used when server sends an explicit clear (empty object) that should override client state.
-   */
   clearPending(path) {
-    if (this.vars[path]) {
-      this.vars[path].confirmedVersion = this.vars[path].version;
-    }
+    const v = this.vars[path];
+    if (v) v.confirmedVersion = v.version;
   }
 
-  /**
-   * Build a nested state object from all SyncedVar values.
-   */
   toState() {
     const state = {};
-    for (const [path, syncedVar] of Object.entries(this.vars)) {
-      setNestedValue(state, path, syncedVar.value);
+    for (const [path, sv] of Object.entries(this.vars)) {
+      setNestedValue(state, path, sv.value);
     }
     return state;
   }
 
   /**
-   * Update SyncedVars from a nested server state object.
-   * Only updates vars that are not pending.
+   * Update vars from server state.
+   * Each var's serverSet handles accept/reject based on its own policy.
    */
   serverUpdate(serverState) {
-    const flatState = flattenState(serverState);
-    for (const [path, value] of Object.entries(flatState)) {
+    const flat = flattenState(serverState);
+    for (const [path, value] of Object.entries(flat)) {
       if (this.vars[path]) {
         this.vars[path].serverSet(value);
       }
     }
   }
 
-  /**
-   * Get value at a path.
-   */
   getValue(path) {
     return this.vars[path]?.value;
   }
 }
 
-// --- Helper Functions ---
+// --- Helpers ---
 
 function setNestedValue(obj, path, value) {
   const parts = path.split(".");
-  let current = obj;
+  let cur = obj;
   for (let i = 0; i < parts.length - 1; i++) {
-    const part = parts[i];
-    if (!(part in current) || typeof current[part] !== "object") {
-      current[part] = {};
-    }
-    current = current[part];
+    const p = parts[i];
+    if (!(p in cur) || typeof cur[p] !== "object") cur[p] = {};
+    cur = cur[p];
   }
-  current[parts[parts.length - 1]] = value;
+  cur[parts[parts.length - 1]] = value;
 }
 
 function flattenState(obj, prefix = "") {
@@ -553,7 +432,7 @@ function flattenState(obj, prefix = "") {
   return result;
 }
 
-// --- Expose Globally ---
+// --- Expose globally ---
 
 window.Lavash = window.Lavash || {};
 window.Lavash.SyncedVar = SyncedVar;
