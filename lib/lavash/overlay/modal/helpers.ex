@@ -94,8 +94,7 @@ defmodule Lavash.Overlay.Modal.Helpers do
         phx-mounted={JS.ignore_attributes(["class", "style"])}
         class={"inline-grid z-10 bg-base-100 rounded-lg shadow-xl overflow-hidden #{@max_width_class} w-full"}
         style="opacity: 0; transform: scale(0.95)"
-        phx-click="noop"
-        phx-target={@myself}
+        phx-click={JS.dispatch("phx:noop")}
         phx-window-keydown={@close_on_escape && @on_close}
         phx-key={@close_on_escape && "Escape"}
       >

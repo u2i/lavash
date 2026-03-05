@@ -365,6 +365,13 @@ const LavashOptimistic = {
         return;
       }
 
+      // Skip elements inside hidden containers (e.g., closed modals)
+      // Walk up the DOM tree to check for hidden ancestors
+      if (this.isInsideHiddenContainer(input)) {
+        console.log(`[initFormParams] Skipping (hidden container): ${fieldPath}`);
+        return;
+      }
+
       // Only handle form params paths (e.g., "address_form_params.country")
       if (!fieldPath || !fieldPath.includes("_params.")) {
         console.log(`[initFormParams] Skipping (not params): ${fieldPath}`);
@@ -376,6 +383,13 @@ const LavashOptimistic = {
 
       const paramsField = fieldPath.substring(0, dotIndex);  // e.g., "address_form_params"
       const field = fieldPath.substring(dotIndex + 1);        // e.g., "country"
+
+      // Skip if this params field was just cleared by the server
+      // This prevents re-reading stale DOM values before LiveView patches them
+      if (this._clearedParamsFields && this._clearedParamsFields.has(paramsField)) {
+        console.log(`[initFormParams] Skipping (params cleared by server): ${fieldPath}`);
+        return;
+      }
 
       // Get current input value
       const currentValue = input.value;
@@ -1311,6 +1325,26 @@ const LavashOptimistic = {
     return false;
   },
 
+  // Check if element is inside a hidden container (e.g., closed modal content)
+  // This prevents reading stale DOM values from hidden form elements
+  isInsideHiddenContainer(el) {
+    let parent = el.parentElement;
+    while (parent && parent !== this.el) {
+      // Check for hidden class (used by modal main_content when closed)
+      if (parent.classList && parent.classList.contains("hidden")) {
+        return true;
+      }
+      // Also check for display:none or visibility:hidden inline styles
+      if (parent.style) {
+        if (parent.style.display === "none" || parent.style.visibility === "hidden") {
+          return true;
+        }
+      }
+      parent = parent.parentElement;
+    }
+    return false;
+  },
+
   updateDOM() {
     console.log(`[LavashOptimistic] updateDOM() called`);
 
@@ -1631,11 +1665,15 @@ const LavashOptimistic = {
         this.state[localField] = parentValue;
         changedFields.push(localField);
 
-        // Update SyncedVar if exists
-        const syncedVar = this.store.get(localField, parentValue, (newVal) => {
-          this.state[localField] = newVal;
-        });
-        syncedVar.setOptimistic(parentValue);
+        // Only track in store for non-animated fields.
+        // Animated fields have their own SyncedVar in AnimatedState —
+        // putting them in the store creates a duplicate that blocks server updates.
+        if (!this.animatedStates?.[localField]) {
+          const syncedVar = this.store.get(localField, parentValue, (newVal) => {
+            this.state[localField] = newVal;
+          });
+          syncedVar.setOptimistic(parentValue);
+        }
       }
     }
 
@@ -1733,13 +1771,33 @@ const LavashOptimistic = {
     // Track which async fields got populated (for animated state coordination)
     const asyncFieldsReady = this.detectAsyncFieldsReady(serverState);
 
+    // Detect if any modal/overlay is OPENING in this update (transitioning from closed to open)
+    // MUST happen BEFORE store.serverUpdate() which overwrites SyncedVar values
+    let isModalOpening = false;
+    if (this.animatedStates) {
+      for (const [field, animated] of Object.entries(this.animatedStates)) {
+        const oldValue = animated.syncedVar.getValue();
+        const newValue = serverState[field];
+        console.log(`[LavashOptimistic] updated() animated field "${field}": current=${JSON.stringify(oldValue)} -> server=${JSON.stringify(newValue)}, phase=${animated.getPhase()}, pending=${animated.syncedVar.isPending}`);
+        const wasOpen = oldValue != null && oldValue !== false;
+        const isOpening = !wasOpen && newValue != null && newValue !== false;
+        if (isOpening) {
+          console.log(`[LavashOptimistic] Modal/overlay ${field} is opening (${oldValue} -> ${newValue})`);
+          isModalOpening = true;
+        }
+      }
+    }
+
     // Update SyncedVars from server state (flattened paths)
     // serverUpdate only updates vars that are not pending
     this.store.serverUpdate(serverState);
 
+    // Track which _params fields were cleared by server (to skip re-init from DOM)
+    this._clearedParamsFields = new Set();
+
     // Also update our state object for fields without pending changes
     const pendingPaths = new Set(this.store.getPendingPaths());
-    const changedFields = this.mergeServerState(serverState, "", pendingPaths, []);
+    const changedFields = this.mergeServerState(serverState, "", pendingPaths, [], isModalOpening);
 
     // Update version tracking
     if (newServerVersion >= this.clientVersion) {
@@ -1750,6 +1808,7 @@ const LavashOptimistic = {
     }
 
     // Notify animated states of server-side value changes
+    console.log(`[LavashOptimistic] updated() changedFields:`, changedFields, `state.open:`, this.state.open);
     if (changedFields && changedFields.length > 0) {
       this.notifyAnimatedStatesServerUpdate(changedFields);
 
@@ -1758,6 +1817,11 @@ const LavashOptimistic = {
       // and would cause double-updates. Keep propagateBoundFieldsToParent only
       // for client-initiated optimistic changes in runOptimisticAction().
     }
+
+    // Always reconcile animated states with server state, even if mergeServerState
+    // skipped them due to store pending. Animated fields have their own SyncedVars
+    // independent of the store, and server state must always win.
+    this.reconcileAnimatedStatesWithServer(serverState);
 
     // Notify animated states that async data is ready
     for (const asyncField of asyncFieldsReady) {
@@ -1788,6 +1852,9 @@ const LavashOptimistic = {
         }
       }
     });
+
+    // Clean up cleared params tracking
+    this._clearedParamsFields = null;
   },
 
   /**
@@ -1853,10 +1920,54 @@ const LavashOptimistic = {
   },
 
   /**
+   * Reconcile animated state SyncedVars with server state.
+   * Animated fields have their own SyncedVars independent of the store.
+   * mergeServerState may skip them if the store has pending state for the same path,
+   * so we need to directly compare and update here.
+   */
+  reconcileAnimatedStatesWithServer(serverState) {
+    if (!this.animatedStates) return;
+
+    for (const [field, animated] of Object.entries(this.animatedStates)) {
+      if (!(field in serverState)) continue;
+
+      const serverValue = serverState[field];
+      const currentValue = animated.syncedVar.getValue();
+
+      if (currentValue !== serverValue) {
+        console.log(`[LavashOptimistic] reconcileAnimatedStates: ${field} synced=${JSON.stringify(currentValue)} -> server=${JSON.stringify(serverValue)}`);
+
+        // Also update this.state to match
+        this.state[field] = serverValue;
+
+        // Also clear the store's pending state for this field
+        if (this.store.has(field)) {
+          this.store.clearPending(field);
+        }
+
+        // Directly update the animated SyncedVar, bypassing serverSet() which rejects when pending
+        animated.syncedVar.value = serverValue;
+        animated.syncedVar.confirmedValue = serverValue;
+        animated.syncedVar.confirmedVersion = animated.syncedVar.version;
+        animated.onValueChange(serverValue, currentValue, 'server');
+      } else if (animated.syncedVar.isPending) {
+        // Value matches but still pending - confirm it
+        animated.syncedVar.confirmedValue = serverValue;
+        animated.syncedVar.confirmedVersion = animated.syncedVar.version;
+        // Also clear store pending
+        if (this.store.has(field)) {
+          this.store.clearPending(field);
+        }
+      }
+    }
+  },
+
+  /**
    * Merge server state into this.state, skipping paths that are pending.
    * Returns array of top-level changed field names.
+   * @param isModalOpening - true if a modal/overlay is opening in this update
    */
-  mergeServerState(obj, prefix, pendingPaths, changedFields = []) {
+  mergeServerState(obj, prefix, pendingPaths, changedFields = [], isModalOpening = false) {
     // Track changed fields at the top level only
 
     for (const [key, value] of Object.entries(obj)) {
@@ -1880,7 +1991,38 @@ const LavashOptimistic = {
 
       if (value !== null && typeof value === "object" && !Array.isArray(value)) {
         // Empty server object replaces client object (clears stale keys like old server_errors)
-        if (Object.keys(value).length === 0 && !hasPendingChild) {
+        if (Object.keys(value).length === 0) {
+          // Special case: For _params fields, server sending {} means "clear the form"
+          // Only clear pending paths if a modal is OPENING in this update
+          // When modal is already open, preserve pending paths (user's current input)
+          if (key.endsWith("_params") && prefix === "") {
+            const formName = key.replace(/_params$/, "");
+
+            if (hasPendingChild && isModalOpening) {
+              console.log(`[LavashOptimistic] Modal opening: clearing pending paths for ${key}`);
+              for (const pendingPath of [...pendingPaths]) {
+                if (pendingPath.startsWith(path + ".")) {
+                  this.store.clearPending(pendingPath);
+                  pendingPaths.delete(pendingPath);
+                }
+              }
+              hasPendingChild = false;
+            }
+
+            // Clear touched/show_errors state only when modal is opening
+            if (isModalOpening) {
+              for (const fieldPath of Object.keys(this.fieldState)) {
+                if (fieldPath.startsWith(path + ".")) {
+                  delete this.fieldState[fieldPath];
+                  const fieldName = fieldPath.substring(path.length + 1);
+                  const showErrorsKey = `${formName}_${fieldName}_show_errors`;
+                  this.state[showErrorsKey] = false;
+                }
+              }
+            }
+
+          }
+
           // Special case: Don't clear {form}_server_errors if ANY params for that form are pending
           let shouldSkipClear = false;
           if (key.endsWith("_server_errors") && prefix === "") {
@@ -1894,7 +2036,7 @@ const LavashOptimistic = {
             }
           }
 
-          if (!shouldSkipClear) {
+          if (!shouldSkipClear && !hasPendingChild) {
             const oldValue = this.getStateAtPath(path);
             if (oldValue !== undefined && oldValue !== null && typeof oldValue === "object" && Object.keys(oldValue).length > 0) {
               console.log(`[LavashOptimistic] Clearing ${path}: empty object from server, no pending paths`);
@@ -1902,11 +2044,30 @@ const LavashOptimistic = {
               if (changedFields && !changedFields.includes(topLevelField)) {
                 changedFields.push(topLevelField);
               }
+
+              // For _params fields that we're actually clearing (not just seeing empty):
+              // Track as cleared and clear DOM input values
+              if (key.endsWith("_params") && prefix === "") {
+                // Track this params field as cleared so initializeFormParamsFromDOM skips it
+                if (this._clearedParamsFields) {
+                  this._clearedParamsFields.add(key);
+                }
+
+                // Clear DOM input values to prevent stale data showing when form is reset
+                const inputSelector = `[data-lavash-bind^="${key}."]`;
+                const inputs = this.el.querySelectorAll(inputSelector);
+                inputs.forEach(input => {
+                  if (input.value !== "") {
+                    console.log(`[LavashOptimistic] Clearing DOM input value for ${input.dataset.lavashBind}`);
+                    input.value = "";
+                  }
+                });
+              }
             }
           }
         } else {
           // Recurse into nested objects
-          this.mergeServerState(value, path, pendingPaths, changedFields);
+          this.mergeServerState(value, path, pendingPaths, changedFields, isModalOpening);
         }
       } else if (!hasPendingChild) {
         // Leaf value with no pending - update state

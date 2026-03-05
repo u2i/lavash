@@ -484,6 +484,16 @@ export class SyncedVarStore {
   }
 
   /**
+   * Clear pending state for a specific path.
+   * Used when server sends an explicit clear (empty object) that should override client state.
+   */
+  clearPending(path) {
+    if (this.vars[path]) {
+      this.vars[path].confirmedVersion = this.vars[path].version;
+    }
+  }
+
+  /**
    * Build a nested state object from all SyncedVar values.
    */
   toState() {

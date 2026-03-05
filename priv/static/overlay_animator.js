@@ -127,6 +127,7 @@ export class OverlayAnimator {
     );
 
     if (isReopen) {
+      console.log(`[OverlayAnimator:${this.type}] onEntering: REOPEN - cleaning up previous state`);
       // Clean up any ghost elements INSTANTLY (no fade) to avoid duplicates
       this._cleanupCloseAnimation(true);
       // Reset internal state but don't touch wrapper visibility
@@ -136,6 +137,7 @@ export class OverlayAnimator {
       this._preUpdateContentClone = null;
       // Clean up transition handler
       if (this.panelContent && this._transitionHandler) {
+        console.log(`[OverlayAnimator:${this.type}] onEntering: removing _transitionHandler`);
         this.panelContent.removeEventListener(
           "transitionend",
           this._transitionHandler
@@ -143,8 +145,32 @@ export class OverlayAnimator {
         this._transitionHandler = null;
       }
       // Clear visibility:hidden that onExiting sets during ghost animation
-      if (this.panelContent) this.panelContent.style.visibility = "";
+      if (this.panelContent) {
+        console.log(`[OverlayAnimator:${this.type}] onEntering: clearing panel styles (visibility, width, height, overflow)`);
+        this.panelContent.style.visibility = "";
+        // Clear any styles that might have been set during _transitionToContent
+        // that weren't cleaned up (e.g., if animation was interrupted)
+        this.panelContent.style.removeProperty("width");
+        this.panelContent.style.removeProperty("height");
+        this.panelContent.style.removeProperty("overflow");
+      }
       if (this.overlay) this.overlay.style.visibility = "";
+
+      // Hide main content so loading shows properly
+      const mainContent = this.getMainContentContainer();
+      if (mainContent) {
+        this.js.addClass(mainContent, "hidden");
+        mainContent.classList.add("hidden");
+        mainContent.style.removeProperty("opacity");
+        mainContent.style.removeProperty("transition");
+      }
+
+      // Reset loading content styles from previous session
+      const loadingContent = this.getLoadingContent();
+      if (loadingContent) {
+        loadingContent.style.removeProperty("opacity");
+        loadingContent.style.removeProperty("transition");
+      }
     } else {
       // First open - reset DOM completely
       this._resetDOM();
@@ -297,7 +323,9 @@ export class OverlayAnimator {
    */
   onUpdated(animated, _phase) {
     const mainInner = this.getMainContentInner();
+    const mainContent = this.getMainContentContainer();
     const mainContentLoaded = mainInner && mainInner.children.length > 0;
+    const mainContentHidden = mainContent && mainContent.classList.contains("hidden");
 
     const currentPhase = animated.getPhase();
     const loadingContent = this.getLoadingContent();
@@ -305,7 +333,7 @@ export class OverlayAnimator {
       loadingContent && !loadingContent.classList.contains("hidden");
 
     console.log(
-      `[OverlayAnimator:${this.type}] onUpdated: phase=${currentPhase}, mainContentLoaded=${mainContentLoaded}, loadingVisible=${loadingVisible}`
+      `[OverlayAnimator:${this.type}] onUpdated: phase=${currentPhase}, mainContentLoaded=${mainContentLoaded}, mainContentHidden=${mainContentHidden}, loadingVisible=${loadingVisible}`
     );
 
     // Handle content arrival
@@ -732,8 +760,18 @@ export class OverlayAnimator {
   }
 
   _cleanupCloseAnimation(instant = true) {
-    const cleanup = (el) => {
-      if (!el?.parentNode) return;
+    console.log(
+      `[OverlayAnimator:${this.type}] _cleanupCloseAnimation: instant=${instant}, ` +
+      `ghostElement=${!!this.ghostElement}, _preUpdateContentClone=${!!this._preUpdateContentClone}, ` +
+      `_ghostOverlay=${!!this._ghostOverlay}`
+    );
+
+    const cleanup = (el, name) => {
+      if (!el?.parentNode) {
+        console.log(`[OverlayAnimator:${this.type}] _cleanupCloseAnimation: ${name} not in DOM`);
+        return;
+      }
+      console.log(`[OverlayAnimator:${this.type}] _cleanupCloseAnimation: removing ${name}`);
       if (instant) {
         el.remove();
       } else {
@@ -743,13 +781,13 @@ export class OverlayAnimator {
       }
     };
 
-    cleanup(this._preUpdateContentClone);
+    cleanup(this._preUpdateContentClone, "_preUpdateContentClone");
     this._preUpdateContentClone = null;
 
-    cleanup(this._ghostOverlay);
+    cleanup(this._ghostOverlay, "_ghostOverlay");
     this._ghostOverlay = null;
 
-    cleanup(this.ghostElement);
+    cleanup(this.ghostElement, "ghostElement");
     this.ghostElement = null;
 
     this._ghostInsertedInBeforeUpdate = false;
@@ -787,6 +825,7 @@ export class OverlayAnimator {
       if (this._animatesSize) {
         this.panelContent.style.removeProperty("width");
         this.panelContent.style.removeProperty("height");
+        this.panelContent.style.removeProperty("overflow");
       }
     }
 
@@ -809,6 +848,8 @@ export class OverlayAnimator {
     const mainContent = this.getMainContentContainer();
     if (mainContent) {
       this.js.addClass(mainContent, "hidden");
+      mainContent.style.removeProperty("opacity");
+      mainContent.style.removeProperty("transition");
     }
   }
 

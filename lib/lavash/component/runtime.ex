@@ -78,14 +78,14 @@ defmodule Lavash.Component.Runtime do
                         |> hydrate_ephemeral(module)
                         |> State.hydrate_forms(module)
                         |> store_props(module, assigns)
-                        |> resolve_bindings(assigns)
+                        |> resolve_bindings(module, assigns)
                         |> preserve_livecomponent_assigns(module, assigns)
                         |> Graph.recompute_all(module)
                         |> Assigns.project(module)
                       else
                         # Subsequent update - store props (marks changed props as dirty)
                         socket = store_props(socket, module, assigns)
-                        socket = resolve_bindings(socket, assigns)
+                        socket = resolve_bindings(socket, module, assigns)
                         socket = preserve_livecomponent_assigns(socket, module, assigns)
 
                         # Recompute any derived fields affected by dirty props
@@ -181,7 +181,7 @@ defmodule Lavash.Component.Runtime do
   defp parse_binding_value(value), do: value
 
   # Resolve bindings from the bind prop - sets up binding map and parent CID
-  defp resolve_bindings(socket, assigns) do
+  defp resolve_bindings(socket, module, assigns) do
     case Map.get(assigns, :bind) do
       nil ->
         # Even without bindings, ensure __lavash_client_bindings__ exists for child components
@@ -226,6 +226,9 @@ defmodule Lavash.Component.Runtime do
         # Bound fields are not declared props, so we track their previous values separately.
         old_bound_props = LSocket.get(socket, :bound_props) || %{}
 
+        # Get modal open field if this component uses the modal DSL
+        modal_open_field = get_modal_open_field(module)
+
         {socket, new_bound_props} =
           Enum.reduce(bindings, {socket, %{}}, fn {local, _parent}, {sock, bound_acc} ->
             new_value = Map.get(assigns, local)
@@ -241,9 +244,18 @@ defmodule Lavash.Component.Runtime do
             sock =
               if old_value != new_value do
                 # Prop changed from parent - update state
-                sock
-                |> Phoenix.Component.assign(local, new_value)
-                |> LSocket.put_state(local, new_value)
+                sock =
+                  sock
+                  |> Phoenix.Component.assign(local, new_value)
+                  |> LSocket.put_state(local, new_value)
+
+                # If this is the modal open field transitioning from closed to open,
+                # clear form params so we don't show stale data from previous session
+                if local == modal_open_field and is_nil(old_value) and not is_nil(new_value) do
+                  clear_form_params_on_modal_open(sock, module)
+                else
+                  sock
+                end
               else
                 # Prop didn't change - preserve existing state value
                 Phoenix.Component.assign(sock, local, state_value)
@@ -792,5 +804,36 @@ defmodule Lavash.Component.Runtime do
     end)
 
     socket
+  end
+
+  # Get the modal open field from module metadata, if this component uses modal DSL
+  defp get_modal_open_field(module) do
+    try do
+      Spark.Dsl.Extension.get_persisted(module, :modal_open_field)
+    rescue
+      _ -> nil
+    end
+  end
+
+  # Clear all form params and mark reads as dirty when modal opens to prevent stale data
+  defp clear_form_params_on_modal_open(socket, module) do
+    forms = module.__lavash__(:forms)
+    reads = module.__lavash__(:reads)
+
+    # Clear form params and server errors
+    socket =
+      Enum.reduce(forms, socket, fn form, sock ->
+        params_field = :"#{form.name}_params"
+        server_errors_field = :"#{form.name}_server_errors"
+
+        sock
+        |> LSocket.put_state(params_field, %{})
+        |> LSocket.put_state(server_errors_field, %{})
+      end)
+
+    # Mark reads as dirty so they re-fetch with the new open value
+    # This triggers recompute_dirty to run the async reads again
+    read_names = Enum.map(reads, & &1.name)
+    LSocket.mark_dirty(socket, read_names)
   end
 end
