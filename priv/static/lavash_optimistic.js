@@ -1666,12 +1666,16 @@ const LavashOptimistic = {
     // Detect async fields that became ready (before store.serverUpdate overwrites old values)
     const asyncFieldsReady = this.detectAsyncFieldsReady(serverState);
 
-    // Detect if any animated field is opening (for _params clearing in mergeServerState)
+    // Detect if any animated field is opening (for _params clearing in mergeServerState).
+    // Check phase rather than value — by the time updated() runs, refreshFromParent
+    // may have already set the value optimistically, so old/new comparison won't work.
+    // "entering" phase means the modal just opened this cycle.
     let isModalOpening = false;
     if (this.animatedStates) {
       for (const field of Object.keys(this.animatedStates)) {
         const sv = this.store.get(field);
-        if ((sv.getValue() == null) && (serverState[field] != null)) {
+        const phase = sv.getPhase();
+        if (phase === "entering" || phase === "loading") {
           isModalOpening = true;
         }
       }
