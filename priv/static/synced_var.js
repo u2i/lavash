@@ -339,19 +339,34 @@ export class SyncedVar {
 export class SyncedVarStore {
   constructor() {
     this.vars = {};
+    this._animatedConfigs = {}; // path -> { animated, onPhaseChange }
+  }
+
+  /**
+   * Register animated config for a path.
+   * When a SyncedVar is later created for this path (via get()),
+   * it will automatically be created with animation support.
+   */
+  registerAnimated(path, config) {
+    this._animatedConfigs[path] = config;
   }
 
   /**
    * Get or create a SyncedVar for a path.
    * @param {string} path
    * @param {any} initialValue
-   * @param {Object} options - { onChange, animated, onPhaseChange }
+   * @param {Object|Function} options - { onChange } or onChange callback
    */
   get(path, initialValue = undefined, options = null) {
     if (!this.vars[path]) {
       const opts = typeof options === "function"
         ? { onChange: options }
         : (options || {});
+      // Merge in animated config if registered for this path
+      const animConfig = this._animatedConfigs[path];
+      if (animConfig) {
+        Object.assign(opts, animConfig);
+      }
       this.vars[path] = new SyncedVar(initialValue, opts);
     }
     return this.vars[path];

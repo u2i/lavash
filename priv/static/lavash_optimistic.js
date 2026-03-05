@@ -43,7 +43,6 @@
  */
 
 import { SyncedVarStore } from "./synced_var.js";
-import { AnimatedState } from "./animated_state.js";
 import { syncStateToUrl } from "./url_sync.js";
 
 // Registry for optimistic function modules (for custom overrides)
@@ -153,175 +152,111 @@ const LavashOptimistic = {
   },
 
   /**
-   * Initialize AnimatedState managers for fields with animated: true.
-   * Reads configuration from __animated__ metadata in the generated optimistic module.
-   * For type: "modal" or "flyover" fields, creates an OverlayAnimator as the delegate.
+   * Initialize animated fields from __animated__ metadata.
+   * Registers animation configs on the store so any future store.get()
+   * for these paths automatically creates animated SyncedVars.
+   * Also creates delegates and event listeners for overlay types.
+   *
+   * this.animatedStates maps field -> { config, delegate }
+   * The SyncedVar is lazily created in the store via store.get().
    */
   initAnimatedFields() {
     this.animatedStates = {};
 
-    // First try __animated__ from generated functions (LiveViews)
     let animatedConfigs = this.fns.__animated__ || [];
-
-    // For components, also check data-lavash-animated attribute
     if (animatedConfigs.length === 0 && this.el.dataset.lavashAnimated) {
       try {
         animatedConfigs = JSON.parse(this.el.dataset.lavashAnimated);
-        console.log(`[LavashOptimistic] Parsed animated configs from data attr:`, animatedConfigs);
       } catch (e) {
         console.warn("[LavashOptimistic] Failed to parse data-lavash-animated:", e);
       }
     }
 
-    console.log(`[LavashOptimistic] initAnimatedFields: ${animatedConfigs.length} configs`, animatedConfigs);
-
     for (const config of animatedConfigs) {
-      // Create delegate based on type
+      const field = config.field;
+
+      // Register animated config on store — any store.get() for this field
+      // will create an animated SyncedVar with phase machine built in
+      this.store.registerAnimated(field, {
+        animated: { duration: config.duration || 200, async: config.async || null },
+        onPhaseChange: (phase) => {
+          if (this.state) {
+            this.state[config.phaseField] = phase;
+            this.recomputeDerives?.([config.phaseField]);
+            this.updateDOM?.();
+          }
+        },
+      });
+
+      // Create delegate based on overlay type
       let delegate = null;
+      let chromeEl = null;
 
-      if (config.type === "modal") {
-        // For modal type, create OverlayAnimator targeting the modal chrome element
+      if (config.type === "modal" || config.type === "flyover") {
         const OverlayAnimator = window.Lavash?.OverlayAnimator;
         if (OverlayAnimator) {
-          // Modal chrome ID is "{component_id}-modal" where component_id is extracted from wrapper ID
-          // Wrapper ID is "lavash-{component_id}", so modal ID is "{component_id}-modal"
-          const wrapperId = this.el.id; // e.g., "lavash-product-edit-modal"
-          const componentId = wrapperId.replace(/^lavash-/, ""); // e.g., "product-edit-modal"
-          const modalChromeId = `${componentId}-modal`; // e.g., "product-edit-modal-modal"
-          const modalChrome = document.getElementById(modalChromeId);
+          const wrapperId = this.el.id;
+          const componentId = wrapperId.replace(/^lavash-/, "");
+          const chromeId = `${componentId}-${config.type}`;
+          chromeEl = document.getElementById(chromeId);
 
-          if (modalChrome) {
-            delegate = new OverlayAnimator(modalChrome, {
-              type: 'modal',
+          if (chromeEl) {
+            const overlayOpts = {
+              type: config.type,
               duration: config.duration || 200,
               openField: config.field,
               js: this.js()
-            });
-            console.debug(`[LavashOptimistic] Created OverlayAnimator (modal) for ${config.field} on #${modalChromeId}`);
-
-            // Register content element IDs for ghost detection in onBeforeElUpdated
-            const mainContentId = `${modalChromeId}-main_content`;
-            const mainContentInnerId = `${modalChromeId}-main_content_inner`;
-            this._registerModalContentIds(mainContentId, mainContentInnerId, config.field);
-
-            // Set up event listeners on modal chrome for open/close events
-            // We store references for cleanup in destroyed()
-            this._modalEventListeners = this._modalEventListeners || [];
-            const setterAction = `set_${config.field}`;
-
-            const openHandler = (e) => {
-              const openValue = e.detail?.[config.field] ?? e.detail?.value ?? true;
-              console.log(`[LavashOptimistic] open-panel event for ${config.field}:`, openValue);
-              console.log(`[LavashOptimistic] animatedStates:`, Object.keys(this.animatedStates || {}));
-              // AnimatedState is created after this block, access via closure
-              const animState = this.animatedStates[config.field];
-              if (animState) {
-                console.log(`[LavashOptimistic] Found animState, calling set()`);
-                animState.syncedVar.set(openValue, (p, cb) => {
-                  console.log(`[LavashOptimistic] pushEventTo ${setterAction}`, p);
-                  this.pushEventTo(modalChrome, setterAction, { ...p, value: openValue }, cb);
-                });
-              } else {
-                console.warn(`[LavashOptimistic] No animState found for ${config.field}`);
-              }
             };
+            if (config.type === "flyover") {
+              overlayOpts.slideFrom = chromeEl.dataset.slideFrom || 'right';
+            }
+            delegate = new OverlayAnimator(chromeEl, overlayOpts);
 
-            const closeHandler = () => {
-              console.debug(`[LavashOptimistic] close-panel event for ${config.field}`);
-              const animState = this.animatedStates[config.field];
-              if (animState) {
-                animState.syncedVar.set(null, (p, cb) => {
-                  this.pushEventTo(modalChrome, setterAction, { ...p, value: null }, cb);
-                });
-              }
-            };
-
-            modalChrome.addEventListener("open-panel", openHandler);
-            modalChrome.addEventListener("close-panel", closeHandler);
-            this._modalEventListeners.push({ el: modalChrome, open: openHandler, close: closeHandler });
+            const mainContentId = `${chromeId}-main_content`;
+            const mainContentInnerId = `${chromeId}-main_content_inner`;
+            this._registerModalContentIds(mainContentId, mainContentInnerId, field);
           } else {
-            console.warn(`[LavashOptimistic] Modal chrome element #${modalChromeId} not found for animated field ${config.field}`);
+            console.warn(`[LavashOptimistic] Chrome element #${chromeId} not found for animated field ${field}`);
           }
         } else {
-          console.warn("[LavashOptimistic] OverlayAnimator not found in window.Lavash for type:modal field");
-        }
-      } else if (config.type === "flyover") {
-        // For flyover type, create OverlayAnimator targeting the flyover chrome element
-        const OverlayAnimator = window.Lavash?.OverlayAnimator;
-        if (OverlayAnimator) {
-          // Flyover chrome ID is "{component_id}-flyover" where component_id is extracted from wrapper ID
-          // Wrapper ID is "lavash-{component_id}", so flyover ID is "{component_id}-flyover"
-          const wrapperId = this.el.id; // e.g., "lavash-nav-flyover"
-          const componentId = wrapperId.replace(/^lavash-/, ""); // e.g., "nav-flyover"
-          const flyoverChromeId = `${componentId}-flyover`; // e.g., "nav-flyover-flyover"
-          const flyoverChrome = document.getElementById(flyoverChromeId);
-
-          if (flyoverChrome) {
-            delegate = new OverlayAnimator(flyoverChrome, {
-              type: 'flyover',
-              duration: config.duration || 200,
-              slideFrom: flyoverChrome.dataset.slideFrom || 'right',
-              openField: config.field,
-              js: this.js()
-            });
-            console.debug(`[LavashOptimistic] Created OverlayAnimator (flyover) for ${config.field} on #${flyoverChromeId}`);
-
-            // Register content element IDs for ghost detection in onBeforeElUpdated
-            const mainContentId = `${flyoverChromeId}-main_content`;
-            const mainContentInnerId = `${flyoverChromeId}-main_content_inner`;
-            this._registerModalContentIds(mainContentId, mainContentInnerId, config.field);
-
-            // Set up event listeners on flyover chrome for open/close events
-            this._modalEventListeners = this._modalEventListeners || [];
-            const setterAction = `set_${config.field}`;
-
-            const openHandler = (e) => {
-              const openValue = e.detail?.[config.field] ?? e.detail?.open ?? e.detail?.value ?? true;
-              console.log(`[LavashOptimistic] open-panel event for flyover ${config.field}:`, openValue);
-              const animState = this.animatedStates[config.field];
-              if (animState) {
-                animState.syncedVar.set(openValue, (p, cb) => {
-                  console.log(`[LavashOptimistic] pushEventTo ${setterAction}`, p);
-                  this.pushEventTo(flyoverChrome, setterAction, { ...p, value: openValue }, cb);
-                });
-              } else {
-                console.warn(`[LavashOptimistic] No animState found for ${config.field}`);
-              }
-            };
-
-            const closeHandler = () => {
-              console.debug(`[LavashOptimistic] close-panel event for flyover ${config.field}`);
-              const animState = this.animatedStates[config.field];
-              if (animState) {
-                animState.syncedVar.set(null, (p, cb) => {
-                  this.pushEventTo(flyoverChrome, setterAction, { ...p, value: null }, cb);
-                });
-              }
-            };
-
-            flyoverChrome.addEventListener("open-panel", openHandler);
-            flyoverChrome.addEventListener("close-panel", closeHandler);
-            this._modalEventListeners.push({ el: flyoverChrome, open: openHandler, close: closeHandler });
-          } else {
-            console.warn(`[LavashOptimistic] Flyover chrome element #${flyoverChromeId} not found for animated field ${config.field}`);
-          }
-        } else {
-          console.warn("[LavashOptimistic] OverlayAnimator not found in window.Lavash for type:flyover field");
+          console.warn(`[LavashOptimistic] OverlayAnimator not found for type:${config.type} field`);
         }
       }
 
-      const animated = new AnimatedState(config, this, delegate);
+      this.animatedStates[field] = { config, delegate };
 
-      // Initialize from current state value
-      const currentValue = this.state[config.field];
-      if (currentValue != null) {
-        // Already open - transition to appropriate phase
-        animated.syncedVar.setOptimistic(currentValue);
+      // Eagerly create the SyncedVar so the delegate gets attached
+      const currentValue = this.state[field] ?? null;
+      const syncedVar = this.store.get(field, currentValue, {
+        onChange: (newVal) => { this.state[field] = newVal; },
+      });
+      if (delegate) syncedVar.setDelegate(delegate);
+      if (currentValue != null) syncedVar.setOptimistic(currentValue);
+
+      // Set up open/close event listeners on chrome element
+      if (chromeEl) {
+        this._modalEventListeners = this._modalEventListeners || [];
+        const setterAction = `set_${field}`;
+
+        const openHandler = (e) => {
+          const openValue = e.detail?.[field] ?? e.detail?.open ?? e.detail?.value ?? true;
+          const sv = this.store.get(field);
+          sv.set(openValue, (p, cb) => {
+            this.pushEventTo(chromeEl, setterAction, { ...p, value: openValue }, cb);
+          });
+        };
+
+        const closeHandler = () => {
+          const sv = this.store.get(field);
+          sv.set(null, (p, cb) => {
+            this.pushEventTo(chromeEl, setterAction, { ...p, value: null }, cb);
+          });
+        };
+
+        chromeEl.addEventListener("open-panel", openHandler);
+        chromeEl.addEventListener("close-panel", closeHandler);
+        this._modalEventListeners.push({ el: chromeEl, open: openHandler, close: closeHandler });
       }
-
-      this.animatedStates[config.field] = animated;
-
-      console.debug(`[LavashOptimistic] Initialized animated field: ${config.field}${delegate ? " with delegate" : ""}`);
     }
   },
 
@@ -337,8 +272,8 @@ const LavashOptimistic = {
    */
   isAnyAnimating() {
     if (!this.animatedStates) return false;
-    return Object.values(this.animatedStates).some(
-      a => a.getPhase() === "entering" || a.getPhase() === "exiting"
+    return Object.keys(this.animatedStates).some(
+      field => this.store.get(field).isAnimating()
     );
   },
 
@@ -509,11 +444,11 @@ const LavashOptimistic = {
 
       if (entry) {
         const { hook, field, innerId } = entry;
-        const animated = hook.animatedStates?.[field];
+        const anim = hook.animatedStates?.[field];
 
-        if (animated) {
-          // Check if modal is in a state where we should preserve content
-          const phase = animated.getPhase();
+        if (anim) {
+          const sv = hook.store.get(field);
+          const phase = sv.getPhase();
           const shouldPreserve = phase === "visible" || phase === "loading";
 
           if (shouldPreserve) {
@@ -521,10 +456,9 @@ const LavashOptimistic = {
             const toHasInner = toEl.querySelector(`#${innerId}`);
 
             if (fromHasInner && !toHasInner) {
-              // Content is being removed! Create ghost NOW before morphdom patches
               console.debug(`[LavashOptimistic] onBeforeElUpdated detected content removal for ${field}`);
-              if (animated.delegate?.createGhostBeforePatch) {
-                animated.delegate.createGhostBeforePatch(fromHasInner);
+              if (anim.delegate?.createGhostBeforePatch) {
+                anim.delegate.createGhostBeforePatch(fromHasInner);
               }
             }
           }
@@ -808,19 +742,11 @@ const LavashOptimistic = {
     console.log("[LavashOptimistic] handleLavashSet", field, "=", value);
 
     // Check if this field has an animated state (modal/flyover)
-    const animatedState = this.animatedStates?.[field];
-    if (animatedState) {
-      // Stop propagation - we own this field
+    if (this.animatedStates?.[field]) {
       e.stopPropagation();
-
-      // For animated states (modal/flyover), falsy values mean "close" which is represented as null
-      // The animation system uses null to detect close transitions
       const animValue = value ? value : null;
-
-      // Use the animated state's syncedVar to set the value
-      // This triggers proper animations and server sync
       const setterAction = `set_${field}`;
-      animatedState.syncedVar.set(animValue, (payload, callback) => {
+      this.store.get(field).set(animValue, (payload, callback) => {
         this.pushEventTo(this.el, setterAction, { ...payload, value: animValue }, callback);
       });
       return;
@@ -1126,9 +1052,6 @@ const LavashOptimistic = {
         changedFields.push(key);
       }
 
-      // Notify animated states of value changes
-      this.notifyAnimatedStates(changedFields);
-
       // Propagate bound field changes to parent
       // When client action updates a bound field, parent needs to know immediately
       this.propagateBoundFieldsToParent(changedFields);
@@ -1150,20 +1073,6 @@ const LavashOptimistic = {
   /**
    * Notify animated state managers when their fields change.
    */
-  notifyAnimatedStates(changedFields) {
-    if (!this.animatedStates || !changedFields) return;
-
-    for (const field of changedFields) {
-      const animated = this.animatedStates[field];
-      if (animated) {
-        const oldValue = animated.syncedVar.getValue();
-        const newValue = this.state[field];
-        animated.syncedVar.setOptimistic(newValue);
-        animated.onValueChange(newValue, oldValue, 'optimistic');
-      }
-    }
-  },
-
   /**
    * Notify animated states that async data is ready.
    * Called when a read/async field gets populated.
@@ -1171,9 +1080,9 @@ const LavashOptimistic = {
   notifyAsyncReady(asyncField) {
     if (!this.animatedStates) return;
 
-    for (const animated of Object.values(this.animatedStates)) {
-      if (animated.config.async === asyncField) {
-        animated.onAsyncDataReady();
+    for (const [field, anim] of Object.entries(this.animatedStates)) {
+      if (anim.config.async === asyncField) {
+        this.store.get(field).onAsyncDataReady();
       }
     }
   },
@@ -1185,10 +1094,10 @@ const LavashOptimistic = {
   notifyAnimatedStatesDelegatesUpdated() {
     if (!this.animatedStates) return;
 
-    for (const animated of Object.values(this.animatedStates)) {
-      if (animated.delegate?.onUpdated) {
-        const phase = animated.getPhase();
-        animated.delegate.onUpdated(animated, phase);
+    for (const [field, anim] of Object.entries(this.animatedStates)) {
+      if (anim.delegate?.onUpdated) {
+        const sv = this.store.get(field);
+        anim.delegate.onUpdated(sv, sv.getPhase());
       }
     }
   },
@@ -1661,30 +1570,21 @@ const LavashOptimistic = {
       const localValue = this.state[localField];
 
       if (parentValue !== localValue) {
-        console.log(`[LavashOptimistic] refreshFromParent: ${localField} = ${JSON.stringify(parentValue)} (was ${JSON.stringify(localValue)})`);
         this.state[localField] = parentValue;
         changedFields.push(localField);
 
-        // Only track in store for non-animated fields.
-        // Animated fields have their own SyncedVar in AnimatedState —
-        // putting them in the store creates a duplicate that blocks server updates.
-        if (!this.animatedStates?.[localField]) {
-          const syncedVar = this.store.get(localField, parentValue, (newVal) => {
-            this.state[localField] = newVal;
-          });
-          syncedVar.setOptimistic(parentValue);
-        }
+        // All fields (including animated) live in the store.
+        // For animated fields, setOptimistic drives the phase machine automatically.
+        // For non-animated fields, it just tracks pending state.
+        const syncedVar = this.store.get(localField, parentValue, (newVal) => {
+          this.state[localField] = newVal;
+        });
+        syncedVar.setOptimistic(parentValue);
       }
     }
 
     if (changedFields.length > 0) {
-      // Notify animated states (this triggers modal animations!)
-      this.notifyAnimatedStates(changedFields);
-
-      // Recompute derives affected by changed fields
       this.recomputeDerives(changedFields);
-
-      // Update DOM
       this.updateDOM();
     }
   },
@@ -1749,55 +1649,46 @@ const LavashOptimistic = {
    * Called by Phoenix LiveView before morphdom applies patches.
    */
   beforeUpdate() {
-    // Capture pre-update rects for animated states with delegates
     if (this.animatedStates) {
-      for (const animated of Object.values(this.animatedStates)) {
-        const phase = animated.getPhase();
-        // Only capture if currently visible/entering/loading (something to animate from)
+      for (const [field, anim] of Object.entries(this.animatedStates)) {
+        const phase = this.store.get(field).getPhase();
         if (phase === "visible" || phase === "entering" || phase === "loading") {
-          if (animated.delegate?.capturePreUpdateRect) {
-            animated.delegate.capturePreUpdateRect(phase);
-          }
+          anim.delegate?.capturePreUpdateRect?.(phase);
         }
       }
     }
   },
 
   updated() {
-    // Server patch arrived - check version to decide whether to accept
     const newServerVersion = parseInt(this.el.dataset.lavashVersion || "0", 10);
     const serverState = JSON.parse(this.el.dataset.lavashState || "{}");
 
-    // Track which async fields got populated (for animated state coordination)
+    // Detect async fields that became ready (before store.serverUpdate overwrites old values)
     const asyncFieldsReady = this.detectAsyncFieldsReady(serverState);
 
-    // Detect if any modal/overlay is OPENING in this update (transitioning from closed to open)
-    // MUST happen BEFORE store.serverUpdate() which overwrites SyncedVar values
+    // Detect if any animated field is opening (for _params clearing in mergeServerState)
     let isModalOpening = false;
     if (this.animatedStates) {
-      for (const [field, animated] of Object.entries(this.animatedStates)) {
-        const oldValue = animated.syncedVar.getValue();
-        const newValue = serverState[field];
-        console.log(`[LavashOptimistic] updated() animated field "${field}": current=${JSON.stringify(oldValue)} -> server=${JSON.stringify(newValue)}, phase=${animated.getPhase()}, pending=${animated.syncedVar.isPending}`);
-        const wasOpen = oldValue != null && oldValue !== false;
-        const isOpening = !wasOpen && newValue != null && newValue !== false;
-        if (isOpening) {
-          console.log(`[LavashOptimistic] Modal/overlay ${field} is opening (${oldValue} -> ${newValue})`);
+      for (const field of Object.keys(this.animatedStates)) {
+        const sv = this.store.get(field);
+        if ((sv.getValue() == null) && (serverState[field] != null)) {
           isModalOpening = true;
         }
       }
     }
 
-    // Update SyncedVars from server state (flattened paths)
-    // serverUpdate only updates vars that are not pending
+    // Update all SyncedVars from server state.
+    // Animated vars always accept (server-authoritative). Plain vars reject when pending.
+    // The animated SyncedVar's onChange callback updates this.state automatically,
+    // and its phase machine fires from _handleValueChange.
     this.store.serverUpdate(serverState);
 
     // Track which _params fields were cleared by server (to skip re-init from DOM)
     this._clearedParamsFields = new Set();
 
-    // Also update our state object for fields without pending changes
+    // Update this.state for non-store fields (nested objects, etc.)
     const pendingPaths = new Set(this.store.getPendingPaths());
-    const changedFields = this.mergeServerState(serverState, "", pendingPaths, [], isModalOpening);
+    this.mergeServerState(serverState, "", pendingPaths, [], isModalOpening);
 
     // Update version tracking
     if (newServerVersion >= this.clientVersion) {
@@ -1807,41 +1698,21 @@ const LavashOptimistic = {
       this.serverVersion = newServerVersion;
     }
 
-    // Notify animated states of server-side value changes
-    console.log(`[LavashOptimistic] updated() changedFields:`, changedFields, `state.open:`, this.state.open);
-    if (changedFields && changedFields.length > 0) {
-      this.notifyAnimatedStatesServerUpdate(changedFields);
-
-      // NOTE: Server-side bound field propagation is now handled in Component.Runtime
-      // after action execution. Client-side propagation here is no longer needed
-      // and would cause double-updates. Keep propagateBoundFieldsToParent only
-      // for client-initiated optimistic changes in runOptimisticAction().
-    }
-
-    // Always reconcile animated states with server state, even if mergeServerState
-    // skipped them due to store pending. Animated fields have their own SyncedVars
-    // independent of the store, and server state must always win.
-    this.reconcileAnimatedStatesWithServer(serverState);
-
     // Notify animated states that async data is ready
     for (const asyncField of asyncFieldsReady) {
       this.notifyAsyncReady(asyncField);
     }
 
-    // Let animated state delegates handle post-update logic (e.g., modal FLIP animations)
+    // Let delegates handle post-update logic (e.g., modal FLIP animations)
     this.notifyAnimatedStatesDelegatesUpdated();
 
     // Initialize form params from any newly-added inputs (e.g., async modal content)
-    // This ensures prepopulated/default values are in form_params before validation
     this.initializeFormParamsFromDOM();
 
-    // Recompute derives based on current state
     this.recomputeDerives();
-
-    // Update DOM after server patch
     this.updateDOM();
 
-    // Restore all inputs with pending values (server may have overwritten them)
+    // Restore inputs with pending values (server may have overwritten them)
     const boundInputs = this.el.querySelectorAll("[data-lavash-bind]");
     boundInputs.forEach(input => {
       const fieldPath = input.dataset.lavashBind;
@@ -1853,7 +1724,6 @@ const LavashOptimistic = {
       }
     });
 
-    // Clean up cleared params tracking
     this._clearedParamsFields = null;
   },
 
@@ -1863,103 +1733,19 @@ const LavashOptimistic = {
    */
   detectAsyncFieldsReady(serverState) {
     const ready = [];
-
-    // Check each animated field's async config
     if (this.animatedStates) {
-      for (const animated of Object.values(this.animatedStates)) {
-        const asyncField = animated.config.async;
+      for (const anim of Object.values(this.animatedStates)) {
+        const asyncField = anim.config.async;
         if (asyncField) {
           const oldValue = this.state[asyncField];
           const newValue = serverState[asyncField];
-
-          // If was null/undefined and now has value, async is ready
           if ((oldValue == null) && (newValue != null)) {
             ready.push(asyncField);
           }
         }
       }
     }
-
     return ready;
-  },
-
-  /**
-   * Notify animated states of value changes from server updates.
-   */
-  notifyAnimatedStatesServerUpdate(changedFields) {
-    if (!this.animatedStates || !changedFields) return;
-
-    console.log(`[LavashOptimistic] notifyAnimatedStatesServerUpdate - changedFields:`, changedFields);
-
-    for (const field of changedFields) {
-      const animated = this.animatedStates[field];
-      if (animated) {
-        const oldValue = animated.syncedVar.getValue();
-        const newValue = this.state[field];
-
-        console.log(`[LavashOptimistic] animated field ${field}: oldValue=${oldValue}, newValue=${newValue}`);
-
-        // Only notify if value actually changed
-        if (oldValue !== newValue) {
-          console.log(`[LavashOptimistic] Notifying animated state for ${field}: ${oldValue} -> ${newValue}`);
-          try {
-            // Directly update the SyncedVar's value and confirmed state
-            // We bypass serverSet() because it rejects when isPending, but version
-            // tracking happens at the hook level, not the AnimatedState level
-            animated.syncedVar.value = newValue;
-            animated.syncedVar.confirmedValue = newValue;
-            animated.syncedVar.confirmedVersion = animated.syncedVar.version;
-            // AnimatedState.onValueChange handles the phase state machine
-            animated.onValueChange(newValue, oldValue, 'server');
-          } catch (e) {
-            console.error(`[LavashOptimistic] Error notifying animated state for ${field}:`, e);
-          }
-        }
-      }
-    }
-  },
-
-  /**
-   * Reconcile animated state SyncedVars with server state.
-   * Animated fields have their own SyncedVars independent of the store.
-   * mergeServerState may skip them if the store has pending state for the same path,
-   * so we need to directly compare and update here.
-   */
-  reconcileAnimatedStatesWithServer(serverState) {
-    if (!this.animatedStates) return;
-
-    for (const [field, animated] of Object.entries(this.animatedStates)) {
-      if (!(field in serverState)) continue;
-
-      const serverValue = serverState[field];
-      const currentValue = animated.syncedVar.getValue();
-
-      if (currentValue !== serverValue) {
-        console.log(`[LavashOptimistic] reconcileAnimatedStates: ${field} synced=${JSON.stringify(currentValue)} -> server=${JSON.stringify(serverValue)}`);
-
-        // Also update this.state to match
-        this.state[field] = serverValue;
-
-        // Also clear the store's pending state for this field
-        if (this.store.has(field)) {
-          this.store.clearPending(field);
-        }
-
-        // Directly update the animated SyncedVar, bypassing serverSet() which rejects when pending
-        animated.syncedVar.value = serverValue;
-        animated.syncedVar.confirmedValue = serverValue;
-        animated.syncedVar.confirmedVersion = animated.syncedVar.version;
-        animated.onValueChange(serverValue, currentValue, 'server');
-      } else if (animated.syncedVar.isPending) {
-        // Value matches but still pending - confirm it
-        animated.syncedVar.confirmedValue = serverValue;
-        animated.syncedVar.confirmedVersion = animated.syncedVar.version;
-        // Also clear store pending
-        if (this.store.has(field)) {
-          this.store.clearPending(field);
-        }
-      }
-    }
   },
 
   /**
@@ -2166,10 +1952,10 @@ const LavashOptimistic = {
       }
     }
 
-    // Clean up animated state managers
+    // Clean up animated SyncedVars
     if (this.animatedStates) {
-      for (const animated of Object.values(this.animatedStates)) {
-        animated.destroy();
+      for (const field of Object.keys(this.animatedStates)) {
+        this.store.get(field).destroy();
       }
       this.animatedStates = {};
     }
