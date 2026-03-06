@@ -302,7 +302,7 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
     params = action.params || []
 
     # Generate JS expressions for sets and updates
-    set_exprs = Enum.map(sets, &generate_set_js/1)
+    set_exprs = Enum.map(sets, &generate_set_js(&1, params))
     update_exprs = Enum.map(updates, &generate_update_js/1)
 
     all_exprs = set_exprs ++ update_exprs
@@ -323,7 +323,7 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
   end
 
   # Generate JS for a set operation
-  defp generate_set_js(set) do
+  defp generate_set_js(set, action_params) do
     field = set.field
     value = set.value
 
@@ -333,6 +333,14 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
 
       :from_params_value ->
         "#{field}: Number(value)"
+
+      {:rx, source} ->
+        js_expr = Lavash.Rx.Transpiler.to_js(source)
+        js_expr = case action_params do
+          [param] -> String.replace(js_expr, "state.#{param}", "value")
+          _ -> js_expr
+        end
+        "#{field}: #{js_expr}"
 
       :unknown ->
         nil
@@ -376,6 +384,10 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
     rescue
       _ -> :unknown
     end
+  end
+
+  defp analyze_value(%Lavash.Rx{source: source}) do
+    {:rx, source}
   end
 
   defp analyze_value(_), do: :unknown

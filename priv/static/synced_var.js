@@ -129,6 +129,19 @@ class ExitingPhase extends Phase {
   }
 }
 
+function deepEqual(a, b) {
+  if (a === b) return true;
+  if (a == null || b == null) return a == b;
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (!deepEqual(a[i], b[i])) return false;
+    }
+    return true;
+  }
+  return false;
+}
+
 // --- SyncedVar ---
 
 export class SyncedVar {
@@ -178,7 +191,7 @@ export class SyncedVar {
    */
   setOptimistic(newValue) {
     const oldValue = this.value;
-    if (newValue === oldValue) return false;
+    if (deepEqual(newValue, oldValue)) return false;
     this.version++;
     this.value = newValue;
     this._handleValueChange(newValue, oldValue, "optimistic");
@@ -190,7 +203,7 @@ export class SyncedVar {
    */
   set(newValue, pushFn, extraParams = {}) {
     const oldValue = this.value;
-    if (newValue === oldValue) return;
+    if (deepEqual(newValue, oldValue)) return;
     this.version++;
     const v = this.version;
     this.value = newValue;
@@ -222,7 +235,7 @@ export class SyncedVar {
 
   _serverSetPlain(newValue) {
     if (this.isPending) {
-      if (newValue === this.value) {
+      if (deepEqual(newValue, this.value)) {
         // Server confirmed our optimistic value
         this.confirmedVersion = this.version;
         this.confirmedValue = newValue;
@@ -231,7 +244,7 @@ export class SyncedVar {
       return false; // reject — client has uncommitted work
     }
     const oldValue = this.value;
-    if (newValue === oldValue) return false;
+    if (deepEqual(newValue, oldValue)) return false;
     this.value = newValue;
     this.confirmedValue = newValue;
     this._handleValueChange(newValue, oldValue, "server");
@@ -243,7 +256,7 @@ export class SyncedVar {
     // Clear pending regardless — server is authoritative
     this.confirmedVersion = this.version;
     this.confirmedValue = newValue;
-    if (newValue === oldValue) return false;
+    if (deepEqual(newValue, oldValue)) return false;
     this.value = newValue;
     this._handleValueChange(newValue, oldValue, "server");
     return true;

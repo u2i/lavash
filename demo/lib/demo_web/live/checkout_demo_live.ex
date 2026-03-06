@@ -261,7 +261,7 @@ defmodule DemoWeb.CheckoutDemoLive do
     end
 
     action :edit_address, [:id] do
-      set :address_modal, &{:edit, &1.params.id}
+      set :address_modal, rx({:edit, @id})
     end
   end
 

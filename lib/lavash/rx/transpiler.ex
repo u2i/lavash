@@ -562,6 +562,11 @@ defmodule Lavash.Rx.Transpiler do
     inspect(to_string(atom))
   end
 
+  # Two-element tuple {atom, value} → JS array ["atom", value]
+  def ast_to_js({tag, value}) when is_atom(tag) do
+    "[#{inspect(to_string(tag))}, #{ast_to_js(value)}]"
+  end
+
   # List literal
   def ast_to_js(list) when is_list(list) do
     elements = Enum.map(list, &ast_to_js/1) |> Enum.join(", ")
