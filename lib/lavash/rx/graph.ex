@@ -191,15 +191,8 @@ defmodule Lavash.Rx.Graph do
             id = id_fun.(state)
 
             case id do
-              nil ->
-                nil
-
-              id ->
-                case Ash.get(resource, id, action: action, actor: actor) do
-                  {:ok, record} -> record
-                  {:error, %Ash.Error.Query.NotFound{}} -> nil
-                  {:error, error} -> raise error
-                end
+              nil -> nil
+              id -> get_record_by_id(resource, id, action, actor)
             end
           end
         }
@@ -221,14 +214,19 @@ defmodule Lavash.Rx.Graph do
                 nil
 
               id ->
-                case Ash.get(resource, id, action: action, actor: actor) do
-                  {:ok, record} -> record
-                  {:error, %Ash.Error.Query.NotFound{}} -> nil
-                  {:error, error} -> raise error
-                end
+                get_record_by_id(resource, id, action, actor)
             end
           end
         }
+    end
+  end
+
+  # Fetch a record by ID, returning nil for not-found errors.
+  # Pass error?: false so Ash returns {:ok, nil} instead of raising.
+  defp get_record_by_id(resource, id, action, actor) do
+    case Ash.get(resource, id, action: action, actor: actor, error?: false) do
+      {:ok, record} -> record
+      {:error, _err} -> nil
     end
   end
 

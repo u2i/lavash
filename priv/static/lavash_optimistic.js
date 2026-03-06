@@ -1741,9 +1741,12 @@ const LavashOptimistic = {
       for (const anim of Object.values(this.animatedStates)) {
         const asyncField = anim.config.async;
         if (asyncField) {
-          const oldValue = this.state[asyncField];
-          const newValue = serverState[asyncField];
-          if ((oldValue == null) && (newValue != null)) {
+          // Check the form's _action field — it transitions from null/loading to create/update
+          // when async data arrives. The form itself isn't in the client state JSON.
+          const actionField = `${asyncField}_action`;
+          const oldAction = this.state[actionField];
+          const newAction = serverState[actionField];
+          if ((!oldAction || oldAction === "loading") && newAction && newAction !== "loading") {
             ready.push(asyncField);
           }
         }

@@ -77,7 +77,7 @@ defmodule Lavash.Overlay.Modal.Helpers do
       class="fixed inset-0 z-50 flex items-center justify-center pointer-events-none invisible"
       phx-mounted={JS.ignore_attributes(["class", "style"])}
       phx-target={@myself}
-      data-open-value={Jason.encode!(@open)}
+      data-open-value={inspect(@open)}
     >
       <%!-- Backdrop overlay - client controls opacity and visibility --%>
       <div

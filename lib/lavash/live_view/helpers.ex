@@ -69,9 +69,12 @@ defmodule Lavash.LiveView.Helpers do
         params_field = :"#{form.name}_params"
         server_errors_field = :"#{form.name}_server_errors"
 
+        action_field = :"#{form.name}_action"
+
         acc
         |> Map.put(params_field, Map.get(assigns, params_field, %{}))
         |> Map.put(server_errors_field, Map.get(assigns, server_errors_field, %{}))
+        |> Map.put(action_field, Map.get(assigns, action_field))
       end)
 
     # Add derives, unwrapping async values

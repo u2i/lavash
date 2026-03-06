@@ -179,7 +179,14 @@ defmodule Lavash.Action.Runtime do
   def build_params(action_params, event_params) do
     Enum.reduce(action_params || [], %{}, fn param, acc ->
       key = to_string(param)
-      Map.put(acc, param, Map.get(event_params, key))
+
+      value =
+        case Map.get(event_params, key) do
+          nil -> Map.get(event_params, "value")
+          v -> v
+        end
+
+      Map.put(acc, param, value)
     end)
   end
 end

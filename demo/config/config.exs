@@ -16,11 +16,6 @@ config :demo,
 # Configure Lavash PubSub for cross-process resource invalidation
 config :lavash, pubsub: Demo.PubSub
 
-# Write colocated hooks to assets/vendor so esbuild --watch detects changes
-# This is needed for path dependencies (like lavash) during development
-config :phoenix_live_view, :colocated_js,
-  target_directory: Path.expand("../assets/vendor/phoenix-colocated", __DIR__)
-
 # Configures the endpoint
 config :demo, DemoWeb.Endpoint,
   url: [host: "localhost"],
@@ -35,7 +30,7 @@ config :demo, DemoWeb.Endpoint,
 # Configure esbuild (the version is required)
 # NODE_PATH includes:
 # - deps/ for hex dependencies (phoenix, phoenix_live_view, etc.)
-# - assets/vendor/ for phoenix-colocated hooks
+# - _build/dev/ for phoenix-colocated hooks (default location, not watched by esbuild)
 # --alias:lavash resolves to the library's priv/static/ directory (has package.json)
 config :esbuild,
   version: "0.17.11",
@@ -48,7 +43,7 @@ config :esbuild,
         Enum.join(
           [
             Path.expand("../deps", __DIR__),
-            Path.expand("../assets/vendor", __DIR__)
+            Mix.Project.build_path()
           ],
           ":"
         )

@@ -112,7 +112,7 @@ defmodule Lavash.Overlay.Flyover.Helpers do
       class="fixed inset-0 z-50 pointer-events-none invisible"
       phx-mounted={JS.ignore_attributes(["class", "style"])}
       phx-target={@myself}
-      data-open-value={Jason.encode!(@open)}
+      data-open-value={inspect(@open)}
       data-slide-from={to_string(@slide_from)}
     >
       <%!-- Backdrop overlay - client controls opacity and visibility --%>

@@ -159,12 +159,16 @@ defmodule DemoWeb.AddressEditModal do
   end
 
   # Extract address ID from open state: {:edit, id} -> id, otherwise nil
-  defp extract_address_id({:edit, id}), do: id
-  defp extract_address_id(_), do: nil
+  def extract_address_id({:edit, id}), do: id
+  def extract_address_id(_), do: nil
+
+  # Derived field to extract the edit ID from open - gives the read a narrow dependency
+  # Without this, the read depends on __all_state__ and re-triggers on any state change
+  calculate :edit_address_id, rx(extract_address_id(@open)), optimistic: false
 
   # Load the address when editing (open = {:edit, id})
   read :address, Address do
-    id fn state -> extract_address_id(state.open) end
+    id state(:edit_address_id)
   end
 
   # Form for address entry/editing

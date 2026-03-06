@@ -18,7 +18,7 @@ defmodule Demo.Forms.Address do
   end
 
   ets do
-    private? true
+    private? false
   end
 
   attributes do
