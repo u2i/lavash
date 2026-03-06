@@ -377,6 +377,11 @@ const LavashOptimistic = {
       // Preserve input values and validation classes for form fields with data-lavash-bind
       // This runs before morphdom patches the DOM, so we can prevent value/class overwrites
       if (fromEl.hasAttribute && fromEl.hasAttribute("data-lavash-bind")) {
+        // Skip updating a focused select/input — user is actively interacting
+        if (fromEl === document.activeElement) {
+          return false;
+        }
+
         const fieldPath = fromEl.getAttribute("data-lavash-bind");
         // Find the LavashOptimistic hook that owns this input
         const hookEl = fromEl.closest("[phx-hook='LavashOptimistic']");
