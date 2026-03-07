@@ -955,7 +955,8 @@ defmodule Lavash.LiveView.Runtime do
           Map.put(acc, to_string(field.name), Lavash.Type.dump(field.type, value))
         end)
 
-      IO.puts("[Lavash] syncing socket state to client: #{inspect(socket_state)}")
+      require Logger
+      Logger.debug("[Lavash] syncing socket state to client: #{inspect(socket_state)}")
 
       socket
       |> LSocket.clear_socket_changed()

@@ -289,27 +289,27 @@ const LavashOptimistic = {
     const boundInputs = this.el.querySelectorAll("[data-lavash-bind]");
     let initialized = false;
 
-    console.log(`[initFormParams] Found ${boundInputs.length} bound inputs`);
+    console.debug(`[initFormParams] Found ${boundInputs.length} bound inputs`);
 
     boundInputs.forEach(input => {
       const fieldPath = input.dataset.lavashBind;
 
       // Skip elements inside nested child hooks - they manage their own state
       if (this.isInsideChildHook(input)) {
-        console.log(`[initFormParams] Skipping (child hook): ${fieldPath}`);
+        console.debug(`[initFormParams] Skipping (child hook): ${fieldPath}`);
         return;
       }
 
       // Skip elements inside hidden containers (e.g., closed modals)
       // Walk up the DOM tree to check for hidden ancestors
       if (this.isInsideHiddenContainer(input)) {
-        console.log(`[initFormParams] Skipping (hidden container): ${fieldPath}`);
+        console.debug(`[initFormParams] Skipping (hidden container): ${fieldPath}`);
         return;
       }
 
       // Only handle form params paths (e.g., "address_form_params.country")
       if (!fieldPath || !fieldPath.includes("_params.")) {
-        console.log(`[initFormParams] Skipping (not params): ${fieldPath}`);
+        console.debug(`[initFormParams] Skipping (not params): ${fieldPath}`);
         return;
       }
 
@@ -322,14 +322,14 @@ const LavashOptimistic = {
       // Skip if this params field was just cleared by the server
       // This prevents re-reading stale DOM values before LiveView patches them
       if (this._clearedParamsFields && this._clearedParamsFields.has(paramsField)) {
-        console.log(`[initFormParams] Skipping (params cleared by server): ${fieldPath}`);
+        console.debug(`[initFormParams] Skipping (params cleared by server): ${fieldPath}`);
         return;
       }
 
       // Get current input value
       const currentValue = input.value;
 
-      console.log(`[initFormParams] ${fieldPath}: value="${currentValue}", existing=${this.state[paramsField]?.[field]}`);
+      console.debug(`[initFormParams] ${fieldPath}: value="${currentValue}", existing=${this.state[paramsField]?.[field]}`);
 
       // Only set if input has a non-empty value and state doesn't have it yet
       if (currentValue != null && currentValue !== "") {
@@ -337,14 +337,14 @@ const LavashOptimistic = {
         if (this.state[paramsField][field] === undefined) {
           this.state[paramsField][field] = currentValue;
           initialized = true;
-          console.log(`[initFormParams] Initialized ${paramsField}.${field} = "${currentValue}"`);
+          console.debug(`[initFormParams] Initialized ${paramsField}.${field} = "${currentValue}"`);
         }
       }
     });
 
     // If we initialized any params, recompute derives so validation reflects correct state
     if (initialized) {
-      console.log(`[initFormParams] Recomputing derives...`);
+      console.debug(`[initFormParams] Recomputing derives...`);
       this.recomputeDerives();
     }
   },
@@ -422,7 +422,7 @@ const LavashOptimistic = {
           } else {
             toEl.classList.add('opacity-60', 'cursor-not-allowed');
           }
-          console.log(`[LavashOptimistic] onBeforeElUpdated: Applied client state for data-lavash-enabled="${fieldName}" (enabled=${enabled})`);
+          console.debug(`[LavashOptimistic] onBeforeElUpdated: Applied client state for data-lavash-enabled="${fieldName}" (enabled=${enabled})`);
         }
 
         const visibleField = fromEl.getAttribute('data-lavash-visible');
@@ -433,13 +433,13 @@ const LavashOptimistic = {
           } else {
             toEl.classList.add('hidden');
           }
-          console.log(`[LavashOptimistic] onBeforeElUpdated: Applied client state for data-lavash-visible="${visibleField}" (visible=${visible})`);
+          console.debug(`[LavashOptimistic] onBeforeElUpdated: Applied client state for data-lavash-visible="${visibleField}" (visible=${visible})`);
         }
 
         const displayField = fromEl.getAttribute('data-lavash-display');
         if (displayField && hook.hasPendingSources(displayField)) {
           toEl.textContent = hook.state[displayField] ?? '';
-          console.log(`[LavashOptimistic] onBeforeElUpdated: Applied client state for data-lavash-display="${displayField}"`);
+          console.debug(`[LavashOptimistic] onBeforeElUpdated: Applied client state for data-lavash-display="${displayField}"`);
         }
 
         const errorsField = fromEl.getAttribute('data-lavash-errors');
@@ -448,7 +448,7 @@ const LavashOptimistic = {
           // (errors have complex innerHTML with show_errors logic)
           toEl.innerHTML = fromEl.innerHTML;
           toEl.className = fromEl.className;
-          console.log(`[LavashOptimistic] onBeforeElUpdated: Preserved DOM for data-lavash-errors="${errorsField}" (stale)`);
+          console.debug(`[LavashOptimistic] onBeforeElUpdated: Preserved DOM for data-lavash-errors="${errorsField}" (stale)`);
         }
       }
 
@@ -615,7 +615,7 @@ const LavashOptimistic = {
     // (Chrome fires blur events during arrow key navigation in open dropdowns)
     if (target.tagName === "SELECT") {
       const wasModified = this.store.isPending(fieldPath);
-      console.log(`[handleBlur] SELECT ${fieldPath}: wasModified=${wasModified}`);
+      console.debug(`[handleBlur] SELECT ${fieldPath}: wasModified=${wasModified}`);
       if (wasModified) {
         this.fieldState[fieldPath].touched = true;
       }
@@ -753,7 +753,7 @@ const LavashOptimistic = {
     const { field, value } = e.detail;
     if (!field) return;
 
-    console.log("[LavashOptimistic] handleLavashSet", field, "=", value);
+    console.debug("[LavashOptimistic] handleLavashSet", field, "=", value);
 
     // Check if this field has an animated state (modal/flyover)
     if (this.animatedStates?.[field]) {
@@ -797,7 +797,7 @@ const LavashOptimistic = {
 
     // We don't own this field - let the event continue propagating
     // (another hook up the tree may own it)
-    console.log("[LavashOptimistic] Field", field, "not owned by this hook, letting event propagate");
+    console.debug("[LavashOptimistic] Field", field, "not owned by this hook, letting event propagate");
   },
 
   /**
@@ -870,7 +870,7 @@ const LavashOptimistic = {
 
     // Log changes to show_errors state for debugging flickering
     if (oldValue !== showErrors) {
-      console.log(`[LavashOptimistic] ${showErrorsKey} changed: ${oldValue} → ${showErrors} (touched=${touched}, submitted=${formSubmitted})`);
+      console.debug(`[LavashOptimistic] ${showErrorsKey} changed: ${oldValue} → ${showErrors} (touched=${touched}, submitted=${formSubmitted})`);
     }
   },
 
@@ -1159,10 +1159,10 @@ const LavashOptimistic = {
 
           // Log error field and validity changes for debugging
           if (name.endsWith("_errors") && JSON.stringify(oldValue) !== JSON.stringify(result)) {
-            console.log(`[LavashOptimistic] Derive ${name} changed: ${JSON.stringify(oldValue)} → ${JSON.stringify(result)}`);
+            console.debug(`[LavashOptimistic] Derive ${name} changed: ${JSON.stringify(oldValue)} → ${JSON.stringify(result)}`);
           }
           if (name.endsWith("_valid") && oldValue !== result) {
-            console.log(`[LavashOptimistic] Derive ${name} changed: ${oldValue} → ${result}`);
+            console.debug(`[LavashOptimistic] Derive ${name} changed: ${oldValue} → ${result}`);
           }
         } catch (err) {
           // Log error in development for debugging
@@ -1269,7 +1269,7 @@ const LavashOptimistic = {
   },
 
   updateDOM() {
-    console.log(`[LavashOptimistic] updateDOM() called`);
+    console.debug(`[LavashOptimistic] updateDOM() called`);
 
     // Update all elements with data-lavash-display attribute (text content)
     const displayElements = this.el.querySelectorAll("[data-lavash-display]");
@@ -1315,7 +1315,7 @@ const LavashOptimistic = {
 
       // Log state changes for debugging
       if (wasDisabled !== el.disabled) {
-        console.log(`[LavashOptimistic] Button ${fieldName} enabled state changed: disabled=${wasDisabled} → ${el.disabled} (value=${value})`);
+        console.debug(`[LavashOptimistic] Button ${fieldName} enabled state changed: disabled=${wasDisabled} → ${el.disabled} (value=${value})`);
       }
 
       // Update classes for visual feedback
@@ -1418,7 +1418,7 @@ const LavashOptimistic = {
 
       // Log visibility changes for debugging flickering
       if (wasVisible !== willBeVisible) {
-        console.log(`[LavashOptimistic] DOM error visibility changed for ${errorsField}: ${wasVisible} → ${willBeVisible} (showErrors=${showErrors}, errors=${JSON.stringify(allErrors)})`);
+        console.debug(`[LavashOptimistic] DOM error visibility changed for ${errorsField}: ${wasVisible} → ${willBeVisible} (showErrors=${showErrors}, errors=${JSON.stringify(allErrors)})`);
       }
     });
 
@@ -1791,7 +1791,7 @@ const LavashOptimistic = {
         const formName = prefix.replace(/_server_errors$/, "");
         const paramPath = `${formName}_params.${key}`;
         if (pendingPaths.has(paramPath)) {
-          console.log(`[LavashOptimistic] Skipping server error update for ${path} - corresponding param ${paramPath} is pending`);
+          console.debug(`[LavashOptimistic] Skipping server error update for ${path} - corresponding param ${paramPath} is pending`);
           hasPendingChild = true; // Treat as pending to skip this server error update
         }
       }
@@ -1806,7 +1806,7 @@ const LavashOptimistic = {
             const formName = key.replace(/_params$/, "");
 
             if (hasPendingChild && isModalOpening) {
-              console.log(`[LavashOptimistic] Modal opening: clearing pending paths for ${key}`);
+              console.debug(`[LavashOptimistic] Modal opening: clearing pending paths for ${key}`);
               for (const pendingPath of [...pendingPaths]) {
                 if (pendingPath.startsWith(path + ".")) {
                   this.store.clearPending(pendingPath);
@@ -1838,7 +1838,7 @@ const LavashOptimistic = {
             // Check if any params for this form are pending
             const hasFormParamsPending = [...pendingPaths].some(p => p.startsWith(paramsField + "."));
             if (hasFormParamsPending) {
-              console.log(`[LavashOptimistic] Skipping clear of ${key} - form has pending params`);
+              console.debug(`[LavashOptimistic] Skipping clear of ${key} - form has pending params`);
               shouldSkipClear = true;
             }
           }
@@ -1846,7 +1846,7 @@ const LavashOptimistic = {
           if (!shouldSkipClear && !hasPendingChild) {
             const oldValue = this.getStateAtPath(path);
             if (oldValue !== undefined && oldValue !== null && typeof oldValue === "object" && Object.keys(oldValue).length > 0) {
-              console.log(`[LavashOptimistic] Clearing ${path}: empty object from server, no pending paths`);
+              console.debug(`[LavashOptimistic] Clearing ${path}: empty object from server, no pending paths`);
               this.setStateAtPath(path, {});
               if (changedFields && !changedFields.includes(topLevelField)) {
                 changedFields.push(topLevelField);
@@ -1865,7 +1865,7 @@ const LavashOptimistic = {
                 const inputs = this.el.querySelectorAll(inputSelector);
                 inputs.forEach(input => {
                   if (input.value !== "") {
-                    console.log(`[LavashOptimistic] Clearing DOM input value for ${input.dataset.lavashBind}`);
+                    console.debug(`[LavashOptimistic] Clearing DOM input value for ${input.dataset.lavashBind}`);
                     input.value = "";
                   }
                 });

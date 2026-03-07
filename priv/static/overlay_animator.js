@@ -122,12 +122,12 @@ export class OverlayAnimator {
     // Check if this is a reopen (interrupting close animation)
     const isReopen =
       !!this._ghostOverlay || !this.el.classList.contains("invisible");
-    console.log(
+    console.debug(
       `[OverlayAnimator:${this.type}] onEntering: isReopen=${isReopen}`
     );
 
     if (isReopen) {
-      console.log(`[OverlayAnimator:${this.type}] onEntering: REOPEN - cleaning up previous state`);
+      console.debug(`[OverlayAnimator:${this.type}] onEntering: REOPEN - cleaning up previous state`);
       // Clean up any ghost elements INSTANTLY (no fade) to avoid duplicates
       this._cleanupCloseAnimation(true);
       // Reset internal state but don't touch wrapper visibility
@@ -137,7 +137,7 @@ export class OverlayAnimator {
       this._preUpdateContentClone = null;
       // Clean up transition handler
       if (this.panelContent && this._transitionHandler) {
-        console.log(`[OverlayAnimator:${this.type}] onEntering: removing _transitionHandler`);
+        console.debug(`[OverlayAnimator:${this.type}] onEntering: removing _transitionHandler`);
         this.panelContent.removeEventListener(
           "transitionend",
           this._transitionHandler
@@ -146,7 +146,7 @@ export class OverlayAnimator {
       }
       // Clear visibility:hidden that onExiting sets during ghost animation
       if (this.panelContent) {
-        console.log(`[OverlayAnimator:${this.type}] onEntering: clearing panel styles (visibility, width, height, overflow)`);
+        console.debug(`[OverlayAnimator:${this.type}] onEntering: clearing panel styles (visibility, width, height, overflow)`);
         this.panelContent.style.visibility = "";
         // Clear any styles that might have been set during _transitionToContent
         // that weren't cleaned up (e.g., if animation was interrupted)
@@ -202,10 +202,10 @@ export class OverlayAnimator {
         ? parseFloat(getComputedStyle(this.panelContent).opacity)
         : 1;
       const alreadyVisible = currentOpacity > 0.5;
-      console.log(
+      console.debug(
         `[OverlayAnimator:${this.type}] onEntering: alreadyVisible=${alreadyVisible}, opacity=${currentOpacity}`
       );
-      console.log(
+      console.debug(
         `[OverlayAnimator:${this.type}] onEntering: wrapper.class="${this.el.className}"`
       );
 
@@ -270,14 +270,14 @@ export class OverlayAnimator {
    * Called when entering the "loading" phase.
    */
   onLoading(_syncedVar) {
-    console.log(`[OverlayAnimator:${this.type}] onLoading`);
+    console.debug(`[OverlayAnimator:${this.type}] onLoading`);
   }
 
   /**
    * Called when entering the "visible" phase.
    */
   onVisible(_syncedVar) {
-    console.log(`[OverlayAnimator:${this.type}] onVisible`);
+    console.debug(`[OverlayAnimator:${this.type}] onVisible`);
     this.js.removeClass(this.el, "invisible");
   }
 
@@ -285,7 +285,7 @@ export class OverlayAnimator {
    * Called when entering the "exiting" phase.
    */
   onExiting(_syncedVar) {
-    console.log(`[OverlayAnimator:${this.type}] onExiting`);
+    console.debug(`[OverlayAnimator:${this.type}] onExiting`);
 
     // Disable pointer events immediately
     this.js.addClass(this.el, "pointer-events-none");
@@ -315,7 +315,7 @@ export class OverlayAnimator {
    * Called when async data arrives.
    */
   onAsyncReady(_syncedVar) {
-    console.log(`[OverlayAnimator:${this.type}] onAsyncReady`);
+    console.debug(`[OverlayAnimator:${this.type}] onAsyncReady`);
   }
 
   /**
@@ -332,7 +332,7 @@ export class OverlayAnimator {
     const loadingVisible =
       loadingContent && !loadingContent.classList.contains("hidden");
 
-    console.log(
+    console.debug(
       `[OverlayAnimator:${this.type}] onUpdated: phase=${currentPhase}, mainContentLoaded=${mainContentLoaded}, mainContentHidden=${mainContentHidden}, loadingVisible=${loadingVisible}`
     );
 
@@ -364,7 +364,7 @@ export class OverlayAnimator {
    * Called when content arrives while enter animation is still running.
    */
   onContentReadyDuringEnter(syncedVar) {
-    console.log(`[OverlayAnimator:${this.type}] onContentReadyDuringEnter`);
+    console.debug(`[OverlayAnimator:${this.type}] onContentReadyDuringEnter`);
     this._transitionToContent(syncedVar);
   }
 
@@ -377,7 +377,7 @@ export class OverlayAnimator {
     const loadingContent = this.getLoadingContent();
 
     if (!this.panelContent || !mainInnerEl) {
-      console.log(
+      console.debug(
         `[OverlayAnimator:${this.type}] _transitionToContent: missing elements`
       );
       return;
@@ -399,13 +399,13 @@ export class OverlayAnimator {
     const currentWidth = parseFloat(computedStyle.width);
     const currentHeight = parseFloat(computedStyle.height);
 
-    console.log(
+    console.debug(
       `[OverlayAnimator:${this.type}] _transitionToContent: transform=${currentTransform}, opacity=${currentOpacity}`
     );
-    console.log(
+    console.debug(
       `[OverlayAnimator:${this.type}] _transitionToContent: wrapper.class="${this.el.className}", panel.class="${this.panelContent.className}"`
     );
-    console.log(
+    console.debug(
       `[OverlayAnimator:${this.type}] _transitionToContent: mainContent.class="${mainContent?.className}", mainContent.hidden=${mainContent?.classList.contains('hidden')}`
     );
 
@@ -567,7 +567,7 @@ export class OverlayAnimator {
 
     // Skip if element has zero dimensions (hidden, not laid out, or stale response)
     if (rect.width === 0 || rect.height === 0) {
-      console.log(
+      console.debug(
         `[OverlayAnimator:${this.type}] createGhostBeforePatch: skipping - element has zero dimensions`
       );
       return;
@@ -674,7 +674,7 @@ export class OverlayAnimator {
 
     // Skip if panel has zero dimensions (edge case - shouldn't happen normally)
     if (rect.width === 0 || rect.height === 0) {
-      console.log(
+      console.debug(
         `[OverlayAnimator:${this.type}] _setupGhostElementAnimation: skipping - panel has zero dimensions`
       );
       return;
@@ -760,7 +760,7 @@ export class OverlayAnimator {
   }
 
   _cleanupCloseAnimation(instant = true) {
-    console.log(
+    console.debug(
       `[OverlayAnimator:${this.type}] _cleanupCloseAnimation: instant=${instant}, ` +
       `ghostElement=${!!this.ghostElement}, _preUpdateContentClone=${!!this._preUpdateContentClone}, ` +
       `_ghostOverlay=${!!this._ghostOverlay}`
@@ -768,10 +768,10 @@ export class OverlayAnimator {
 
     const cleanup = (el, name) => {
       if (!el?.parentNode) {
-        console.log(`[OverlayAnimator:${this.type}] _cleanupCloseAnimation: ${name} not in DOM`);
+        console.debug(`[OverlayAnimator:${this.type}] _cleanupCloseAnimation: ${name} not in DOM`);
         return;
       }
-      console.log(`[OverlayAnimator:${this.type}] _cleanupCloseAnimation: removing ${name}`);
+      console.debug(`[OverlayAnimator:${this.type}] _cleanupCloseAnimation: removing ${name}`);
       if (instant) {
         el.remove();
       } else {
@@ -796,7 +796,7 @@ export class OverlayAnimator {
   // --- DOM Reset ---
 
   _resetDOM() {
-    console.log(`[OverlayAnimator:${this.type}] _resetDOM`);
+    console.debug(`[OverlayAnimator:${this.type}] _resetDOM`);
 
     this._sizeLockApplied = false;
     this._loadingFadedOut = false;
