@@ -395,6 +395,15 @@ const LavashOptimistic = {
           }
         }
 
+        // For inputs inside child LiveComponents, the parent hook may not
+        // track the SyncedVar. Preserve the DOM value over the server value
+        // when the user has modified the input (value differs from server).
+        if (fromEl.value !== toEl.value) {
+          const isInsideChildComponent = fromEl.closest("[data-phx-component]") !== null;
+          if (isInsideChildComponent) {
+            toEl.value = fromEl.value;
+          }
+        }
       }
 
       // Apply client state to elements when server data is stale (dependencies have pending changes)

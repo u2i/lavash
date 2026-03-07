@@ -177,14 +177,12 @@ defmodule DemoWeb.CheckoutDemoLive do
     Enum.find(addresses, List.first(addresses), &(&1.id == id))
   end
 
-  calculate :has_addresses, rx(length(@addresses) > 0), optimistic: false
-
   calculate :address_line1,
     rx(
       if @selected_address do
         "#{@selected_address.first_name} #{@selected_address.last_name}, #{@selected_address.address}"
       else
-        "Thomas Clarke, 78 Example Street"
+        nil
       end
     ),
     optimistic: false
@@ -194,7 +192,7 @@ defmodule DemoWeb.CheckoutDemoLive do
       if @selected_address do
         "#{@selected_address.city}, #{@selected_address.state} #{@selected_address.zip}, US"
       else
-        "Red Hook, NY 12571, US"
+        nil
       end
     ),
     optimistic: false
@@ -346,19 +344,6 @@ defmodule DemoWeb.CheckoutDemoLive do
                   data-lavash-visible="ship_to_expanded"
                   class={"space-y-2" <> unless @ship_to_expanded, do: " hidden", else: ""}
                 >
-                  <!-- Default address (shown when no saved addresses) -->
-                  <%= unless @has_addresses do %>
-                    <div class="flex items-start justify-between rounded-lg border border-primary ring-1 ring-primary bg-base-200/40 p-4">
-                      <div class="flex items-center gap-3">
-                        <input type="radio" name="address" class="radio radio-primary radio-sm" checked />
-                        <div>
-                          <div class="font-semibold">Thomas Clarke, 78 Example Street</div>
-                          <div class="text-sm opacity-70">Red Hook, NY 12571, US</div>
-                        </div>
-                      </div>
-                    </div>
-                  <% end %>
-
                   <!-- Saved addresses -->
                   <%= for address <- @addresses do %>
                     <div
