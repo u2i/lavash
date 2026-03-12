@@ -9,36 +9,31 @@ defmodule Lavash.State do
   def hydrate_url(socket, module, params) do
     url_fields = module.__lavash__(:url_fields)
 
-    state =
-      Enum.reduce(url_fields, LSocket.state(socket), fn field, state ->
-        value = parse_url_field(field, params)
-        Map.put(state, field.name, value)
-      end)
-
-    LSocket.put(socket, :state, state)
+    Enum.reduce(url_fields, socket, fn field, sock ->
+      value = parse_url_field(field, params)
+      LSocket.put_state(sock, field.name, value)
+    end)
   end
 
   def hydrate_ephemeral(socket, module) do
     ephemeral_fields = module.__lavash__(:ephemeral_fields)
+    current_state = LSocket.state(socket)
 
-    state =
-      Enum.reduce(ephemeral_fields, LSocket.state(socket), fn field, state ->
-        # Only set if not already present (preserve across reconnects if needed)
-        if Map.has_key?(state, field.name) do
-          state
-        else
-          # Support function/0 defaults for runtime-generated values
-          value =
-            case field.default do
-              fun when is_function(fun, 0) -> fun.()
-              other -> other
-            end
+    Enum.reduce(ephemeral_fields, socket, fn field, sock ->
+      # Only set if not already present (preserve across reconnects if needed)
+      if Map.has_key?(current_state, field.name) do
+        sock
+      else
+        # Support function/0 defaults for runtime-generated values
+        value =
+          case field.default do
+            fun when is_function(fun, 0) -> fun.()
+            other -> other
+          end
 
-          Map.put(state, field.name, value)
-        end
-      end)
-
-    LSocket.put(socket, :state, state)
+        LSocket.put_state(sock, field.name, value)
+      end
+    end)
   end
 
   @doc """
@@ -46,20 +41,20 @@ defmodule Lavash.State do
   """
   def hydrate_forms(socket, module) do
     forms = module.__lavash__(:forms)
+    current_state = LSocket.state(socket)
 
-    state =
-      Enum.reduce(forms, LSocket.state(socket), fn form, state ->
-        # Create the params field (e.g., :form_params for form :form)
-        params_field = :"#{form.name}_params"
-        # Create the server_errors field (e.g., :form_server_errors for form :form)
-        server_errors_field = :"#{form.name}_server_errors"
+    Enum.reduce(forms, socket, fn form, sock ->
+      params_field = :"#{form.name}_params"
+      server_errors_field = :"#{form.name}_server_errors"
 
-        state
-        |> then(fn s -> if Map.has_key?(s, params_field), do: s, else: Map.put(s, params_field, %{}) end)
-        |> then(fn s -> if Map.has_key?(s, server_errors_field), do: s, else: Map.put(s, server_errors_field, %{}) end)
+      sock
+      |> then(fn s ->
+        if Map.has_key?(current_state, params_field), do: s, else: LSocket.put_state(s, params_field, %{})
       end)
-
-    LSocket.put(socket, :state, state)
+      |> then(fn s ->
+        if Map.has_key?(current_state, server_errors_field), do: s, else: LSocket.put_state(s, server_errors_field, %{})
+      end)
+    end)
   end
 
   @doc """
@@ -70,28 +65,20 @@ defmodule Lavash.State do
     socket_fields = module.__lavash__(:socket_fields)
     client_state = get_in(connect_params, ["_lavash_state"]) || %{}
 
-    state =
-      Enum.reduce(socket_fields, LSocket.state(socket), fn field, state ->
-        # Try to get from client state, fall back to default
-        key = to_string(field.name)
-        raw_value = Map.get(client_state, key)
+    Enum.reduce(socket_fields, socket, fn field, sock ->
+      key = to_string(field.name)
+      raw_value = Map.get(client_state, key)
 
-        value =
-          cond do
-            # No key in client state - use default
-            not Map.has_key?(client_state, key) -> field.default
-            # Nil value - use default
-            is_nil(raw_value) -> field.default
-            # Empty string for non-string types - use default
-            raw_value == "" and field.type != :string -> field.default
-            # Decode the value
-            true -> decode_type(raw_value, field.type)
-          end
+      value =
+        cond do
+          not Map.has_key?(client_state, key) -> field.default
+          is_nil(raw_value) -> field.default
+          raw_value == "" and field.type != :string -> field.default
+          true -> decode_type(raw_value, field.type)
+        end
 
-        Map.put(state, field.name, value)
-      end)
-
-    LSocket.put(socket, :state, state)
+      LSocket.put_state(sock, field.name, value)
+    end)
   end
 
   defp parse_url_field(field, params) do

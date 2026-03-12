@@ -1,55 +1,30 @@
 defmodule Lavash.Assigns do
   @moduledoc """
-  Projects state and derived values into socket assigns.
+  Projects metadata into socket assigns.
 
-  All declared fields (state, derived, forms) are automatically
-  projected as assigns - no explicit assigns section needed.
+  State and derived values are written eagerly to assigns by
+  `Lavash.Socket.put_state/3` and `Lavash.Socket.put_derived/3`.
+  This module handles only form metadata projection and
+  component state propagation.
   """
 
   alias Lavash.Socket, as: LSocket
 
   def project(socket, module) do
-    state = LSocket.state(socket)
-    derived = LSocket.derived(socket)
-
     # Store component states in process dictionary for child lavash_component calls
     component_states = LSocket.get(socket, :component_states) || %{}
     Lavash.LiveView.Helpers.put_component_states(component_states)
 
-    # Collect all field names - different for LiveViews vs Components
-    all_fields = collect_field_names(module)
-
-    # Project each field as an assign
-    socket =
-      Enum.reduce(all_fields, socket, fn field_name, sock ->
-        raw_value =
-          cond do
-            Map.has_key?(state, field_name) -> Map.get(state, field_name)
-            Map.has_key?(derived, field_name) -> Map.get(derived, field_name)
-            true -> nil
-          end
-
-        value = unwrap_for_assign(raw_value)
-        Phoenix.Component.assign(sock, field_name, value)
-      end)
-
     # Project parent's optimistic version for child components to inherit
     socket = Phoenix.Component.assign(socket, :__lavash_parent_version__, LSocket.optimistic_version(socket))
 
-    # Project client bindings for nested component binding resolution
-    # This allows child components to resolve their bindings through parent's bindings
-    socket =
-      case socket.assigns[:__lavash_client_bindings__] do
-        nil -> socket
-        bindings -> Phoenix.Component.assign(socket, :__lavash_client_bindings__, bindings)
-      end
-
     # Project form metadata (action_type) for each form
-    project_form_metadata(socket, module, derived)
+    project_form_metadata(socket, module)
   end
 
   # For each form, project :form_action assign with the action type
-  defp project_form_metadata(socket, module, derived) do
+  defp project_form_metadata(socket, module) do
+    derived = LSocket.derived(socket)
     forms = safe_get(module, :forms)
 
     Enum.reduce(forms, socket, fn form_entity, sock ->
@@ -70,38 +45,6 @@ defmodule Lavash.Assigns do
     end)
   end
 
-  # Collect field names based on module type (LiveView vs Component)
-  defp collect_field_names(module) do
-    # Common fields for both LiveViews and Components
-    ephemeral_fields = safe_get(module, :ephemeral_fields) |> Enum.map(& &1.name)
-    socket_fields = safe_get(module, :socket_fields) |> Enum.map(& &1.name)
-    derived_fields = safe_get(module, :derived_fields) |> Enum.map(& &1.name)
-
-    # Calculation fields (from calculate macro)
-    calculation_fields = safe_get_calculations(module)
-
-    # LiveView-specific fields
-    url_fields = safe_get(module, :url_fields) |> Enum.map(& &1.name)
-    read_fields = safe_get(module, :reads) |> Enum.map(& &1.name)
-    form_fields = safe_get(module, :forms) |> Enum.map(& &1.name)
-
-    # Form validation fields (auto-generated from Ash resource constraints)
-    form_validation_fields = collect_form_validation_field_names(module)
-
-    # Form server_errors fields (auto-generated for server-side validation results)
-    form_server_errors_fields =
-      safe_get(module, :forms) |> Enum.map(fn form -> :"#{form.name}_server_errors" end)
-
-    # Component-specific fields
-    prop_fields = safe_get(module, :props) |> Enum.map(& &1.name)
-
-    url_fields ++
-      ephemeral_fields ++
-      socket_fields ++
-      derived_fields ++ calculation_fields ++ read_fields ++ form_fields ++
-      form_validation_fields ++ form_server_errors_fields ++ prop_fields
-  end
-
   # Safely get entities, returning empty list if not defined
   defp safe_get(module, key) do
     try do
@@ -110,65 +53,4 @@ defmodule Lavash.Assigns do
       _ -> []
     end
   end
-
-  # Collect auto-generated form validation field names from Ash resource constraints
-  # These include: form_field_valid, form_field_errors, form_valid, form_errors
-  defp collect_form_validation_field_names(module) do
-    forms = safe_get(module, :forms)
-
-    Enum.flat_map(forms, fn form ->
-      resource = form.resource
-      form_name = form.name
-
-      if Code.ensure_loaded?(resource) and function_exported?(resource, :spark_dsl_config, 0) do
-        validations = Lavash.Form.ConstraintTranspiler.extract_validations(resource)
-        field_names = Enum.map(validations, & &1.field)
-
-        # Generate field-specific validation names
-        field_valid_names = Enum.map(field_names, &:"#{form_name}_#{&1}_valid")
-        field_errors_names = Enum.map(field_names, &:"#{form_name}_#{&1}_errors")
-
-        # Generate combined form-level names
-        form_level_names =
-          if length(validations) > 0 do
-            [:"#{form_name}_valid", :"#{form_name}_errors"]
-          else
-            []
-          end
-
-        field_valid_names ++ field_errors_names ++ form_level_names
-      else
-        []
-      end
-    end)
-  end
-
-  # Get calculation field names from __lavash_calculations__
-  # Handles both 4-tuple and 7-tuple formats
-  defp safe_get_calculations(module) do
-    if function_exported?(module, :__lavash_calculations__, 0) do
-      module.__lavash_calculations__()
-      |> Enum.map(fn
-        {name, _source, _ast, _deps} -> name
-        {name, _source, _ast, _deps, _opt, _async, _reads} -> name
-      end)
-    else
-      []
-    end
-  end
-
-  # Unwrap values for template rendering:
-  # - Lavash.Form -> Phoenix.HTML.Form for form helpers
-  # - AsyncResult with Lavash.Form inside -> AsyncResult with Phoenix.HTML.Form (keep wrapper!)
-  # - All other values passed through as-is (including AsyncResult structs)
-  defp unwrap_for_assign(%Lavash.Form{form: form}), do: form
-
-  defp unwrap_for_assign(
-         %Phoenix.LiveView.AsyncResult{ok?: true, result: %Lavash.Form{form: form}} = async
-       ) do
-    # Keep the AsyncResult wrapper so <.async_result> can work with it
-    %{async | result: form}
-  end
-
-  defp unwrap_for_assign(other), do: other
 end

@@ -429,28 +429,22 @@ defmodule Lavash.Component.Runtime do
 
   defp hydrate_socket_state(socket, module, assigns) do
     socket_fields = module.__lavash__(:socket_fields)
-
-    # Get initial state from parent via __lavash_initial_state__ prop
-    # This is populated by the parent LiveView from connect_params
     client_state = Map.get(assigns, :__lavash_initial_state__, %{})
 
-    state =
-      Enum.reduce(socket_fields, LSocket.state(socket), fn field, state ->
-        key = to_string(field.name)
-        raw_value = Map.get(client_state, key)
+    Enum.reduce(socket_fields, socket, fn field, sock ->
+      key = to_string(field.name)
+      raw_value = Map.get(client_state, key)
 
-        value =
-          cond do
-            not Map.has_key?(client_state, key) -> field.default
-            is_nil(raw_value) -> field.default
-            raw_value == "" and field.type != :string -> field.default
-            true -> decode_type(raw_value, field.type)
-          end
+      value =
+        cond do
+          not Map.has_key?(client_state, key) -> field.default
+          is_nil(raw_value) -> field.default
+          raw_value == "" and field.type != :string -> field.default
+          true -> decode_type(raw_value, field.type)
+        end
 
-        Map.put(state, field.name, value)
-      end)
-
-    LSocket.put(socket, :state, state)
+      LSocket.put_state(sock, field.name, value)
+    end)
   end
 
   defp preserve_livecomponent_assigns(socket, module, assigns) do
@@ -471,17 +465,15 @@ defmodule Lavash.Component.Runtime do
 
   defp hydrate_ephemeral(socket, module) do
     ephemeral_fields = module.__lavash__(:ephemeral_fields)
+    current_state = LSocket.state(socket)
 
-    state =
-      Enum.reduce(ephemeral_fields, LSocket.state(socket), fn field, state ->
-        if Map.has_key?(state, field.name) do
-          state
-        else
-          Map.put(state, field.name, field.default)
-        end
-      end)
-
-    LSocket.put(socket, :state, state)
+    Enum.reduce(ephemeral_fields, socket, fn field, sock ->
+      if Map.has_key?(current_state, field.name) do
+        sock
+      else
+        LSocket.put_state(sock, field.name, field.default)
+      end
+    end)
   end
 
   defp store_props(socket, module, assigns) do
@@ -524,28 +516,24 @@ defmodule Lavash.Component.Runtime do
     # For props that are also state fields (bound props), only update state
     # when the prop changed from parent - otherwise preserve state value
     # so child's local modifications aren't overwritten
-    state = LSocket.state(socket)
+    current_state = LSocket.state(socket)
 
-    state =
-      Enum.reduce(prop_values, state, fn {name, new_value}, acc ->
-        old_value = Map.get(old_props, name)
+    Enum.reduce(prop_values, socket, fn {name, new_value}, sock ->
+      old_value = Map.get(old_props, name)
 
-        # If prop changed from parent, always update state
-        if old_value != new_value do
-          Map.put(acc, name, new_value)
+      if old_value != new_value do
+        # Prop changed from parent, always update state
+        LSocket.put_state(sock, name, new_value)
+      else
+        # Prop didn't change - keep existing state value if present
+        if Map.has_key?(current_state, name) do
+          sock
         else
-          # Prop didn't change - keep existing state value if present
-          # This preserves child's local modifications (e.g., on_saved setting open: nil)
-          if Map.has_key?(acc, name) do
-            acc
-          else
-            # State doesn't have this field yet, initialize from prop
-            Map.put(acc, name, new_value)
-          end
+          # State doesn't have this field yet, initialize from prop
+          LSocket.put_state(sock, name, new_value)
         end
-      end)
-
-    LSocket.put(socket, :state, state)
+      end
+    end)
   end
 
   defp apply_form_bindings(socket, module, params) do
