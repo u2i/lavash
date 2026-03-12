@@ -100,23 +100,10 @@ defmodule Lavash.Component.Helpers do
   end
 
   defp get_optimistic_derives(module) do
-    # Get derives from module introspection
-    derives = module.__lavash__(:derived_fields)
-    calculations = module.__lavash__(:calculations)
+    # Read from persisted field specs (set by ExpandFields transformer)
+    specs = Spark.Dsl.Extension.get_persisted(module, :lavash_field_specs) || []
 
-    # Filter to only optimistic derives
-    optimistic_derives =
-      Enum.filter(derives, fn derive ->
-        Map.get(derive, :optimistic, false)
-      end)
-
-    # Calculations are optimistic by default
-    optimistic_calculations =
-      Enum.filter(calculations, fn calc ->
-        Map.get(calc, :optimistic, true)
-      end)
-
-    optimistic_derives ++ optimistic_calculations
+    Enum.filter(specs, &Map.get(&1, :optimistic, false))
   end
 
   @doc """

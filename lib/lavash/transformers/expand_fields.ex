@@ -1,7 +1,7 @@
 defmodule Lavash.Transformers.ExpandFields do
   @moduledoc """
-  Spark transformer that expands `read`, `form`, and `calculate` DSL entities
-  into field specs at compile time.
+  Spark transformer that expands all DSL entities (reads, forms, calculations,
+  explicit derives, multi_selects, toggles) into field specs at compile time.
 
   The transformer persists pure-data specs (no closures) via
   `Transformer.persist/3`. At runtime, `build_fields/1` converts these specs
@@ -23,17 +23,127 @@ defmodule Lavash.Transformers.ExpandFields do
   # Compile-time: extract specs and persist
   # ============================================================
 
+  @default_chip_class [
+    base: "px-3 py-1.5 text-sm rounded-full border transition-colors cursor-pointer",
+    active: "bg-primary text-primary-content border-primary",
+    inactive: "bg-base-100 text-base-content/70 border-base-300 hover:border-primary/50"
+  ]
+
   def transform(dsl_state) do
     module = Transformer.get_persisted(dsl_state, :module)
 
+    derive_specs = extract_derive_specs(dsl_state)
     read_specs = extract_read_specs(dsl_state)
     form_specs = extract_form_specs(dsl_state)
     calc_specs = extract_calc_specs(dsl_state, module)
+    multi_select_specs = extract_multi_select_specs(dsl_state)
+    toggle_specs = extract_toggle_specs(dsl_state)
 
-    specs = read_specs ++ form_specs ++ calc_specs
+    specs = derive_specs ++ read_specs ++ form_specs ++ calc_specs ++
+            multi_select_specs ++ toggle_specs
     dsl_state = Transformer.persist(dsl_state, :lavash_field_specs, specs)
 
     {:ok, dsl_state}
+  end
+
+  # --- Explicit derive spec extraction ---
+
+  defp extract_derive_specs(dsl_state) do
+    derives = Transformer.get_entities(dsl_state, [:derives]) || []
+
+    Enum.map(derives, fn derive ->
+      # Extract depends_on from arguments (same logic as normalize_derived in compiler)
+      depends_on =
+        (derive.arguments || [])
+        |> Enum.map(fn arg ->
+          extract_source_field(arg.source, arg.name)
+        end)
+
+      # Build arg name mapping: {arg_name, source_field, has_transform}
+      arg_mapping =
+        (derive.arguments || [])
+        |> Enum.map(fn arg ->
+          source_field = extract_source_field(arg.source, arg.name)
+          {arg.name, source_field, not is_nil(arg.transform)}
+        end)
+
+      %{
+        type: :derive,
+        name: derive.name,
+        depends_on: depends_on,
+        async: derive.async || false,
+        reads: derive.reads || [],
+        optimistic: Map.get(derive, :optimistic, false),
+        has_run: not is_nil(derive.run),
+        has_compute: not is_nil(derive.compute),
+        arg_mapping: arg_mapping
+      }
+    end)
+  end
+
+  defp extract_source_field(source, arg_name) do
+    case source do
+      {:state, name} -> name
+      {:result, name} -> name
+      {:prop, name} -> name
+      name when is_atom(name) and not is_nil(name) -> name
+      nil -> arg_name
+    end
+  end
+
+  # --- Multi-select chip spec extraction ---
+
+  defp extract_multi_select_specs(dsl_state) do
+    states = Transformer.get_entities(dsl_state, [:states]) || []
+
+    states
+    |> Enum.filter(&match?(%Lavash.State.MultiSelect{}, &1))
+    |> Enum.map(fn ms ->
+      chip_class = ms.chip_class || @default_chip_class
+      base = Keyword.get(chip_class, :base, "")
+      active = Keyword.get(chip_class, :active, "")
+      inactive = Keyword.get(chip_class, :inactive, "")
+
+      %{
+        type: :multi_select_chip,
+        name: :"#{ms.name}_chips",
+        depends_on: [ms.name],
+        async: false,
+        reads: [],
+        optimistic: true,
+        field_name: ms.name,
+        values: ms.values,
+        active_class: String.trim("#{base} #{active}"),
+        inactive_class: String.trim("#{base} #{inactive}")
+      }
+    end)
+  end
+
+  # --- Toggle chip spec extraction ---
+
+  defp extract_toggle_specs(dsl_state) do
+    states = Transformer.get_entities(dsl_state, [:states]) || []
+
+    states
+    |> Enum.filter(&match?(%Lavash.State.Toggle{}, &1))
+    |> Enum.map(fn toggle ->
+      chip_class = toggle.chip_class || @default_chip_class
+      base = Keyword.get(chip_class, :base, "")
+      active = Keyword.get(chip_class, :active, "")
+      inactive = Keyword.get(chip_class, :inactive, "")
+
+      %{
+        type: :toggle_chip,
+        name: :"#{toggle.name}_chip",
+        depends_on: [toggle.name],
+        async: false,
+        reads: [],
+        optimistic: true,
+        field_name: toggle.name,
+        active_class: String.trim("#{base} #{active}"),
+        inactive_class: String.trim("#{base} #{inactive}")
+      }
+    end)
   end
 
   # --- Read spec extraction ---
@@ -379,6 +489,88 @@ defmodule Lavash.Transformers.ExpandFields do
   def build_fields(module) do
     specs = Spark.Dsl.Extension.get_persisted(module, :lavash_field_specs) || []
     Enum.map(specs, &spec_to_field(&1, module))
+  end
+
+  defp spec_to_field(%{type: :derive} = spec, module) do
+    # Look up the original entity to get run/compute fns and argument transforms
+    derive = Enum.find(
+      Spark.Dsl.Extension.get_entities(module, [:derives]),
+      &(&1.name == spec.name)
+    )
+
+    compute =
+      if spec.has_run do
+        # Rebuild arg_mapping with actual transform fns from entity
+        arg_transforms =
+          (derive.arguments || [])
+          |> Map.new(&{&1.name, &1.transform})
+
+        arg_mapping =
+          Enum.map(spec.arg_mapping, fn {arg_name, source_field, has_transform} ->
+            transform = if has_transform, do: arg_transforms[arg_name]
+            {arg_name, source_field, transform}
+          end)
+
+        fn deps ->
+          mapped_deps =
+            Enum.reduce(arg_mapping, %{}, fn {arg_name, source_field, transform}, acc ->
+              value = Map.get(deps, source_field)
+              value = if transform, do: transform.(value), else: value
+              Map.put(acc, arg_name, value)
+            end)
+
+          derive.run.(mapped_deps, %{})
+        end
+      else
+        derive.compute
+      end
+
+    %Lavash.Derived.Field{
+      name: spec.name,
+      depends_on: spec.depends_on,
+      async: spec.async,
+      reads: spec.reads,
+      optimistic: spec.optimistic,
+      compute: compute
+    }
+  end
+
+  defp spec_to_field(%{type: :multi_select_chip} = spec, _module) do
+    field_name = spec.field_name
+    values = spec.values
+    active_class = spec.active_class
+    inactive_class = spec.inactive_class
+
+    %Lavash.Derived.Field{
+      name: spec.name,
+      depends_on: spec.depends_on,
+      async: false,
+      optimistic: true,
+      compute: fn deps ->
+        selected = Map.get(deps, field_name) || []
+        Map.new(values, fn value ->
+          class = if value in selected, do: active_class, else: inactive_class
+          {value, class}
+        end)
+      end
+    }
+  end
+
+  defp spec_to_field(%{type: :toggle_chip} = spec, _module) do
+    field_name = spec.field_name
+    active_class = spec.active_class
+    inactive_class = spec.inactive_class
+
+    %Lavash.Derived.Field{
+      name: spec.name,
+      depends_on: spec.depends_on,
+      async: false,
+      optimistic: true,
+      compute: fn deps ->
+        active = Map.get(deps, field_name)
+        if active, do: active_class, else: inactive_class
+      end
+    }
   end
 
   defp spec_to_field(%{type: :read_by_id} = spec, _module) do

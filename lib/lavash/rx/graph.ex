@@ -82,9 +82,7 @@ defmodule Lavash.Rx.Graph do
   end
 
   defp build_graph(module) do
-    explicit_fields = module.__lavash__(:derived_fields)
-    expanded_fields = Lavash.Transformers.ExpandFields.build_fields(module)
-    fields = explicit_fields ++ expanded_fields
+    fields = Lavash.Transformers.ExpandFields.build_fields(module)
     states = module.__lavash__(:states)
     state_tuples = Enum.map(states, fn s -> {s.name, s.default} end)
 

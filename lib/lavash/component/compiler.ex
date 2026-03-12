@@ -80,11 +80,6 @@ defmodule Lavash.Component.Compiler do
         Spark.Dsl.Extension.get_entities(__MODULE__, [:forms])
       end
 
-      def __lavash__(:derived_fields) do
-        Spark.Dsl.Extension.get_entities(__MODULE__, [:derives])
-        |> Enum.map(&Lavash.LiveView.Compiler.normalize_derived/1)
-      end
-
       def __lavash__(:calculations) do
         Spark.Dsl.Extension.get_entities(__MODULE__, [:calculations])
       end
