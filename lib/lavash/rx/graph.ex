@@ -14,23 +14,215 @@ defmodule Lavash.Rx.Graph do
   and maintains dependencies between fields. When a source field changes, all
   transitively affected fields are recomputed in topological order.
 
+  DSL expansion happens once per module (cached in persistent_term via
+  Lavash.Reactive.Graph). Runtime recomputation uses the cached graph's
+  precomputed topo order and dependency indices.
+
   See also `Lavash.Rx` for the reactive expression macro that captures
   dependencies at compile time.
   """
 
   alias Lavash.Socket, as: LSocket
+  alias Lavash.Reactive.Graph, as: ReactiveGraph
   alias Phoenix.LiveView.AsyncResult
 
-  def recompute_all(socket, module) do
-    all_fields = collect_all_fields(module)
-    sorted = topological_sort(all_fields)
+  # --- Public API (signatures unchanged, all call sites untouched) ---
 
-    Enum.reduce(sorted, socket, fn field, sock ->
-      compute_field(sock, module, field)
+  def recompute_all(socket, module) do
+    graph = compiled_graph(module)
+    recompute(socket, graph, graph.topo_order)
+  end
+
+  def recompute_dirty(socket, module) do
+    dirty = LSocket.dirty(socket)
+
+    if MapSet.size(dirty) == 0 do
+      socket
+    else
+      graph = compiled_graph(module)
+      dirty_list = MapSet.to_list(dirty)
+
+      # Get derives transitively affected by dirty state fields
+      affected = ReactiveGraph.affected(graph, dirty_list) |> MapSet.new()
+
+      # Also include dirty fields that ARE derives (e.g. directly marked dirty for re-fetch)
+      derive_names = MapSet.new(graph.topo_order)
+      dirty_derives = MapSet.intersection(dirty, derive_names)
+      all_affected = MapSet.union(affected, dirty_derives)
+
+      # Filter topo_order to affected, preserving correct evaluation order
+      to_recompute = Enum.filter(graph.topo_order, &MapSet.member?(all_affected, &1))
+
+      socket = LSocket.clear_dirty(socket)
+      recompute(socket, graph, to_recompute)
+    end
+  end
+
+  def recompute_dependents(socket, module, changed_field) do
+    graph = compiled_graph(module)
+    to_recompute = ReactiveGraph.recompute_order(graph, [changed_field])
+    recompute(socket, graph, to_recompute)
+  end
+
+  @doc """
+  Returns field names that depend on reads/forms of a given resource.
+  Used for resource-centric invalidation when a child component mutates a resource.
+  """
+  def fields_for_resource(module, resource) do
+    graph = compiled_graph(module)
+    ReactiveGraph.fields_with_tag(graph, {:resource, resource})
+  end
+
+  # --- Graph building + caching ---
+
+  defp compiled_graph(module) do
+    key = {__MODULE__, module}
+
+    case :persistent_term.get(key, nil) do
+      nil ->
+        graph = build_graph(module)
+        :persistent_term.put(key, graph)
+        graph
+
+      graph ->
+        graph
+    end
+  end
+
+  defp build_graph(module) do
+    fields = collect_all_fields(module)
+
+    states = module.__lavash__(:states)
+    state_tuples = Enum.map(states, fn s -> {s.name, s.default} end)
+
+    derive_tuples =
+      Enum.map(fields, fn field ->
+        tags = build_field_tags(module, field)
+        {field.name, field.depends_on, field.compute, field.async || false, tags}
+      end)
+
+    graph = ReactiveGraph.compile(state_tuples, derive_tuples)
+
+    %{graph | dep_resolvers: %{
+      __actor__: fn socket -> socket.assigns[:current_user] end,
+      __all_state__: &LSocket.full_state/1
+    }}
+  end
+
+  defp build_field_tags(module, field) do
+    reads = module.__lavash__(:reads)
+    read_tags = reads |> Enum.filter(&(&1.name == field.name)) |> Enum.map(&{:resource, &1.resource})
+
+    forms = module.__lavash__(:forms)
+    form_tags = forms |> Enum.filter(&(&1.name == field.name)) |> Enum.map(&{:resource, &1.resource})
+
+    resource_tags = (field.reads || []) |> Enum.map(&{:resource, &1})
+
+    (read_tags ++ form_tags ++ resource_tags) |> Enum.uniq()
+  end
+
+  # --- Recompute engine ---
+
+  defp recompute(socket, graph, fields) do
+    Enum.reduce(fields, socket, fn field, sock ->
+      compute_field(sock, graph, field)
     end)
   end
 
-  # Collect all derived-like fields from different DSL sections
+  defp compute_field(socket, graph, field) do
+    dep_values = resolve_deps(socket, graph, field)
+
+    case check_deps_state(dep_values) do
+      {:propagate, state} ->
+        LSocket.put_derived(socket, field, state)
+
+      {:ready, had_async} ->
+        unwrapped = unwrap_async_for_compute(dep_values)
+
+        if MapSet.member?(graph.async_fields, field) do
+          run_async(socket, graph, field, unwrapped)
+        else
+          result = graph.compute_fns[field].(unwrapped) |> maybe_wrap_changeset()
+          final = if had_async, do: AsyncResult.ok(result), else: result
+          LSocket.put_derived(socket, field, final)
+        end
+    end
+  end
+
+  defp resolve_deps(socket, graph, field) do
+    resolvers = graph.dep_resolvers
+
+    Map.new(graph.deps[field] || [], fn dep ->
+      value =
+        case Map.fetch(resolvers, dep) do
+          {:ok, resolver_fn} -> resolver_fn.(socket)
+          :error -> socket.assigns[dep]
+        end
+
+      {dep, value}
+    end)
+  end
+
+  defp run_async(socket, graph, field, dep_values) do
+    pid = self()
+    compute_fn = graph.compute_fns[field]
+    component_id = LSocket.get(socket, :component_id)
+
+    if component_id do
+      component_module = socket.assigns[:__component_module__]
+
+      Task.start(fn ->
+        result = compute_fn.(dep_values)
+        send(pid, {:lavash_component_async, component_module, component_id, field, result})
+      end)
+    else
+      Task.start(fn ->
+        result = compute_fn.(dep_values)
+        send(pid, {:lavash_async, field, result})
+      end)
+    end
+
+    LSocket.put_derived(socket, field, AsyncResult.loading())
+  end
+
+  defp check_deps_state(deps) do
+    Enum.reduce_while(deps, {:ready, false}, fn {_key, value}, {_status, had_async} ->
+      case value do
+        %AsyncResult{loading: loading} when loading != nil ->
+          {:halt, {:propagate, AsyncResult.loading()}}
+
+        %AsyncResult{failed: failed} when failed != nil ->
+          {:halt, {:propagate, value}}
+
+        %AsyncResult{ok?: true} ->
+          {:cont, {:ready, true}}
+
+        _ ->
+          {:cont, {:ready, had_async}}
+      end
+    end)
+  end
+
+  defp unwrap_async_for_compute(deps) do
+    Map.new(deps, fn {key, value} ->
+      unwrapped =
+        case value do
+          %AsyncResult{ok?: true, result: result} -> result
+          other -> other
+        end
+
+      {key, unwrapped}
+    end)
+  end
+
+  defp maybe_wrap_changeset(%Ash.Changeset{} = changeset) do
+    Lavash.Form.wrap(changeset)
+  end
+
+  defp maybe_wrap_changeset(other), do: other
+
+  # --- DSL expansion (called once at build time via build_graph) ---
+
   defp collect_all_fields(module) do
     derived_fields = module.__lavash__(:derived_fields)
     read_fields = expand_reads(module)
@@ -801,263 +993,5 @@ defmodule Lavash.Rx.Graph do
     rescue
       _ -> %{}
     end
-  end
-
-  def recompute_dirty(socket, module) do
-    dirty = LSocket.dirty(socket)
-
-    if MapSet.size(dirty) == 0 do
-      socket
-    else
-      all_fields = collect_all_fields(module)
-
-      # Find all derived fields affected by dirty state, including transitive dependencies
-      # include_dirty: true means also include fields that are directly marked dirty
-      affected = find_affected_derived(all_fields, dirty, include_dirty: true)
-      sorted = topological_sort(affected)
-
-      socket = LSocket.clear_dirty(socket)
-
-      Enum.reduce(sorted, socket, fn field, sock ->
-        compute_field(sock, module, field)
-      end)
-    end
-  end
-
-  defp find_affected_derived(derived_fields, dirty, opts \\ []) do
-    include_dirty = Keyword.get(opts, :include_dirty, false)
-
-    # Start with fields whose dependencies are dirty
-    # Optionally also include fields that are directly marked dirty
-    directly_affected =
-      derived_fields
-      |> Enum.filter(fn field ->
-        deps_dirty = Enum.any?(field.depends_on, &MapSet.member?(dirty, &1))
-        self_dirty = include_dirty and MapSet.member?(dirty, field.name)
-        deps_dirty or self_dirty
-      end)
-      |> MapSet.new(& &1.name)
-
-    # Transitively find all derived fields that depend on affected fields
-    all_affected = expand_affected(directly_affected, derived_fields)
-
-    # Return the actual field structs
-    Enum.filter(derived_fields, fn f -> MapSet.member?(all_affected, f.name) end)
-  end
-
-  defp expand_affected(affected, all_fields) do
-    # Find fields that depend on any affected field
-    newly_affected =
-      all_fields
-      |> Enum.filter(fn field ->
-        not MapSet.member?(affected, field.name) and
-          Enum.any?(field.depends_on, &MapSet.member?(affected, &1))
-      end)
-      |> MapSet.new(& &1.name)
-
-    if MapSet.size(newly_affected) == 0 do
-      # No more fields to add
-      affected
-    else
-      # Recurse with expanded set
-      expand_affected(MapSet.union(affected, newly_affected), all_fields)
-    end
-  end
-
-  def recompute_dependents(socket, module, changed_field) do
-    all_fields = collect_all_fields(module)
-
-    # Find all derived fields affected by the changed field, including transitive dependencies
-    affected = find_affected_derived(all_fields, MapSet.new([changed_field]))
-    sorted = topological_sort(affected)
-
-    Enum.reduce(sorted, socket, fn field, sock ->
-      compute_field(sock, module, field)
-    end)
-  end
-
-  defp compute_field(socket, _module, field) do
-    deps = build_deps_map(socket, field.depends_on)
-
-    # Check for propagating states in dependencies
-    case check_deps_state(deps) do
-      {:propagate, state} ->
-        # Propagate the special state without running compute
-        LSocket.put_derived(socket, field.name, state)
-
-      {:ready, had_async} ->
-        # All deps are ready - run the compute function
-        # had_async tells us if any dep was an AsyncResult (so we should wrap output)
-        run_compute(socket, field, deps, had_async)
-    end
-  end
-
-  defp check_deps_state(deps) do
-    # Check for states that should propagate through the chain
-    # Also track if any deps were AsyncResult (even if ok) so we can wrap output
-    Enum.reduce_while(deps, {:ready, false}, fn {_key, value}, {_status, had_async} ->
-      case value do
-        %AsyncResult{loading: loading} when loading != nil ->
-          {:halt, {:propagate, AsyncResult.loading()}}
-
-        %AsyncResult{failed: failed} when failed != nil ->
-          {:halt, {:propagate, value}}
-
-        %AsyncResult{ok?: true} ->
-          # Dep was async but is now ok - track this
-          {:cont, {:ready, true}}
-
-        _ ->
-          {:cont, {:ready, had_async}}
-      end
-    end)
-  end
-
-  defp run_compute(socket, field, deps, had_async) do
-    # Unwrap Async structs so compute functions receive plain values
-    unwrapped_deps = unwrap_async_for_compute(deps)
-
-    if field.async do
-      # Start async task
-      self_pid = self()
-
-      # Check if we're in a component context (has component_id in lavash state)
-      component_id = LSocket.get(socket, :component_id)
-
-      if component_id do
-        # For components, we need to use send_update to deliver async results
-        # Get the component module from socket assigns
-        component_module = socket.assigns[:__component_module__]
-
-        Task.start(fn ->
-          result = field.compute.(unwrapped_deps)
-          # Send update to the component via the LiveView process
-          send(
-            self_pid,
-            {:lavash_component_async, component_module, component_id, field.name, result}
-          )
-        end)
-      else
-        # For LiveViews, use the standard approach
-        Task.start(fn ->
-          result = field.compute.(unwrapped_deps)
-          send(self_pid, {:lavash_async, field.name, result})
-        end)
-      end
-
-      LSocket.put_derived(socket, field.name, AsyncResult.loading())
-    else
-      # Non-async: store result, auto-wrapping changesets
-      result = field.compute.(unwrapped_deps)
-      wrapped = maybe_wrap_changeset(result)
-
-      # If any dependency was async, wrap the result in AsyncResult.ok()
-      # so downstream consumers (<.async_result>) can use it
-      final =
-        if had_async do
-          AsyncResult.ok(wrapped)
-        else
-          wrapped
-        end
-
-      LSocket.put_derived(socket, field.name, final)
-    end
-  end
-
-  # Auto-wrap Ash.Changeset to provide both form rendering and submission
-  defp maybe_wrap_changeset(%Ash.Changeset{} = changeset) do
-    Lavash.Form.wrap(changeset)
-  end
-
-  defp maybe_wrap_changeset(other), do: other
-
-  defp build_deps_map(socket, deps) do
-    Enum.reduce(deps, %{}, fn dep, acc ->
-      value =
-        cond do
-          # Special reserved key for actor - reads from socket assigns
-          dep == :__actor__ ->
-            socket.assigns[:current_user]
-
-          # Special reserved key for full state - used by function-based id in reads
-          dep == :__all_state__ ->
-            LSocket.full_state(socket)
-
-          true ->
-            socket.assigns[dep]
-        end
-
-      Map.put(acc, dep, value)
-    end)
-  end
-
-  # Unwrap Async structs for compute functions once check_deps_state returns :ready
-  defp unwrap_async_for_compute(deps) do
-    Map.new(deps, fn {key, value} ->
-      unwrapped =
-        case value do
-          %AsyncResult{ok?: true, result: result} -> result
-          other -> other
-        end
-
-      {key, unwrapped}
-    end)
-  end
-
-  defp topological_sort(fields) do
-    # Simple topological sort based on depends_on
-    # For now, just sort by number of dependencies (crude but works for simple cases)
-    Enum.sort_by(fields, fn field ->
-      count_depth(field, fields, %{})
-    end)
-  end
-
-  defp count_depth(field, all_fields, seen) do
-    if Map.has_key?(seen, field.name) do
-      0
-    else
-      deps = field.depends_on
-
-      dep_depths =
-        Enum.map(deps, fn dep ->
-          case Enum.find(all_fields, &(&1.name == dep)) do
-            nil -> 0
-            dep_field -> 1 + count_depth(dep_field, all_fields, Map.put(seen, field.name, true))
-          end
-        end)
-
-      case dep_depths do
-        [] -> 0
-        depths -> Enum.max(depths)
-      end
-    end
-  end
-
-  @doc """
-  Returns field names that depend on reads/forms of a given resource.
-  Used for resource-centric invalidation when a child component mutates a resource.
-  """
-  def fields_for_resource(module, resource) do
-    # Get reads that use this resource
-    read_fields =
-      module.__lavash__(:reads)
-      |> Enum.filter(&(&1.resource == resource))
-      |> Enum.map(& &1.name)
-
-    # Get forms that use this resource
-    form_fields =
-      module.__lavash__(:forms)
-      |> Enum.filter(&(&1.resource == resource))
-      |> Enum.map(& &1.name)
-
-    # Get derived fields that declare this resource in their reads list
-    derived_fields =
-      module.__lavash__(:derived_fields)
-      |> Enum.filter(fn field ->
-        resource in (field.reads || [])
-      end)
-      |> Enum.map(& &1.name)
-
-    read_fields ++ form_fields ++ derived_fields
   end
 end
