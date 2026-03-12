@@ -972,9 +972,6 @@ defmodule Lavash.Rx.Graph do
   defp maybe_wrap_changeset(other), do: other
 
   defp build_deps_map(socket, deps) do
-    state = LSocket.state(socket)
-    derived = LSocket.derived(socket)
-
     Enum.reduce(deps, %{}, fn dep, acc ->
       value =
         cond do
@@ -984,18 +981,10 @@ defmodule Lavash.Rx.Graph do
 
           # Special reserved key for full state - used by function-based id in reads
           dep == :__all_state__ ->
-            Map.merge(state, derived)
-
-          Map.has_key?(state, dep) ->
-            Map.get(state, dep)
-
-          Map.has_key?(derived, dep) ->
-            # Pass through Async structs - check_deps_state will handle propagation
-            # and unwrap_async_for_compute will extract the result when ready
-            Map.get(derived, dep)
+            LSocket.full_state(socket)
 
           true ->
-            nil
+            socket.assigns[dep]
         end
 
       Map.put(acc, dep, value)

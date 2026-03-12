@@ -621,8 +621,8 @@ defmodule Lavash.Component.Runtime do
     # Recompute derived state to get the latest form
     socket = Graph.recompute_dirty(socket, module)
 
-    # Get the form from derived state
-    raw_form = LSocket.derived(socket)[submit.field]
+    # Get the form from assigns (raw Lavash.Form or AsyncResult)
+    raw_form = socket.assigns[submit.field]
 
     # Handle the form value - it might be wrapped in AsyncResult from async operations
     form =

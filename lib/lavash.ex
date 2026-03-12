@@ -77,14 +77,7 @@ defmodule Lavash do
       form_data = Lavash.get(socket, :form_data)
   """
   def get(socket, field) when is_atom(field) do
-    state = LSocket.state(socket)
-    derived = LSocket.derived(socket)
-
-    # Check derived first, then state
-    case Map.fetch(derived, field) do
-      {:ok, value} -> value
-      :error -> Map.get(state, field)
-    end
+    socket.assigns[field]
   end
 
   @doc """

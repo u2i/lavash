@@ -24,14 +24,13 @@ defmodule Lavash.Assigns do
 
   # For each form, project :form_action assign with the action type
   defp project_form_metadata(socket, module) do
-    derived = LSocket.derived(socket)
     forms = safe_get(module, :forms)
 
     Enum.reduce(forms, socket, fn form_entity, sock ->
       form_name = form_entity.name
       action_assign = :"#{form_name}_action"
 
-      raw_value = Map.get(derived, form_name)
+      raw_value = socket.assigns[form_name]
 
       action_type =
         case raw_value do

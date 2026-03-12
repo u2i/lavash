@@ -7,11 +7,31 @@ defmodule Lavash.Form do
   - Rendering via Phoenix.HTML.FormData protocol (implemented by AshPhoenix.Form)
   - Submission via Ash.create/update/destroy
 
-  The wrapper is transparent - you can pattern match on it or use it directly
-  in templates via the `form` field.
+  The wrapper is transparent to templates — it implements the `Access` behaviour
+  (delegating `form[:field]` to the inner `Phoenix.HTML.Form`) and the
+  `Phoenix.HTML.FormData` protocol (so `<.form for={@my_form}>` works directly).
   """
 
+  @behaviour Access
+
   defstruct [:changeset, :form, :action_type, :name]
+
+  # --- Access behaviour (delegate to inner Phoenix.HTML.Form) ---
+
+  @impl Access
+  def fetch(%__MODULE__{form: form}, key) do
+    Phoenix.HTML.Form.fetch(form, key)
+  end
+
+  @impl Access
+  def get_and_update(%__MODULE__{}, _key, _fun) do
+    raise ArgumentError, "cannot update a Lavash.Form via Access"
+  end
+
+  @impl Access
+  def pop(%__MODULE__{}, _key) do
+    raise ArgumentError, "cannot pop from a Lavash.Form"
+  end
 
   @doc """
   Creates a form for an Ash resource.
@@ -153,4 +173,10 @@ defmodule Lavash.Form do
   def submit(:loading, _opts), do: {:error, :loading}
   def submit({:error, _} = err, _opts), do: err
   def submit(nil, _opts), do: {:error, :no_form}
+end
+
+defimpl Phoenix.HTML.FormData, for: Lavash.Form do
+  def to_form(%Lavash.Form{form: form}, opts) do
+    Phoenix.Component.to_form(form, opts)
+  end
 end

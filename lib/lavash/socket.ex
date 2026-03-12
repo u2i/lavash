@@ -2,8 +2,8 @@ defmodule Lavash.Socket do
   @moduledoc """
   Helpers for accessing Lavash private socket data.
 
-  State values live in `socket.assigns` (leveraging Phoenix change tracking).
-  Metadata (dirty set, derived map, flags) lives in `socket.private.lavash`.
+  Both state and derived values live in `socket.assigns` (leveraging Phoenix change tracking).
+  Metadata (dirty set, field name sets, flags) lives in `socket.private.lavash`.
   """
 
   @doc """
@@ -12,7 +12,7 @@ defmodule Lavash.Socket do
   def init(socket, opts \\ %{}) do
     lavash = %{
       state_field_names: Map.get(opts, :state_field_names, MapSet.new()),
-      derived: Map.get(opts, :derived, %{}),
+      derived_field_names: Map.get(opts, :derived_field_names, MapSet.new()),
       dirty: Map.get(opts, :dirty, MapSet.new()),
       url_changed: Map.get(opts, :url_changed, false),
       socket_changed: Map.get(opts, :socket_changed, false),
@@ -71,7 +71,10 @@ defmodule Lavash.Socket do
     field_names = get(socket, :state_field_names) || MapSet.new()
     Map.take(socket.assigns, MapSet.to_list(field_names))
   end
-  def derived(socket), do: get(socket, :derived) || %{}
+  def derived(socket) do
+    field_names = get(socket, :derived_field_names) || MapSet.new()
+    Map.take(socket.assigns, MapSet.to_list(field_names))
+  end
   def dirty(socket), do: get(socket, :dirty) || MapSet.new()
   def dirty?(socket), do: MapSet.size(dirty(socket)) > 0
   def props(socket), do: get(socket, :props) || %{}
@@ -141,28 +144,20 @@ defmodule Lavash.Socket do
   end
 
   @doc """
-  Puts a derived value.
-  Stores raw value in private (for reactive graph) and unwrapped value in assigns.
+  Puts a derived value directly into assigns.
+  Raw values (including Lavash.Form, AsyncResult) are stored as-is.
   """
   def put_derived(socket, field, value) do
     socket
-    |> update(:derived, &Map.put(&1, field, value))
-    |> Phoenix.Component.assign(field, unwrap_for_assign(value))
+    |> register_derived_field(field)
+    |> Phoenix.Component.assign(field, value)
   end
 
-  # Unwrap values for template rendering:
-  # - Lavash.Form -> Phoenix.HTML.Form for form helpers
-  # - AsyncResult with Lavash.Form inside -> AsyncResult with Phoenix.HTML.Form
-  # - All other values passed through as-is
-  defp unwrap_for_assign(%Lavash.Form{form: form}), do: form
-
-  defp unwrap_for_assign(
-         %Phoenix.LiveView.AsyncResult{ok?: true, result: %Lavash.Form{form: form}} = async
-       ) do
-    %{async | result: form}
+  defp register_derived_field(socket, field) do
+    update(socket, :derived_field_names, fn names ->
+      MapSet.put(names || MapSet.new(), field)
+    end)
   end
-
-  defp unwrap_for_assign(other), do: other
 
   @doc """
   Clears the dirty set.

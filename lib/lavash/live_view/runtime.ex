@@ -838,8 +838,8 @@ defmodule Lavash.LiveView.Runtime do
       socket
       |> Graph.recompute_dirty(module)
 
-    # Get the form from derived state
-    raw_form = LSocket.derived(socket)[submit.field]
+    # Get the form from assigns (raw Lavash.Form or AsyncResult)
+    raw_form = socket.assigns[submit.field]
 
     # Handle the form value - it might be wrapped in AsyncResult from async operations
     form =

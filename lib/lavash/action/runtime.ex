@@ -53,11 +53,9 @@ defmodule Lavash.Action.Runtime do
 
   # Evaluate a set value based on its type
   defp evaluate_set_value(%Lavash.Rx{ast: ast}, sock, params) do
-    # Build state map from socket state + derived state + params (same as template assigns)
-    # Derived state includes read results, form results, and calculated fields
+    # Build state map from all lavash fields + params
     state =
-      LSocket.state(sock)
-      |> Map.merge(LSocket.derived(sock))
+      LSocket.full_state(sock)
       |> Map.merge(params)
 
     {result, _} = Code.eval_quoted(ast, [state: state], __ENV__)
@@ -65,9 +63,7 @@ defmodule Lavash.Action.Runtime do
   end
 
   defp evaluate_set_value(fun, sock, params) when is_function(fun, 1) do
-    # Legacy function format: fn %{params: params, state: state} -> value end
-    # Include derived state so read results and calculated fields are accessible
-    state = Map.merge(LSocket.state(sock), LSocket.derived(sock))
+    state = LSocket.full_state(sock)
     fun.(%{params: params, state: state})
   end
 
