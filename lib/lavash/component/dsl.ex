@@ -326,6 +326,7 @@ defmodule Lavash.Component.Dsl do
     transformers: [
       Lavash.Transformers.DeprecateDerive,
       Lavash.Optimistic.ExpandAnimatedStates,
+      Lavash.Transformers.ExpandFields,
       Lavash.Optimistic.ColocatedTransformer
     ],
     imports: [Phoenix.Component, Lavash.DslHelpers, Lavash.Rx, Lavash.Component.Sigil, Lavash.Component.RenderImport]
