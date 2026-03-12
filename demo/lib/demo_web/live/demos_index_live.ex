@@ -94,6 +94,17 @@ defmodule DemoWeb.DemosIndexLive do
         </section>
 
         <section>
+          <h2 class="text-xl font-semibold mb-4 border-b pb-2">Plain LiveView (No DSL)</h2>
+          <div class="grid md:grid-cols-2 gap-4">
+            <.demo_card
+              href={~p"/lv"}
+              title="Lavash.Reactive Demos"
+              description="Using the reactive graph engine in plain LiveViews — state, derives, async, batching."
+            />
+          </div>
+        </section>
+
+        <section>
           <h2 class="text-xl font-semibold mb-4 border-b pb-2">Full Application</h2>
           <div class="grid md:grid-cols-2 gap-4">
             <.demo_card

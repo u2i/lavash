@@ -6,7 +6,7 @@ defmodule Lavash.Transformers.ExpandFields do
   The transformer persists pure-data specs (no closures) via
   `Transformer.persist/3`. At runtime, `build_fields/1` converts these specs
   into `Lavash.Derived.Field` structs with compute closures — called once per
-  module by `Rx.Graph.build_graph` and cached in persistent_term.
+  module by `Dsl.Graph.compiled_graph` and cached in persistent_term.
   """
 
   use Spark.Dsl.Transformer
@@ -482,7 +482,7 @@ defmodule Lavash.Transformers.ExpandFields do
 
   # ============================================================
   # Runtime: convert persisted specs into Derived.Field structs
-  # Called once per module by Rx.Graph.build_graph, cached in persistent_term.
+  # Called once per module by Dsl.Graph.compiled_graph, cached in persistent_term.
   # ============================================================
 
   @doc false

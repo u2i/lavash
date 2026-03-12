@@ -11,7 +11,8 @@ defmodule Lavash.Component.Runtime do
   - Assign projection
   """
 
-  alias Lavash.Rx.Graph
+  alias Lavash.Dsl.Graph, as: DslGraph
+  alias Lavash.Reactive
   alias Lavash.Assigns
   alias Lavash.State
   alias Lavash.Socket, as: LSocket
@@ -59,7 +60,7 @@ defmodule Lavash.Component.Runtime do
                     socket =
                       socket
                       |> LSocket.put_derived(field, async)
-                      |> Graph.recompute_dependents(module, field)
+                      |> Reactive.recompute_dependents(DslGraph.compiled_graph(module), field)
                       |> Assigns.project(module)
 
                     {:ok, socket}
@@ -80,7 +81,7 @@ defmodule Lavash.Component.Runtime do
                         |> store_props(module, assigns)
                         |> resolve_bindings(module, assigns)
                         |> preserve_livecomponent_assigns(module, assigns)
-                        |> Graph.recompute_all(module)
+                        |> Reactive.recompute_all(DslGraph.compiled_graph(module))
                         |> Assigns.project(module)
                       else
                         # Subsequent update - store props (marks changed props as dirty)
@@ -91,7 +92,7 @@ defmodule Lavash.Component.Runtime do
                         # Recompute any derived fields affected by dirty props
                         socket =
                           if LSocket.dirty?(socket) do
-                            Graph.recompute_dirty(socket, module)
+                            Reactive.recompute_dirty(socket, DslGraph.compiled_graph(module))
                           else
                             socket
                           end
@@ -108,14 +109,14 @@ defmodule Lavash.Component.Runtime do
 
   defp handle_invalidate(module, resource, socket) do
     # Invalidate all reads/derives that depend on this resource
-    fields_to_invalidate = Graph.fields_for_resource(module, resource)
+    fields_to_invalidate = DslGraph.fields_for_resource(module, resource)
 
     if fields_to_invalidate != [] do
       # Mark these fields as dirty and recompute
       socket =
         socket
         |> LSocket.mark_dirty(fields_to_invalidate)
-        |> Graph.recompute_dirty(module)
+        |> Reactive.recompute_dirty(DslGraph.compiled_graph(module))
         |> Assigns.project(module)
 
       {:ok, socket}
@@ -136,7 +137,7 @@ defmodule Lavash.Component.Runtime do
       socket
       |> LSocket.bump_optimistic_version()
       |> LSocket.put_state(field, parsed_value)
-      |> Graph.recompute_dirty(module)
+      |> Reactive.recompute_dirty(DslGraph.compiled_graph(module))
       |> Assigns.project(module)
 
     # Check if this field is bound upward to our parent
@@ -288,7 +289,7 @@ defmodule Lavash.Component.Runtime do
             socket =
               socket
               |> maybe_sync_socket_state(module)
-              |> Graph.recompute_dirty(module)
+              |> Reactive.recompute_dirty(DslGraph.compiled_graph(module))
               |> Assigns.project(module)
               |> apply_notify_parents(notify_events)
               |> propagate_bound_field_changes(binding_map, bound_state_before)
@@ -313,7 +314,7 @@ defmodule Lavash.Component.Runtime do
             socket =
               socket
               |> maybe_sync_socket_state(module)
-              |> Graph.recompute_dirty(module)
+              |> Reactive.recompute_dirty(DslGraph.compiled_graph(module))
               |> Assigns.project(module)
               |> propagate_bound_field_changes(binding_map, bound_state_before)
 
@@ -335,7 +336,7 @@ defmodule Lavash.Component.Runtime do
         if LSocket.dirty?(socket) do
           socket =
             socket
-            |> Graph.recompute_dirty(module)
+            |> Reactive.recompute_dirty(DslGraph.compiled_graph(module))
             |> Assigns.project(module)
 
           {:noreply, socket}
@@ -353,7 +354,7 @@ defmodule Lavash.Component.Runtime do
             socket =
               socket
               |> maybe_sync_socket_state(module)
-              |> Graph.recompute_dirty(module)
+              |> Reactive.recompute_dirty(DslGraph.compiled_graph(module))
               |> Assigns.project(module)
               |> apply_notify_parents(notify_events)
               |> propagate_bound_field_changes(binding_map, bound_state_before)
@@ -379,7 +380,7 @@ defmodule Lavash.Component.Runtime do
             socket =
               socket
               |> maybe_sync_socket_state(module)
-              |> Graph.recompute_dirty(module)
+              |> Reactive.recompute_dirty(DslGraph.compiled_graph(module))
               |> Assigns.project(module)
               |> propagate_bound_field_changes(binding_map, bound_state_before)
 
@@ -619,7 +620,7 @@ defmodule Lavash.Component.Runtime do
 
   defp apply_submits(socket, module, [submit | rest], notify_events) do
     # Recompute derived state to get the latest form
-    socket = Graph.recompute_dirty(socket, module)
+    socket = Reactive.recompute_dirty(socket, DslGraph.compiled_graph(module))
 
     # Get the form from assigns (raw Lavash.Form or AsyncResult)
     raw_form = socket.assigns[submit.field]
@@ -691,7 +692,7 @@ defmodule Lavash.Component.Runtime do
         socket =
           socket
           |> LSocket.put_state(server_errors_field, server_errors)
-          |> Graph.recompute_dirty(module)
+          |> Reactive.recompute_dirty(DslGraph.compiled_graph(module))
           |> Assigns.project(module)
 
         # Failure - trigger on_error action if specified

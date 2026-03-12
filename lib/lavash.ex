@@ -128,7 +128,7 @@ defmodule Lavash do
   """
   def finalize(socket, module) do
     socket
-    |> Lavash.Rx.Graph.recompute_dirty(module)
+    |> Lavash.Reactive.recompute_dirty(Lavash.Dsl.Graph.compiled_graph(module))
     |> Lavash.Assigns.project(module)
   end
 

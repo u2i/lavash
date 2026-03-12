@@ -69,6 +69,14 @@ defmodule DemoWeb.Router do
     live "/categories", CategoriesLive
   end
 
+  # Lavash.Reactive demos (plain LiveView, no DSL)
+  scope "/lv", DemoWeb.LiveViewDemos do
+    pipe_through :browser
+
+    live "/", IndexLive
+    live "/counter", CounterLive
+  end
+
   # Demo/playground routes
   scope "/demos", DemoWeb do
     pipe_through :browser
