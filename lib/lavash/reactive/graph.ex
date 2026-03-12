@@ -11,6 +11,7 @@ defmodule Lavash.Reactive.Graph do
   - `deps` — forward index: derived field → list of fields it depends on
   - `compute_fns` — derived field → function that computes it from deps
   - `state_defaults` — state field → default value
+  - `tags` — reverse index: tag → MapSet of field names (for resource invalidation, etc.)
   """
 
   defstruct topo_order: [],
@@ -18,28 +19,37 @@ defmodule Lavash.Reactive.Graph do
             deps: %{},
             compute_fns: %{},
             state_defaults: %{},
-            async_fields: MapSet.new()
+            async_fields: MapSet.new(),
+            tags: %{},
+            dep_resolvers: %{}
 
   @doc """
   Compiles states and derives into a frozen `%Graph{}`.
 
   States: `[{name, default}, ...]`
-  Derives: `[{name, [dep, ...], fun, async?}, ...]`
+  Derives: `[{name, [dep, ...], fun, async?} | {name, [dep, ...], fun, async?, [tag]}]`
 
   The function for each derive receives a map of dependency values:
   `fn %{count: 5, step: 2} -> 10 end`
   """
   def compile(states, derives) do
+    # Normalize 4-tuples to 5-tuples
+    derives = Enum.map(derives, fn
+      {name, dep_list, fun, async, tags} -> {name, dep_list, fun, async, tags}
+      {name, dep_list, fun, async} -> {name, dep_list, fun, async, []}
+    end)
+
     state_defaults = Map.new(states)
 
-    deps = Map.new(derives, fn {name, dep_list, _fun, _async} -> {name, dep_list} end)
-    compute_fns = Map.new(derives, fn {name, _deps, fun, _async} -> {name, fun} end)
+    deps = Map.new(derives, fn {name, dep_list, _, _, _} -> {name, dep_list} end)
+    compute_fns = Map.new(derives, fn {name, _, fun, _, _} -> {name, fun} end)
 
     async_fields =
       derives
-      |> Enum.filter(fn {_, _, _, async} -> async end)
-      |> MapSet.new(fn {name, _, _, _} -> name end)
+      |> Enum.filter(fn {_, _, _, async, _} -> async end)
+      |> MapSet.new(fn {name, _, _, _, _} -> name end)
 
+    tags = build_tags(derives)
     topo_order = topo_sort(derives, deps)
     dependents = build_dependents(deps)
 
@@ -49,7 +59,8 @@ defmodule Lavash.Reactive.Graph do
       deps: deps,
       compute_fns: compute_fns,
       state_defaults: state_defaults,
-      async_fields: async_fields
+      async_fields: async_fields,
+      tags: tags
     }
   end
 
@@ -69,6 +80,15 @@ defmodule Lavash.Reactive.Graph do
     Enum.filter(graph.topo_order, &MapSet.member?(affected, &1))
   end
 
+  @doc """
+  Returns field names that have the given tag.
+  """
+  def fields_with_tag(graph, tag) do
+    graph.tags
+    |> Map.get(tag, MapSet.new())
+    |> MapSet.to_list()
+  end
+
   # Build reverse dependency index: %{field => [derived fields that depend on it]}
   defp build_dependents(deps) do
     Enum.reduce(deps, %{}, fn {derived_name, dep_list}, acc ->
@@ -78,9 +98,18 @@ defmodule Lavash.Reactive.Graph do
     end)
   end
 
+  # Build reverse tag index: %{tag => MapSet.t(field_name)}
+  defp build_tags(derives) do
+    Enum.reduce(derives, %{}, fn {name, _, _, _, tags}, acc ->
+      Enum.reduce(tags, acc, fn tag, inner_acc ->
+        Map.update(inner_acc, tag, MapSet.new([name]), &MapSet.put(&1, name))
+      end)
+    end)
+  end
+
   # Kahn's algorithm for topological sort
   defp topo_sort(derives, deps) do
-    names = Enum.map(derives, fn {name, _, _, _} -> name end)
+    names = Enum.map(derives, fn {name, _, _, _, _} -> name end)
 
     # Count in-degree (only from other derives, not from state)
     derive_names = MapSet.new(names)

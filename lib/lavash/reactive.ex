@@ -62,7 +62,7 @@ defmodule Lavash.Reactive do
   alias Phoenix.LiveView.AsyncResult
 
   # Builder struct — accumulates state/derive declarations before build()
-  defstruct states: [], derives: []
+  defstruct states: [], derives: [], dep_resolvers: %{}
 
   @doc """
   Creates a new reactive graph builder.
@@ -88,10 +88,32 @@ defmodule Lavash.Reactive do
       is set to `AsyncResult.loading()` immediately, then updated when
       the task completes. Downstream derives propagate loading/failed
       states automatically.
+    - `tags: [term()]` — arbitrary tags for this field. The graph builds
+      a reverse index so callers can query `Graph.fields_with_tag(graph, tag)`
+      to find all fields with a given tag (e.g. for resource invalidation).
   """
   def derive(%__MODULE__{} = builder, name, deps, fun, opts \\ []) do
     async = Keyword.get(opts, :async, false)
-    %{builder | derives: [{name, deps, fun, async} | builder.derives]}
+    tags = Keyword.get(opts, :tags, [])
+    %{builder | derives: [{name, deps, fun, async, tags} | builder.derives]}
+  end
+
+  @doc """
+  Registers a custom dependency resolver.
+
+  When a derive depends on a name that has a resolver, the resolver function
+  is called with the socket to produce the value, instead of reading from
+  `socket.assigns`.
+
+  This is useful for synthetic dependencies like `:__actor__` or `:__all_state__`
+  that don't correspond to actual assign keys.
+
+      builder
+      |> Reactive.dep_resolver(:__actor__, fn socket -> socket.assigns[:current_user] end)
+      |> Reactive.dep_resolver(:__all_state__, &Lavash.Socket.full_state/1)
+  """
+  def dep_resolver(%__MODULE__{} = builder, name, fun) when is_function(fun, 1) do
+    %{builder | dep_resolvers: Map.put(builder.dep_resolvers, name, fun)}
   end
 
   @doc """
@@ -101,7 +123,8 @@ defmodule Lavash.Reactive do
   After this, the graph is immutable and ready for runtime use.
   """
   def build(%__MODULE__{} = builder) do
-    Graph.compile(Enum.reverse(builder.states), Enum.reverse(builder.derives))
+    graph = Graph.compile(Enum.reverse(builder.states), Enum.reverse(builder.derives))
+    %{graph | dep_resolvers: builder.dep_resolvers}
   end
 
   # --- Graph caching ---
@@ -209,7 +232,7 @@ defmodule Lavash.Reactive do
   end
 
   defp compute_field(socket, graph, field) do
-    dep_values = Map.take(socket.assigns, graph.deps[field])
+    dep_values = resolve_deps(socket, graph, field)
 
     case check_deps(dep_values) do
       {:propagate, async_result} ->
@@ -221,11 +244,26 @@ defmodule Lavash.Reactive do
           compute_async(socket, graph, field, dep_values)
         else
           values = unwrap_async_values(dep_values)
-          result = graph.compute_fns[field].(values)
+          result = graph.compute_fns[field].(values) |> maybe_wrap_changeset()
           final = if had_async, do: AsyncResult.ok(result), else: result
           LSocket.put_derived(socket, field, final)
         end
     end
+  end
+
+  # Resolve dependency values, using custom resolvers where registered
+  defp resolve_deps(socket, graph, field) do
+    resolvers = graph.dep_resolvers
+
+    Map.new(graph.deps[field], fn dep ->
+      value =
+        case Map.fetch(resolvers, dep) do
+          {:ok, resolver_fn} -> resolver_fn.(socket)
+          :error -> socket.assigns[dep]
+        end
+
+      {dep, value}
+    end)
   end
 
   # Check if any dependency is in a loading or failed state
@@ -253,17 +291,37 @@ defmodule Lavash.Reactive do
     values = unwrap_async_values(dep_values)
     compute_fn = graph.compute_fns[field]
 
-    Task.start(fn ->
-      try do
-        result = compute_fn.(values)
-        send(pid, {:lavash_reactive, field, {:ok, result}})
-      rescue
-        e -> send(pid, {:lavash_reactive, field, {:error, e}})
-      end
-    end)
+    # Component context: route async results via send_update message
+    component_id = LSocket.get(socket, :component_id)
+
+    if component_id do
+      component_module = socket.assigns[:__component_module__]
+
+      Task.start(fn ->
+        try do
+          result = compute_fn.(values)
+          send(pid, {:lavash_component_async, component_module, component_id, field, result})
+        rescue
+          e -> send(pid, {:lavash_component_async, component_module, component_id, field, {:error, e}})
+        end
+      end)
+    else
+      Task.start(fn ->
+        try do
+          result = compute_fn.(values)
+          send(pid, {:lavash_reactive, field, {:ok, result}})
+        rescue
+          e -> send(pid, {:lavash_reactive, field, {:error, e}})
+        end
+      end)
+    end
 
     LSocket.put_derived(socket, field, AsyncResult.loading())
   end
+
+  # Auto-wrap Ash.Changeset results into Lavash.Form for template rendering
+  defp maybe_wrap_changeset(%Ash.Changeset{} = changeset), do: Lavash.Form.wrap(changeset)
+  defp maybe_wrap_changeset(other), do: other
 
   # Unwrap AsyncResult.ok values so compute functions receive plain values
   defp unwrap_async_values(dep_values) do

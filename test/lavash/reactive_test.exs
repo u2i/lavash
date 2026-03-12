@@ -108,6 +108,32 @@ defmodule Lavash.ReactiveTest do
       b_idx = Enum.find_index(order, &(&1 == :b))
       assert a_idx < b_idx
     end
+
+    test "tags: fields_with_tag returns tagged fields" do
+      graph =
+        Reactive.new()
+        |> Reactive.state(:product_id, nil)
+        |> Reactive.state(:customer_id, nil)
+        |> Reactive.derive(:product, [:product_id], fn _ -> nil end, tags: [:product_resource])
+        |> Reactive.derive(:orders, [:customer_id], fn _ -> [] end, tags: [:order_resource])
+        |> Reactive.derive(:total, [:orders], fn _ -> 0 end, tags: [:order_resource])
+        |> Reactive.derive(:label, [:product], fn _ -> "" end)
+        |> Reactive.build()
+
+      assert Enum.sort(Graph.fields_with_tag(graph, :order_resource)) == [:orders, :total]
+      assert Graph.fields_with_tag(graph, :product_resource) == [:product]
+      assert Graph.fields_with_tag(graph, :nonexistent) == []
+    end
+
+    test "tags: empty by default" do
+      graph =
+        Reactive.new()
+        |> Reactive.state(:x, 0)
+        |> Reactive.derive(:a, [:x], &(&1.x + 1))
+        |> Reactive.build()
+
+      assert graph.tags == %{}
+    end
   end
 
   describe "runtime (socket integration)" do
@@ -184,6 +210,23 @@ defmodule Lavash.ReactiveTest do
       assert socket.assigns.doubled == 20
       assert socket.assigns.next == 15
       assert socket.assigns.quad == 40
+    end
+
+    test "dep_resolver provides custom dep values", %{socket: socket} do
+      graph =
+        Reactive.new()
+        |> Reactive.state(:product_id, nil)
+        |> Reactive.dep_resolver(:__actor__, fn socket -> socket.assigns[:current_user] end)
+        |> Reactive.derive(:label, [:product_id, :__actor__], fn %{product_id: id, __actor__: actor} ->
+          "#{id}-#{actor}"
+        end)
+        |> Reactive.build()
+
+      socket = Reactive.init(socket, graph)
+      socket = Phoenix.Component.assign(socket, :current_user, "tom")
+      socket = Reactive.set(socket, graph, :product_id, 42)
+
+      assert socket.assigns.label == "42-tom"
     end
   end
 
