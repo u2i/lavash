@@ -168,7 +168,7 @@ defmodule Lavash.ReactiveTest do
 
     test "set updates state and recomputes dependents", %{socket: socket, graph: graph} do
       socket = Reactive.init(socket, graph)
-      socket = Reactive.set(socket, graph, :count, 5)
+      socket = Reactive.set(socket,:count, 5)
 
       assert socket.assigns.count == 5
       assert socket.assigns.doubled == 10
@@ -178,7 +178,7 @@ defmodule Lavash.ReactiveTest do
 
     test "set only recomputes affected fields", %{socket: socket, graph: graph} do
       socket = Reactive.init(socket, graph)
-      socket = Reactive.set(socket, graph, :step, 3)
+      socket = Reactive.set(socket,:step, 3)
 
       # :step only affects :next, not :doubled or :quad
       assert socket.assigns.step == 3
@@ -189,8 +189,8 @@ defmodule Lavash.ReactiveTest do
 
     test "update applies function and recomputes", %{socket: socket, graph: graph} do
       socket = Reactive.init(socket, graph)
-      socket = Reactive.set(socket, graph, :count, 3)
-      socket = Reactive.update(socket, graph, :count, &(&1 + 1))
+      socket = Reactive.set(socket,:count, 3)
+      socket = Reactive.update(socket,:count, &(&1 + 1))
 
       assert socket.assigns.count == 4
       assert socket.assigns.doubled == 8
@@ -202,8 +202,8 @@ defmodule Lavash.ReactiveTest do
 
       socket =
         socket
-        |> Reactive.set(graph, :count, 10)
-        |> Reactive.set(graph, :step, 5)
+        |> Reactive.set(:count, 10)
+        |> Reactive.set(:step, 5)
 
       assert socket.assigns.count == 10
       assert socket.assigns.step == 5
@@ -224,7 +224,7 @@ defmodule Lavash.ReactiveTest do
 
       socket = Reactive.init(socket, graph)
       socket = Phoenix.Component.assign(socket, :current_user, "tom")
-      socket = Reactive.set(socket, graph, :product_id, 42)
+      socket = Reactive.set(socket,:product_id, 42)
 
       assert socket.assigns.label == "42-tom"
     end
@@ -251,7 +251,7 @@ defmodule Lavash.ReactiveTest do
 
     test "put sets state without recomputing derives", %{socket: socket, graph: graph} do
       socket = Reactive.init(socket, graph)
-      socket = Reactive.put(socket, graph, :count, 10)
+      socket = Reactive.put(socket,:count, 10)
 
       # State is updated
       assert socket.assigns.count == 10
@@ -265,9 +265,9 @@ defmodule Lavash.ReactiveTest do
 
       socket =
         socket
-        |> Reactive.put(graph, :count, 10)
-        |> Reactive.put(graph, :step, 5)
-        |> Reactive.recompute_dirty(graph)
+        |> Reactive.put(:count, 10)
+        |> Reactive.put(:step, 5)
+        |> Reactive.recompute_dirty()
 
       assert socket.assigns.count == 10
       assert socket.assigns.step == 5
@@ -281,7 +281,7 @@ defmodule Lavash.ReactiveTest do
       # clear dirty from init
       socket = Lavash.Socket.clear_dirty(socket)
 
-      socket2 = Reactive.recompute_dirty(socket, graph)
+      socket2 = Reactive.recompute_dirty(socket)
       assert socket2 == socket
     end
 
@@ -291,8 +291,8 @@ defmodule Lavash.ReactiveTest do
       # Only change :step — should only affect :next, not :doubled or :quad
       socket =
         socket
-        |> Reactive.put(graph, :step, 100)
-        |> Reactive.recompute_dirty(graph)
+        |> Reactive.put(:step, 100)
+        |> Reactive.recompute_dirty()
 
       assert socket.assigns.step == 100
       assert socket.assigns.next == 100  # count(0) + step(100)
@@ -306,7 +306,7 @@ defmodule Lavash.ReactiveTest do
       # Manually set a state field via LSocket to bypass recompute
       socket = Phoenix.Component.assign(socket, :count, 7)
 
-      socket = Reactive.recompute_all(socket, graph)
+      socket = Reactive.recompute_all(socket)
 
       assert socket.assigns.doubled == 14
       assert socket.assigns.next == 8
@@ -317,7 +317,7 @@ defmodule Lavash.ReactiveTest do
       socket = Reactive.init(socket, graph)
       socket = Phoenix.Component.assign(socket, :count, 5)
 
-      socket = Reactive.recompute_dependents(socket, graph, :count)
+      socket = Reactive.recompute_dependents(socket,:count)
 
       assert socket.assigns.doubled == 10
       assert socket.assigns.next == 6
@@ -374,7 +374,7 @@ defmodule Lavash.ReactiveTest do
       assert socket.assigns.doubled == 0
       assert socket.assigns.next == 1
 
-      socket = Reactive.set(socket, graph, :count, 7)
+      socket = Reactive.set(socket,:count, 7)
       assert socket.assigns.doubled == 14
       assert socket.assigns.next == 8
     end
@@ -426,7 +426,7 @@ defmodule Lavash.ReactiveTest do
       # Wait for the async task to send its message
       assert_receive {:lavash_reactive, :results, {:ok, [:found]}}, 1000
 
-      {:ok, socket} = Reactive.handle_async(socket, graph, {:lavash_reactive, :results, {:ok, [:found]}})
+      {:ok, socket} = Reactive.handle_async(socket,{:lavash_reactive, :results, {:ok, [:found]}})
 
       assert %Phoenix.LiveView.AsyncResult{ok?: true, result: [:found]} = socket.assigns.results
     end
@@ -458,7 +458,7 @@ defmodule Lavash.ReactiveTest do
 
       # Wait for task and handle the message
       assert_receive {:lavash_reactive, :results, {:ok, [:a, :b, :c]}}, 1000
-      {:ok, socket} = Reactive.handle_async(socket, graph, {:lavash_reactive, :results, {:ok, [:a, :b, :c]}})
+      {:ok, socket} = Reactive.handle_async(socket,{:lavash_reactive, :results, {:ok, [:a, :b, :c]}})
 
       # :results resolved, :count should compute with unwrapped value
       assert %Phoenix.LiveView.AsyncResult{ok?: true, result: [:a, :b, :c]} = socket.assigns.results
@@ -480,7 +480,7 @@ defmodule Lavash.ReactiveTest do
       assert_receive {:lavash_reactive, :fetched, {:error, %RuntimeError{message: "boom"}}}, 1000
 
       {:ok, socket} =
-        Reactive.handle_async(socket, graph, {:lavash_reactive, :fetched, {:error, %RuntimeError{message: "boom"}}})
+        Reactive.handle_async(socket,{:lavash_reactive, :fetched, {:error, %RuntimeError{message: "boom"}}})
 
       # :fetched is failed (wrapped as {:exit, reason} per Phoenix convention)
       assert %Phoenix.LiveView.AsyncResult{failed: {:exit, %RuntimeError{message: "boom"}}} = socket.assigns.fetched
@@ -499,16 +499,16 @@ defmodule Lavash.ReactiveTest do
 
       # Drain the first task
       assert_receive {:lavash_reactive, :results, {:ok, ["", ""]}}, 1000
-      {:ok, socket} = Reactive.handle_async(socket, graph, {:lavash_reactive, :results, {:ok, ["", ""]}})
+      {:ok, socket} = Reactive.handle_async(socket,{:lavash_reactive, :results, {:ok, ["", ""]}})
       assert %Phoenix.LiveView.AsyncResult{ok?: true, result: ["", ""]} = socket.assigns.results
 
       # Change state — should re-trigger the async derive
-      socket = Reactive.set(socket, graph, :search, "hello")
+      socket = Reactive.set(socket,:search, "hello")
       assert %Phoenix.LiveView.AsyncResult{loading: true} = socket.assigns.results
 
       # New task completes
       assert_receive {:lavash_reactive, :results, {:ok, ["hello", "hello"]}}, 1000
-      {:ok, socket} = Reactive.handle_async(socket, graph, {:lavash_reactive, :results, {:ok, ["hello", "hello"]}})
+      {:ok, socket} = Reactive.handle_async(socket,{:lavash_reactive, :results, {:ok, ["hello", "hello"]}})
       assert %Phoenix.LiveView.AsyncResult{ok?: true, result: ["hello", "hello"]} = socket.assigns.results
     end
 
@@ -519,7 +519,7 @@ defmodule Lavash.ReactiveTest do
         |> Reactive.build()
 
       socket = Reactive.init(socket, graph)
-      assert :not_handled = Reactive.handle_async(socket, graph, {:something_else, :data})
+      assert :not_handled = Reactive.handle_async(socket,{:something_else, :data})
     end
   end
 end

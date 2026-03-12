@@ -28,7 +28,9 @@ defmodule Lavash.Socket do
       # Registered child components: %{id => {module, resources}}
       registered_components: Map.get(opts, :registered_components, %{}),
       # Optimistic update version counter - used to reject stale DOM patches
-      optimistic_version: Map.get(opts, :optimistic_version, 0)
+      optimistic_version: Map.get(opts, :optimistic_version, 0),
+      # Reactive graph for recomputation
+      graph: Map.get(opts, :graph)
     }
 
     Phoenix.LiveView.put_private(socket, :lavash, lavash)

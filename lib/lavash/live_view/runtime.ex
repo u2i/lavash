@@ -131,7 +131,8 @@ defmodule Lavash.LiveView.Runtime do
       |> LSocket.init(%{
         url_fields: url_field_names,
         socket_fields: socket_field_names,
-        component_states: component_states
+        component_states: component_states,
+        graph: DslGraph.compiled_graph(module)
       })
       |> State.hydrate_socket(module, connect_params)
       |> State.hydrate_ephemeral(module)
@@ -226,7 +227,7 @@ defmodule Lavash.LiveView.Runtime do
       |> LSocket.put(:path_param_names, path_param_names)
       |> LSocket.put(:path_param_values, path_param_values)
       |> State.hydrate_url(module, params)
-      |> Reactive.recompute_all(DslGraph.compiled_graph(module))
+      |> Reactive.recompute_all()
       |> Assigns.project(module)
 
     # Update combination-based subscriptions based on new filter values
@@ -301,7 +302,7 @@ defmodule Lavash.LiveView.Runtime do
       socket
       |> LSocket.put_state(params_field, form_params)
       |> LSocket.put_state(server_errors_field, %{})
-      |> Reactive.recompute_dirty(DslGraph.compiled_graph(module))
+      |> Reactive.recompute_dirty()
       |> Assigns.project(module)
 
     {:noreply, socket}
@@ -372,7 +373,7 @@ defmodule Lavash.LiveView.Runtime do
     socket =
       socket
       |> LSocket.put_state(server_errors_field, updated_errors)
-      |> Reactive.recompute_dirty(DslGraph.compiled_graph(module))
+      |> Reactive.recompute_dirty()
       |> Assigns.project(module)
 
     {:noreply, socket}
@@ -397,7 +398,7 @@ defmodule Lavash.LiveView.Runtime do
         socket =
           socket
           |> LSocket.bump_optimistic_version()
-          |> Reactive.recompute_dirty(DslGraph.compiled_graph(module))
+          |> Reactive.recompute_dirty()
           |> Assigns.project(module)
 
         update_combination_subscriptions(socket, module, old_state)
@@ -414,7 +415,7 @@ defmodule Lavash.LiveView.Runtime do
             if LSocket.dirty?(socket) do
               socket =
                 socket
-                |> Reactive.recompute_dirty(DslGraph.compiled_graph(module))
+                |> Reactive.recompute_dirty()
                 |> Assigns.project(module)
 
               update_combination_subscriptions(socket, module, old_state)
@@ -435,7 +436,7 @@ defmodule Lavash.LiveView.Runtime do
               |> apply_navigates(action.navigates || [])
               |> maybe_push_patch(module)
               |> maybe_sync_socket_state(module)
-              |> Reactive.recompute_dirty(DslGraph.compiled_graph(module))
+              |> Reactive.recompute_dirty()
               |> Assigns.project(module)
 
             update_combination_subscriptions(socket, module, old_state)
@@ -460,7 +461,7 @@ defmodule Lavash.LiveView.Runtime do
               socket
               |> maybe_push_patch(module)
               |> maybe_sync_socket_state(module)
-              |> Reactive.recompute_dirty(DslGraph.compiled_graph(module))
+              |> Reactive.recompute_dirty()
               |> Assigns.project(module)
 
             update_combination_subscriptions(socket, module, old_state)
@@ -540,7 +541,7 @@ defmodule Lavash.LiveView.Runtime do
     socket =
       socket
       |> LSocket.put_derived(field, Phoenix.LiveView.AsyncResult.ok(result))
-      |> Reactive.recompute_dependents(DslGraph.compiled_graph(module), field)
+      |> Reactive.recompute_dependents(field)
       |> Assigns.project(module)
 
     {:noreply, socket}
@@ -552,7 +553,7 @@ defmodule Lavash.LiveView.Runtime do
     socket =
       socket
       |> LSocket.put_derived(field, failed)
-      |> Reactive.recompute_dependents(DslGraph.compiled_graph(module), field)
+      |> Reactive.recompute_dependents(field)
       |> Assigns.project(module)
 
     {:noreply, socket}
@@ -570,7 +571,7 @@ defmodule Lavash.LiveView.Runtime do
       socket
       |> LSocket.put_state(field, value)
       |> maybe_push_patch(module)
-      |> Reactive.recompute_dirty(DslGraph.compiled_graph(module))
+      |> Reactive.recompute_dirty()
       |> Assigns.project(module)
 
     {:noreply, socket}
@@ -615,7 +616,7 @@ defmodule Lavash.LiveView.Runtime do
       |> LSocket.bump_optimistic_version()
       |> LSocket.put_state(field, new_value)
       |> maybe_push_patch(module)
-      |> Reactive.recompute_dirty(DslGraph.compiled_graph(module))
+      |> Reactive.recompute_dirty()
       |> Assigns.project(module)
 
     {:noreply, socket}
@@ -638,7 +639,7 @@ defmodule Lavash.LiveView.Runtime do
       |> LSocket.bump_optimistic_version()
       |> LSocket.put_state(field, new_value)
       |> maybe_push_patch(module)
-      |> Reactive.recompute_dirty(DslGraph.compiled_graph(module))
+      |> Reactive.recompute_dirty()
       |> Assigns.project(module)
 
     {:noreply, socket}
@@ -655,7 +656,7 @@ defmodule Lavash.LiveView.Runtime do
       |> LSocket.bump_optimistic_version()
       |> LSocket.put_state(field, new_value)
       |> maybe_push_patch(module)
-      |> Reactive.recompute_dirty(DslGraph.compiled_graph(module))
+      |> Reactive.recompute_dirty()
       |> Assigns.project(module)
 
     {:noreply, socket}
@@ -671,7 +672,7 @@ defmodule Lavash.LiveView.Runtime do
       |> LSocket.bump_optimistic_version()
       |> LSocket.put_state(field, parsed_value)
       |> maybe_push_patch(module)
-      |> Reactive.recompute_dirty(DslGraph.compiled_graph(module))
+      |> Reactive.recompute_dirty()
       |> Assigns.project(module)
 
     {:noreply, socket}
@@ -687,7 +688,7 @@ defmodule Lavash.LiveView.Runtime do
       |> LSocket.bump_optimistic_version()
       |> LSocket.put_state(field, parsed_value)
       |> maybe_push_patch(module)
-      |> Reactive.recompute_dirty(DslGraph.compiled_graph(module))
+      |> Reactive.recompute_dirty()
       |> Assigns.project(module)
 
     {:noreply, socket}
@@ -738,7 +739,7 @@ defmodule Lavash.LiveView.Runtime do
         |> LSocket.update(:dirty, fn dirty ->
           Enum.reduce(fields_to_invalidate, dirty, &MapSet.put(&2, &1))
         end)
-        |> Reactive.recompute_dirty(DslGraph.compiled_graph(module))
+        |> Reactive.recompute_dirty()
         |> Assigns.project(module)
       else
         socket
@@ -836,7 +837,7 @@ defmodule Lavash.LiveView.Runtime do
     # Recompute derived state to get the latest form
     socket =
       socket
-      |> Reactive.recompute_dirty(DslGraph.compiled_graph(module))
+      |> Reactive.recompute_dirty()
 
     # Get the form from assigns (raw Lavash.Form or AsyncResult)
     raw_form = socket.assigns[submit.field]
@@ -904,7 +905,7 @@ defmodule Lavash.LiveView.Runtime do
         socket =
           socket
           |> LSocket.put_state(server_errors_field, server_errors)
-          |> Reactive.recompute_dirty(DslGraph.compiled_graph(module))
+          |> Reactive.recompute_dirty()
           |> Assigns.project(module)
 
         # Failure - trigger on_error action if specified

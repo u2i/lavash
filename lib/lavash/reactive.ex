@@ -6,6 +6,9 @@ defmodule Lavash.Reactive do
   producing a precomputed `%Graph{}` that drives automatic recomputation
   when state changes.
 
+  The graph is stored on the socket during `init/2`, so subsequent calls
+  don't need the graph passed explicitly.
+
   ## Usage
 
       defmodule MyLive do
@@ -27,12 +30,12 @@ defmodule Lavash.Reactive do
         end
 
         def handle_event("inc", _, socket) do
-          {:noreply, Lavash.Reactive.set(socket, graph(), :count, socket.assigns.count + 1)}
+          {:noreply, Lavash.Reactive.set(socket, :count, socket.assigns.count + 1)}
         end
 
         # Required for async derives:
         def handle_info(msg, socket) do
-          case Lavash.Reactive.handle_async(socket, graph(), msg) do
+          case Lavash.Reactive.handle_async(socket, msg) do
             {:ok, socket} -> {:noreply, socket}
             :not_handled -> {:noreply, socket}
           end
@@ -41,20 +44,20 @@ defmodule Lavash.Reactive do
 
   ## Batch Updates
 
-  When you need to change multiple state fields before recomputing, use `put/4`
-  to defer recomputation, then `recompute_dirty/2` to flush:
+  When you need to change multiple state fields before recomputing, use `put/3`
+  to defer recomputation, then `recompute_dirty/1` to flush:
 
       def handle_event("reset", _, socket) do
         socket =
           socket
-          |> Reactive.put(graph(), :search, "")
-          |> Reactive.put(graph(), :page, 1)
-          |> Reactive.recompute_dirty(graph())
+          |> Reactive.put(:search, "")
+          |> Reactive.put(:page, 1)
+          |> Reactive.recompute_dirty()
 
         {:noreply, socket}
       end
 
-  `set/4` remains the simple path for single-field updates (sets + recomputes
+  `set/3` remains the simple path for single-field updates (sets + recomputes
   immediately).
 
   ## Async Derives
@@ -67,7 +70,7 @@ defmodule Lavash.Reactive do
       |> Reactive.derive(:results, [:search], &fetch_results/1, async: true)
       |> Reactive.derive(:count, [:results], fn %{results: r} -> length(r) end)
 
-  `graph/2` builds the graph on first call and caches it in `persistent_term`,
+  `graph/2` builds the graph once and caches it in `persistent_term`,
   so the topo sort only runs once per module for the entire app lifecycle.
 
   Note: anonymous functions cannot be stored in module attributes (`@graph`)
@@ -177,15 +180,20 @@ defmodule Lavash.Reactive do
     end
   end
 
-  # --- Runtime functions (operate on socket + graph) ---
+  # --- Runtime functions (operate on socket, graph retrieved from socket) ---
 
   @doc """
   Initializes a socket with the reactive graph.
 
-  Sets all state defaults and computes all derived values.
+  Stores the graph on the socket, sets all state defaults, and computes
+  all derived values. Subsequent calls to `set/3`, `put/3`, etc. retrieve
+  the graph from the socket automatically.
   """
   def init(socket, %Graph{} = graph) do
-    socket = LSocket.init(socket)
+    socket =
+      socket
+      |> LSocket.init()
+      |> LSocket.put(:graph, graph)
 
     # Set state defaults
     socket =
@@ -200,7 +208,8 @@ defmodule Lavash.Reactive do
   @doc """
   Sets a state field and recomputes affected derived fields.
   """
-  def set(socket, %Graph{} = graph, field, value) do
+  def set(socket, field, value) do
+    graph = get_graph!(socket)
     socket = LSocket.put_state(socket, field, value)
     to_recompute = Graph.recompute_order(graph, [field])
     recompute(socket, graph, to_recompute)
@@ -209,22 +218,22 @@ defmodule Lavash.Reactive do
   @doc """
   Updates a state field via function and recomputes affected derived fields.
   """
-  def update(socket, %Graph{} = graph, field, fun) do
-    set(socket, graph, field, fun.(socket.assigns[field]))
+  def update(socket, field, fun) do
+    set(socket, field, fun.(socket.assigns[field]))
   end
 
   @doc """
   Sets a state field and marks it dirty WITHOUT recomputing.
 
-  Use this to batch multiple state changes, then call `recompute_dirty/2`
+  Use this to batch multiple state changes, then call `recompute_dirty/1`
   once to flush all changes:
 
       socket
-      |> Reactive.put(graph, :search, "elixir")
-      |> Reactive.put(graph, :page, 1)
-      |> Reactive.recompute_dirty(graph)
+      |> Reactive.put(:search, "elixir")
+      |> Reactive.put(:page, 1)
+      |> Reactive.recompute_dirty()
   """
-  def put(socket, %Graph{} = _graph, field, value) do
+  def put(socket, field, value) do
     LSocket.put_state(socket, field, value)
   end
 
@@ -234,7 +243,8 @@ defmodule Lavash.Reactive do
 
   Returns the socket unchanged if nothing is dirty.
   """
-  def recompute_dirty(socket, %Graph{} = graph) do
+  def recompute_dirty(socket) do
+    graph = get_graph!(socket)
     dirty = LSocket.dirty(socket)
 
     if MapSet.size(dirty) == 0 do
@@ -261,14 +271,16 @@ defmodule Lavash.Reactive do
   @doc """
   Recomputes all derived fields in topological order.
   """
-  def recompute_all(socket, %Graph{} = graph) do
+  def recompute_all(socket) do
+    graph = get_graph!(socket)
     recompute(socket, graph, graph.topo_order)
   end
 
   @doc """
   Recomputes derived fields that depend (transitively) on `changed_field`.
   """
-  def recompute_dependents(socket, %Graph{} = graph, changed_field) do
+  def recompute_dependents(socket, changed_field) do
+    graph = get_graph!(socket)
     to_recompute = Graph.recompute_order(graph, [changed_field])
     recompute(socket, graph, to_recompute)
   end
@@ -290,26 +302,34 @@ defmodule Lavash.Reactive do
   Call this from your LiveView's `handle_info/2`:
 
       def handle_info(msg, socket) do
-        case Lavash.Reactive.handle_async(socket, graph(), msg) do
+        case Lavash.Reactive.handle_async(socket, msg) do
           {:ok, socket} -> {:noreply, socket}
           :not_handled -> {:noreply, socket}
         end
       end
   """
-  def handle_async(socket, %Graph{} = graph, {:lavash_reactive, field, {:ok, result}}) do
+  def handle_async(socket, {:lavash_reactive, field, {:ok, result}}) do
+    graph = get_graph!(socket)
     socket = LSocket.put_derived(socket, field, AsyncResult.ok(result))
     to_recompute = Graph.recompute_order(graph, [field])
     {:ok, recompute(socket, graph, to_recompute)}
   end
 
-  def handle_async(socket, %Graph{} = graph, {:lavash_reactive, field, {:error, reason}}) do
+  def handle_async(socket, {:lavash_reactive, field, {:error, reason}}) do
+    graph = get_graph!(socket)
     failed = AsyncResult.loading() |> AsyncResult.failed({:exit, reason})
     socket = LSocket.put_derived(socket, field, failed)
     to_recompute = Graph.recompute_order(graph, [field])
     {:ok, recompute(socket, graph, to_recompute)}
   end
 
-  def handle_async(_socket, _graph, _msg), do: :not_handled
+  def handle_async(_socket, _msg), do: :not_handled
+
+  # Retrieve the graph stored on the socket by init/2
+  defp get_graph!(socket) do
+    LSocket.get(socket, :graph) ||
+      raise "Reactive graph not found on socket. Call Reactive.init/2 first."
+  end
 
   # --- Recompute engine ---
 
