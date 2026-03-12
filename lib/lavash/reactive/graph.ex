@@ -17,13 +17,14 @@ defmodule Lavash.Reactive.Graph do
             dependents: %{},
             deps: %{},
             compute_fns: %{},
-            state_defaults: %{}
+            state_defaults: %{},
+            async_fields: MapSet.new()
 
   @doc """
   Compiles states and derives into a frozen `%Graph{}`.
 
   States: `[{name, default}, ...]`
-  Derives: `[{name, [dep, ...], fun}, ...]`
+  Derives: `[{name, [dep, ...], fun, async?}, ...]`
 
   The function for each derive receives a map of dependency values:
   `fn %{count: 5, step: 2} -> 10 end`
@@ -31,8 +32,13 @@ defmodule Lavash.Reactive.Graph do
   def compile(states, derives) do
     state_defaults = Map.new(states)
 
-    deps = Map.new(derives, fn {name, dep_list, _fun} -> {name, dep_list} end)
-    compute_fns = Map.new(derives, fn {name, _deps, fun} -> {name, fun} end)
+    deps = Map.new(derives, fn {name, dep_list, _fun, _async} -> {name, dep_list} end)
+    compute_fns = Map.new(derives, fn {name, _deps, fun, _async} -> {name, fun} end)
+
+    async_fields =
+      derives
+      |> Enum.filter(fn {_, _, _, async} -> async end)
+      |> MapSet.new(fn {name, _, _, _} -> name end)
 
     topo_order = topo_sort(derives, deps)
     dependents = build_dependents(deps)
@@ -42,7 +48,8 @@ defmodule Lavash.Reactive.Graph do
       dependents: dependents,
       deps: deps,
       compute_fns: compute_fns,
-      state_defaults: state_defaults
+      state_defaults: state_defaults,
+      async_fields: async_fields
     }
   end
 
@@ -73,7 +80,7 @@ defmodule Lavash.Reactive.Graph do
 
   # Kahn's algorithm for topological sort
   defp topo_sort(derives, deps) do
-    names = Enum.map(derives, fn {name, _, _} -> name end)
+    names = Enum.map(derives, fn {name, _, _, _} -> name end)
 
     # Count in-degree (only from other derives, not from state)
     derive_names = MapSet.new(names)

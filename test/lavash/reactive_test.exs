@@ -228,4 +228,147 @@ defmodule Lavash.ReactiveTest do
       assert socket.assigns.next == 8
     end
   end
+
+  describe "async derives" do
+    setup do
+      socket = %Phoenix.LiveView.Socket{
+        assigns: %{__changed__: %{}},
+        private: %{}
+      }
+
+      {:ok, socket: socket}
+    end
+
+    test "graph tracks async fields" do
+      graph =
+        Reactive.new()
+        |> Reactive.state(:search, "")
+        |> Reactive.derive(:results, [:search], fn _ -> [] end, async: true)
+        |> Reactive.derive(:sync_field, [:search], fn %{search: s} -> String.length(s) end)
+        |> Reactive.build()
+
+      assert MapSet.member?(graph.async_fields, :results)
+      refute MapSet.member?(graph.async_fields, :sync_field)
+    end
+
+    test "async derive sets loading on init", %{socket: socket} do
+      graph =
+        Reactive.new()
+        |> Reactive.state(:search, "")
+        |> Reactive.derive(:results, [:search], fn _ -> [:a, :b] end, async: true)
+        |> Reactive.build()
+
+      socket = Reactive.init(socket, graph)
+
+      assert %Phoenix.LiveView.AsyncResult{loading: true} = socket.assigns.results
+    end
+
+    test "async derive sends result message and handle_async resolves it", %{socket: socket} do
+      graph =
+        Reactive.new()
+        |> Reactive.state(:search, "")
+        |> Reactive.derive(:results, [:search], fn _ -> [:found] end, async: true)
+        |> Reactive.build()
+
+      socket = Reactive.init(socket, graph)
+
+      # Wait for the async task to send its message
+      assert_receive {:lavash_reactive, :results, {:ok, [:found]}}, 1000
+
+      {:ok, socket} = Reactive.handle_async(socket, graph, {:lavash_reactive, :results, {:ok, [:found]}})
+
+      assert %Phoenix.LiveView.AsyncResult{ok?: true, result: [:found]} = socket.assigns.results
+    end
+
+    test "downstream sync derive propagates loading when async dep is loading", %{socket: socket} do
+      graph =
+        Reactive.new()
+        |> Reactive.state(:search, "")
+        |> Reactive.derive(:results, [:search], fn _ -> [:a, :b] end, async: true)
+        |> Reactive.derive(:count, [:results], fn %{results: r} -> length(r) end)
+        |> Reactive.build()
+
+      socket = Reactive.init(socket, graph)
+
+      # :results is loading, so :count should propagate loading
+      assert %Phoenix.LiveView.AsyncResult{loading: true} = socket.assigns.results
+      assert %Phoenix.LiveView.AsyncResult{loading: true} = socket.assigns.count
+    end
+
+    test "downstream sync derive computes after async resolves", %{socket: socket} do
+      graph =
+        Reactive.new()
+        |> Reactive.state(:search, "")
+        |> Reactive.derive(:results, [:search], fn _ -> [:a, :b, :c] end, async: true)
+        |> Reactive.derive(:count, [:results], fn %{results: r} -> length(r) end)
+        |> Reactive.build()
+
+      socket = Reactive.init(socket, graph)
+
+      # Wait for task and handle the message
+      assert_receive {:lavash_reactive, :results, {:ok, [:a, :b, :c]}}, 1000
+      {:ok, socket} = Reactive.handle_async(socket, graph, {:lavash_reactive, :results, {:ok, [:a, :b, :c]}})
+
+      # :results resolved, :count should compute with unwrapped value
+      assert %Phoenix.LiveView.AsyncResult{ok?: true, result: [:a, :b, :c]} = socket.assigns.results
+      # :count wraps in AsyncResult.ok since its dep was async
+      assert %Phoenix.LiveView.AsyncResult{ok?: true, result: 3} = socket.assigns.count
+    end
+
+    test "error propagation through async chain", %{socket: socket} do
+      graph =
+        Reactive.new()
+        |> Reactive.state(:x, 0)
+        |> Reactive.derive(:fetched, [:x], fn _ -> raise "boom" end, async: true)
+        |> Reactive.derive(:downstream, [:fetched], fn %{fetched: f} -> f + 1 end)
+        |> Reactive.build()
+
+      socket = Reactive.init(socket, graph)
+
+      # Wait for the error
+      assert_receive {:lavash_reactive, :fetched, {:error, %RuntimeError{message: "boom"}}}, 1000
+
+      {:ok, socket} =
+        Reactive.handle_async(socket, graph, {:lavash_reactive, :fetched, {:error, %RuntimeError{message: "boom"}}})
+
+      # :fetched is failed (wrapped as {:exit, reason} per Phoenix convention)
+      assert %Phoenix.LiveView.AsyncResult{failed: {:exit, %RuntimeError{message: "boom"}}} = socket.assigns.fetched
+      # :downstream propagates the failed state
+      assert %Phoenix.LiveView.AsyncResult{failed: {:exit, %RuntimeError{message: "boom"}}} = socket.assigns.downstream
+    end
+
+    test "state change re-triggers async derive", %{socket: socket} do
+      graph =
+        Reactive.new()
+        |> Reactive.state(:search, "")
+        |> Reactive.derive(:results, [:search], fn %{search: s} -> [s, s] end, async: true)
+        |> Reactive.build()
+
+      socket = Reactive.init(socket, graph)
+
+      # Drain the first task
+      assert_receive {:lavash_reactive, :results, {:ok, ["", ""]}}, 1000
+      {:ok, socket} = Reactive.handle_async(socket, graph, {:lavash_reactive, :results, {:ok, ["", ""]}})
+      assert %Phoenix.LiveView.AsyncResult{ok?: true, result: ["", ""]} = socket.assigns.results
+
+      # Change state — should re-trigger the async derive
+      socket = Reactive.set(socket, graph, :search, "hello")
+      assert %Phoenix.LiveView.AsyncResult{loading: true} = socket.assigns.results
+
+      # New task completes
+      assert_receive {:lavash_reactive, :results, {:ok, ["hello", "hello"]}}, 1000
+      {:ok, socket} = Reactive.handle_async(socket, graph, {:lavash_reactive, :results, {:ok, ["hello", "hello"]}})
+      assert %Phoenix.LiveView.AsyncResult{ok?: true, result: ["hello", "hello"]} = socket.assigns.results
+    end
+
+    test "handle_async returns :not_handled for unrelated messages", %{socket: socket} do
+      graph =
+        Reactive.new()
+        |> Reactive.state(:x, 0)
+        |> Reactive.build()
+
+      socket = Reactive.init(socket, graph)
+      assert :not_handled = Reactive.handle_async(socket, graph, {:something_else, :data})
+    end
+  end
 end
