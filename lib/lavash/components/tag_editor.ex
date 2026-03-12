@@ -53,31 +53,32 @@ defmodule Lavash.Components.TagEditor do
   optimistic_action :remove, :tags,
     run: fn tags, tag -> Enum.reject(tags, &(&1 == tag)) end
 
-  # Template with auto-injected data-lavash-state-field from optimistic_actions
-  template """
-  <div class="flex flex-wrap gap-2 items-center">
-    <span
-      :for={tag <- @tags}
-      class={@tag_class}
-    >
-      {tag}
-      <button
-        type="button"
-        class="hover:text-blue-600 text-blue-400"
-        data-lavash-action="remove"
-        data-lavash-value={tag}
-      >×</button>
-    </span>
-    <input
-      :if={@can_add}
-      type="text"
-      placeholder={@placeholder}
-      class={@input_class}
-      data-lavash-action="add"
-    />
-    <span :if={@max_tags} class="text-xs text-gray-400">
-      (<span data-lavash-display="tag_count">{@tag_count}</span>/{@max_tags})
-    </span>
-  </div>
-  """
+  render fn assigns ->
+    ~L"""
+    <div class="flex flex-wrap gap-2 items-center">
+      <span
+        :for={tag <- @tags}
+        class={@tag_class}
+      >
+        {tag}
+        <button
+          type="button"
+          class="hover:text-blue-600 text-blue-400"
+          data-lavash-action="remove"
+          data-lavash-value={tag}
+        >×</button>
+      </span>
+      <input
+        :if={@can_add}
+        type="text"
+        placeholder={@placeholder}
+        class={@input_class}
+        data-lavash-action="add"
+      />
+      <span :if={@max_tags} class="text-xs text-gray-400">
+        (<span data-lavash-display="tag_count">{@tag_count}</span>/{@max_tags})
+      </span>
+    </div>
+    """
+  end
 end

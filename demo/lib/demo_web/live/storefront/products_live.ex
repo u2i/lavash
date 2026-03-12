@@ -339,7 +339,7 @@ defmodule DemoWeb.Storefront.ProductsLive do
     end
   end
 
-  def render(assigns) do
+  render fn assigns ->
     ~H"""
     <div class="space-y-6">
       <div class="flex items-center justify-between py-4">

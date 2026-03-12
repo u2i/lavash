@@ -64,18 +64,19 @@ defmodule Lavash.Components.ChipSet do
       end
     end
 
-  # Template with auto-injected data-lavash-state-field from optimistic_action
-  template """
-  <div class="flex flex-wrap gap-2">
-    <button
-      :for={value <- @values}
-      type="button"
-      class={if value in (@selected || []), do: @active_class, else: @inactive_class}
-      data-lavash-action="toggle"
-      data-lavash-value={value}
-    >
-      {Map.get(@labels || %{}, value, humanize(value))}
-    </button>
-  </div>
-  """
+  render fn assigns ->
+    ~L"""
+    <div class="flex flex-wrap gap-2">
+      <button
+        :for={value <- @values}
+        type="button"
+        class={if value in (@selected || []), do: @active_class, else: @inactive_class}
+        data-lavash-action="toggle"
+        data-lavash-value={value}
+      >
+        {Map.get(@labels || %{}, value, humanize(value))}
+      </button>
+    </div>
+    """
+  end
 end

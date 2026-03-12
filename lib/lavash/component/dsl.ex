@@ -328,5 +328,5 @@ defmodule Lavash.Component.Dsl do
       Lavash.Optimistic.ExpandAnimatedStates,
       Lavash.Optimistic.ColocatedTransformer
     ],
-    imports: [Phoenix.Component, Lavash.DslHelpers, Lavash.Rx, Lavash.Component.Sigil]
+    imports: [Phoenix.Component, Lavash.DslHelpers, Lavash.Rx, Lavash.Component.Sigil, Lavash.Component.RenderImport]
 end

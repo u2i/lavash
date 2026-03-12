@@ -28,7 +28,7 @@ defmodule DemoWeb.Admin.ProductEditLive do
     end
   end
 
-  def render(assigns) do
+  render fn assigns ->
     ~H"""
     <div class="space-y-6">
       <div class="flex items-center gap-4">

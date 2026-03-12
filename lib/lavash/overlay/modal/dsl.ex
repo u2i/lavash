@@ -77,44 +77,12 @@ defmodule Lavash.Overlay.Modal.Dsl do
     ]
   }
 
-  @render_entity %Spark.Dsl.Entity{
-    name: :render,
-    describe:
-      "The modal content template. Receives assigns with @form set to the unwrapped async data.",
-    target: Lavash.Overlay.Modal.Render,
-    args: [:template],
-    schema: [
-      template: [
-        type: {:fun, 1},
-        required: true,
-        doc: "Function (assigns) -> HEEx"
-      ]
-    ]
-  }
-
-  @render_loading_entity %Spark.Dsl.Entity{
-    name: :render_loading,
-    describe: "Loading state template shown while async data loads",
-    target: Lavash.Overlay.Modal.RenderLoading,
-    args: [:template],
-    schema: [
-      template: [
-        type: {:fun, 1},
-        required: false,
-        doc: "Function (assigns) -> HEEx"
-      ]
-    ]
-  }
-
-  @renders_section %Spark.Dsl.Section{
-    name: :renders,
-    top_level?: true,
-    describe: "Modal render templates",
-    entities: [@render_entity, @render_loading_entity]
-  }
+  # render/1 and render_loading/1 are now provided by Lavash.Component.RenderImport
+  # (via Spark imports in Component.Dsl) and stored in @__lavash_renders__.
+  # The GenerateRender transformer reads from that attribute.
 
   use Spark.Dsl.Extension,
-    sections: [@modal_section, @renders_section],
+    sections: [@modal_section],
     transformers: [
       Lavash.Overlay.Modal.Transformers.InjectState,
       Lavash.Overlay.Modal.Transformers.GenerateRender

@@ -51,29 +51,30 @@ defmodule Lavash.Components.SyncedToggle do
   optimistic_action :toggle, :value,
     run: fn value, _arg -> !value end
 
-  # Template with data-lavash-action for optimistic updates
-  template """
-  <div class="inline-flex items-center gap-2">
-    <button
-      type="button"
-      role="switch"
-      aria-checked={to_string(@value)}
-      disabled={@disabled}
-      data-lavash-action="toggle"
-      data-lavash-state-field="value"
-      class={@button_class}
-    >
-      <span
-        aria-hidden="true"
-        class={@knob_class}
-      />
-    </button>
-    <span :if={@label != ""} class="text-sm font-medium text-gray-900">
-      {@label}
-    </span>
-    <span :if={@label == ""} class="text-sm text-gray-500">
-      {@display_label}
-    </span>
-  </div>
-  """
+  render fn assigns ->
+    ~L"""
+    <div class="inline-flex items-center gap-2">
+      <button
+        type="button"
+        role="switch"
+        aria-checked={to_string(@value)}
+        disabled={@disabled}
+        data-lavash-action="toggle"
+        data-lavash-state-field="value"
+        class={@button_class}
+      >
+        <span
+          aria-hidden="true"
+          class={@knob_class}
+        />
+      </button>
+      <span :if={@label != ""} class="text-sm font-medium text-gray-900">
+        {@label}
+      </span>
+      <span :if={@label == ""} class="text-sm text-gray-500">
+        {@display_label}
+      </span>
+    </div>
+    """
+  end
 end

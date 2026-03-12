@@ -27,7 +27,7 @@ defmodule DemoWeb.ProductCard do
     end
   end
 
-  def render(assigns) do
+  render fn assigns ->
     ~H"""
     <div
       id={@id}
