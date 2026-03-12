@@ -92,7 +92,7 @@ defmodule Lavash.Component.Runtime do
                         # Recompute any derived fields affected by dirty props
                         socket =
                           if LSocket.dirty?(socket) do
-                            Reactive.recompute_dirty(socket)
+                            Reactive.recompute(socket)
                           else
                             socket
                           end
@@ -116,7 +116,7 @@ defmodule Lavash.Component.Runtime do
       socket =
         socket
         |> LSocket.mark_dirty(fields_to_invalidate)
-        |> Reactive.recompute_dirty()
+        |> Reactive.recompute()
         |> Assigns.project(module)
 
       {:ok, socket}
@@ -137,7 +137,7 @@ defmodule Lavash.Component.Runtime do
       socket
       |> LSocket.bump_optimistic_version()
       |> LSocket.put_state(field, parsed_value)
-      |> Reactive.recompute_dirty()
+      |> Reactive.recompute()
       |> Assigns.project(module)
 
     # Check if this field is bound upward to our parent
@@ -289,7 +289,7 @@ defmodule Lavash.Component.Runtime do
             socket =
               socket
               |> maybe_sync_socket_state(module)
-              |> Reactive.recompute_dirty()
+              |> Reactive.recompute()
               |> Assigns.project(module)
               |> apply_notify_parents(notify_events)
               |> propagate_bound_field_changes(binding_map, bound_state_before)
@@ -314,7 +314,7 @@ defmodule Lavash.Component.Runtime do
             socket =
               socket
               |> maybe_sync_socket_state(module)
-              |> Reactive.recompute_dirty()
+              |> Reactive.recompute()
               |> Assigns.project(module)
               |> propagate_bound_field_changes(binding_map, bound_state_before)
 
@@ -336,7 +336,7 @@ defmodule Lavash.Component.Runtime do
         if LSocket.dirty?(socket) do
           socket =
             socket
-            |> Reactive.recompute_dirty()
+            |> Reactive.recompute()
             |> Assigns.project(module)
 
           {:noreply, socket}
@@ -354,7 +354,7 @@ defmodule Lavash.Component.Runtime do
             socket =
               socket
               |> maybe_sync_socket_state(module)
-              |> Reactive.recompute_dirty()
+              |> Reactive.recompute()
               |> Assigns.project(module)
               |> apply_notify_parents(notify_events)
               |> propagate_bound_field_changes(binding_map, bound_state_before)
@@ -380,7 +380,7 @@ defmodule Lavash.Component.Runtime do
             socket =
               socket
               |> maybe_sync_socket_state(module)
-              |> Reactive.recompute_dirty()
+              |> Reactive.recompute()
               |> Assigns.project(module)
               |> propagate_bound_field_changes(binding_map, bound_state_before)
 
@@ -621,7 +621,7 @@ defmodule Lavash.Component.Runtime do
 
   defp apply_submits(socket, module, [submit | rest], notify_events) do
     # Recompute derived state to get the latest form
-    socket = Reactive.recompute_dirty(socket)
+    socket = Reactive.recompute(socket)
 
     # Get the form from assigns (raw Lavash.Form or AsyncResult)
     raw_form = socket.assigns[submit.field]
@@ -693,7 +693,7 @@ defmodule Lavash.Component.Runtime do
         socket =
           socket
           |> LSocket.put_state(server_errors_field, server_errors)
-          |> Reactive.recompute_dirty()
+          |> Reactive.recompute()
           |> Assigns.project(module)
 
         # Failure - trigger on_error action if specified

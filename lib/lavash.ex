@@ -128,7 +128,7 @@ defmodule Lavash do
   """
   def finalize(socket, module) do
     socket
-    |> Lavash.Reactive.recompute_dirty()
+    |> Lavash.Reactive.recompute()
     |> Lavash.Assigns.project(module)
   end
 

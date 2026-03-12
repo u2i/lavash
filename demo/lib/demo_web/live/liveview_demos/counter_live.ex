@@ -4,8 +4,7 @@ defmodule DemoWeb.LiveViewDemos.CounterLive do
 
   Demonstrates:
   - Building a reactive graph with state and derived fields
-  - Immediate recomputation via `set/3`
-  - Batched updates via `put/3` + `recompute_dirty/1`
+  - `put/3` with value or function + `recompute/1`
   - Async derives with loading/error propagation
   - Graph caching via `Reactive.graph/2`
   """
@@ -30,30 +29,29 @@ defmodule DemoWeb.LiveViewDemos.CounterLive do
   end
 
   def handle_event("increment", _, socket) do
-    {:noreply, Reactive.update(socket, :count, &(&1 + 1))}
+    {:noreply, socket |> Reactive.put(:count, &(&1 + 1)) |> Reactive.recompute()}
   end
 
   def handle_event("decrement", _, socket) do
-    {:noreply, Reactive.update(socket, :count, &(&1 - 1))}
+    {:noreply, socket |> Reactive.put(:count, &(&1 - 1)) |> Reactive.recompute()}
   end
 
   def handle_event("set_step", %{"step" => step}, socket) do
-    {:noreply, Reactive.set(socket, :step, String.to_integer(step))}
+    {:noreply, socket |> Reactive.put(:step, String.to_integer(step)) |> Reactive.recompute()}
   end
 
-  # Batch update: reset both fields, recompute once
   def handle_event("reset", _, socket) do
     socket =
       socket
       |> Reactive.put(:count, 0)
       |> Reactive.put(:step, 1)
-      |> Reactive.recompute_dirty()
+      |> Reactive.recompute()
 
     {:noreply, socket}
   end
 
   def handle_event("set_100", _, socket) do
-    {:noreply, Reactive.set(socket, :count, 100)}
+    {:noreply, socket |> Reactive.put(:count, 100) |> Reactive.recompute()}
   end
 
   def handle_info(msg, socket) do
