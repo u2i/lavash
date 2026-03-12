@@ -39,6 +39,24 @@ defmodule Lavash.Reactive do
         end
       end
 
+  ## Batch Updates
+
+  When you need to change multiple state fields before recomputing, use `put/4`
+  to defer recomputation, then `recompute_dirty/2` to flush:
+
+      def handle_event("reset", _, socket) do
+        socket =
+          socket
+          |> Reactive.put(graph(), :search, "")
+          |> Reactive.put(graph(), :page, 1)
+          |> Reactive.recompute_dirty(graph())
+
+        {:noreply, socket}
+      end
+
+  `set/4` remains the simple path for single-field updates (sets + recomputes
+  immediately).
+
   ## Async Derives
 
   Mark a derive as `async: true` to run its computation in a background task.
@@ -193,6 +211,77 @@ defmodule Lavash.Reactive do
   """
   def update(socket, %Graph{} = graph, field, fun) do
     set(socket, graph, field, fun.(socket.assigns[field]))
+  end
+
+  @doc """
+  Sets a state field and marks it dirty WITHOUT recomputing.
+
+  Use this to batch multiple state changes, then call `recompute_dirty/2`
+  once to flush all changes:
+
+      socket
+      |> Reactive.put(graph, :search, "elixir")
+      |> Reactive.put(graph, :page, 1)
+      |> Reactive.recompute_dirty(graph)
+  """
+  def put(socket, %Graph{} = _graph, field, value) do
+    LSocket.put_state(socket, field, value)
+  end
+
+  @doc """
+  Recomputes all derived fields affected by dirty state fields, then clears
+  the dirty set.
+
+  Returns the socket unchanged if nothing is dirty.
+  """
+  def recompute_dirty(socket, %Graph{} = graph) do
+    dirty = LSocket.dirty(socket)
+
+    if MapSet.size(dirty) == 0 do
+      socket
+    else
+      dirty_list = MapSet.to_list(dirty)
+
+      # Derives transitively affected by dirty state fields
+      affected = Graph.affected(graph, dirty_list) |> MapSet.new()
+
+      # Dirty fields that ARE derives (e.g. marked dirty for re-fetch)
+      derive_names = MapSet.new(graph.topo_order)
+      dirty_derives = MapSet.intersection(dirty, derive_names)
+      all_affected = MapSet.union(affected, dirty_derives)
+
+      # Filter topo_order to affected, preserving evaluation order
+      to_recompute = Enum.filter(graph.topo_order, &MapSet.member?(all_affected, &1))
+
+      socket = LSocket.clear_dirty(socket)
+      recompute(socket, graph, to_recompute)
+    end
+  end
+
+  @doc """
+  Recomputes all derived fields in topological order.
+  """
+  def recompute_all(socket, %Graph{} = graph) do
+    recompute(socket, graph, graph.topo_order)
+  end
+
+  @doc """
+  Recomputes derived fields that depend (transitively) on `changed_field`.
+  """
+  def recompute_dependents(socket, %Graph{} = graph, changed_field) do
+    to_recompute = Graph.recompute_order(graph, [changed_field])
+    recompute(socket, graph, to_recompute)
+  end
+
+  @doc """
+  Returns field names that have the given tag.
+
+  Useful for resource-centric invalidation:
+
+      Reactive.fields_with_tag(graph, {:resource, MyApp.Post})
+  """
+  def fields_with_tag(%Graph{} = graph, tag) do
+    Graph.fields_with_tag(graph, tag)
   end
 
   @doc """

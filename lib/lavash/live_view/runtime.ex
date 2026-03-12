@@ -535,23 +535,22 @@ defmodule Lavash.LiveView.Runtime do
 
   defp parse_value(value), do: value
 
-  def handle_info(module, {:lavash_async, field, result}, socket) do
-    # Convert result to AsyncResult struct
-    async =
-      case result do
-        {:ok, value} ->
-          Phoenix.LiveView.AsyncResult.ok(value)
+  def handle_info(module, {:lavash_reactive, field, {:ok, result}}, socket) do
+    socket =
+      socket
+      |> LSocket.put_derived(field, Phoenix.LiveView.AsyncResult.ok(result))
+      |> Graph.recompute_dependents(module, field)
+      |> Assigns.project(module)
 
-        {:error, reason} ->
-          Phoenix.LiveView.AsyncResult.failed(%Phoenix.LiveView.AsyncResult{}, reason)
+    {:noreply, socket}
+  end
 
-        value ->
-          Phoenix.LiveView.AsyncResult.ok(value)
-      end
+  def handle_info(module, {:lavash_reactive, field, {:error, reason}}, socket) do
+    failed = Phoenix.LiveView.AsyncResult.loading() |> Phoenix.LiveView.AsyncResult.failed({:exit, reason})
 
     socket =
       socket
-      |> LSocket.put_derived(field, async)
+      |> LSocket.put_derived(field, failed)
       |> Graph.recompute_dependents(module, field)
       |> Assigns.project(module)
 

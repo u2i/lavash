@@ -230,6 +230,114 @@ defmodule Lavash.ReactiveTest do
     end
   end
 
+  describe "batch recomputation" do
+    setup do
+      socket = %Phoenix.LiveView.Socket{
+        assigns: %{__changed__: %{}},
+        private: %{}
+      }
+
+      graph =
+        Reactive.new()
+        |> Reactive.state(:count, 0)
+        |> Reactive.state(:step, 1)
+        |> Reactive.derive(:doubled, [:count], &(&1.count * 2))
+        |> Reactive.derive(:next, [:count, :step], &(&1.count + &1.step))
+        |> Reactive.derive(:quad, [:doubled], &(&1.doubled * 2))
+        |> Reactive.build()
+
+      {:ok, socket: socket, graph: graph}
+    end
+
+    test "put sets state without recomputing derives", %{socket: socket, graph: graph} do
+      socket = Reactive.init(socket, graph)
+      socket = Reactive.put(socket, graph, :count, 10)
+
+      # State is updated
+      assert socket.assigns.count == 10
+      # But derives are NOT recomputed yet
+      assert socket.assigns.doubled == 0
+      assert socket.assigns.quad == 0
+    end
+
+    test "recompute_dirty flushes batched changes", %{socket: socket, graph: graph} do
+      socket = Reactive.init(socket, graph)
+
+      socket =
+        socket
+        |> Reactive.put(graph, :count, 10)
+        |> Reactive.put(graph, :step, 5)
+        |> Reactive.recompute_dirty(graph)
+
+      assert socket.assigns.count == 10
+      assert socket.assigns.step == 5
+      assert socket.assigns.doubled == 20
+      assert socket.assigns.next == 15
+      assert socket.assigns.quad == 40
+    end
+
+    test "recompute_dirty is a no-op when nothing is dirty", %{socket: socket, graph: graph} do
+      socket = Reactive.init(socket, graph)
+      # clear dirty from init
+      socket = Lavash.Socket.clear_dirty(socket)
+
+      socket2 = Reactive.recompute_dirty(socket, graph)
+      assert socket2 == socket
+    end
+
+    test "recompute_dirty only recomputes affected derives", %{socket: socket, graph: graph} do
+      socket = Reactive.init(socket, graph)
+
+      # Only change :step — should only affect :next, not :doubled or :quad
+      socket =
+        socket
+        |> Reactive.put(graph, :step, 100)
+        |> Reactive.recompute_dirty(graph)
+
+      assert socket.assigns.step == 100
+      assert socket.assigns.next == 100  # count(0) + step(100)
+      assert socket.assigns.doubled == 0  # unchanged
+      assert socket.assigns.quad == 0     # unchanged
+    end
+
+    test "recompute_all recomputes everything", %{socket: socket, graph: graph} do
+      socket = Reactive.init(socket, graph)
+
+      # Manually set a state field via LSocket to bypass recompute
+      socket = Phoenix.Component.assign(socket, :count, 7)
+
+      socket = Reactive.recompute_all(socket, graph)
+
+      assert socket.assigns.doubled == 14
+      assert socket.assigns.next == 8
+      assert socket.assigns.quad == 28
+    end
+
+    test "recompute_dependents recomputes downstream of a field", %{socket: socket, graph: graph} do
+      socket = Reactive.init(socket, graph)
+      socket = Phoenix.Component.assign(socket, :count, 5)
+
+      socket = Reactive.recompute_dependents(socket, graph, :count)
+
+      assert socket.assigns.doubled == 10
+      assert socket.assigns.next == 6
+      assert socket.assigns.quad == 20
+    end
+
+    test "fields_with_tag queries the tag index" do
+      graph =
+        Reactive.new()
+        |> Reactive.state(:id, nil)
+        |> Reactive.derive(:product, [:id], fn _ -> nil end, tags: [{:resource, :product}])
+        |> Reactive.derive(:orders, [:id], fn _ -> [] end, tags: [{:resource, :order}])
+        |> Reactive.build()
+
+      assert Reactive.fields_with_tag(graph, {:resource, :product}) == [:product]
+      assert Reactive.fields_with_tag(graph, {:resource, :order}) == [:orders]
+      assert Reactive.fields_with_tag(graph, {:resource, :other}) == []
+    end
+  end
+
   describe "cached graph via persistent_term" do
     defmodule TestLive do
       def graph do
