@@ -1,18 +1,18 @@
 defmodule Lavash.Dsl.Graph do
   @moduledoc """
-  Builds and caches a `Lavash.Reactive.Graph` from DSL module metadata.
+  Builds and caches a `Lavash.Rx.Graph` from DSL module metadata.
 
   This is the bridge between Spark DSL modules and the standalone
   `Lavash.Reactive` engine. It reads persisted field specs and state
-  declarations, compiles them into a `%Reactive.Graph{}`, and caches
+  declarations, compiles them into a `%Rx.Graph{}`, and caches
   the result in `persistent_term`.
   """
 
-  alias Lavash.Reactive.Graph, as: ReactiveGraph
+  alias Lavash.Rx.Graph, as: ReactiveGraph
   alias Lavash.Socket, as: LSocket
 
   @doc """
-  Returns a cached `%Reactive.Graph{}` for the given DSL module.
+  Returns a cached `%Rx.Graph{}` for the given DSL module.
   """
   def compiled_graph(module) do
     key = {__MODULE__, module}

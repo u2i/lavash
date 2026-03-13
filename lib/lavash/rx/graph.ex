@@ -1,4 +1,4 @@
-defmodule Lavash.Reactive.Graph do
+defmodule Lavash.Rx.Graph do
   @moduledoc """
   A precomputed reactive dependency graph.
 

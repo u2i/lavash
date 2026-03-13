@@ -2,7 +2,7 @@ defmodule Lavash.ReactiveTest do
   use ExUnit.Case, async: true
 
   alias Lavash.Reactive
-  alias Lavash.Reactive.Graph
+  alias Lavash.Rx.Graph
 
   describe "builder" do
     test "new returns empty builder" do

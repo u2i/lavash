@@ -73,7 +73,7 @@ defmodule Lavash.Reactive do
   achieves the same zero-cost-after-first-call behavior without macros.
   """
 
-  alias Lavash.Reactive.Graph
+  alias Lavash.Rx.Graph
   alias Lavash.Socket, as: LSocket
   alias Phoenix.LiveView.AsyncResult
 

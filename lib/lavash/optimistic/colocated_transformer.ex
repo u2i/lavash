@@ -1040,7 +1040,7 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
     %{topo_order: topo_order, deps: deps_map, dependents: dependents}
   end
 
-  # Kahn's algorithm — mirrors Lavash.Reactive.Graph.topo_sort/2
+  # Kahn's algorithm — mirrors Lavash.Rx.Graph.topo_sort/2
   defp topo_sort_deps(deps_map) do
     names = Map.keys(deps_map)
     derive_names = MapSet.new(names)
@@ -1073,7 +1073,7 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
     kahn(rest ++ new_ready, in_degree, deps_map, derive_names, [node | result])
   end
 
-  # Reverse dependency index — mirrors Lavash.Reactive.Graph.build_dependents/1
+  # Reverse dependency index — mirrors Lavash.Rx.Graph.build_dependents/1
   defp build_dependents(deps_map) do
     Enum.reduce(deps_map, %{}, fn {name, %{deps: dep_list}}, acc ->
       Enum.reduce(dep_list, acc, fn dep, inner_acc ->

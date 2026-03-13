@@ -1194,7 +1194,7 @@ const LavashOptimistic = {
     }
   },
 
-  // BFS over pre-built dependents index — mirrors Reactive.Graph.transitive_dependents
+  // BFS over pre-built dependents index — mirrors Rx.Graph.transitive_dependents
   findAffected(changedFields) {
     const affected = new Set();
     const queue = [...changedFields];
