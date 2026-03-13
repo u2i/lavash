@@ -173,8 +173,9 @@ defmodule Lavash.Rx do
     # Expand any defrx calls in the body (for Elixir evaluation)
     expanded_body = expand_defrx_calls(body, defrx_map)
 
+    caller_module = __CALLER__.module
     source = Macro.to_string(expanded_body)
-    ast = transform_at_refs(expanded_body)
+    ast = expanded_body |> transform_at_refs() |> qualify_local_calls(caller_module)
     deps = extract_deps(expanded_body)
 
     quote do
@@ -406,4 +407,41 @@ defmodule Lavash.Rx do
   end
 
   defp extract_path(_, _), do: :not_a_path
+
+  # Qualify bare function calls with the caller's module so Code.eval_quoted can resolve them.
+  # Already-qualified calls (Mod.fun), Kernel builtins, and special forms are left alone.
+  defp qualify_local_calls({name, meta, args} = node, module) when is_atom(name) and is_list(args) do
+    args = Enum.map(args, &qualify_local_calls(&1, module))
+
+    cond do
+      # Special forms and Kernel macros/functions — leave unqualified
+      Macro.special_form?(name, length(args)) ->
+        {name, meta, args}
+
+      Macro.operator?(name, length(args)) ->
+        {name, meta, args}
+
+      function_exported?(Kernel, name, length(args)) or
+        macro_exported?(Kernel, name, length(args)) ->
+        {name, meta, args}
+
+      # Bare local call — qualify with caller module
+      true ->
+        {{:., [], [module, name]}, [], args}
+    end
+  end
+
+  defp qualify_local_calls({form, meta, args}, module) when is_list(args) do
+    {qualify_local_calls(form, module), meta, Enum.map(args, &qualify_local_calls(&1, module))}
+  end
+
+  defp qualify_local_calls({left, right}, module) do
+    {qualify_local_calls(left, module), qualify_local_calls(right, module)}
+  end
+
+  defp qualify_local_calls(list, module) when is_list(list) do
+    Enum.map(list, &qualify_local_calls(&1, module))
+  end
+
+  defp qualify_local_calls(other, _module), do: other
 end

@@ -63,8 +63,8 @@ defmodule Lavash.Reactive do
   the task completes. Downstream derives automatically propagate loading and
   failed states.
 
-      |> Reactive.derive(:results, [:search], &fetch_results/1, async: true)
-      |> Reactive.derive(:count, [:results], fn %{results: r} -> length(r) end)
+      |> Reactive.derive(:results, rx(fetch_results(@search)), async: true)
+      |> Reactive.derive(:count, rx(length(@results)))
 
   `graph/2` builds the graph once and caches it in `persistent_term`,
   so the topo sort only runs once per module for the entire app lifecycle.
@@ -94,16 +94,15 @@ defmodule Lavash.Reactive do
   end
 
   @doc """
-  Registers a derived field with dependencies and a compute function.
+  Registers a derived field with an `rx()` expression.
 
-  The compute function receives a map of dependency values:
-
-      derive(builder, :doubled, [:count], fn %{count: c} -> c * 2 end)
-
-  Or use `rx()` to auto-extract dependencies and build the function:
+  Dependencies are auto-extracted from `@field` references, and the
+  compute function is compiled in the caller's context (so private
+  functions are accessible).
 
       import Lavash.Rx
       derive(builder, :doubled, rx(@count * 2))
+      derive(builder, :fact, rx(factorial(@count)), async: true)
 
   Options:
     - `async: true` — computation runs in a background task. The field
@@ -125,7 +124,9 @@ defmodule Lavash.Reactive do
   def derive(%__MODULE__{} = builder, name, %Lavash.Rx{} = rx, opts) when is_list(opts) do
     deps = normalize_rx_deps(rx.deps)
     compute_fn = compile_rx(rx.ast)
-    derive(builder, name, deps, compute_fn, opts)
+    async = Keyword.get(opts, :async, false)
+    tags = Keyword.get(opts, :tags, [])
+    %{builder | derives: [{name, deps, compute_fn, async, tags} | builder.derives]}
   end
 
   def derive(%__MODULE__{} = builder, name, deps, fun, opts) when is_list(deps) and is_list(opts) do

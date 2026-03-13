@@ -20,7 +20,7 @@ defmodule DemoWeb.LiveViewDemos.CounterLive do
       |> Reactive.state(:step, 1)
       |> Reactive.derive(:doubled, rx(@count * @step))
       |> Reactive.derive(:quad, rx(@doubled * 2))
-      |> Reactive.derive(:fact, [:count], &factorial_async/1, async: true)
+      |> Reactive.derive(:fact, rx(factorial_async(@count)), async: true)
       |> Reactive.build()
     end)
   end
@@ -134,7 +134,7 @@ defmodule DemoWeb.LiveViewDemos.CounterLive do
     """
   end
 
-  defp factorial_async(%{count: n}) do
+  def factorial_async(n) do
     Process.sleep(300)
     factorial(max(n, 0))
   end
