@@ -106,10 +106,10 @@ defmodule Lavash.Reactive.GraphMacro do
         {:state, _, [name, default]} ->
           {[{name, default} | states], derives}
 
-        {:derive, _, [name, rx_expr]} ->
+        {kind, _, [name, rx_expr]} when kind in [:derive, :calculate] ->
           {states, [{name, rx_expr, []} | derives]}
 
-        {:derive, _, [name, rx_expr, opts]} ->
+        {kind, _, [name, rx_expr, opts]} when kind in [:derive, :calculate] ->
           {states, [{name, rx_expr, opts} | derives]}
 
         _ ->

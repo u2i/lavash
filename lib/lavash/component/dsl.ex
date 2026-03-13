@@ -324,7 +324,6 @@ defmodule Lavash.Component.Dsl do
       @actions_section
     ],
     transformers: [
-      Lavash.Transformers.DeprecateDerive,
       Lavash.Optimistic.ExpandAnimatedStates,
       Lavash.Transformers.ExpandFields,
       Lavash.Optimistic.ColocatedTransformer
