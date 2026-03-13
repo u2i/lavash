@@ -3,6 +3,7 @@ defmodule Lavash.ReactiveTest do
 
   alias Lavash.Reactive
   alias Lavash.Rx.Graph
+  import Lavash.Rx
 
   describe "builder" do
     test "new returns empty builder" do
@@ -352,6 +353,89 @@ defmodule Lavash.ReactiveTest do
       assert Reactive.fields_with_tag(graph, {:resource, :product}) == [:product]
       assert Reactive.fields_with_tag(graph, {:resource, :order}) == [:orders]
       assert Reactive.fields_with_tag(graph, {:resource, :other}) == []
+    end
+  end
+
+  describe "derive with rx()" do
+    setup do
+      socket = %Phoenix.LiveView.Socket{
+        assigns: %{__changed__: %{}},
+        private: %{}
+      }
+
+      {:ok, socket: socket}
+    end
+
+    test "rx() extracts deps and builds compute function", %{socket: socket} do
+      graph =
+        Reactive.new()
+        |> Reactive.state(:count, 0)
+        |> Reactive.state(:step, 1)
+        |> Reactive.derive(:doubled, rx(@count * 2))
+        |> Reactive.derive(:next, rx(@count + @step))
+        |> Reactive.build()
+
+      assert graph.deps[:doubled] == [:count]
+      assert Enum.sort(graph.deps[:next]) == [:count, :step]
+
+      socket = Reactive.init(socket, graph)
+      assert socket.assigns.doubled == 0
+      assert socket.assigns.next == 1
+
+      socket = socket |> Reactive.put(:count, 5) |> Reactive.recompute()
+      assert socket.assigns.doubled == 10
+      assert socket.assigns.next == 6
+    end
+
+    test "rx() with chained derives", %{socket: socket} do
+      graph =
+        Reactive.new()
+        |> Reactive.state(:x, 3)
+        |> Reactive.derive(:doubled, rx(@x * 2))
+        |> Reactive.derive(:quad, rx(@doubled * 2))
+        |> Reactive.build()
+
+      socket = Reactive.init(socket, graph)
+      assert socket.assigns.doubled == 6
+      assert socket.assigns.quad == 12
+
+      socket = socket |> Reactive.put(:x, 10) |> Reactive.recompute()
+      assert socket.assigns.doubled == 20
+      assert socket.assigns.quad == 40
+    end
+
+    test "rx() with options (async: true)", %{socket: socket} do
+      graph =
+        Reactive.new()
+        |> Reactive.state(:n, 5)
+        |> Reactive.derive(:slow, rx(@n * 100), async: true)
+        |> Reactive.build()
+
+      assert MapSet.member?(graph.async_fields, :slow)
+
+      socket = Reactive.init(socket, graph)
+      assert %Phoenix.LiveView.AsyncResult{loading: true} = socket.assigns.slow
+
+      assert_receive {:lavash_reactive, :slow, {:ok, 500}}, 1000
+      {:ok, socket} = Reactive.handle_async(socket, {:lavash_reactive, :slow, {:ok, 500}})
+      assert %Phoenix.LiveView.AsyncResult{ok?: true, result: 500} = socket.assigns.slow
+    end
+
+    test "rx() can be mixed with manual derives", %{socket: socket} do
+      graph =
+        Reactive.new()
+        |> Reactive.state(:count, 0)
+        |> Reactive.derive(:doubled, rx(@count * 2))
+        |> Reactive.derive(:label, [:count], fn %{count: c} -> "count: #{c}" end)
+        |> Reactive.build()
+
+      socket = Reactive.init(socket, graph)
+      assert socket.assigns.doubled == 0
+      assert socket.assigns.label == "count: 0"
+
+      socket = socket |> Reactive.put(:count, 7) |> Reactive.recompute()
+      assert socket.assigns.doubled == 14
+      assert socket.assigns.label == "count: 7"
     end
   end
 

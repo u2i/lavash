@@ -9,6 +9,7 @@ defmodule DemoWeb.LiveViewDemos.CounterLive do
   - Graph caching via `Reactive.graph/2`
   """
   use DemoWeb, :live_view
+  import Lavash.Rx
 
   alias Lavash.Reactive
 
@@ -17,8 +18,8 @@ defmodule DemoWeb.LiveViewDemos.CounterLive do
       Reactive.new()
       |> Reactive.state(:count, 0)
       |> Reactive.state(:step, 1)
-      |> Reactive.derive(:doubled, [:count, :step], fn %{count: c, step: s} -> c * s end)
-      |> Reactive.derive(:quad, [:doubled], fn %{doubled: d} -> d * 2 end)
+      |> Reactive.derive(:doubled, rx(@count * @step))
+      |> Reactive.derive(:quad, rx(@doubled * 2))
       |> Reactive.derive(:fact, [:count], &factorial_async/1, async: true)
       |> Reactive.build()
     end)

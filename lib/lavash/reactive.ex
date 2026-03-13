@@ -13,14 +13,15 @@ defmodule Lavash.Reactive do
 
       defmodule MyLive do
         use Phoenix.LiveView
+        import Lavash.Rx
 
         defp graph do
           Lavash.Reactive.graph(__MODULE__, fn ->
             Lavash.Reactive.new()
             |> Lavash.Reactive.state(:count, 0)
             |> Lavash.Reactive.state(:step, 1)
-            |> Lavash.Reactive.derive(:doubled, [:count], &(&1.count * 2))
-            |> Lavash.Reactive.derive(:next, [:count, :step], &(&1.count + &1.step))
+            |> Lavash.Reactive.derive(:doubled, rx(@count * 2))
+            |> Lavash.Reactive.derive(:next, rx(@count + @step))
             |> Lavash.Reactive.build()
           end)
         end
@@ -99,6 +100,11 @@ defmodule Lavash.Reactive do
 
       derive(builder, :doubled, [:count], fn %{count: c} -> c * 2 end)
 
+  Or use `rx()` to auto-extract dependencies and build the function:
+
+      import Lavash.Rx
+      derive(builder, :doubled, rx(@count * 2))
+
   Options:
     - `async: true` — computation runs in a background task. The field
       is set to `AsyncResult.loading()` immediately, then updated when
@@ -108,7 +114,21 @@ defmodule Lavash.Reactive do
       a reverse index so callers can query `Graph.fields_with_tag(graph, tag)`
       to find all fields with a given tag (e.g. for resource invalidation).
   """
-  def derive(%__MODULE__{} = builder, name, deps, fun, opts \\ []) do
+  def derive(%__MODULE__{} = builder, name, %Lavash.Rx{} = rx) do
+    derive(builder, name, rx, [])
+  end
+
+  def derive(%__MODULE__{} = builder, name, deps, fun) when is_list(deps) do
+    derive(builder, name, deps, fun, [])
+  end
+
+  def derive(%__MODULE__{} = builder, name, %Lavash.Rx{} = rx, opts) when is_list(opts) do
+    deps = normalize_rx_deps(rx.deps)
+    compute_fn = compile_rx(rx.ast)
+    derive(builder, name, deps, compute_fn, opts)
+  end
+
+  def derive(%__MODULE__{} = builder, name, deps, fun, opts) when is_list(deps) and is_list(opts) do
     async = Keyword.get(opts, :async, false)
     tags = Keyword.get(opts, :tags, [])
     %{builder | derives: [{name, deps, fun, async, tags} | builder.derives]}
@@ -420,5 +440,24 @@ defmodule Lavash.Reactive do
       {key, %AsyncResult{ok?: true, result: result}} -> {key, result}
       {key, value} -> {key, value}
     end)
+  end
+
+  # Compile an rx() AST into a compute function.
+  # The AST uses {:state, [], nil} for @var references (via Macro.var(:state, nil)).
+  # We wrap it in `fn state -> <ast> end` and eval once at graph build time.
+  defp compile_rx(ast) do
+    fn_ast = {:fn, [], [{:->, [], [[{:state, [], nil}], ast]}]}
+    {fun, _} = Code.eval_quoted(fn_ast)
+    fun
+  end
+
+  # Normalize rx deps (which may include {:path, atom, keys} tuples) to plain atoms
+  defp normalize_rx_deps(deps) do
+    deps
+    |> Enum.map(fn
+      {:path, name, _keys} -> name
+      name when is_atom(name) -> name
+    end)
+    |> Enum.uniq()
   end
 end
