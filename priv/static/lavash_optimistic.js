@@ -504,8 +504,19 @@ const LavashOptimistic = {
 
     this.fns = fnObj;
     this.deriveNames = fnObj.__derives__ || [];
-    this.fieldNames = fnObj.__fields__ || [];
-    this.graph = fnObj.__graph__ || {};
+
+    // Parse graph — new format has {topo_order, deps, dependents}
+    const rawGraph = fnObj.__graph__ || {};
+    if (Array.isArray(rawGraph.topo_order)) {
+      this.graph = rawGraph;
+    } else {
+      // Legacy format: flat {name: {deps: [...]}} — convert
+      const deps = {};
+      for (const [name, meta] of Object.entries(rawGraph)) {
+        deps[name] = meta.deps || [];
+      }
+      this.graph = { topo_order: [], deps, dependents: {} };
+    }
 
     // Execute any component-generated optimistic scripts (LiveView doesn't auto-execute inline scripts)
     this.executeComponentScripts();
@@ -550,11 +561,17 @@ const LavashOptimistic = {
           this.deriveNames.push(d);
         }
         // Add to graph if not present (component derives depend on their state field)
-        if (!this.graph[d]) {
+        if (!this.graph.deps[d]) {
           // Infer dependency from derive name pattern (e.g., "roast_chips" depends on "roast")
           const match = d.match(/^(.+)_chips?$/);
           if (match) {
-            this.graph[d] = { deps: [match[1]] };
+            const dep = match[1];
+            this.graph.deps[d] = [dep];
+            // Add to dependents index
+            if (!this.graph.dependents[dep]) this.graph.dependents[dep] = [];
+            if (!this.graph.dependents[dep].includes(d)) this.graph.dependents[dep].push(d);
+            // Leaf derive — safe to append at end of topo_order
+            if (!this.graph.topo_order.includes(d)) this.graph.topo_order.push(d);
           }
         }
       }
@@ -1117,8 +1134,8 @@ const LavashOptimistic = {
   },
 
   recomputeDerives(changedFields = null) {
-    // Use graph-based recomputation if available
-    if (Object.keys(this.graph).length > 0) {
+    // Use graph-based recomputation if topo_order is available
+    if (this.graph.topo_order.length > 0) {
       this.recomputeGraph(changedFields);
     } else {
       // Fallback to simple iteration for backwards compatibility
@@ -1140,16 +1157,20 @@ const LavashOptimistic = {
     }
   },
 
-  // Graph-based derive recomputation
+  // Graph-based derive recomputation using pre-computed topo_order + dependents
   recomputeGraph(changedFields = null) {
-    // Find all derives affected by changed fields
-    const affected = this.findAffectedDerives(changedFields);
+    let toRecompute;
 
-    // Topologically sort affected derives
-    const sorted = this.topologicalSort(affected);
+    if (!changedFields) {
+      // No specific fields — recompute everything in pre-sorted order
+      toRecompute = this.graph.topo_order;
+    } else {
+      // Find affected derives via pre-built dependents index, then filter topo_order
+      const affected = this.findAffected(changedFields);
+      toRecompute = this.graph.topo_order.filter(f => affected.has(f));
+    }
 
-    // Recompute in dependency order
-    for (const name of sorted) {
+    for (const name of toRecompute) {
       const fn = this.fns[name];
       if (fn) {
         try {
@@ -1165,7 +1186,6 @@ const LavashOptimistic = {
             console.debug(`[LavashOptimistic] Derive ${name} changed: ${oldValue} → ${result}`);
           }
         } catch (err) {
-          // Log error in development for debugging
           if (typeof console !== "undefined" && console.debug) {
             console.debug(`[Lavash] Error computing derive ${name}:`, err.message);
           }
@@ -1174,65 +1194,23 @@ const LavashOptimistic = {
     }
   },
 
-  // Find all derives affected by changed fields (transitive)
-  findAffectedDerives(changedFields) {
-    // If no specific fields, recompute all
-    if (!changedFields) {
-      return Object.keys(this.graph);
-    }
-
+  // BFS over pre-built dependents index — mirrors Reactive.Graph.transitive_dependents
+  findAffected(changedFields) {
     const affected = new Set();
     const queue = [...changedFields];
 
     while (queue.length > 0) {
       const field = queue.shift();
-
-      // Find derives that depend on this field
-      for (const [deriveName, meta] of Object.entries(this.graph)) {
-        if (meta.deps && meta.deps.includes(field) && !affected.has(deriveName)) {
-          affected.add(deriveName);
-          // This derive's output might affect other derives
-          queue.push(deriveName);
+      const directDependents = this.graph.dependents[field] || [];
+      for (const dep of directDependents) {
+        if (!affected.has(dep)) {
+          affected.add(dep);
+          queue.push(dep);
         }
       }
     }
 
-    return Array.from(affected);
-  },
-
-  // Topological sort of derive names based on dependencies
-  topologicalSort(deriveNames) {
-    const result = [];
-    const visited = new Set();
-    const visiting = new Set(); // For cycle detection
-
-    const visit = (name) => {
-      if (visited.has(name)) return;
-      if (visiting.has(name)) return; // Cycle detected
-
-      visiting.add(name);
-
-      // Visit dependencies first
-      const meta = this.graph[name];
-      if (meta && meta.deps) {
-        for (const dep of meta.deps) {
-          // Only visit if dep is also a derive we're computing
-          if (deriveNames.includes(dep)) {
-            visit(dep);
-          }
-        }
-      }
-
-      visiting.delete(name);
-      visited.add(name);
-      result.push(name);
-    };
-
-    for (const name of deriveNames) {
-      visit(name);
-    }
-
-    return result;
+    return affected;
   },
 
   // Check if element is inside a nested child hook (e.g., ClientComponent)
@@ -1643,13 +1621,13 @@ const LavashOptimistic = {
 
   // Check if a field has pending sources (for derives)
   hasPendingSources(field) {
-    const meta = this.graph[field];
-    if (!meta || !meta.deps) return false;
+    const deps = this.graph.deps[field];
+    if (!deps) return false;
 
     const pendingPaths = this.store.getPendingPaths();
 
     // Check if any dependency is pending (either directly or transitively)
-    for (const dep of meta.deps) {
+    for (const dep of deps) {
       // Check if dep or any nested path under it is pending
       if (pendingPaths.some(p => p === dep || p.startsWith(dep + "."))) return true;
       // Recursively check if dep is a derive with pending sources

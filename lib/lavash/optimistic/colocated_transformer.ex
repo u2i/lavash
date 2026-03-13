@@ -244,16 +244,21 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
 
       fns_str = Enum.join(fns, ",\n")
       derives_str = Jason.encode!(derive_names)
-      fields_str = Jason.encode!([])
-      graph_str = Jason.encode!(graph_entries)
       animated_str = Jason.encode!(animated_metadata)
+
+      # Flatten deps map: %{"name" => %{deps: [...]}} -> %{"name" => [...]}
+      flat_deps = Map.new(graph_entries.deps, fn {name, %{deps: d}} -> {name, d} end)
+      graph_json = Jason.encode!(%{
+        topo_order: graph_entries.topo_order,
+        deps: flat_deps,
+        dependents: graph_entries.dependents
+      })
 
       """
       export default {
       #{fns_str}#{if fns_str != "", do: ",", else: ""}
       __derives__: #{derives_str},
-      __fields__: #{fields_str},
-      __graph__: #{graph_str},
+      __graph__: #{graph_json},
       __animated__: #{animated_str}
       };
       """
@@ -1025,8 +1030,56 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
         end
       end)
 
-    (multi_select_entries ++ toggle_entries ++ calculation_entries ++ form_entries)
-    |> Map.new()
+    deps_map =
+      (multi_select_entries ++ toggle_entries ++ calculation_entries ++ form_entries)
+      |> Map.new()
+
+    topo_order = topo_sort_deps(deps_map)
+    dependents = build_dependents(deps_map)
+
+    %{topo_order: topo_order, deps: deps_map, dependents: dependents}
+  end
+
+  # Kahn's algorithm — mirrors Lavash.Reactive.Graph.topo_sort/2
+  defp topo_sort_deps(deps_map) do
+    names = Map.keys(deps_map)
+    derive_names = MapSet.new(names)
+
+    in_degree =
+      Map.new(names, fn name ->
+        count = deps_map[name] |> Map.get(:deps, []) |> Enum.count(&MapSet.member?(derive_names, &1))
+        {name, count}
+      end)
+
+    queue = for {name, 0} <- in_degree, do: name
+    kahn(queue, in_degree, deps_map, derive_names, [])
+  end
+
+  defp kahn([], _in_degree, _deps_map, _derive_names, result), do: Enum.reverse(result)
+
+  defp kahn([node | rest], in_degree, deps_map, derive_names, result) do
+    dependents =
+      for {name, %{deps: dep_list}} <- deps_map,
+          node in dep_list,
+          MapSet.member?(derive_names, name),
+          do: name
+
+    {in_degree, new_ready} =
+      Enum.reduce(dependents, {in_degree, []}, fn dep, {deg, ready} ->
+        new_deg = Map.update!(deg, dep, &(&1 - 1))
+        if new_deg[dep] == 0, do: {new_deg, [dep | ready]}, else: {new_deg, ready}
+      end)
+
+    kahn(rest ++ new_ready, in_degree, deps_map, derive_names, [node | result])
+  end
+
+  # Reverse dependency index — mirrors Lavash.Reactive.Graph.build_dependents/1
+  defp build_dependents(deps_map) do
+    Enum.reduce(deps_map, %{}, fn {name, %{deps: dep_list}}, acc ->
+      Enum.reduce(dep_list, acc, fn dep, inner_acc ->
+        Map.update(inner_acc, dep, [name], &[name | &1])
+      end)
+    end)
   end
 
   defp normalize_dep_to_string({:path, root, _path}), do: to_string(root)
