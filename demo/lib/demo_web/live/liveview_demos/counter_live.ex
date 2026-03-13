@@ -10,23 +10,20 @@ defmodule DemoWeb.LiveViewDemos.CounterLive do
   """
   use DemoWeb, :live_view
   import Lavash.Rx
+  import Lavash.Reactive.GraphMacro
 
   alias Lavash.Reactive
 
-  defp graph do
-    Reactive.graph(__MODULE__, fn ->
-      Reactive.new()
-      |> Reactive.state(:count, 0)
-      |> Reactive.state(:step, 1)
-      |> Reactive.derive(:doubled, rx(@count * @step))
-      |> Reactive.derive(:quad, rx(@doubled * 2))
-      |> Reactive.derive(:fact, rx(factorial_async(@count)), async: true)
-      |> Reactive.build()
-    end)
+  defgraph do
+    state :count, 0
+    state :step, 1
+    derive :doubled, rx(@count * @step)
+    derive :quad, rx(@doubled * 2)
+    derive :fact, rx(factorial_async(@count)), async: true
   end
 
   def mount(_params, _session, socket) do
-    {:ok, Reactive.init(socket, graph())}
+    {:ok, Reactive.init(socket, __reactive_graph__())}
   end
 
   def handle_event("increment", _, socket) do
