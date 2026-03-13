@@ -412,9 +412,12 @@ const LavashOptimistic = {
       const hook = hookEl?.__lavash_hook__;
 
       if (hook && hook.hasPendingSources && hook.state) {
-        // Check each attribute type and apply client state if stale
+        // For data-lavash-enabled: ALWAYS apply client-side derive value.
+        // The server may send stale enabled/disabled state that doesn't reflect
+        // the client's current params (e.g., server hasn't seen all field changes yet).
+        // updateDOM() runs after morphdom, but without this guard the server value flickers through.
         const fieldName = fromEl.getAttribute('data-lavash-enabled');
-        if (fieldName && hook.hasPendingSources(fieldName)) {
+        if (fieldName && hook.fns[fieldName]) {
           const enabled = hook.state[fieldName] === true;
           toEl.disabled = !enabled;
           if (enabled) {
@@ -627,19 +630,8 @@ const LavashOptimistic = {
       this.fieldState[fieldPath] = {};
     }
 
-    // For selects, only mark as touched if value was actually modified
-    // This prevents Chrome's dropdown interaction from triggering error display
-    // (Chrome fires blur events during arrow key navigation in open dropdowns)
-    if (target.tagName === "SELECT") {
-      const wasModified = this.store.isPending(fieldPath);
-      console.debug(`[handleBlur] SELECT ${fieldPath}: wasModified=${wasModified}`);
-      if (wasModified) {
-        this.fieldState[fieldPath].touched = true;
-      }
-    } else {
-      // For text inputs, mark as touched on any blur (standard UX)
-      this.fieldState[fieldPath].touched = true;
-    }
+    // Mark field as touched on blur (standard UX for all input types)
+    this.fieldState[fieldPath].touched = true;
 
     // Get form/field from explicit attributes or derive from path
     const { formName, fieldName } = this.getFormField(target, fieldPath);
@@ -981,12 +973,7 @@ const LavashOptimistic = {
     // Recompute derives affected by the root field
     this.recomputeDerives([rootField]);
 
-    // For selects, defer DOM update to blur - Chrome fires change events during
-    // arrow key navigation in open dropdowns, which causes flickering errors.
-    // State and derives are updated, but visual error display waits for blur.
-    if (target.tagName !== "SELECT") {
-      this.updateDOM();
-    }
+    this.updateDOM();
 
     // Sync URL fields immediately (optimistic URL update)
     this.syncUrl();
@@ -1517,9 +1504,10 @@ const LavashOptimistic = {
       const hasErrors = (this.state[errorsField] || []).length > 0;
 
       // Remove existing validation state classes (DaisyUI semantic + Tailwind fallback)
+      const errorClass = input.tagName === "SELECT" ? "select-error" : "input-error";
       const validationClasses = [
-        // DaisyUI semantic classes
-        "input-error",
+        // DaisyUI semantic classes (both variants)
+        "input-error", "select-error",
         // Tailwind fallback classes
         "border-gray-300", "border-red-300",
         "focus:ring-blue-500", "focus:ring-red-500"
@@ -1528,7 +1516,7 @@ const LavashOptimistic = {
 
       // Apply error class only when invalid (no success styling - green is distracting)
       if (showErrors && (!isValid || hasErrors)) {
-        input.classList.add("input-error");
+        input.classList.add(errorClass);
       }
     });
 

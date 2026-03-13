@@ -156,6 +156,25 @@ defmodule Lavash.Optimistic.DefrxExpander do
     end
   end
 
+  # Handle qualified (remote) calls: Module.func(args)
+  # The rx() macro auto-qualifies local calls to the caller's module, so defrx
+  # functions appear as qualified calls in the AST. We need to expand those too.
+  defp do_expand_ast({{:., dot_meta, [mod, name]}, call_meta, args}, defrx_map)
+       when is_atom(name) and is_list(args) do
+    arity = length(args)
+    expanded_args = Enum.map(args, &do_expand_ast(&1, defrx_map))
+
+    case Map.get(defrx_map, {name, arity}) do
+      {params, body_ast} ->
+        substitutions = Enum.zip(params, expanded_args) |> Map.new()
+        substituted = substitute_vars(body_ast, substitutions)
+        do_expand_ast(substituted, defrx_map)
+
+      nil ->
+        {{:., dot_meta, [mod, name]}, call_meta, expanded_args}
+    end
+  end
+
   defp do_expand_ast({form, meta, args}, defrx_map) when is_list(args) do
     {do_expand_ast(form, defrx_map), meta, Enum.map(args, &do_expand_ast(&1, defrx_map))}
   end
