@@ -44,6 +44,7 @@
 
 import { SyncedVarStore } from "./synced_var.js";
 import { syncStateToUrl } from "./url_sync.js";
+import { parseGraph, addLeafDerive, recomputeGraph as _recomputeGraph } from "./graph.js";
 
 // Registry for optimistic function modules (for custom overrides)
 window.Lavash = window.Lavash || {};
@@ -508,18 +509,7 @@ const LavashOptimistic = {
     this.fns = fnObj;
     this.deriveNames = fnObj.__derives__ || [];
 
-    // Parse graph — new format has {topo_order, deps, dependents}
-    const rawGraph = fnObj.__graph__ || {};
-    if (Array.isArray(rawGraph.topo_order)) {
-      this.graph = rawGraph;
-    } else {
-      // Legacy format: flat {name: {deps: [...]}} — convert
-      const deps = {};
-      for (const [name, meta] of Object.entries(rawGraph)) {
-        deps[name] = meta.deps || [];
-      }
-      this.graph = { topo_order: [], deps, dependents: {} };
-    }
+    this.graph = parseGraph(fnObj.__graph__);
 
     // Execute any component-generated optimistic scripts (LiveView doesn't auto-execute inline scripts)
     this.executeComponentScripts();
@@ -568,13 +558,7 @@ const LavashOptimistic = {
           // Infer dependency from derive name pattern (e.g., "roast_chips" depends on "roast")
           const match = d.match(/^(.+)_chips?$/);
           if (match) {
-            const dep = match[1];
-            this.graph.deps[d] = [dep];
-            // Add to dependents index
-            if (!this.graph.dependents[dep]) this.graph.dependents[dep] = [];
-            if (!this.graph.dependents[dep].includes(d)) this.graph.dependents[dep].push(d);
-            // Leaf derive — safe to append at end of topo_order
-            if (!this.graph.topo_order.includes(d)) this.graph.topo_order.push(d);
+            addLeafDerive(this.graph, d, [match[1]]);
           }
         }
       }
@@ -1124,83 +1108,7 @@ const LavashOptimistic = {
   },
 
   recomputeDerives(changedFields = null) {
-    // Use graph-based recomputation if topo_order is available
-    if (this.graph.topo_order.length > 0) {
-      this.recomputeGraph(changedFields);
-    } else {
-      // Fallback to simple iteration for backwards compatibility
-      this.recomputeDerivesSimple();
-    }
-  },
-
-  // Simple derive recomputation (legacy mode)
-  recomputeDerivesSimple() {
-    for (const [name, fn] of Object.entries(this.fns)) {
-      if (this.deriveNames.includes(name) || name.endsWith("_derive")) {
-        try {
-          const result = fn(this.state);
-          this.state[name] = result;
-        } catch (err) {
-          // Ignore derive computation errors
-        }
-      }
-    }
-  },
-
-  // Graph-based derive recomputation using pre-computed topo_order + dependents
-  recomputeGraph(changedFields = null) {
-    let toRecompute;
-
-    if (!changedFields) {
-      // No specific fields — recompute everything in pre-sorted order
-      toRecompute = this.graph.topo_order;
-    } else {
-      // Find affected derives via pre-built dependents index, then filter topo_order
-      const affected = this.findAffected(changedFields);
-      toRecompute = this.graph.topo_order.filter(f => affected.has(f));
-    }
-
-    for (const name of toRecompute) {
-      const fn = this.fns[name];
-      if (fn) {
-        try {
-          const oldValue = this.state[name];
-          const result = fn(this.state);
-          this.state[name] = result;
-
-          // Log error field and validity changes for debugging
-          if (name.endsWith("_errors") && JSON.stringify(oldValue) !== JSON.stringify(result)) {
-            console.debug(`[LavashOptimistic] Derive ${name} changed: ${JSON.stringify(oldValue)} → ${JSON.stringify(result)}`);
-          }
-          if (name.endsWith("_valid") && oldValue !== result) {
-            console.debug(`[LavashOptimistic] Derive ${name} changed: ${oldValue} → ${result}`);
-          }
-        } catch (err) {
-          if (typeof console !== "undefined" && console.debug) {
-            console.debug(`[Lavash] Error computing derive ${name}:`, err.message);
-          }
-        }
-      }
-    }
-  },
-
-  // BFS over pre-built dependents index — mirrors Rx.Graph.transitive_dependents
-  findAffected(changedFields) {
-    const affected = new Set();
-    const queue = [...changedFields];
-
-    while (queue.length > 0) {
-      const field = queue.shift();
-      const directDependents = this.graph.dependents[field] || [];
-      for (const dep of directDependents) {
-        if (!affected.has(dep)) {
-          affected.add(dep);
-          queue.push(dep);
-        }
-      }
-    }
-
-    return affected;
+    _recomputeGraph(this.graph, this.fns, this.state, changedFields);
   },
 
   // Check if element is inside a nested child hook (e.g., ClientComponent)
