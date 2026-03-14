@@ -389,7 +389,7 @@ defmodule Lavash.ClientComponent.Dsl do
     ],
     transformers: [
       Lavash.Optimistic.ExpandAnimatedStates,
-      Lavash.Optimistic.ColocatedTransformer
+      Lavash.ClientComponent.Transformers.GenerateHook
     ],
     imports: [Lavash.Rx, Lavash.Optimistic.ActionMacro, Lavash.Template.RenderMacro]
 end
