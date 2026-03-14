@@ -621,8 +621,7 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
         create_action = form.create || :create
         skip_constraints = form.skip_constraints || []
 
-        if Code.ensure_loaded?(resource) and
-             function_exported?(resource, :spark_dsl_config, 0) do
+        if resource_available?(resource) do
           validations = Lavash.Form.ConstraintTranspiler.extract_validations(resource)
 
           # Get Ash validations with custom messages
@@ -989,7 +988,7 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
         params_field = "#{form_name}_params"
         resource = form.resource
 
-        if Code.ensure_loaded?(resource) and function_exported?(resource, :spark_dsl_config, 0) do
+        if resource_available?(resource) do
           validations = Lavash.Form.ConstraintTranspiler.extract_validations(resource)
           field_names = Enum.map(validations, & &1.field)
 
@@ -1084,4 +1083,13 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
 
   defp normalize_dep_to_string({:path, root, _path}), do: to_string(root)
   defp normalize_dep_to_string(atom) when is_atom(atom), do: to_string(atom)
+
+  # Block until the resource module is compiled, avoiding compilation order races.
+  # Code.ensure_compiled/1 waits for compilation to finish (unlike ensure_loaded?
+  # which only checks if already loaded). Safe because Ash resources never depend
+  # on Lavash LiveViews/Components, so no circular dependency risk.
+  defp resource_available?(resource) do
+    match?({:module, _}, Code.ensure_compiled(resource)) and
+      function_exported?(resource, :spark_dsl_config, 0)
+  end
 end
