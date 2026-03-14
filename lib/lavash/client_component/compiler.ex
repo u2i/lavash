@@ -419,11 +419,11 @@ defmodule Lavash.ClientComponent.Compiler do
     render_parts = tree_to_js_parts(tree, %{})
     render_body = "`" <> Enum.join(render_parts, "") <> "`"
 
-    # Generate calculation JS
-    # Calculations are tuples: {name, source_string, transformed_expr, deps}
-    calc_js = generate_calculation_js(calculations)
-    calc_names = Enum.map(calculations, fn {name, _, _, _} -> to_string(name) end)
-    calc_names_json = Jason.encode!(calc_names)
+    # Generate calculation functions as a fns object for ReactiveStore
+    calc_fns_js = generate_calculation_fns_js(calculations)
+
+    # Generate dependency graph for ReactiveStore
+    graph_js = generate_calculation_graph_js(calculations)
 
     # Generate action JS
     action_js = generate_action_js(actions)
@@ -431,6 +431,8 @@ defmodule Lavash.ClientComponent.Compiler do
     # Combine into hook
     ~s"""
     // Generated JS hook with client-side rendering
+    import { ReactiveStore } from "lavash/reactive_store.js";
+
     function humanize(value) {
       return String(value).replace(/_/g, ' ').replace(/^\\w/, c => c.toUpperCase());
     }
@@ -438,11 +440,19 @@ defmodule Lavash.ClientComponent.Compiler do
     export default {
       mounted() {
         console.log('[ClientComponent] mounted', this.el.id, this.el.dataset.lavashState);
-        this.state = JSON.parse(this.el.dataset.lavashState || "{}");
-        this.calculations = #{calc_names_json};
+        const initialState = JSON.parse(this.el.dataset.lavashState || "{}");
         this.bindings = JSON.parse(this.el.dataset.lavashBindings || "{}");
         console.log('[ClientComponent] bindings:', this.bindings);
-        this.pendingCount = 0;
+
+        const fns = #{calc_fns_js};
+        const graph = #{graph_js};
+
+        this.rstore = new ReactiveStore({
+          initialState, graph, fns,
+          onChange: () => this.updateDOM()
+        });
+        this.state = this.rstore.state;
+
         this.clickHandler = this.handleClick.bind(this);
         this.keydownHandler = this.handleKeydown.bind(this);
         this.inputHandler = this.handleInput.bind(this);
@@ -452,25 +462,16 @@ defmodule Lavash.ClientComponent.Compiler do
         this.el.__lavash_hook__ = this;
         // Re-render with JS template to ensure data-lavash-* attributes are present
         // Server template may not have all attributes injected
-        this.runCalculations();
+        this.rstore.recompute();
         this.updateDOM();
         console.log('[ClientComponent] mounted complete, state:', this.state);
       },
 
       updated() {
-        if (this.pendingCount === 0) {
-          this.state = JSON.parse(this.el.dataset.lavashState || "{}");
-          this.runCalculations();
-        }
-      },
-
-    #{calc_js}
-
-      runCalculations() {
-        for (const name of this.calculations) {
-          if (typeof this[name] === 'function') {
-            this.state[name] = this[name](this.state);
-          }
+        if (this.rstore.getPendingPaths().length === 0) {
+          const serverState = JSON.parse(this.el.dataset.lavashState || "{}");
+          this.rstore.serverUpdate(serverState);
+          this.rstore.recompute();
         }
       },
 
@@ -525,9 +526,8 @@ defmodule Lavash.ClientComponent.Compiler do
 
         if (!this.validateAction(action, field, value)) return;
 
-        this.pendingCount++;
         this.applyOptimisticAction(action, field, value);
-        this.runCalculations();
+        this.rstore.recompute([field]);
         this.updateDOM();
         this.syncParentUrl();
 
@@ -536,7 +536,7 @@ defmodule Lavash.ClientComponent.Compiler do
 
         const phxEvent = `${action}_${field.replace(/s$/, '')}`;
         this.pushEventTo(this.el, phxEvent, { val: value }, () => {
-          this.pendingCount--;
+          this.rstore.clearPending(field);
         });
       },
 
@@ -563,9 +563,9 @@ defmodule Lavash.ClientComponent.Compiler do
         }
 
         console.log('[ClientComponent] applying optimistic action');
-        this.pendingCount++;
         this.applyOptimisticAction(action, field, value);
-        this.runCalculations();
+        this.rstore._bumpVersion(field);
+        this.rstore.recompute([field]);
         this.updateDOM();
 
         // Check if this field is bound to a parent
@@ -580,7 +580,7 @@ defmodule Lavash.ClientComponent.Compiler do
             bubbles: true,
             detail: { field: parentField, value: newValue }
           }));
-          this.pendingCount--;
+          this.rstore.clearPending(field);
           return;
         }
 
@@ -589,7 +589,7 @@ defmodule Lavash.ClientComponent.Compiler do
 
         const phxEvent = target.dataset.phxClick || `${action}_${field.replace(/s$/, '')}`;
         this.pushEventTo(this.el, phxEvent, { val: value }, () => {
-          this.pendingCount--;
+          this.rstore.clearPending(field);
         });
       },
 
@@ -606,12 +606,9 @@ defmodule Lavash.ClientComponent.Compiler do
           if (value !== undefined) {
             parentHook.state[parentField] = value;
             // Mark as pending so parent rejects stale server patches for this field
-            // Use SyncedVarStore if available (new architecture), fallback to pending map
             if (parentHook.store) {
               const syncedVar = parentHook.store.get(parentField, value);
               syncedVar.setOptimistic(value);
-            } else if (parentHook.pending) {
-              parentHook.pending[parentField] = value;
             }
             changedFields.push(parentField);
           }
@@ -635,21 +632,22 @@ defmodule Lavash.ClientComponent.Compiler do
 
       // Called by parent when another sibling updates shared state
       refreshFromParent(parentHook) {
-        let changed = false;
+        const changedFields = [];
         for (const [localField, parentField] of Object.entries(this.bindings)) {
           const parentValue = parentHook.state[parentField];
           if (parentValue !== undefined && parentValue !== this.state[localField]) {
             this.state[localField] = parentValue;
-            changed = true;
+            changedFields.push(localField);
           }
         }
-        if (changed) {
-          this.runCalculations();
+        if (changedFields.length > 0) {
+          this.rstore.recompute(changedFields);
           this.updateDOM();
         }
       },
 
       destroyed() {
+        if (this.rstore) this.rstore.destroy();
         if (this.clickHandler) {
           this.el.removeEventListener("click", this.clickHandler, true);
         }
@@ -664,10 +662,61 @@ defmodule Lavash.ClientComponent.Compiler do
     """
   end
 
-  # Generate JS for calculations
-  # Calculations are tuples: {name, source_string, transformed_expr, deps}
-  defp generate_calculation_js(calculations) do
-    CompilerHelpers.generate_calculation_js(calculations)
+  # Generate calculation functions as a JS object literal for ReactiveStore
+  # Input: list of {name, source_string, transformed_expr, deps} tuples
+  # Output: JS string like `{ is_empty: (s) => ..., item_count: (s) => ... }`
+  defp generate_calculation_fns_js([]), do: "{}"
+
+  defp generate_calculation_fns_js(calculations) do
+    entries =
+      calculations
+      |> Enum.map(fn {name, source, _transformed_expr, _deps} ->
+        js_expr = Lavash.Rx.Transpiler.to_js(source)
+        "    #{name}: (state) => (#{js_expr})"
+      end)
+      |> Enum.join(",\n")
+
+    "{\n#{entries}\n  }"
+  end
+
+  # Generate a dependency graph JS object literal for ReactiveStore
+  # Uses Lavash.Graph to build dependents from the deps map
+  # Output: JS string like `{ topo_order: [...], deps: {...}, dependents: {...} }`
+  defp generate_calculation_graph_js([]) do
+    ~s|{ topo_order: [], deps: {}, dependents: {} }|
+  end
+
+  defp generate_calculation_graph_js(calculations) do
+    # Build full deps map including state field dependencies (e.g., items, tags)
+    # This is needed so recomputeGraph(["items"]) finds affected calculations
+    full_deps_map =
+      Map.new(calculations, fn {name, _, _, deps} ->
+        {name, deps}
+      end)
+
+    # Topo order (already sorted, just extract names)
+    topo_order = Enum.map(calculations, fn {name, _, _, _} -> name end)
+
+    # Build dependents from full deps (includes state fields as keys)
+    dependents = Lavash.Graph.build_dependents(full_deps_map)
+
+    topo_json = Jason.encode!(Enum.map(topo_order, &to_string/1))
+
+    deps_json =
+      full_deps_map
+      |> Enum.map(fn {name, deps} ->
+        ~s|#{name}: #{Jason.encode!(Enum.map(deps, &to_string/1))}|
+      end)
+      |> Enum.join(", ")
+
+    dependents_json =
+      dependents
+      |> Enum.map(fn {name, deps} ->
+        ~s|#{name}: #{Jason.encode!(Enum.map(deps, &to_string/1))}|
+      end)
+      |> Enum.join(", ")
+
+    ~s|{ topo_order: #{topo_json}, deps: { #{deps_json} }, dependents: { #{dependents_json} } }|
   end
 
   # Generate JS for optimistic actions
