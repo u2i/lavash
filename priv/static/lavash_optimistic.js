@@ -591,10 +591,13 @@ const LavashOptimistic = {
     // Run optimistic action for instant UI update
     this.runOptimisticAction(actionName, value);
 
-    // Push the action event to the server
-    // This ensures server-side action handlers run (e.g., for bound field updates)
-    const payload = value !== undefined ? { value } : {};
-    this.pushEventTo(this.el, actionName, payload, () => {});
+    // Push the action event to the server — but only if the element doesn't
+    // already have phx-click, which would cause LiveView to also send the event
+    // (resulting in the server processing the action twice).
+    if (!target.hasAttribute("phx-click")) {
+      const payload = value !== undefined ? { value } : {};
+      this.pushEventTo(this.el, actionName, payload, () => {});
+    }
 
     // Clear LiveView's element lock so rapid clicks on the same element work.
     // LiveView sets data-phx-ref-src during click handling to prevent duplicate
