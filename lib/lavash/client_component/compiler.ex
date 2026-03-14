@@ -28,9 +28,11 @@ defmodule Lavash.ClientComponent.Compiler do
     spark_calculations = Spark.Dsl.Extension.get_entities(env.module, [:calculations]) || []
 
     calculations =
-      Enum.map(spark_calculations, fn calc ->
+      spark_calculations
+      |> Enum.map(fn calc ->
         {calc.name, calc.rx.source, calc.rx.ast, calc.rx.deps}
       end)
+      |> topo_sort_calculations()
 
     # Actions are stored as tuples: {name, field, key, run_source, validate_source, max}
     action_tuples = Module.get_attribute(env.module, :__lavash_optimistic_actions__) || []
@@ -1009,5 +1011,23 @@ defmodule Lavash.ClientComponent.Compiler do
       _ ->
         {nil, nil}
     end
+  end
+
+  # Sort calculations in dependency order using Lavash.Graph.topo_sort.
+  # Each calculation is {name, source, ast, deps} where deps is a list of atoms.
+  # Calculations that depend on other calculations must run after them.
+  defp topo_sort_calculations(calculations) do
+    calc_names = MapSet.new(calculations, fn {name, _, _, _} -> name end)
+
+    # Build deps map containing only inter-calculation dependencies
+    deps_map =
+      Map.new(calculations, fn {name, _, _, deps} ->
+        calc_deps = deps |> Enum.filter(&MapSet.member?(calc_names, &1))
+        {name, calc_deps}
+      end)
+
+    sorted = Lavash.Graph.topo_sort(deps_map)
+    calc_by_name = Map.new(calculations, fn {name, _, _, _} = calc -> {name, calc} end)
+    Enum.map(sorted, &Map.fetch!(calc_by_name, &1))
   end
 end

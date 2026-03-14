@@ -48,6 +48,13 @@ defmodule DemoWeb.Components.CartItemList do
 
   calculate :is_empty, rx(length(@items || []) == 0)
 
+  # Chained calculations — deliberately out of dependency order to demonstrate
+  # that ClientComponent calculation ordering matters.
+  # grand_total depends on subtotal and tax, but is declared first.
+  calculate :grand_total, rx(Float.round(@subtotal + @tax, 2))
+  calculate :tax, rx(Float.round(@subtotal * 0.08, 2))
+  calculate :subtotal_formatted, rx(Float.round(@subtotal, 2))
+
   # Key-based optimistic actions
   # The :key option tells the system to find items by :id field
 
@@ -72,10 +79,6 @@ defmodule DemoWeb.Components.CartItemList do
   # Close the flyover by setting open to false
   optimistic_action :close, :open,
     run: :set
-
-
-  # Helper to format subtotal with 2 decimal places
-  calculate :subtotal_formatted, rx(Float.round(@subtotal, 2))
 
   render fn assigns ->
     ~L"""
@@ -140,11 +143,18 @@ defmodule DemoWeb.Components.CartItemList do
 
       <!-- Footer with totals (inside ClientComponent for optimistic subtotal) -->
       <div :if={!@is_empty} class="p-4 border-t border-base-300 space-y-4 bg-base-100 flex-shrink-0">
-        <div class="flex justify-between text-lg font-bold">
+        <div class="flex justify-between">
           <span>Subtotal</span>
           <span>${@subtotal_formatted}</span>
         </div>
-        <p class="text-sm text-base-content/60">Shipping calculated at checkout</p>
+        <div class="flex justify-between text-sm text-base-content/60">
+          <span>Tax (8%)</span>
+          <span>${@tax}</span>
+        </div>
+        <div class="flex justify-between text-lg font-bold">
+          <span>Total</span>
+          <span>${@grand_total}</span>
+        </div>
         <button class="btn btn-primary w-full">Checkout</button>
         <button
           type="button"
