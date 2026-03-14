@@ -12,10 +12,7 @@ defmodule Lavash.DslHelpers do
 
   ## Example
 
-      derive :product do
-        argument :id, state(:product_id)
-        run fn %{id: id}, _ -> Catalog.get_product(id) end
-      end
+      calculate :product, rx(get_product(@product_id))
   """
   def state(field_name) when is_atom(field_name) do
     {:state, field_name}
@@ -39,10 +36,7 @@ defmodule Lavash.DslHelpers do
 
   ## Example
 
-      derive :doubled do
-        argument :base, result(:base_value)
-        run fn %{base: b}, _ -> b * 2 end
-      end
+      calculate :doubled, rx(@base_value * 2)
   """
   def result(field_name) when is_atom(field_name) do
     {:result, field_name}

@@ -15,13 +15,7 @@ defmodule Lavash.State.MultiSelect do
 
       state :roast, {:array, :string}, from: :url, default: [], optimistic: true
 
-      derive :roast_chips do
-        optimistic true
-        argument :roast, state(:roast)
-        run fn %{roast: selected}, _ ->
-          Map.new(["light", "medium", "dark"], fn v -> {v, chip_class(v in selected)} end)
-        end
-      end
+      calculate :roast_chips, rx(build_chips(@roast, ["light", "medium", "dark"]))
 
       action :toggle_roast, [:val] do
         set :roast, &toggle_in_list(&1.state.roast, &1.params.val)
@@ -66,11 +60,7 @@ defmodule Lavash.State.Toggle do
 
       state :in_stock, :boolean, from: :url, default: false, optimistic: true
 
-      derive :in_stock_chip do
-        optimistic true
-        argument :in_stock, state(:in_stock)
-        run fn %{in_stock: active}, _ -> chip_class(active) end
-      end
+      calculate :in_stock_chip, rx(chip_class(@in_stock))
 
       action :toggle_in_stock do
         update :in_stock, &(not &1)

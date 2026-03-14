@@ -17,8 +17,8 @@ defmodule Lavash.Reactive.GraphMacro do
         defgraph do
           state :count, 0
           state :step, 1
-          derive :doubled, rx(@count * @step)
-          derive :quad, rx(@doubled * 2)
+          calculate :doubled, rx(@count * @step)
+          calculate :quad, rx(@doubled * 2)
         end
 
         def mount(_params, _session, socket) do
@@ -32,12 +32,12 @@ defmodule Lavash.Reactive.GraphMacro do
   - `__phoenix_macro_components__/0` — registers the colocated JS hook with Phoenix
   - A colocated JS file with compute functions and dependency graph metadata
 
-  ## Async derives
+  ## Async calculations
 
-  Derives marked `async: true` are server-only — they appear in the graph metadata
+  Calculations marked `async: true` are server-only — they appear in the graph metadata
   but have no JS compute function. The client skips them during recomputation.
 
-      derive :results, rx(search(@query)), async: true
+      calculate :results, rx(search(@query)), async: true
   """
 
   defmacro defgraph(do: block) do

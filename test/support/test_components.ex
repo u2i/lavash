@@ -9,10 +9,7 @@ defmodule Lavash.TestCounterComponent do
 
   state :count, :integer, from: :ephemeral, default: 0
 
-  derive :doubled do
-    argument :count, state(:count)
-    run fn %{count: c}, _ -> (c || 0) * 2 end
-  end
+  calculate :doubled, rx((@count || 0) * 2)
 
   actions do
     action :increment do
@@ -57,11 +54,7 @@ defmodule Lavash.TestDerivedPropsComponent do
   prop :value, :integer, required: true
   prop :multiplier, :integer, default: 2
 
-  derive :computed do
-    argument :value, prop(:value)
-    argument :multiplier, prop(:multiplier)
-    run fn %{value: v, multiplier: m}, _ -> v * m end
-  end
+  calculate :computed, rx(@value * @multiplier)
 
   def render(assigns) do
     ~H"""

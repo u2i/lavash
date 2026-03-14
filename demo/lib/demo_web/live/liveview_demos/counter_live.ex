@@ -17,9 +17,9 @@ defmodule DemoWeb.LiveViewDemos.CounterLive do
   defgraph do
     state :count, 0
     state :step, 1
-    derive :doubled, rx(@count * @step)
-    derive :quad, rx(@doubled * 2)
-    derive :fact, rx(factorial_async(@count)), async: true
+    calculate :doubled, rx(@count * @step)
+    calculate :quad, rx(@doubled * 2)
+    calculate :fact, rx(factorial_async(@count)), async: true
   end
 
   def mount(_params, _session, socket) do

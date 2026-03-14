@@ -33,9 +33,7 @@ defmodule Lavash.LiveView.Helpers do
       state :count, :integer, from: :url, default: 0, optimistic: true
       state :multiplier, :integer, from: :ephemeral, default: 2, optimistic: true
 
-      derive :doubled, optimistic: true do
-        # ...
-      end
+      calculate :doubled, rx(@count * @multiplier)
 
       # In render/1
       def render(assigns) do

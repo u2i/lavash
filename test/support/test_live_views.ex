@@ -7,11 +7,7 @@ defmodule Lavash.TestCounterLive do
   state :count, :integer, from: :url, default: 0
   state :multiplier, :integer, from: :ephemeral, default: 2
 
-  derive :doubled do
-    argument :count, state(:count)
-    argument :multiplier, state(:multiplier)
-    run fn %{count: c, multiplier: m}, _ -> c * m end
-  end
+  calculate :doubled, rx(@count * @multiplier)
 
   actions do
     action :increment do
@@ -53,20 +49,9 @@ defmodule Lavash.TestChainedDerivedLive do
 
   state :count, :integer, from: :url, default: 1
 
-  derive :doubled do
-    argument :count, state(:count)
-    run fn %{count: c}, _ -> c * 2 end
-  end
-
-  derive :quadrupled do
-    argument :doubled, result(:doubled)
-    run fn %{doubled: d}, _ -> d * 2 end
-  end
-
-  derive :octupled do
-    argument :quadrupled, result(:quadrupled)
-    run fn %{quadrupled: q}, _ -> q * 2 end
-  end
+  calculate :doubled, rx(@count * 2)
+  calculate :quadrupled, rx(@doubled * 2)
+  calculate :octupled, rx(@quadrupled * 2)
 
   actions do
     action :increment do
@@ -101,20 +86,9 @@ defmodule Lavash.TestChainedEphemeralLive do
 
   state :base, :integer, from: :ephemeral, default: 1
 
-  derive :doubled do
-    argument :base, state(:base)
-    run fn %{base: b}, _ -> b * 2 end
-  end
-
-  derive :quadrupled do
-    argument :doubled, result(:doubled)
-    run fn %{doubled: d}, _ -> d * 2 end
-  end
-
-  derive :octupled do
-    argument :quadrupled, result(:quadrupled)
-    run fn %{quadrupled: q}, _ -> q * 2 end
-  end
+  calculate :doubled, rx(@base * 2)
+  calculate :quadrupled, rx(@doubled * 2)
+  calculate :octupled, rx(@quadrupled * 2)
 
   actions do
     action :increment do
@@ -144,23 +118,12 @@ defmodule Lavash.TestAsyncChainLive do
 
   state :count, :integer, from: :url, default: 1
 
-  derive :doubled do
-    async true
-    argument :count, state(:count)
+  calculate :doubled, rx(slow_double(@count)), async: true
+  calculate :quadrupled, rx(@doubled * 2)
 
-    run fn %{count: c}, _ ->
-      Process.sleep(50)
-      c * 2
-    end
-  end
-
-  derive :quadrupled do
-    argument :doubled, result(:doubled)
-
-    run fn %{doubled: d}, _ ->
-      # d will be the raw value (unwrapped from {:ok, value})
-      d * 2
-    end
+  def slow_double(c) do
+    Process.sleep(50)
+    c * 2
   end
 
   actions do
@@ -175,14 +138,14 @@ defmodule Lavash.TestAsyncChainLive do
       <span id="count">{@count}</span>
       <span id="doubled">
         <%= case @doubled do %>
-          <% %Phoenix.LiveView.AsyncResult{loading: true} -> %>loading
+          <% %Phoenix.LiveView.AsyncResult{loading: loading} when loading != nil -> %>loading
           <% %Phoenix.LiveView.AsyncResult{ok?: true, result: val} -> %>{val}
           <% val -> %>{val}
         <% end %>
       </span>
       <span id="quadrupled">
         <%= case @quadrupled do %>
-          <% %Phoenix.LiveView.AsyncResult{loading: true} -> %>loading
+          <% %Phoenix.LiveView.AsyncResult{loading: loading} when loading != nil -> %>loading
           <% %Phoenix.LiveView.AsyncResult{ok?: true, result: val} -> %>{val}
           <% val -> %>{val}
         <% end %>

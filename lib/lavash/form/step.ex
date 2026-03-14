@@ -14,17 +14,7 @@ defmodule Lavash.Form.Step do
 
   This is equivalent to:
 
-      derive :form do
-        argument :data, result(:product)
-        argument :params, input(:form_params)
-        run fn %{data: data, params: params}, _ ->
-          if data && data.id do
-            AshPhoenix.Form.for_update(data, :update, params: params)
-          else
-            AshPhoenix.Form.for_create(Product, :create, params: params)
-          end
-        end
-      end
+      calculate :form, rx(build_form(@product, @form_params))
   """
 
   defstruct [
