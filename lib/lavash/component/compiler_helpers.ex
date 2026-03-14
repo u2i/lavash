@@ -192,7 +192,7 @@ defmodule Lavash.Component.CompilerHelpers do
 
   Parses the function source (e.g., "fn tags, tag -> tags ++ [tag] end"),
   extracts the variable names and body, and returns JS code that assigns
-  the computed value to `this.state.<field>`.
+  the computed value to `state.<field>`.
 
   ## Parameters
 
@@ -202,7 +202,7 @@ defmodule Lavash.Component.CompilerHelpers do
   ## Example
 
       fn_source_to_js_assignment("fn tags, tag -> tags ++ [tag] end", :tags)
-      # => "this.state.tags = [...current, value];"
+      # => "state.tags = [...current, value];"
   """
   def fn_source_to_js_assignment(source, field) when is_binary(source) do
     case Code.string_to_quoted(source) do
@@ -210,7 +210,7 @@ defmodule Lavash.Component.CompilerHelpers do
         js_body = Lavash.Rx.Transpiler.to_js(Macro.to_string(body))
         js_body = String.replace(js_body, to_string(current_var), "current")
         js_body = String.replace(js_body, to_string(value_var), "value")
-        "this.state.#{field} = #{js_body};"
+        "state.#{field} = #{js_body};"
 
       _ ->
         "// Could not compile function to JS for #{field}"

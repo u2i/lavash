@@ -430,235 +430,16 @@ defmodule Lavash.ClientComponent.Compiler do
 
     # Combine into hook
     ~s"""
-    // Generated JS hook with client-side rendering
-    import { ReactiveStore } from "lavash/reactive_store.js";
+    import { createClientComponentHook, humanize } from "lavash/client_component.js";
 
-    function humanize(value) {
-      return String(value).replace(/_/g, ' ').replace(/^\\w/, c => c.toUpperCase());
-    }
-
-    export default {
-      mounted() {
-        console.log('[ClientComponent] mounted', this.el.id, this.el.dataset.lavashState);
-        const initialState = JSON.parse(this.el.dataset.lavashState || "{}");
-        this.bindings = JSON.parse(this.el.dataset.lavashBindings || "{}");
-        console.log('[ClientComponent] bindings:', this.bindings);
-
-        const fns = #{calc_fns_js};
-        const graph = #{graph_js};
-
-        this.rstore = new ReactiveStore({
-          initialState, graph, fns,
-          onChange: () => this.updateDOM()
-        });
-        this.state = this.rstore.state;
-
-        this.clickHandler = this.handleClick.bind(this);
-        this.keydownHandler = this.handleKeydown.bind(this);
-        this.inputHandler = this.handleInput.bind(this);
-        this.el.addEventListener("click", this.clickHandler, true);
-        this.el.addEventListener("keydown", this.keydownHandler, true);
-        this.el.addEventListener("input", this.inputHandler, true);
-        this.el.__lavash_hook__ = this;
-        // Re-render with JS template to ensure data-lavash-* attributes are present
-        // Server template may not have all attributes injected
-        this.rstore.recompute();
-        this.updateDOM();
-        console.log('[ClientComponent] mounted complete, state:', this.state);
-      },
-
-      updated() {
-        if (this.rstore.getPendingPaths().length === 0) {
-          const serverState = JSON.parse(this.el.dataset.lavashState || "{}");
-          this.rstore.serverUpdate(serverState);
-          this.rstore.recompute();
-        }
-      },
-
+    export default createClientComponentHook({
+      fns: #{calc_fns_js},
+      graph: #{graph_js},
       render(state) {
         return #{render_body};
       },
-
-      updateDOM() {
-        const newHtml = this.render(this.state);
-        const temp = document.createElement('div');
-        temp.innerHTML = newHtml;
-        if (temp.firstElementChild && window.morphdom) {
-          const currentChild = this.el.firstElementChild;
-          const newChild = temp.firstElementChild;
-          if (currentChild && newChild) {
-            window.morphdom(currentChild, newChild, {
-              onBeforeElUpdated(fromEl, toEl) {
-                if (fromEl.hasAttribute('data-lavash-preserve')) {
-                  return false;
-                }
-                return true;
-              }
-            });
-          } else {
-            this.el.innerHTML = newHtml;
-          }
-        } else {
-          this.el.innerHTML = newHtml;
-        }
-      },
-
-      handleInput(e) {
-        // Stop input events from propagating to parent hooks
-        // This prevents parent LiveView from overwriting state.tags with string input value
-        const target = e.target.closest("[data-lavash-state-field]");
-        if (target) {
-          e.stopPropagation();
-        }
-      },
-
-      handleKeydown(e) {
-        if (e.key !== "Enter") return;
-        const input = e.target;
-        const action = input.dataset.lavashAction;
-        const field = input.dataset.lavashStateField;
-        if (action !== "add" || !field) return;
-
-        e.preventDefault();
-        e.stopPropagation();
-        const value = input.value.trim();
-        if (!value) return;
-
-        if (!this.validateAction(action, field, value)) return;
-
-        this.applyOptimisticAction(action, field, value);
-        this.rstore.recompute([field]);
-        this.updateDOM();
-        this.syncParentUrl();
-
-        const newInput = this.el.querySelector(`[data-lavash-action="add"][data-lavash-state-field="${field}"]`);
-        if (newInput) newInput.value = "";
-
-        const phxEvent = `${action}_${field.replace(/s$/, '')}`;
-        this.pushEventTo(this.el, phxEvent, { val: value }, () => {
-          this.rstore.clearPending(field);
-        });
-      },
-
-      handleClick(e) {
-        console.log('[ClientComponent] handleClick', e.target);
-        const target = e.target.closest("[data-lavash-action]");
-        if (!target) {
-          console.log('[ClientComponent] no data-lavash-action found');
-          return;
-        }
-
-        const action = target.dataset.lavashAction;
-        const field = target.dataset.lavashStateField;
-        const value = target.dataset.lavashValue;
-        console.log('[ClientComponent] action:', action, 'field:', field, 'value:', value);
-
-        if (action === "add" && !value) return;
-
-        e.stopPropagation();
-
-        if (!this.validateAction(action, field, value)) {
-          console.log('[ClientComponent] validation failed');
-          return;
-        }
-
-        console.log('[ClientComponent] applying optimistic action');
-        this.applyOptimisticAction(action, field, value);
-        this.rstore._bumpVersion(field);
-        this.rstore.recompute([field]);
-        this.updateDOM();
-
-        // Check if this field is bound to a parent
-        const parentField = this.bindings[field];
-        if (parentField) {
-          // Dispatch a lavash-set event that bubbles up to parent components
-          // The parent's LavashOptimistic hook will handle it and sync to server
-          // Use the NEW value from state (after applyOptimisticAction), not the click value
-          const newValue = this.state[field];
-          console.log('[ClientComponent] dispatching lavash-set for bound field', field, '->', parentField, '=', newValue);
-          this.el.dispatchEvent(new CustomEvent('lavash-set', {
-            bubbles: true,
-            detail: { field: parentField, value: newValue }
-          }));
-          this.rstore.clearPending(field);
-          return;
-        }
-
-        // Not bound - sync to LiveView root and push event
-        this.syncParentUrl();
-
-        const phxEvent = target.dataset.phxClick || `${action}_${field.replace(/s$/, '')}`;
-        this.pushEventTo(this.el, phxEvent, { val: value }, () => {
-          this.rstore.clearPending(field);
-        });
-      },
-
     #{action_js}
-
-      syncParentUrl() {
-        if (Object.keys(this.bindings).length === 0) return;
-        const parentRoot = document.getElementById("lavash-optimistic-root");
-        if (!parentRoot || !parentRoot.__lavash_hook__) return;
-        const parentHook = parentRoot.__lavash_hook__;
-        const changedFields = [];
-        for (const [localField, parentField] of Object.entries(this.bindings)) {
-          const value = this.state[localField];
-          if (value !== undefined) {
-            parentHook.state[parentField] = value;
-            // Mark as pending so parent rejects stale server patches for this field
-            if (parentHook.store) {
-              const syncedVar = parentHook.store.get(parentField, value);
-              syncedVar.setOptimistic(value);
-            }
-            changedFields.push(parentField);
-          }
-        }
-        // Bump parent's client version so stale server patches are rejected
-        if (changedFields.length > 0 && parentHook.clientVersion !== undefined) {
-          parentHook.clientVersion++;
-        }
-        // Recompute parent's derives that depend on the changed fields
-        if (changedFields.length > 0 && typeof parentHook.recomputeDerives === 'function') {
-          parentHook.recomputeDerives(changedFields);
-        }
-        // Update parent's DOM to reflect new derived values
-        if (typeof parentHook.updateDOM === 'function') {
-          parentHook.updateDOM();
-        }
-        if (typeof parentHook.syncUrl === 'function') {
-          parentHook.syncUrl();
-        }
-      },
-
-      // Called by parent when another sibling updates shared state
-      refreshFromParent(parentHook) {
-        const changedFields = [];
-        for (const [localField, parentField] of Object.entries(this.bindings)) {
-          const parentValue = parentHook.state[parentField];
-          if (parentValue !== undefined && parentValue !== this.state[localField]) {
-            this.state[localField] = parentValue;
-            changedFields.push(localField);
-          }
-        }
-        if (changedFields.length > 0) {
-          this.rstore.recompute(changedFields);
-          this.updateDOM();
-        }
-      },
-
-      destroyed() {
-        if (this.rstore) this.rstore.destroy();
-        if (this.clickHandler) {
-          this.el.removeEventListener("click", this.clickHandler, true);
-        }
-        if (this.keydownHandler) {
-          this.el.removeEventListener("keydown", this.keydownHandler, true);
-        }
-        if (this.inputHandler) {
-          this.el.removeEventListener("input", this.inputHandler, true);
-        }
-      }
-    };
+    });
     """
   end
 
@@ -731,7 +512,7 @@ defmodule Lavash.ClientComponent.Compiler do
         run_js = case run_source do
           ":set" ->
             # :set shorthand - parse value and assign directly
-            ~s|this.state.#{field} = value === "true" ? true : value === "false" ? false : value;|
+            ~s|state.#{field} = value === "true" ? true : value === "false" ? false : value;|
           _ ->
             CompilerHelpers.fn_source_to_js_assignment(run_source, field)
         end
@@ -751,7 +532,7 @@ defmodule Lavash.ClientComponent.Compiler do
       end
 
       conditions = if max_field do
-        [~s|(this.state.#{max_field} && current.length >= this.state.#{max_field})| | conditions]
+        [~s|(state.#{max_field} && current.length >= state.#{max_field})| | conditions]
       else
         conditions
       end
@@ -767,14 +548,14 @@ defmodule Lavash.ClientComponent.Compiler do
     |> Enum.join("\n")
 
     ~s"""
-      validateAction(action, field, value, arg) {
-        const current = this.state[field];
+      validateAction(action, field, value, arg, state) {
+        const current = state[field];
     #{validate_cases}
         return true;
       },
 
-      applyOptimisticAction(action, field, value, arg) {
-        const current = this.state[field];
+      applyOptimisticAction(action, field, value, arg, state) {
+        const current = state[field];
     #{action_cases}
       },
     """
@@ -787,13 +568,13 @@ defmodule Lavash.ClientComponent.Compiler do
     if run_source == ":remove" do
       # Shorthand for removal - filter out the item
       ~s|      if (!current) return;
-      this.state[field] = current.filter(item => item.#{key_str} !== value);|
+      state[field] = current.filter(item => item.#{key_str} !== value);|
     else
       # Transform function - map over items and update matching one
       # Parse the Elixir function and convert to JS
       item_transform_js = CompilerHelpers.fn_source_to_js_item_transform(run_source)
       ~s|      if (!current) return;
-      this.state[field] = current.map(item => {
+      state[field] = current.map(item => {
         if (item.#{key_str} === value) {
           const result = #{item_transform_js};
           return result === 'remove' ? null : result;
