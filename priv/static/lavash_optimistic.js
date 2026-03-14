@@ -8,7 +8,7 @@
  *
  * Usage:
  * 1. Add `optimistic: true` to state/derive declarations in your LiveView
- * 2. Add data-lavash-action="actionName" to buttons/elements
+ * 2. Add phx-click="actionName" to buttons/elements (optimistic actions are auto-detected)
  * 3. Add data-lavash-display="fieldName" to elements that display state
  * 4. Add data-lavash-bind="fieldName" or data-lavash-bind="field.path" for input bindings
  * 5. (Optional) Define custom client-side functions via ColocatedJS for complex logic
@@ -28,8 +28,8 @@
  * - data-lavash-field: Explicit form field name for validation (avoids regex parsing)
  * - data-lavash-state-field: State field for ClientComponent actions (e.g., "tags", "selected")
  * - data-lavash-valid: Override which state field to check for validity
- * - data-lavash-action: Trigger optimistic action on click
- * - data-lavash-value: Value to pass to action
+ * - phx-click: Triggers optimistic action on click (if action name matches a known optimistic function)
+ * - phx-value-*: Value to pass to action (first phx-value-* attribute is used)
  * - data-lavash-display: Display state value as text content
  * - data-lavash-visible: Show/hide element based on boolean state (toggles "hidden" class)
  * - data-lavash-enabled: Enable/disable element based on boolean state
@@ -122,7 +122,7 @@ const LavashOptimistic = {
     // Check if this is a component
     this.isComponent = this.el.hasAttribute("data-lavash-component");
 
-    // Intercept clicks on elements with data-lavash-action
+    // Intercept clicks on elements with phx-click that match optimistic actions
     this.el.addEventListener("click", this.handleClick.bind(this), true);
 
     // Intercept input/change on elements with data-lavash-bind
@@ -566,22 +566,26 @@ const LavashOptimistic = {
   },
 
   handleClick(e) {
-    const target = e.target.closest("[data-lavash-action]");
-    if (!target) return;
+    const target = e.target.closest("[phx-click]");
+    if (!target || !this.el.contains(target)) return;
 
-    const actionName = target.dataset.lavashAction;
-    const value = target.dataset.lavashValue;
+    const actionName = target.getAttribute("phx-click");
+
+    // Only intercept if this is a known optimistic action
+    if (!this.fns[actionName]) return;
+
+    // Extract value from first phx-value-* attribute
+    let value;
+    for (const attr of target.attributes) {
+      if (attr.name.startsWith("phx-value-")) {
+        value = attr.value;
+        break;
+      }
+    }
 
     // Run optimistic action for instant UI update
+    // phx-click handles the server push automatically via LiveView
     this.runOptimisticAction(actionName, value);
-
-    // Push the action event to the server — but only if the element doesn't
-    // already have phx-click, which would cause LiveView to also send the event
-    // (resulting in the server processing the action twice).
-    if (!target.hasAttribute("phx-click")) {
-      const payload = value !== undefined ? { value } : {};
-      this.pushEventTo(this.el, actionName, payload, () => {});
-    }
 
     // Clear LiveView's element lock so rapid clicks on the same element work.
     // LiveView sets data-phx-ref-src during click handling to prevent duplicate

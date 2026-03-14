@@ -108,7 +108,6 @@ defmodule Lavash.Template.TokenTransformer do
     attrs
     |> maybe_inject_form_input(name, metadata)
     |> maybe_inject_state_binding(name, metadata)
-    |> maybe_inject_action(name, metadata)
     |> maybe_inject_visibility(metadata)
     |> maybe_inject_enabled(metadata)
     |> maybe_inject_client_component_action(metadata)
@@ -232,56 +231,7 @@ defmodule Lavash.Template.TokenTransformer do
 
   defp maybe_inject_state_binding(attrs, _name, _metadata), do: attrs
 
-  # Pattern 3: Action buttons
-  defp maybe_inject_action(attrs, name, metadata) when name in ["button", "a", "div", "span"] do
-    if has_attr?(attrs, "data-lavash-action") do
-      attrs
-    else
-      case get_attr_value(attrs, "phx-click") do
-        {:string, action_name, _meta} ->
-          action_atom = String.to_atom(action_name)
-          actions_map = metadata[:actions] || %{}
-
-          if is_map_key(actions_map, action_atom) do
-            attrs
-            |> add_attr_if_missing("data-lavash-action", {:string, action_name})
-            |> maybe_inject_action_value()
-          else
-            attrs
-          end
-
-        _ ->
-          attrs
-      end
-    end
-  end
-
-  defp maybe_inject_action(attrs, _name, _metadata), do: attrs
-
-  defp maybe_inject_action_value(attrs) do
-    if has_attr?(attrs, "data-lavash-value") do
-      attrs
-    else
-      case find_phx_value_attr(attrs) do
-        {_name, {:string, value, _meta}, _attr_meta} ->
-          add_attr_if_missing(attrs, "data-lavash-value", {:string, value})
-
-        {_name, {:expr, expr, _meta}, _attr_meta} ->
-          add_attr_if_missing(attrs, "data-lavash-value", {:expr, expr})
-
-        nil ->
-          attrs
-      end
-    end
-  end
-
-  defp find_phx_value_attr(attrs) do
-    Enum.find(attrs, fn {name, _value, _meta} ->
-      String.starts_with?(name, "phx-value-")
-    end)
-  end
-
-  # Pattern 4: Conditional visibility (:if={@bool_field})
+  # Pattern 3: Conditional visibility (:if={@bool_field})
   defp maybe_inject_visibility(attrs, metadata) do
     if has_attr?(attrs, "data-lavash-visible") do
       attrs

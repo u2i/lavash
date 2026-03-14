@@ -147,7 +147,7 @@ defmodule DemoWeb.AddressEditModal do
           </CoreComponents.button>
           <CoreComponents.button
             type="button"
-            data-lavash-action="close"
+            phx-click="close"
             class="btn-outline"
           >
             Cancel

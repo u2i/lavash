@@ -37,10 +37,7 @@ defmodule Lavash.Template.Transformer do
   2. **State Bindings** - `<input value={@field}>` where field is optimistic state
      → Injects `data-lavash-bind`
 
-  3. **Action Buttons** - `<button phx-click="action_name">` where action is declared
-     → Injects `data-lavash-action`, `data-lavash-value` (if phx-value-* present)
-
-  4. **Optimistic Actions in ClientComponent** - `<button data-lavash-action="toggle">`
+  3. **Optimistic Actions in ClientComponent** - `<button data-lavash-action="toggle">`
      → Injects `data-lavash-state-field` based on optimistic_action declaration
 
   5. **State Display** - `{@field}` inside element, where field is optimistic
@@ -442,7 +439,6 @@ defmodule Lavash.Template.Transformer do
     attrs
     |> maybe_inject_form_input(tag_info, metadata)
     |> maybe_inject_state_binding(tag_info, metadata)
-    |> maybe_inject_action(tag_info, metadata)
     |> maybe_inject_visibility(tag_info, metadata)
     |> maybe_inject_enabled(tag_info, metadata)
     |> maybe_inject_client_component_action(tag_info, metadata)
@@ -589,49 +585,7 @@ defmodule Lavash.Template.Transformer do
     end
   end
 
-  # Pattern 3: Action buttons
-  defp maybe_inject_action(attrs, tag_info, metadata) do
-    if tag_info.name in ["button", "a", "div", "span"] and
-       not has_attr?(attrs, "data-lavash-action") do
-      case get_attr(attrs, "phx-click") do
-        {:string, action_name} ->
-          action_atom = String.to_atom(action_name)
-          if is_map_key(metadata.actions, action_atom) do
-            attrs = add_attr_if_missing(attrs, "data-lavash-action", {:string, action_name})
-            # Check for phx-value-* and extract value
-            maybe_inject_action_value(attrs)
-          else
-            attrs
-          end
-
-        _ ->
-          attrs
-      end
-    else
-      attrs
-    end
-  end
-
-  # Extract value from phx-value-* attributes
-  defp maybe_inject_action_value(attrs) do
-    if has_attr?(attrs, "data-lavash-value") do
-      attrs
-    else
-      # Find any phx-value-* attribute
-      case Enum.find(attrs, fn {name, _} -> String.starts_with?(name, "phx-value-") end) do
-        {_, {:string, value}} ->
-          add_attr_if_missing(attrs, "data-lavash-value", {:string, value})
-
-        {_, {:expr, expr}} ->
-          add_attr_if_missing(attrs, "data-lavash-value", {:expr, expr})
-
-        nil ->
-          attrs
-      end
-    end
-  end
-
-  # Pattern 4: Conditional visibility (:if={@bool_field})
+  # Pattern 3: Conditional visibility (:if={@bool_field})
   defp maybe_inject_visibility(attrs, _tag_info, metadata) do
     if not has_attr?(attrs, "data-lavash-visible") do
       case get_attr(attrs, ":if") do

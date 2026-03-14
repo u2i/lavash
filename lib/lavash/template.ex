@@ -22,8 +22,8 @@ defmodule Lavash.Template do
         template \"\"\"
         <button
           :for={value <- @values}
-          data-lavash-action="toggle_selected"
-          data-lavash-value={value}
+          phx-click="toggle_selected"
+          phx-value-val={value}
           class={if value in @selected, do: @active_class, else: @inactive_class}
         >
           {value}

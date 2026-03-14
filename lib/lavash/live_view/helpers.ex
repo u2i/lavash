@@ -345,8 +345,6 @@ defmodule Lavash.LiveView.Helpers do
         class={@chips[value]}
         phx-click={@action_name}
         phx-value-val={value}
-        data-lavash-action={@action_name}
-        data-lavash-value={value}
         data-lavash-class={"#{@derive_name}.#{value}"}
       >
         {Map.get(@labels, value, humanize(value))}
@@ -386,7 +384,6 @@ defmodule Lavash.LiveView.Helpers do
       type="button"
       class={@chip}
       phx-click={@action_name}
-      data-lavash-action={@action_name}
       data-lavash-class={@derive_name}
       {@rest}
     >
