@@ -50,8 +50,8 @@ defmodule Lavash.Rx.Graph do
       |> MapSet.new(fn {name, _, _, _, _} -> name end)
 
     tags = build_tags(derives)
-    topo_order = topo_sort(derives, deps)
-    dependents = build_dependents(deps)
+    topo_order = Lavash.Graph.topo_sort(deps)
+    dependents = Lavash.Graph.build_dependents(deps)
 
     %__MODULE__{
       topo_order: topo_order,
@@ -68,7 +68,7 @@ defmodule Lavash.Rx.Graph do
   Returns all derived fields transitively affected by the given dirty fields.
   """
   def affected(graph, dirty_fields) do
-    transitive_dependents(graph.dependents, dirty_fields, MapSet.new())
+    Lavash.Graph.transitive_dependents(graph.dependents, dirty_fields)
     |> MapSet.to_list()
   end
 
@@ -89,15 +89,6 @@ defmodule Lavash.Rx.Graph do
     |> MapSet.to_list()
   end
 
-  # Build reverse dependency index: %{field => [derived fields that depend on it]}
-  defp build_dependents(deps) do
-    Enum.reduce(deps, %{}, fn {derived_name, dep_list}, acc ->
-      Enum.reduce(dep_list, acc, fn dep, inner_acc ->
-        Map.update(inner_acc, dep, [derived_name], &[derived_name | &1])
-      end)
-    end)
-  end
-
   # Build reverse tag index: %{tag => MapSet.t(field_name)}
   defp build_tags(derives) do
     Enum.reduce(derives, %{}, fn {name, _, _, _, tags}, acc ->
@@ -105,58 +96,5 @@ defmodule Lavash.Rx.Graph do
         Map.update(inner_acc, tag, MapSet.new([name]), &MapSet.put(&1, name))
       end)
     end)
-  end
-
-  # Kahn's algorithm for topological sort
-  defp topo_sort(derives, deps) do
-    names = Enum.map(derives, fn {name, _, _, _, _} -> name end)
-
-    # Count in-degree (only from other derives, not from state)
-    derive_names = MapSet.new(names)
-
-    in_degree =
-      Map.new(names, fn name ->
-        count = deps[name] |> Enum.count(&MapSet.member?(derive_names, &1))
-        {name, count}
-      end)
-
-    # Start with nodes that have no derive dependencies
-    queue = for {name, 0} <- in_degree, do: name
-    kahn(queue, in_degree, deps, derive_names, [])
-  end
-
-  defp kahn([], _in_degree, _deps, _derive_names, result), do: Enum.reverse(result)
-
-  defp kahn([node | rest], in_degree, deps, derive_names, result) do
-    # Find all derives that depend on this node
-    dependents =
-      for {name, dep_list} <- deps,
-          node in dep_list,
-          MapSet.member?(derive_names, name),
-          do: name
-
-    # Decrement in-degree for each dependent
-    {in_degree, new_ready} =
-      Enum.reduce(dependents, {in_degree, []}, fn dep, {deg, ready} ->
-        new_deg = Map.update!(deg, dep, &(&1 - 1))
-
-        if new_deg[dep] == 0 do
-          {new_deg, [dep | ready]}
-        else
-          {new_deg, ready}
-        end
-      end)
-
-    kahn(rest ++ new_ready, in_degree, deps, derive_names, [node | result])
-  end
-
-  # BFS to find all transitively dependent derived fields
-  defp transitive_dependents(_dependents, [], visited), do: visited
-
-  defp transitive_dependents(dependents, [field | rest], visited) do
-    direct = Map.get(dependents, field, [])
-    new = Enum.reject(direct, &MapSet.member?(visited, &1))
-    visited = Enum.reduce(new, visited, &MapSet.put(&2, &1))
-    transitive_dependents(dependents, rest ++ new, visited)
   end
 end

@@ -188,8 +188,8 @@ defmodule Lavash.Reactive.GraphMacro do
 
       # Build graph metadata
       deps_map = Map.new(js_derives, fn {name, _js, deps} -> {name, deps} end)
-      topo_order = topo_sort_deps(deps_map)
-      dependents = build_dependents(deps_map)
+      topo_order = Lavash.Graph.topo_sort(deps_map)
+      dependents = Lavash.Graph.build_dependents(deps_map)
 
       graph_json = Jason.encode!(%{
         topo_order: topo_order,
@@ -240,44 +240,4 @@ defmodule Lavash.Reactive.GraphMacro do
     {filename, %{name: module_name, key: "optimistic"}}
   end
 
-  # Kahn's algorithm — mirrors ColocatedTransformer
-  defp topo_sort_deps(deps_map) do
-    names = Map.keys(deps_map)
-    derive_names = MapSet.new(names)
-
-    in_degree =
-      Map.new(names, fn name ->
-        count = (deps_map[name] || []) |> Enum.count(&MapSet.member?(derive_names, &1))
-        {name, count}
-      end)
-
-    queue = for {name, 0} <- in_degree, do: name
-    kahn(queue, in_degree, deps_map, derive_names, [])
-  end
-
-  defp kahn([], _in_degree, _deps_map, _derive_names, result), do: Enum.reverse(result)
-
-  defp kahn([node | rest], in_degree, deps_map, derive_names, result) do
-    dependents =
-      for {name, dep_list} <- deps_map,
-          node in dep_list,
-          MapSet.member?(derive_names, name),
-          do: name
-
-    {in_degree, new_ready} =
-      Enum.reduce(dependents, {in_degree, []}, fn dep, {deg, ready} ->
-        new_deg = Map.update!(deg, dep, &(&1 - 1))
-        if new_deg[dep] == 0, do: {new_deg, [dep | ready]}, else: {new_deg, ready}
-      end)
-
-    kahn(rest ++ new_ready, in_degree, deps_map, derive_names, [node | result])
-  end
-
-  defp build_dependents(deps_map) do
-    Enum.reduce(deps_map, %{}, fn {name, dep_list}, acc ->
-      Enum.reduce(dep_list, acc, fn dep, inner_acc ->
-        Map.update(inner_acc, dep, [name], &[name | &1])
-      end)
-    end)
-  end
 end
