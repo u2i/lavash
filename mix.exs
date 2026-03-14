@@ -99,8 +99,7 @@ defmodule Lavash.MixProject do
           Lavash.Assigns
         ],
         "Optimistic Updates": [
-          Lavash.Optimistic,
-          Lavash.Optimistic.JsGenerator
+          Lavash.Optimistic
         ],
         "Overlays": [
           Lavash.Overlay,

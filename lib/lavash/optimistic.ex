@@ -7,7 +7,6 @@ defmodule Lavash.Optimistic do
 
   ## Active Submodules
 
-  - `Lavash.Optimistic.JsGenerator` - Generates JavaScript from DSL declarations
   - `Lavash.Optimistic.Macros` - Provides the `optimistic_action/3` macro for LiveViews
   - `Lavash.Optimistic.ActionMacro` - Provides `optimistic_action` for ClientComponents
   - `Lavash.Optimistic.ColocatedTransformer` - Extracts generated JS to colocated files
