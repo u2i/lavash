@@ -1,4 +1,4 @@
-defmodule Lavash.Optimistic.ExpandAnimatedStates do
+defmodule Lavash.Optimistic.Transformers.ExpandAnimatedStates do
   @moduledoc """
   Spark transformer that expands animated state fields into phase tracking state and calculations.
 
@@ -40,13 +40,13 @@ defmodule Lavash.Optimistic.ExpandAnimatedStates do
   alias Spark.Dsl.Transformer
 
   # Run after Modal's and Flyover's InjectState (which add animated state fields)
-  # but before DefrxExpander and ColocatedTransformer
+  # but before ExpandDefrx and ExtractColocatedJs
   def after?(Lavash.Overlay.Modal.Transformers.InjectState), do: true
   def after?(Lavash.Overlay.Flyover.Transformers.InjectState), do: true
   def after?(_), do: false
 
-  def before?(Lavash.Optimistic.DefrxExpander), do: true
-  def before?(Lavash.Optimistic.ColocatedTransformer), do: true
+  def before?(Lavash.Optimistic.Transformers.ExpandDefrx), do: true
+  def before?(Lavash.Optimistic.Transformers.ExtractColocatedJs), do: true
   def before?(Lavash.Overlay.Modal.Transformers.GenerateRender), do: true
   def before?(Lavash.Overlay.Flyover.Transformers.GenerateRender), do: true
   def before?(_), do: false

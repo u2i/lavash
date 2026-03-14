@@ -1,4 +1,4 @@
-defmodule Lavash.Optimistic.ColocatedTransformer do
+defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
   @moduledoc """
   Spark transformer that extracts generated optimistic JS to colocated files.
 
@@ -281,8 +281,6 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
     end)
   end
 
-  # action_is_optimistic? delegated to ActionJs
-
   # Generate JS for an action
   defp generate_action_js(action) do
     name = action.name
@@ -336,8 +334,6 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
   end
 
   defp generate_update_js(update), do: ActionJs.generate_update_js(update)
-
-  # State JS (multi-select/toggle) delegated to StateJs
 
   defp generate_calculation_js(calc, defrx_map) do
     name = calc.name

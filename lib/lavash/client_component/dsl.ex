@@ -388,7 +388,7 @@ defmodule Lavash.ClientComponent.Dsl do
       @template_section
     ],
     transformers: [
-      Lavash.Optimistic.ExpandAnimatedStates,
+      Lavash.Optimistic.Transformers.ExpandAnimatedStates,
       Lavash.ClientComponent.Transformers.GenerateHook
     ],
     imports: [Lavash.Rx, Lavash.Optimistic.ActionMacro, Lavash.Template.RenderMacro]

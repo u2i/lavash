@@ -15,7 +15,7 @@ defmodule Lavash.ClientComponent.Transformers.GenerateHook do
   alias Lavash.Component.CompilerHelpers
 
   # Run after ExpandAnimatedStates so animated state entities are available
-  def after?(Lavash.Optimistic.ExpandAnimatedStates), do: true
+  def after?(Lavash.Optimistic.Transformers.ExpandAnimatedStates), do: true
   def after?(_), do: false
 
   def before?(_), do: false

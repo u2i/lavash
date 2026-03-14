@@ -1,4 +1,4 @@
-defmodule Lavash.Optimistic.DefrxExpander do
+defmodule Lavash.Optimistic.Transformers.ExpandDefrx do
   @moduledoc """
   Spark transformer that expands defrx function calls in rx expressions.
 
@@ -8,9 +8,9 @@ defmodule Lavash.Optimistic.DefrxExpander do
 
   use Spark.Dsl.Transformer
 
-  # Run before ColocatedTransformer
+  # Run before ExtractColocatedJs
   def after?(_), do: false
-  def before?(Lavash.Optimistic.ColocatedTransformer), do: true
+  def before?(Lavash.Optimistic.Transformers.ExtractColocatedJs), do: true
   def before?(_), do: false
 
   @doc """

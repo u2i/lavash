@@ -549,10 +549,10 @@ defmodule Lavash.Dsl do
       @actions_section
     ],
     transformers: [
-      Lavash.Optimistic.ExpandAnimatedStates,
-      Lavash.Optimistic.DefrxExpander,
+      Lavash.Optimistic.Transformers.ExpandAnimatedStates,
+      Lavash.Optimistic.Transformers.ExpandDefrx,
       Lavash.Transformers.ExpandFields,
-      Lavash.Optimistic.ColocatedTransformer
+      Lavash.Optimistic.Transformers.ExtractColocatedJs
     ],
     imports: [Phoenix.Component, Lavash.DslHelpers, Lavash.Rx, Lavash.Sigil, Lavash.Template.RenderMacro]
 end

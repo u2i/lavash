@@ -53,7 +53,7 @@ defmodule Lavash.LiveView.Runtime do
         end
 
       # Optimistic functions are now extracted to colocated JS files at compile time
-      # by Lavash.Optimistic.ColocatedTransformer, no need to embed them here
+      # by Lavash.Optimistic.Transformers.ExtractColocatedJs, no need to embed them here
       has_optimistic_js = optimistic_fields != [] or optimistic_derives != []
 
       # Get URL field names for client-side URL sync

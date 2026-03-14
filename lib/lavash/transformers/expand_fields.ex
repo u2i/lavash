@@ -12,11 +12,11 @@ defmodule Lavash.Transformers.ExpandFields do
   use Spark.Dsl.Transformer
   alias Spark.Dsl.Transformer
 
-  def after?(Lavash.Optimistic.DefrxExpander), do: true
-  def after?(Lavash.Optimistic.ExpandAnimatedStates), do: true
+  def after?(Lavash.Optimistic.Transformers.ExpandDefrx), do: true
+  def after?(Lavash.Optimistic.Transformers.ExpandAnimatedStates), do: true
   def after?(_), do: false
 
-  def before?(Lavash.Optimistic.ColocatedTransformer), do: true
+  def before?(Lavash.Optimistic.Transformers.ExtractColocatedJs), do: true
   def before?(_), do: false
 
   # ============================================================
