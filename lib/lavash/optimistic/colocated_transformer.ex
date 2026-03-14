@@ -13,6 +13,8 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
   use Spark.Dsl.Transformer
 
   alias Lavash.Component.CompilerHelpers
+  alias Lavash.Optimistic.{ActionJs, StateJs}
+  alias Lavash.Form.ValidationJs
 
   # Run after all entities are defined but before compilation finishes
   def after?(_), do: true
@@ -144,7 +146,7 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
 
     optimistic_actions =
       actions
-      |> Enum.filter(&action_is_optimistic?/1)
+      |> Enum.filter(&ActionJs.action_is_optimistic?/1)
       |> Enum.reject(&MapSet.member?(excluded_names, &1.name))
 
     # Get calculations (only those with optimistic: true)
@@ -197,10 +199,10 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
 
   defp generate_js_code(multi_selects, toggles, calculations, forms, extend_errors, animated_fields, defrx_map, optimistic_actions, _module) do
     # Generate JS for each type
-    multi_select_action_fns = Enum.map(multi_selects, &generate_multi_select_action_js/1)
-    multi_select_derive_fns = Enum.map(multi_selects, &generate_multi_select_derive_js/1)
-    toggle_action_fns = Enum.map(toggles, &generate_toggle_action_js/1)
-    toggle_derive_fns = Enum.map(toggles, &generate_toggle_derive_js/1)
+    multi_select_action_fns = Enum.map(multi_selects, &StateJs.generate_multi_select_action_js/1)
+    multi_select_derive_fns = Enum.map(multi_selects, &StateJs.generate_multi_select_derive_js/1)
+    toggle_action_fns = Enum.map(toggles, &StateJs.generate_toggle_action_js/1)
+    toggle_derive_fns = Enum.map(toggles, &StateJs.generate_toggle_derive_js/1)
     calculation_fns = Enum.map(calculations, &generate_calculation_js(&1, defrx_map)) |> Enum.filter(& &1)
 
     # Generate JS for optimistic actions
@@ -279,25 +281,7 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
     end)
   end
 
-  # Check if an action is optimistic (has simple set/update, no side effects)
-  defp action_is_optimistic?(action) do
-    has_side_effects =
-      (action.submits || []) != [] or
-      (action.navigates || []) != [] or
-      (action.effects || []) != [] or
-      (action.invokes || []) != []
-
-    has_set_or_update = (action.sets || []) != [] or (action.updates || []) != []
-
-    # Check if action has runs with reads declared at action level
-    runs = action.runs || []
-    reads = action.reads || []
-    has_transpilable_runs = runs != [] and reads != []
-
-    has_operations = has_set_or_update or has_transpilable_runs
-
-    !has_side_effects and has_operations
-  end
+  # action_is_optimistic? delegated to ActionJs
 
   # Generate JS for an action
   defp generate_action_js(action) do
@@ -330,9 +314,8 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
   # Generate JS for a set operation
   defp generate_set_js(set, action_params) do
     field = set.field
-    value = set.value
 
-    case analyze_value(value) do
+    case ActionJs.analyze_value(set.value) do
       {:literal, v} ->
         "#{field}: #{Jason.encode!(v)}"
 
@@ -352,166 +335,9 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
     end
   end
 
-  # Generate JS for an update operation (increment/decrement)
-  defp generate_update_js(update) do
-    field = update.field
-    fun = update.fun
+  defp generate_update_js(update), do: ActionJs.generate_update_js(update)
 
-    case analyze_update_function(fun) do
-      {:increment, n} ->
-        "#{field}: state.#{field} + #{n}"
-
-      {:decrement, n} ->
-        "#{field}: state.#{field} - #{n}"
-
-      :unknown ->
-        nil
-    end
-  end
-
-  # Analyze a value to determine how to generate JS
-  defp analyze_value(value)
-       when is_number(value) or is_binary(value) or is_boolean(value) or is_atom(value) do
-    {:literal, value}
-  end
-
-  defp analyze_value(value) when is_function(value, 1) do
-    # Test with a mock context that has params.value
-    try do
-      test_ctx = %{params: %{value: "__TEST_VALUE__"}, state: %{}}
-      result = value.(test_ctx)
-
-      if result == "__TEST_VALUE__" do
-        :from_params_value
-      else
-        :unknown
-      end
-    rescue
-      _ -> :unknown
-    end
-  end
-
-  defp analyze_value(%Lavash.Rx{source: source}) do
-    {:rx, source}
-  end
-
-  defp analyze_value(_), do: :unknown
-
-  # Analyze update functions to detect simple patterns
-  defp analyze_update_function(fun) when is_function(fun, 1) do
-    try do
-      result_0 = fun.(0)
-      result_10 = fun.(10)
-      result_100 = fun.(100)
-
-      delta1 = result_0 - 0
-      delta2 = result_10 - 10
-      delta3 = result_100 - 100
-
-      if delta1 == delta2 and delta2 == delta3 do
-        if delta1 >= 0 do
-          {:increment, delta1}
-        else
-          {:decrement, -delta1}
-        end
-      else
-        :unknown
-      end
-    rescue
-      _ -> :unknown
-    end
-  end
-
-  defp analyze_update_function(_), do: :unknown
-
-  # ============================================
-  # JS Generation helpers (copied from JsGenerator)
-  # ============================================
-
-  @default_chip_class [
-    base: "px-3 py-1.5 text-sm rounded-full border transition-colors cursor-pointer",
-    active: "bg-primary text-primary-content border-primary",
-    inactive: "bg-base-100 text-base-content/70 border-base-300 hover:border-primary/50"
-  ]
-
-  defp generate_multi_select_action_js(%Lavash.State.MultiSelect{} = ms) do
-    action_name = "toggle_#{ms.name}"
-    field = ms.name
-
-    """
-      #{action_name}(state, value) {
-        const list = state.#{field} || [];
-        const idx = list.indexOf(value);
-        if (idx >= 0) {
-          return { #{field}: list.filter(v => v !== value) };
-        } else {
-          return { #{field}: [...list, value] };
-        }
-      }
-    """
-  end
-
-  defp generate_multi_select_derive_js(%Lavash.State.MultiSelect{} = ms) do
-    derive_name = "#{ms.name}_chips"
-    field = ms.name
-    values = ms.values
-    chip_class = ms.chip_class || @default_chip_class
-
-    base = Keyword.get(chip_class, :base, "")
-    active = Keyword.get(chip_class, :active, "")
-    inactive = Keyword.get(chip_class, :inactive, "")
-
-    active_class = String.trim("#{base} #{active}")
-    inactive_class = String.trim("#{base} #{inactive}")
-
-    values_json = Jason.encode!(values)
-
-    """
-      #{derive_name}(state) {
-        const ACTIVE = #{Jason.encode!(active_class)};
-        const INACTIVE = #{Jason.encode!(inactive_class)};
-        const values = #{values_json};
-        const selected = state.#{field} || [];
-        const result = {};
-        for (const v of values) {
-          result[v] = selected.includes(v) ? ACTIVE : INACTIVE;
-        }
-        return result;
-      }
-    """
-  end
-
-  defp generate_toggle_action_js(%Lavash.State.Toggle{} = toggle) do
-    action_name = "toggle_#{toggle.name}"
-    field = toggle.name
-
-    """
-      #{action_name}(state) {
-        return { #{field}: !state.#{field} };
-      }
-    """
-  end
-
-  defp generate_toggle_derive_js(%Lavash.State.Toggle{} = toggle) do
-    derive_name = "#{toggle.name}_chip"
-    field = toggle.name
-    chip_class = toggle.chip_class || @default_chip_class
-
-    base = Keyword.get(chip_class, :base, "")
-    active = Keyword.get(chip_class, :active, "")
-    inactive = Keyword.get(chip_class, :inactive, "")
-
-    active_class = String.trim("#{base} #{active}")
-    inactive_class = String.trim("#{base} #{inactive}")
-
-    """
-      #{derive_name}(state) {
-        const ACTIVE = #{Jason.encode!(active_class)};
-        const INACTIVE = #{Jason.encode!(inactive_class)};
-        return state.#{field} ? ACTIVE : INACTIVE;
-      }
-    """
-  end
+  # State JS (multi-select/toggle) delegated to StateJs
 
   defp generate_calculation_js(calc, defrx_map) do
     name = calc.name
@@ -693,248 +519,19 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
     {validation_fns, error_fns, validation_derives, error_derives}
   end
 
+  # Form validation/error JS - delegate to ValidationJs
+
   defp generate_field_validation_js(name, params_field, validation, skip_constraints) do
-    field = validation.field
-    field_str = to_string(field)
-    required = validation.required
-    type = validation.type
-    constraints = validation.constraints
-
-    value_expr = "state.#{params_field}?.[#{Jason.encode!(field_str)}]"
-
-    checks = []
-
-    # If skip_constraints is true, skip all validation (required + type constraints)
-    # This is used for fields that are programmatically populated (e.g., session_id)
-    checks =
-      if skip_constraints do
-        checks
-      else
-        # Required check
-        checks =
-          if required do
-            check = "(#{value_expr} != null && String(#{value_expr}).trim().length > 0)"
-            [check | checks]
-          else
-            checks
-          end
-
-        # Type-specific constraint checks
-        case type do
-          :string -> build_string_constraint_checks(value_expr, constraints, checks)
-          :integer -> build_integer_constraint_checks(value_expr, constraints, checks)
-          _ -> checks
-        end
-      end
-
-    expr =
-      case checks do
-        [] -> "true"
-        [single] -> single
-        multiple -> Enum.join(Enum.reverse(multiple), " && ")
-      end
-
-    """
-      #{name}(state) {
-        return #{expr};
-      }
-    """
+    ValidationJs.generate_field_validation_js(name, params_field, validation, skip_constraints)
   end
 
   defp generate_field_errors_js(name, params_field, form_name, validation, custom_errors, ash_validations, skip_constraints, defrx_map) do
-    field = validation.field
-    field_str = to_string(field)
-    required = validation.required
-    type = validation.type
-    constraints = validation.constraints
+    expand_defrx = &expand_defrx_in_source(&1, defrx_map)
 
-    value_expr = "state.#{params_field}?.[#{Jason.encode!(field_str)}]"
-
-    # Build lookup for custom messages from Ash validations
-    ash_messages = build_ash_message_lookup(ash_validations)
-
-    error_checks = []
-
-    # If skip_constraints is true, skip all validation (required + type constraints)
-    # This is used for fields that are programmatically populated (e.g., session_id)
-    error_checks =
-      if skip_constraints do
-        error_checks
-      else
-        # Required check
-        error_checks =
-          if required do
-            msg = Map.get(ash_messages, :required) ||
-                  Lavash.Form.ConstraintTranspiler.error_message(:required, nil)
-
-            check =
-              "{check: #{value_expr} != null && String(#{value_expr}).trim().length > 0, msg: #{Jason.encode!(msg)}}"
-
-            [check | error_checks]
-          else
-            error_checks
-          end
-
-        # Type-specific constraint error checks
-        case type do
-          :string -> build_string_error_checks(value_expr, constraints, error_checks, ash_messages)
-          :integer -> build_integer_error_checks(value_expr, constraints, error_checks, ash_messages)
-          _ -> error_checks
-        end
-      end
-
-    # Add custom error checks - use defrx_map from DSL state for expansion
-    error_checks =
-      Enum.reduce(custom_errors, error_checks, fn error, acc ->
-        expanded_condition = expand_defrx_in_source(error.condition.source, defrx_map)
-        js_condition = Lavash.Rx.Transpiler.to_js(expanded_condition)
-
-        msg_js =
-          case error.message do
-            %Lavash.Rx{source: source} ->
-              expanded_msg = expand_defrx_in_source(source, defrx_map)
-              "(#{Lavash.Rx.Transpiler.to_js(expanded_msg)})"
-
-            static_string when is_binary(static_string) ->
-              Jason.encode!(static_string)
-          end
-
-        check = "{check: !(#{js_condition}), msg: #{msg_js}}"
-        [check | acc]
-      end)
-
-    checks_array = "[" <> Enum.join(Enum.reverse(error_checks), ", ") <> "]"
-    server_errors_field = "#{form_name}_server_errors"
-    field_str = to_string(validation.field)
-
-    """
-      #{name}(state) {
-        const v = #{value_expr};
-        const isEmpty = v == null || String(v).trim().length === 0;
-        const checks = #{checks_array};
-        const clientErrors = checks
-          .filter(c => !c.check && (#{required} || !isEmpty))
-          .map(c => c.msg);
-        const serverErrors = state.#{server_errors_field}?.[#{Jason.encode!(field_str)}] || [];
-        const merged = [...clientErrors];
-        for (const e of serverErrors) { if (!merged.includes(e)) merged.push(e); }
-        return merged;
-      }
-    """
-  end
-
-  defp build_string_constraint_checks(value_expr, constraints, checks) do
-    checks =
-      case Map.get(constraints, :min_length) do
-        nil -> checks
-        min -> ["(String(#{value_expr} || '').trim().length >= #{min})" | checks]
-      end
-
-    checks =
-      case Map.get(constraints, :max_length) do
-        nil -> checks
-        max -> ["(String(#{value_expr} || '').trim().length <= #{max})" | checks]
-      end
-
-    checks
-  end
-
-  defp build_integer_constraint_checks(value_expr, constraints, checks) do
-    parsed = "parseInt(#{value_expr} || '0', 10)"
-
-    checks =
-      case Map.get(constraints, :min) do
-        nil -> checks
-        min -> ["(#{parsed} >= #{min})" | checks]
-      end
-
-    checks =
-      case Map.get(constraints, :max) do
-        nil -> checks
-        max -> ["(#{parsed} <= #{max})" | checks]
-      end
-
-    checks
-  end
-
-  defp build_string_error_checks(value_expr, constraints, checks, ash_messages) do
-    checks =
-      case Map.get(constraints, :min_length) do
-        nil ->
-          checks
-
-        min ->
-          msg = Map.get(ash_messages, :min_length) ||
-                Map.get(ash_messages, :length_between) ||
-                Lavash.Form.ConstraintTranspiler.error_message(:min_length, min)
-
-          check =
-            "{check: String(#{value_expr} || '').trim().length >= #{min}, msg: #{Jason.encode!(msg)}}"
-
-          [check | checks]
-      end
-
-    checks =
-      case Map.get(constraints, :max_length) do
-        nil ->
-          checks
-
-        max ->
-          msg = Map.get(ash_messages, :max_length) ||
-                Map.get(ash_messages, :length_between) ||
-                Lavash.Form.ConstraintTranspiler.error_message(:max_length, max)
-
-          check =
-            "{check: String(#{value_expr} || '').trim().length <= #{max}, msg: #{Jason.encode!(msg)}}"
-
-          [check | checks]
-      end
-
-    checks
-  end
-
-  defp build_integer_error_checks(value_expr, constraints, checks, ash_messages) do
-    parsed = "parseInt(#{value_expr} || '0', 10)"
-
-    checks =
-      case Map.get(constraints, :min) do
-        nil ->
-          checks
-
-        min ->
-          msg = Map.get(ash_messages, :min) ||
-                Map.get(ash_messages, :numericality) ||
-                Lavash.Form.ConstraintTranspiler.error_message(:min, min)
-          check = "{check: #{parsed} >= #{min}, msg: #{Jason.encode!(msg)}}"
-          [check | checks]
-      end
-
-    checks =
-      case Map.get(constraints, :max) do
-        nil ->
-          checks
-
-        max ->
-          msg = Map.get(ash_messages, :max) ||
-                Map.get(ash_messages, :numericality) ||
-                Lavash.Form.ConstraintTranspiler.error_message(:max, max)
-          check = "{check: #{parsed} <= #{max}, msg: #{Jason.encode!(msg)}}"
-          [check | checks]
-      end
-
-    checks
-  end
-
-  # Build a lookup map from ash_validations list to their messages
-  defp build_ash_message_lookup(ash_validations) do
-    Enum.reduce(ash_validations, %{}, fn spec, acc ->
-      if spec.message do
-        message = Lavash.Form.ValidationTranspiler.get_message(spec)
-        Map.put(acc, spec.type, message)
-      else
-        acc
-      end
-    end)
+    ValidationJs.generate_field_errors_js(name, params_field, validation, custom_errors, ash_validations, skip_constraints,
+      expand_defrx: expand_defrx,
+      server_errors_field: "#{form_name}_server_errors"
+    )
   end
 
   defp build_graph_entries(multi_selects, toggles, calculations, forms, extend_errors) do
@@ -1041,8 +638,7 @@ defmodule Lavash.Optimistic.ColocatedTransformer do
   end
 
 
-  defp normalize_dep_to_string({:path, root, _path}), do: to_string(root)
-  defp normalize_dep_to_string(atom) when is_atom(atom), do: to_string(atom)
+  defp normalize_dep_to_string(dep), do: ActionJs.normalize_dep_to_string(dep)
 
   # Block until the resource module is compiled, avoiding compilation order races.
   # Code.ensure_compiled/1 waits for compilation to finish (unlike ensure_loaded?
