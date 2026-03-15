@@ -165,7 +165,7 @@ defmodule Lavash.LiveView.Compiler do
       end
 
       def __lavash__(:optimistic_fields) do
-        __lavash__(:states) |> Enum.filter(&(&1.optimistic == true))
+        __lavash__(:states) |> Enum.filter(&Lavash.State.Field.optimistic?/1)
       end
 
       def __lavash__(:optimistic_derives) do
@@ -247,7 +247,10 @@ defmodule Lavash.LiveView.Compiler do
   """
   def generate_setter_actions(module) do
     module.__lavash__(:states)
-    |> Enum.filter(&(&1.setter || &1.optimistic))
+    |> Enum.filter(fn
+      %Lavash.State.Field{} = f -> f.setter || Lavash.State.Field.optimistic?(f)
+      _ -> false
+    end)
     |> Enum.map(fn state ->
       %Lavash.Actions.Action{
         name: :"set_#{state.name}",

@@ -129,7 +129,7 @@ defmodule Lavash.Sigil do
       optimistic_fields =
         states
         |> Enum.filter(fn
-          %Lavash.State.Field{optimistic: true} -> true
+          %Lavash.State.Field{} = f -> Lavash.State.Field.optimistic?(f)
           %Lavash.State.MultiSelect{} -> true
           %Lavash.State.Toggle{} -> true
           _ -> false

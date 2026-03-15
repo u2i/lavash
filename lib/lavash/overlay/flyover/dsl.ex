@@ -28,7 +28,7 @@ defmodule Lavash.Overlay.Flyover.Dsl do
 
   Parent opens the flyover by binding the open state:
 
-      state :nav_open, :any, from: :ephemeral, default: nil, optimistic: true
+      state :nav_open, :any, from: :ephemeral, default: nil
       action :open_nav do
         set :nav_open, true
       end

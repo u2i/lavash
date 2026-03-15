@@ -63,7 +63,6 @@ defmodule Lavash.Overlay.Flyover.Transformers.InjectState do
         type: :any,
         from: :ephemeral,
         default: nil,
-        optimistic: true,
         animated: animated_opts
       }
 

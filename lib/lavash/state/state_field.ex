@@ -38,4 +38,15 @@ defmodule Lavash.State.Field do
     :animated,
     __spark_metadata__: nil
   ]
+
+  @doc """
+  Returns true if this field should be included in optimistic state.
+
+  A field is optimistic if explicitly marked `optimistic: true` OR if it
+  has `animated` set (animated implies optimistic — the phase machine
+  requires client-side state tracking).
+  """
+  def optimistic?(%__MODULE__{optimistic: true}), do: true
+  def optimistic?(%__MODULE__{animated: animated}) when animated not in [nil, false], do: true
+  def optimistic?(_), do: false
 end

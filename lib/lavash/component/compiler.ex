@@ -112,7 +112,7 @@ defmodule Lavash.Component.Compiler do
       end
 
       def __lavash__(:optimistic_fields) do
-        __lavash__(:states) |> Enum.filter(&(&1.optimistic == true))
+        __lavash__(:states) |> Enum.filter(&Lavash.State.Field.optimistic?/1)
       end
 
       # Components don't have URL fields
