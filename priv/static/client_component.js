@@ -126,18 +126,29 @@ export function createClientComponentHook({ fns = {}, graph = {}, render, valida
       const field = target.dataset.lavashStateField;
       const value = target.dataset.lavashValue;
 
-      console.warn(`[CC:${this.el.id}] _handleClick: action=${action}, field=${field}, value=${value}, state[field]=${JSON.stringify(this.state[field])}`);
-
       if (action === "add" && !value) return;
 
       e.stopPropagation();
 
+      // Set phx-value-* params on state so rx() expressions can read them
+      // e.g., phx-value-val="x" → state.val = "x" → @val in rx() works
+      const params = {};
+      for (const attr of target.attributes) {
+        if (attr.name.startsWith("phx-value-")) {
+          const paramName = attr.name.slice("phx-value-".length);
+          params[paramName] = attr.value;
+          this.state[paramName] = attr.value;
+        }
+      }
+
       if (!this._validateAction(action, field, value, undefined, this.state)) return;
 
-      const beforeApply = JSON.stringify(this.state[field]);
       this._applyOptimisticAction(action, field, value, undefined, this.state);
-      const afterApply = JSON.stringify(this.state[field]);
-      console.warn(`[CC:${this.el.id}] after applyAction: ${beforeApply} → ${afterApply}`);
+
+      // Clean up param state
+      for (const key of Object.keys(params)) {
+        delete this.state[key];
+      }
 
       this.rstore._bumpVersion(field);
       this.rstore.recompute([field]);

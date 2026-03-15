@@ -32,9 +32,9 @@ defmodule Lavash.ChipSet do
   - `active_class` — class when chip is selected
   - `inactive_class` — class when chip is not selected
   """
-  use Lavash.ClientComponent
+  use Lavash.Component
 
-  state :selected, {:array, :string}
+  state :selected, {:array, :string}, from: :ephemeral, default: [], optimistic: true
 
   prop :values, :any, required: true
   prop :labels, :any, default: %{}
@@ -43,12 +43,15 @@ defmodule Lavash.ChipSet do
   prop :inactive_class, :any,
     default: "px-3 py-1.5 rounded-full text-sm font-medium border transition-colors bg-base-100 text-base-content/70 border-base-300 hover:bg-base-200"
 
-  optimistic_action :toggle, :selected,
-    run: fn selected, val ->
-      if val in selected,
-        do: Enum.reject(selected, &(&1 == val)),
-        else: selected ++ [val]
+  actions do
+    action :toggle, [:val] do
+      set :selected, rx(
+        if @val in @selected,
+          do: Enum.reject(@selected, &(&1 == @val)),
+          else: @selected ++ [@val]
+      )
     end
+  end
 
   render fn assigns ->
     ~L"""
@@ -57,13 +60,19 @@ defmodule Lavash.ChipSet do
         :for={value <- @values}
         type="button"
         class={if value in (@selected || []), do: @active_class, else: @inactive_class}
-        data-lavash-action="toggle"
-        data-lavash-state-field="selected"
-        data-lavash-value={value}
+        phx-click="toggle"
+        phx-value-val={value}
       >
         {Map.get(@labels || %{}, value, humanize(value))}
       </button>
     </div>
     """
+  end
+
+  defp humanize(value) when is_binary(value) do
+    value
+    |> String.replace("_", " ")
+    |> String.split(" ")
+    |> Enum.map_join(" ", &String.capitalize/1)
   end
 end
