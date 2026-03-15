@@ -45,6 +45,15 @@
 import { SyncedVarStore } from "./synced_var.js";
 import { syncStateToUrl } from "./url_sync.js";
 import { parseGraph, addLeafDerive, recomputeGraph as _recomputeGraph } from "./graph.js";
+import {
+  setStateAtPath as _setStateAtPath,
+  getStateAtPath as _getStateAtPath,
+  isInsideChildHook as _isInsideChildHook,
+  isInsideHiddenContainer as _isInsideHiddenContainer,
+  humanizeFieldName as _humanizeFieldName,
+  formatInputValue as _formatInputValue,
+} from "./concerns/utils.js";
+import { installGlobalDomCallback } from "./concerns/global_dom_callback.js";
 
 // Registry for optimistic function modules (for custom overrides)
 window.Lavash = window.Lavash || {};
@@ -372,136 +381,8 @@ const LavashOptimistic = {
 
   },
 
-  /**
-   * Install global onBeforeElUpdated callback for ghost detection and input preservation.
-   * Only installs once globally across all LavashOptimistic instances.
-   */
   _installGlobalDomCallback() {
-    if (window.__lavashOptimisticDomCallbackInstalled) return;
-    window.__lavashOptimisticDomCallbackInstalled = true;
-
-    const original = this.liveSocket.domCallbacks.onBeforeElUpdated;
-    this.liveSocket.domCallbacks.onBeforeElUpdated = (fromEl, toEl) => {
-      // Preserve input values and validation classes for form fields with data-lavash-bind
-      // This runs before morphdom patches the DOM, so we can prevent value/class overwrites
-      if (fromEl.hasAttribute && fromEl.hasAttribute("data-lavash-bind")) {
-        // Skip updating a focused select/input — user is actively interacting
-        if (fromEl === document.activeElement) {
-          return false;
-        }
-
-        const fieldPath = fromEl.getAttribute("data-lavash-bind");
-        // Find the LavashOptimistic hook that owns this input
-        const hookEl = fromEl.closest("[phx-hook='LavashOptimistic']");
-        const hook = hookEl?.__lavash_hook__;
-
-        if (hook && hook.store && hook.store.isPending(fieldPath)) {
-          // Input has pending changes - preserve the current value
-          const pendingValue = hook.store.getValue(fieldPath);
-          if (pendingValue !== undefined) {
-            toEl.value = pendingValue;
-          }
-        }
-
-        // For inputs inside child LiveComponents, the parent hook may not
-        // track the SyncedVar. Preserve the DOM value over the server value
-        // when the user has modified the input (value differs from server).
-        if (fromEl.value !== toEl.value) {
-          const isInsideChildComponent = fromEl.closest("[data-phx-component]") !== null;
-          if (isInsideChildComponent) {
-            toEl.value = fromEl.value;
-          }
-        }
-      }
-
-      // Apply client state to elements when server data is stale (dependencies have pending changes)
-      // This ensures morphdom applies the CLIENT's computed value, not the server's stale value
-      const hookEl = fromEl.closest("[phx-hook='LavashOptimistic']");
-      const hook = hookEl?.__lavash_hook__;
-
-      if (hook && hook.hasPendingSources && hook.state) {
-        // For data-lavash-enabled: ALWAYS apply client-side derive value.
-        // The server may send stale enabled/disabled state that doesn't reflect
-        // the client's current params (e.g., server hasn't seen all field changes yet).
-        // updateDOM() runs after morphdom, but without this guard the server value flickers through.
-        const fieldName = fromEl.getAttribute('data-lavash-enabled');
-        if (fieldName && hook.fns[fieldName]) {
-          const enabled = hook.state[fieldName] === true;
-          toEl.disabled = !enabled;
-          if (enabled) {
-            toEl.classList.remove('btn-disabled', 'opacity-60', 'cursor-not-allowed');
-          } else {
-            toEl.classList.add('opacity-60', 'cursor-not-allowed');
-          }
-          console.debug(`[LavashOptimistic] onBeforeElUpdated: Applied client state for data-lavash-enabled="${fieldName}" (enabled=${enabled})`);
-        }
-
-        const visibleField = fromEl.getAttribute('data-lavash-visible');
-        if (visibleField && hook.hasPendingSources(visibleField)) {
-          const visible = hook.state[visibleField];
-          if (visible) {
-            toEl.classList.remove('hidden');
-          } else {
-            toEl.classList.add('hidden');
-          }
-          console.debug(`[LavashOptimistic] onBeforeElUpdated: Applied client state for data-lavash-visible="${visibleField}" (visible=${visible})`);
-        }
-
-        const displayField = fromEl.getAttribute('data-lavash-display');
-        if (displayField && hook.hasPendingSources(displayField)) {
-          toEl.textContent = hook.state[displayField] ?? '';
-          console.debug(`[LavashOptimistic] onBeforeElUpdated: Applied client state for data-lavash-display="${displayField}"`);
-        }
-
-        const errorsField = fromEl.getAttribute('data-lavash-errors');
-        if (errorsField && hook.hasPendingSources(errorsField)) {
-          // For errors, preserve the current DOM since it's already rendered by updateDOM
-          // (errors have complex innerHTML with show_errors logic)
-          toEl.innerHTML = fromEl.innerHTML;
-          toEl.className = fromEl.className;
-          console.debug(`[LavashOptimistic] onBeforeElUpdated: Preserved DOM for data-lavash-errors="${errorsField}" (stale)`);
-        }
-      }
-
-      // Check if any registered modal cares about this element
-      const registry = window.__lavashModalContentRegistry || {};
-      const entry = registry[fromEl.id];
-
-      if (entry) {
-        const { hook, field, innerId } = entry;
-        const anim = hook.animatedStates?.[field];
-
-        if (anim) {
-          const sv = hook.store.get(field);
-          const phase = sv.getPhase();
-          // Client thinks overlay is open — preserve content against stale server closes
-          const shouldPreserve = phase === "entering" || phase === "loading" || phase === "visible";
-
-          if (shouldPreserve) {
-            const fromHasInner = fromEl.querySelector(`#${innerId}`);
-            const toHasInner = toEl.querySelector(`#${innerId}`);
-
-            if (fromHasInner && !toHasInner) {
-              // Server wants to remove overlay content but client says it should be open.
-              // This is a stale server close — skip updating this element entirely to
-              // preserve the client content. The next server patch (with is_open=true)
-              // will update normally.
-              console.warn(`[LavashOptimistic] onBeforeElUpdated: PRESERVING content for ${field} (phase=${phase}, stale server close)`);
-              return false;
-            }
-
-            // DIAGNOSTIC: Log all morphdom updates to the overlay content container during open phases,
-            // so we can see exactly what changes are being applied (or not).
-            console.warn(`[LavashOptimistic] onBeforeElUpdated: overlay ${field} (phase=${phase}): fromHasInner=${!!fromHasInner}, toHasInner=${!!toHasInner} → allowing update`);
-          }
-        }
-      }
-
-      // Call original callback
-      if (original) {
-        original(fromEl, toEl);
-      }
-    };
+    installGlobalDomCallback(this.liveSocket);
   },
 
   /**
@@ -998,39 +879,12 @@ const LavashOptimistic = {
     }
   },
 
-  /**
-   * Set a value in state at a dotted path.
-   */
   setStateAtPath(path, value) {
-    const parts = path.split(".");
-    if (parts.length === 1) {
-      this.state[path] = value;
-      return;
-    }
-
-    // Navigate to parent, creating intermediates as needed
-    let current = this.state;
-    for (let i = 0; i < parts.length - 1; i++) {
-      const part = parts[i];
-      if (!(part in current) || typeof current[part] !== "object") {
-        current[part] = {};
-      }
-      current = current[part];
-    }
-    current[parts[parts.length - 1]] = value;
+    _setStateAtPath(this.state, path, value);
   },
 
-  /**
-   * Get a value from state at a dotted path.
-   */
   getStateAtPath(path) {
-    const parts = path.split(".");
-    let current = this.state;
-    for (const part of parts) {
-      if (current == null || typeof current !== "object") return undefined;
-      current = current[part];
-    }
-    return current;
+    return _getStateAtPath(this.state, path);
   },
 
   runOptimisticAction(actionName, value) {
@@ -1136,37 +990,12 @@ const LavashOptimistic = {
     _recomputeGraph(this.graph, this.fns, this.state, changedFields);
   },
 
-  // Check if element is inside a nested child hook (e.g., ClientComponent)
-  // We should not manipulate elements inside child hooks - they manage their own state
   isInsideChildHook(el) {
-    let parent = el.parentElement;
-    while (parent && parent !== this.el) {
-      if (parent.hasAttribute("phx-hook") && parent !== this.el) {
-        return true;
-      }
-      parent = parent.parentElement;
-    }
-    return false;
+    return _isInsideChildHook(el, this.el);
   },
 
-  // Check if element is inside a hidden container (e.g., closed modal content)
-  // This prevents reading stale DOM values from hidden form elements
   isInsideHiddenContainer(el) {
-    let parent = el.parentElement;
-    while (parent && parent !== this.el) {
-      // Check for hidden class (used by modal main_content when closed)
-      if (parent.classList && parent.classList.contains("hidden")) {
-        return true;
-      }
-      // Also check for display:none or visibility:hidden inline styles
-      if (parent.style) {
-        if (parent.style.display === "none" || parent.style.visibility === "hidden") {
-          return true;
-        }
-      }
-      parent = parent.parentElement;
-    }
-    return false;
+    return _isInsideHiddenContainer(el, this.el);
   },
 
   updateDOM() {
@@ -1532,12 +1361,8 @@ const LavashOptimistic = {
     }
   },
 
-  // Convert snake_case field name to Title Case
   humanizeFieldName(name) {
-    return name
-      .split("_")
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(" ");
+    return _humanizeFieldName(name);
   },
 
   // Sync URL fields to browser URL without triggering navigation
@@ -1837,46 +1662,8 @@ const LavashOptimistic = {
     return prefix === "" ? changedFields : null;
   },
 
-  /**
-   * Format an input value based on the format type.
-   * Returns { value: rawValue, display: formattedDisplay } or null if no formatting needed.
-   *
-   * Supported formats:
-   * - "credit-card": Format as XXXX XXXX XXXX XXXX (spaces every 4 digits)
-   * - "expiry": Format as MM/YY (slash after 2 digits)
-   */
   formatInputValue(rawValue, format) {
-    switch (format) {
-      case "credit-card": {
-        // Strip non-digits
-        const digits = rawValue.replace(/\D/g, "");
-        // Limit to 16 digits (or 19 for some card types, but 16 is standard)
-        const limited = digits.slice(0, 16);
-        // Format with spaces every 4 digits
-        const display = limited.match(/.{1,4}/g)?.join(" ") || "";
-        // Store the formatted value (with spaces) - validation strips non-digits anyway
-        return { value: display, display };
-      }
-
-      case "expiry": {
-        // Strip non-digits
-        const digits = rawValue.replace(/\D/g, "");
-        // Limit to 4 digits (MMYY)
-        const limited = digits.slice(0, 4);
-        // Format as MM/YY
-        let display;
-        if (limited.length <= 2) {
-          display = limited;
-        } else {
-          display = limited.slice(0, 2) + "/" + limited.slice(2);
-        }
-        // Store the formatted value (with slash)
-        return { value: display, display };
-      }
-
-      default:
-        return null;
-    }
+    return _formatInputValue(rawValue, format);
   },
 
   destroyed() {
