@@ -55,6 +55,7 @@ import {
 import { installGlobalDomCallback } from "./concerns/global_dom_callback.js";
 import { updateDOM as _updateDOM, notifyChildren as _notifyChildren } from "./concerns/dom_updater.js";
 import { refreshFromParent as _refreshFromParent, propagateBoundFieldsToParent as _propagateBoundFieldsToParent } from "./concerns/bindings.js";
+import { handleClick as _handleClick, runOptimisticAction as _runOptimisticAction } from "./concerns/optimistic_actions.js";
 import {
   initAnimatedFields as _initAnimatedFields,
   captureBeforeUpdate,
@@ -340,43 +341,7 @@ const LavashOptimistic = {
   },
 
   handleClick(e) {
-    const target = e.target.closest("[phx-click]");
-    if (!target || !this.el.contains(target)) return;
-
-    const actionName = target.getAttribute("phx-click");
-
-    // Only intercept if this is a known optimistic action
-    if (!this.fns[actionName]) return;
-
-    // Extract value from first phx-value-* attribute
-    let value;
-    for (const attr of target.attributes) {
-      if (attr.name.startsWith("phx-value-")) {
-        value = attr.value;
-        break;
-      }
-    }
-
-    // Run optimistic action for instant UI update
-    // phx-click handles the server push automatically via LiveView
-    console.debug(`[LavashOptimistic] handleClick: action=${actionName}, isTrusted=${e.isTrusted}, target=`, target);
-    this.runOptimisticAction(actionName, value);
-
-    // Clear LiveView's element lock so rapid clicks on the same element work.
-    // LiveView sets data-phx-ref-src during click handling to prevent duplicate
-    // submissions, but for optimistic updates we want to allow rapid clicks since
-    // each click is meaningful (e.g., select then unselect).
-    //
-    // We clear it synchronously in capture phase (before LiveView's bubble handler),
-    // and also schedule a microtask for after LiveView sets it during this click.
-    target.removeAttribute("data-phx-ref-src");
-    target.removeAttribute("data-phx-ref-lock");
-
-    // Also clear after LiveView's handler sets it (for this click's event to be unlocked for future clicks)
-    setTimeout(() => {
-      target.removeAttribute("data-phx-ref-src");
-      target.removeAttribute("data-phx-ref-lock");
-    }, 0);
+    _handleClick(e, this);
   },
 
   handleBlur(e) {
@@ -767,70 +732,7 @@ const LavashOptimistic = {
   },
 
   runOptimisticAction(actionName, value) {
-    // First check cached functions, then check module registry (for dynamically added component functions)
-    let fn = this.fns[actionName];
-
-    if (!fn && this.moduleName) {
-      // Check if a component has registered this function dynamically
-      const moduleFns = window.Lavash.optimistic[this.moduleName];
-      if (moduleFns && moduleFns[actionName]) {
-        fn = moduleFns[actionName];
-        // Cache it for future use
-        this.fns[actionName] = fn;
-        // Also check for associated derives
-        if (moduleFns.__derives__) {
-          for (const d of moduleFns.__derives__) {
-            if (!this.deriveNames.includes(d)) {
-              this.deriveNames.push(d);
-            }
-            if (moduleFns[d] && !this.fns[d]) {
-              this.fns[d] = moduleFns[d];
-            }
-          }
-        }
-      }
-    }
-
-    if (!fn) return;
-
-    // Bump client version - this will be compared against server version to detect stale patches
-    this.clientVersion++;
-
-    // Run the client-side function to get state delta
-    try {
-      const delta = fn(this.state, value);
-
-      // Apply delta to state and track in SyncedVarStore
-      const changedFields = [];
-      for (const [key, val] of Object.entries(delta)) {
-        this.state[key] = val;
-        // Use null as initial value so setOptimistic properly bumps
-        // the version when the SV is brand new. Without this, the SV
-        // starts at v=0/cv=0 (appears confirmed) and a stale server diff
-        // can overwrite the client's optimistic close — causing bouncing.
-        const syncedVar = this.store.get(key, null, (newVal) => {
-          this.state[key] = newVal;
-        });
-        syncedVar.setOptimistic(val);
-        changedFields.push(key);
-      }
-
-      // Propagate bound field changes to parent
-      // When client action updates a bound field, parent needs to know immediately
-      this.propagateBoundFieldsToParent(changedFields);
-
-      // Recompute derives affected by the changed fields
-      this.recomputeDerives(changedFields);
-
-      // Update the DOM immediately
-      this.updateDOM();
-
-      // Sync URL fields immediately (optimistic URL update)
-      this.syncUrl();
-
-    } catch (err) {
-      // Silently ignore client-side errors - server will be source of truth
-    }
+    _runOptimisticAction(actionName, value, this);
   },
 
   notifyAsyncReady(asyncField) {
