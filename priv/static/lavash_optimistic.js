@@ -48,15 +48,20 @@ import { recomputeGraph as _recomputeGraph } from "./graph.js";
 import {
   setStateAtPath as _setStateAtPath,
   getStateAtPath as _getStateAtPath,
-  isInsideChildHook as _isInsideChildHook,
-  isInsideHiddenContainer as _isInsideHiddenContainer,
-  formatInputValue as _formatInputValue,
 } from "./concerns/utils.js";
 import { installGlobalDomCallback } from "./concerns/global_dom_callback.js";
 import { updateDOM as _updateDOM, notifyChildren as _notifyChildren } from "./concerns/dom_updater.js";
 import { refreshFromParent as _refreshFromParent, propagateBoundFieldsToParent as _propagateBoundFieldsToParent } from "./concerns/bindings.js";
 import { handleClick as _handleClick, runOptimisticAction as _runOptimisticAction } from "./concerns/optimistic_actions.js";
 import { loadGeneratedFunctions as _loadGeneratedFunctions } from "./concerns/function_loader.js";
+import {
+  getFormField as _getFormField,
+  isFormSubmitted as _isFormSubmitted,
+  handleBlur as _handleBlur,
+  handleFormSubmit as _handleFormSubmit,
+  handleInput as _handleInput,
+  initializeFormParamsFromDOM as _initializeFormParamsFromDOM,
+} from "./concerns/form_handler.js";
 import {
   initAnimatedFields as _initAnimatedFields,
   captureBeforeUpdate,
@@ -189,76 +194,8 @@ const LavashOptimistic = {
     );
   },
 
-  /**
-   * Initialize form params from DOM values for prepopulated/default fields.
-   * This ensures validation works correctly for fields that have defaults
-   * (e.g., a country select defaulting to "United States").
-   *
-   * Without this, form_params starts empty and validation fails because
-   * state.form_params?.["country"] is undefined even though the input shows a value.
-   */
   initializeFormParamsFromDOM() {
-    const boundInputs = this.el.querySelectorAll("[data-lavash-bind]");
-    let initialized = false;
-
-    console.debug(`[initFormParams] Found ${boundInputs.length} bound inputs`);
-
-    boundInputs.forEach(input => {
-      const fieldPath = input.dataset.lavashBind;
-
-      // Skip elements inside nested child hooks - they manage their own state
-      if (this.isInsideChildHook(input)) {
-        console.debug(`[initFormParams] Skipping (child hook): ${fieldPath}`);
-        return;
-      }
-
-      // Skip elements inside hidden containers (e.g., closed modals)
-      // Walk up the DOM tree to check for hidden ancestors
-      if (this.isInsideHiddenContainer(input)) {
-        console.debug(`[initFormParams] Skipping (hidden container): ${fieldPath}`);
-        return;
-      }
-
-      // Only handle form params paths (e.g., "address_form_params.country")
-      if (!fieldPath || !fieldPath.includes("_params.")) {
-        console.debug(`[initFormParams] Skipping (not params): ${fieldPath}`);
-        return;
-      }
-
-      const dotIndex = fieldPath.indexOf(".");
-      if (dotIndex === -1) return;
-
-      const paramsField = fieldPath.substring(0, dotIndex);  // e.g., "address_form_params"
-      const field = fieldPath.substring(dotIndex + 1);        // e.g., "country"
-
-      // Skip if this params field was just cleared by the server
-      // This prevents re-reading stale DOM values before LiveView patches them
-      if (this._clearedParamsFields && this._clearedParamsFields.has(paramsField)) {
-        console.debug(`[initFormParams] Skipping (params cleared by server): ${fieldPath}`);
-        return;
-      }
-
-      // Get current input value
-      const currentValue = input.value;
-
-      console.debug(`[initFormParams] ${fieldPath}: value="${currentValue}", existing=${this.state[paramsField]?.[field]}`);
-
-      // Only set if input has a non-empty value and state doesn't have it yet
-      if (currentValue != null && currentValue !== "") {
-        this.state[paramsField] = this.state[paramsField] || {};
-        if (this.state[paramsField][field] === undefined) {
-          this.state[paramsField][field] = currentValue;
-          initialized = true;
-          console.debug(`[initFormParams] Initialized ${paramsField}.${field} = "${currentValue}"`);
-        }
-      }
-    });
-
-    // If we initialized any params, recompute derives so validation reflects correct state
-    if (initialized) {
-      console.debug(`[initFormParams] Recomputing derives...`);
-      this.recomputeDerives();
-    }
+    _initializeFormParamsFromDOM(this);
   },
 
 
@@ -289,141 +226,15 @@ const LavashOptimistic = {
   },
 
   handleBlur(e) {
-    // Track touched state when user leaves a bound field
-    const target = e.target.closest("[data-lavash-bind]");
-    if (!target) return;
-
-    // Skip if input is inside a child component (has its own hook)
-    if (this.isInsideChildHook(target)) {
-      return;
-    }
-
-    const fieldPath = target.dataset.lavashBind;
-    if (!fieldPath) return;
-
-    if (!this.fieldState[fieldPath]) {
-      this.fieldState[fieldPath] = {};
-    }
-
-    // Mark field as touched on blur (standard UX for all input types)
-    this.fieldState[fieldPath].touched = true;
-
-    // Get form/field from explicit attributes or derive from path
-    const { formName, fieldName } = this.getFormField(target, fieldPath);
-    if (!formName || !fieldName) return;
-
-    // Update show_errors state
-    this.updateShowErrors(fieldPath, formName, fieldName);
-
-    // Trigger server validation if client validation passes
-    this.triggerServerValidation(fieldPath, formName, fieldName, /* immediate */ true, target);
-
-    this.updateDOM();
+    _handleBlur(e, this);
   },
 
-  /**
-   * Get form name and field name from explicit attributes or derive from field path.
-   * Explicit attributes (data-lavash-form, data-lavash-field) take precedence.
-   *
-   * @param {HTMLElement} el - The input element
-   * @param {string} fieldPath - e.g., "registration_params.name"
-   * @returns {{ formName: string|null, fieldName: string|null }}
-   */
   getFormField(el, fieldPath) {
-    // Prefer explicit attributes
-    const explicitForm = el.dataset.lavashForm;
-    const explicitField = el.dataset.lavashField;
-
-    if (explicitForm && explicitField) {
-      return { formName: explicitForm, fieldName: explicitField };
-    }
-
-    // Fall back to deriving from path (e.g., "registration_params.name")
-    const parts = fieldPath.split(".");
-    if (parts.length >= 2) {
-      const paramsField = parts[0];
-      const fieldName = explicitField || parts.slice(1).join("_");
-      const formName = explicitForm || paramsField.replace(/_params$/, "");
-      return { formName, fieldName };
-    }
-
-    return { formName: null, fieldName: null };
+    return _getFormField(el, fieldPath);
   },
 
   handleFormSubmit(e) {
-    // Get the actual form that was submitted
-    const form = e.target.closest("form");
-    if (!form) return;
-
-    // Track submitted forms instead of global flag
-    // This prevents a child component's form submit from affecting parent forms
-    if (!this.submittedForms) this.submittedForms = new Set();
-
-    // Track both the form ID and the form name (derived from first input's params field)
-    // This allows isFormSubmitted() to match either the ID or the logical form name
-    const formId = form.id || "default";
-    this.submittedForms.add(formId);
-
-    // Also try to derive the form name from bound inputs (e.g., "payment" from "payment_params.card_number")
-    const firstInput = form.querySelector("[data-lavash-bind]");
-    if (firstInput) {
-      const fieldPath = firstInput.dataset.lavashBind;
-      const { formName } = this.getFormField(firstInput, fieldPath);
-      if (formName) {
-        this.submittedForms.add(formName);
-      }
-    }
-
-    // Collect bound inputs only within the submitted form
-    const boundInputs = form.querySelectorAll("[data-lavash-bind]");
-    const inputElements = [];
-    boundInputs.forEach(input => {
-      const fieldPath = input.dataset.lavashBind;
-      if (fieldPath) {
-        if (!this.fieldState[fieldPath]) {
-          this.fieldState[fieldPath] = {};
-        }
-        this.fieldState[fieldPath].touched = true;
-
-        const { formName, fieldName } = this.getFormField(input, fieldPath);
-        if (formName && fieldName) {
-          this.updateShowErrors(fieldPath, formName, fieldName);
-        }
-        inputElements.push({ input, fieldPath, formName, fieldName });
-      }
-    });
-
-    this.updateDOM();
-
-    // Check if form is valid - if not, prevent submission and focus first invalid field
-    for (const { input, formName, fieldName } of inputElements) {
-      if (!formName || !fieldName) continue;
-
-      // Use custom valid field if specified on input, otherwise standard naming
-      const customValidField = input.dataset?.lavashValid;
-      const validField = customValidField || `${formName}_${fieldName}_valid`;
-      const clientValid = this.state[validField] ?? true;
-      const errorsField = `${formName}_${fieldName}_errors`;
-      const errors = this.state[errorsField] || [];
-
-      // Field is invalid if validation fails or has errors (client + server merged in derive)
-      if (!clientValid || errors.length > 0) {
-        // Focus this field and prevent form submission
-        e.preventDefault();
-        input.focus();
-
-        // Scroll invalid field into view (center in viewport for visibility)
-        input.scrollIntoView({ behavior: "smooth", block: "center" });
-
-        // Scroll error summary into view if present
-        const errorSummary = form.querySelector("[data-lavash-error-summary]");
-        if (errorSummary) {
-          errorSummary.scrollIntoView({ behavior: "smooth", block: "nearest" });
-        }
-
-        return;
-      }
-    }
+    _handleFormSubmit(e, this);
   },
 
   /**
@@ -487,184 +298,12 @@ const LavashOptimistic = {
     console.debug("[LavashOptimistic] Field", field, "not owned by this hook, letting event propagate");
   },
 
-  /**
-   * Trigger server-side validation for a field.
-   * Only sends if client validation passes.
-   *
-   * @param {string} fieldPath - e.g., "registration_params.name"
-   * @param {string} formName - e.g., "registration"
-   * @param {string} fieldName - e.g., "name"
-   * @param {boolean} immediate - if true, skip debounce (used for blur)
-   * @param {HTMLElement} inputEl - optional input element to check for custom valid field
-   */
-  triggerServerValidation(fieldPath, formName, fieldName, immediate = false, inputEl = null) {
-    // Check if client validation passes for this field
-    // Use custom valid field if specified on input, otherwise standard naming
-    const customValidField = inputEl?.dataset?.lavashValid;
-    const validField = customValidField || `${formName}_${fieldName}_valid`;
-    const clientValid = this.state[validField] ?? true;
-
-    if (!clientValid) {
-      // Client validation failed, don't bother server
-      // Clear any pending timer
-      if (this.validationTimers[fieldPath]) {
-        clearTimeout(this.validationTimers[fieldPath]);
-        delete this.validationTimers[fieldPath];
-      }
-      return;
-    }
-
-    // Clear any pending timer for this field
-    if (this.validationTimers[fieldPath]) {
-      clearTimeout(this.validationTimers[fieldPath]);
-    }
-
-    const sendValidation = () => {
-      // Send validation event to server
-      // Server stores result in #{form}_server_errors state → re-render → data attr updates
-      const params = this.state[`${formName}_params`] || {};
-      this.pushEvent(`validate_${formName}`, {
-        field: fieldName,
-        value: params[fieldName]
-      });
-    };
-
-    if (immediate) {
-      sendValidation();
-    } else {
-      // Debounce for 500ms when typing
-      this.validationTimers[fieldPath] = setTimeout(sendValidation, 500);
-    }
-  },
-
-  /**
-   * Update *_show_errors state for a field based on touched/submitted status.
-   *
-   * @param {string} fieldPath - e.g., "registration_params.name"
-   * @param {string} formName - e.g., "registration"
-   * @param {string} fieldName - e.g., "name"
-   */
-  updateShowErrors(fieldPath, formName, fieldName) {
-    // Compute show_errors: touched || (this form was submitted)
-    const touched = this.fieldState[fieldPath]?.touched || false;
-    const formSubmitted = this.isFormSubmitted(formName);
-    const showErrors = touched || formSubmitted;
-
-    // Update state
-    const showErrorsKey = `${formName}_${fieldName}_show_errors`;
-    const oldValue = this.state[showErrorsKey];
-    this.state[showErrorsKey] = showErrors;
-
-    // Log changes to show_errors state for debugging flickering
-    if (oldValue !== showErrors) {
-      console.debug(`[LavashOptimistic] ${showErrorsKey} changed: ${oldValue} → ${showErrors} (touched=${touched}, submitted=${formSubmitted})`);
-    }
-  },
-
-  /**
-   * Check if a specific form has been submitted.
-   * @param {string} formName - The form name (e.g., "payment", "address_form")
-   * @returns {boolean}
-   */
   isFormSubmitted(formName) {
-    if (!this.submittedForms) return false;
-    // Check both the form name and any form IDs that contain the form name
-    // This handles both "payment-form" (id) and "payment" (form name)
-    for (const id of this.submittedForms) {
-      if (id === formName || id.startsWith(formName + "-") || id.includes(formName)) {
-        return true;
-      }
-    }
-    return false;
+    return _isFormSubmitted(this.submittedForms, formName);
   },
 
   handleInput(e) {
-    const target = e.target.closest("[data-lavash-bind]");
-    if (!target) {
-      return;
-    }
-
-    // Each element type should only process one event type to avoid double handling:
-    // - SELECT: process "change" (skip "input") — "change" is reliable cross-browser for selects
-    // - INPUT/TEXTAREA: process "input" (skip "change") — "change" fires on blur, redundant with handleBlur
-    if (target.tagName === "SELECT" && e.type === "input") return;
-    if ((target.tagName === "INPUT" || target.tagName === "TEXTAREA") && e.type === "change") return;
-
-    // Skip if input is inside a child component (has its own hook)
-    // Child components handle their own inputs and sync to parent via syncParentUrl()
-    const childHook = target.closest("[data-lavash-state]");
-    if (childHook && childHook !== this.el) {
-      return;
-    }
-
-    const fieldPath = target.dataset.lavashBind;
-    // For form inputs, keep as string to match Elixir params behavior
-    let value = target.value;
-
-    // Apply input formatting if specified
-    const format = target.dataset.lavashFormat;
-    if (format) {
-      const formatted = this.formatInputValue(value, format);
-      if (formatted !== null) {
-        value = formatted.value;
-        // Update the input's displayed value with formatting
-        if (formatted.display !== target.value) {
-          const cursorPos = target.selectionStart;
-          const oldLen = target.value.length;
-          target.value = formatted.display;
-          // Adjust cursor position based on added/removed characters
-          const newLen = formatted.display.length;
-          const newPos = Math.min(cursorPos + (newLen - oldLen), newLen);
-          target.setSelectionRange(newPos, newPos);
-        }
-      }
-    }
-
-    // Get or create a SyncedVar for this path (for version/pending tracking)
-    // Use undefined as initial value - will be set properly on first setOptimistic
-    const syncedVar = this.store.get(fieldPath);
-
-    // Mark as optimistically updated (this bumps version for pending tracking)
-    syncedVar.setOptimistic(value);
-
-    // Update state - this is the source of truth for derives
-    this.setStateAtPath(fieldPath, value);
-
-    // Bump client version for stale patch rejection
-    this.clientVersion++;
-
-    // Optimistically clear server errors for this field
-    // This prevents stale server errors from displaying while user is editing
-    const { formName, fieldName } = this.getFormField(target, fieldPath);
-    if (formName && fieldName) {
-      // Clear the server error for this field immediately
-      const serverErrorsField = `${formName}_server_errors`;
-      const currentServerErrors = this.state[serverErrorsField] || {};
-      const updatedServerErrors = { ...currentServerErrors, [fieldName]: [] };
-      this.state[serverErrorsField] = updatedServerErrors;
-    }
-
-    // Determine root field for derive recomputation
-    const dotIndex = fieldPath.indexOf(".");
-    const rootField = dotIndex > 0 ? fieldPath.substring(0, dotIndex) : fieldPath;
-
-    // Recompute derives affected by the root field
-    this.recomputeDerives([rootField]);
-
-    this.updateDOM();
-
-    // Sync URL fields immediately (optimistic URL update)
-    this.syncUrl();
-
-    // Schedule debounced server validation (if field is touched or form submitted)
-    // formName and fieldName already extracted above
-    if (formName && fieldName) {
-      // Only trigger server validation if field is already touched or form was submitted
-      const touched = this.fieldState[fieldPath]?.touched || false;
-      if (touched || this.isFormSubmitted(formName)) {
-        this.triggerServerValidation(fieldPath, formName, fieldName, /* immediate */ false, target);
-      }
-    }
+    _handleInput(e, this);
   },
 
   setStateAtPath(path, value) {
@@ -691,13 +330,6 @@ const LavashOptimistic = {
     _recomputeGraph(this.graph, this.fns, this.state, changedFields);
   },
 
-  isInsideChildHook(el) {
-    return _isInsideChildHook(el, this.el);
-  },
-
-  isInsideHiddenContainer(el) {
-    return _isInsideHiddenContainer(el, this.el);
-  },
 
   updateDOM() {
     _updateDOM(this.el, this.state, {
@@ -989,9 +621,6 @@ const LavashOptimistic = {
     return prefix === "" ? changedFields : null;
   },
 
-  formatInputValue(rawValue, format) {
-    return _formatInputValue(rawValue, format);
-  },
 
   destroyed() {
     // Preserve client-only state for potential remount
