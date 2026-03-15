@@ -6,6 +6,7 @@ defmodule DemoWeb.BindingsDemoLive do
   with changes flowing through the reactive graph.
   """
   use Lavash.LiveView
+  import Lavash.LiveView.Helpers
 
   # State that the component will bind to
   # optimistic: true enables the wrapper hook that handles client-side updates
@@ -51,12 +52,11 @@ defmodule DemoWeb.BindingsDemoLive do
       <div class="bg-gray-50 p-6 rounded-lg mb-6">
         <h2 class="font-semibold mb-4">Roast Level Filter (Shadow DOM + morphdom)</h2>
 
-        <.live_component
-          module={Lavash.Components.ChipSet}
+        <.lavash_component
+          module={Lavash.ChipSet}
           id="roast-filter"
           bind={[selected: :roast]}
           selected={@roast}
-          __lavash_parent_version__={@__lavash_parent_version__}
           values={["light", "medium", "medium_dark", "dark"]}
           labels={%{"medium_dark" => "Med-Dark"}}
         />
