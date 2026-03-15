@@ -8,8 +8,19 @@ defmodule DemoWeb.FlyoverDemoLive do
   use Lavash.LiveView
   import Lavash.LiveView.Helpers
 
-  # Track which direction demo is active
-  state :active_direction, :atom, from: :ephemeral, default: nil, optimistic: true
+  # Parent owns open state for each flyover, bound down via bind=
+  state :nav_open, :any, from: :ephemeral, default: nil, optimistic: true
+  state :details_open, :any, from: :ephemeral, default: nil, optimistic: true
+
+  actions do
+    action :open_nav do
+      set :nav_open, true
+    end
+
+    action :open_details do
+      set :details_open, true
+    end
+  end
 
   defp usage_example do
     """
@@ -52,7 +63,7 @@ defmodule DemoWeb.FlyoverDemoLive do
           <p class="text-gray-600 mb-4">Navigation drawer pattern - slides in from the left edge.</p>
           <button
             class="btn btn-primary"
-            phx-click={Phoenix.LiveView.JS.dispatch("open-panel", to: "#nav-flyover-flyover", detail: %{open: true})}
+            phx-click="open_nav"
           >
             Open Navigation
           </button>
@@ -64,7 +75,7 @@ defmodule DemoWeb.FlyoverDemoLive do
           <p class="text-gray-600 mb-4">Detail panel pattern - slides in from the right edge.</p>
           <button
             class="btn btn-secondary"
-            phx-click={Phoenix.LiveView.JS.dispatch("open-panel", to: "#details-flyover-flyover", detail: %{open: true})}
+            phx-click="open_details"
           >
             Open Details
           </button>
@@ -92,12 +103,16 @@ defmodule DemoWeb.FlyoverDemoLive do
       <.lavash_component
         module={DemoWeb.NavFlyover}
         id="nav-flyover"
+        open={@nav_open}
+        bind={[open: :nav_open]}
       />
 
       <!-- Details Flyover (Right) -->
       <.lavash_component
         module={DemoWeb.DetailsFlyover}
         id="details-flyover"
+        open={@details_open}
+        bind={[open: :details_open]}
       />
     </div>
     """

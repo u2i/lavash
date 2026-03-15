@@ -192,6 +192,7 @@ export function createClientComponentHook({ fns = {}, graph = {}, render, valida
       for (const [localField, parentField] of Object.entries(this.bindings)) {
         const parentValue = parentHook.state[parentField];
         if (parentValue !== undefined && parentValue !== this.state[localField]) {
+          console.warn(`[refreshFromParent:CC] ${localField}: ${JSON.stringify(this.state[localField])} -> ${JSON.stringify(parentValue)}, hookEl=${this.el.id}`);
           this.state[localField] = parentValue;
           changedFields.push(localField);
         }

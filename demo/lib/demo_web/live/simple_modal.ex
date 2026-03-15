@@ -7,8 +7,21 @@ defmodule DemoWeb.SimpleModal do
   2. Loading skeleton shows while async data loads
   3. Content fades in when data arrives
 
-  Opening the modal from client-side:
-  - JS.dispatch("open-panel", to: "#simple-modal-modal", detail: %{open: true})
+  ## Example usage
+
+      <.lavash_component
+        module={DemoWeb.SimpleModal}
+        id="simple-modal"
+        open={@modal_open}
+        bind={[open: :modal_open]}
+      />
+
+  Parent owns the open state and opens via a regular action:
+
+      state :modal_open, :any, from: :ephemeral, default: nil, optimistic: true
+      action :open_modal do
+        set :modal_open, true
+      end
   """
   use Lavash.Component, extensions: [Lavash.Overlay.Modal.Dsl]
 

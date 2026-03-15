@@ -4,15 +4,21 @@ defmodule DemoWeb.NavFlyover do
 
   This flyover slides in from the left and contains navigation links.
 
-  Opening the flyover from client-side:
-  - JS.dispatch("open-panel", to: "#nav-flyover-flyover", detail: %{open: true})
-
   ## Example usage
 
       <.lavash_component
         module={DemoWeb.NavFlyover}
         id="nav-flyover"
+        open={@nav_open}
+        bind={[open: :nav_open]}
       />
+
+  Parent owns the open state and opens via a regular action:
+
+      state :nav_open, :any, from: :ephemeral, default: nil, optimistic: true
+      action :open_nav do
+        set :nav_open, true
+      end
   """
   use Lavash.Component, extensions: [Lavash.Overlay.Flyover.Dsl]
 

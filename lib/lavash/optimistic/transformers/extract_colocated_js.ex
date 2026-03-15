@@ -282,20 +282,21 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
   end
 
   # Generate JS for an action
+  # Non-transpilable sets (lambdas, complex expressions) are skipped —
+  # the transpilable ones still run client-side for instant UI updates
   defp generate_action_js(action) do
     name = action.name
     sets = action.sets || []
     updates = action.updates || []
     params = action.params || []
 
-    # Generate JS expressions for sets and updates
-    set_exprs = Enum.map(sets, &generate_set_js(&1, params))
-    update_exprs = Enum.map(updates, &generate_update_js/1)
+    # Generate JS expressions, filtering out non-transpilable ones
+    set_exprs = sets |> Enum.map(&generate_set_js(&1, params)) |> Enum.filter(& &1)
+    update_exprs = updates |> Enum.map(&generate_update_js/1) |> Enum.filter(& &1)
 
     all_exprs = set_exprs ++ update_exprs
 
-    # If any expression is nil (not transpilable), skip this action
-    if Enum.any?(all_exprs, &is_nil/1) do
+    if all_exprs == [] do
       nil
     else
       expr_pairs = Enum.join(all_exprs, ", ")
@@ -318,7 +319,7 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
         "#{field}: #{Jason.encode!(v)}"
 
       :from_params_value ->
-        "#{field}: Number(value)"
+        "#{field}: value"
 
       {:rx, source} ->
         js_expr = Lavash.Rx.Transpiler.to_js(source)

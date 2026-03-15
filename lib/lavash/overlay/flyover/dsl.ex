@@ -26,9 +26,16 @@ defmodule Lavash.Overlay.Flyover.Dsl do
         end
       end
 
-  Parent opens the flyover via JS event:
+  Parent opens the flyover by binding the open state:
 
-      JS.dispatch("open-panel", to: "#nav-flyover-flyover", detail: %{open: true})
+      state :nav_open, :any, from: :ephemeral, default: nil, optimistic: true
+      action :open_nav do
+        set :nav_open, true
+      end
+
+      <.lavash_component module={MyApp.NavFlyover} id="nav-flyover"
+        open={@nav_open} bind={[open: :nav_open]} />
+      <button phx-click="open_nav">Open</button>
 
   The plugin will:
   1. Inject the open_field as ephemeral state (if not already defined)

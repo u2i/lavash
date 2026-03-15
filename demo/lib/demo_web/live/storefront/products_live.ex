@@ -35,8 +35,8 @@ defmodule DemoWeb.Storefront.ProductsLive do
   # Cart ID loaded/created on mount
   state :cart_id, :string, from: :ephemeral
 
-  # Note: Cart flyover manages its own open/close state internally.
-  # We open it via JS.dispatch("open-panel", to: "#cart-flyover-flyover", detail: %{open: true})
+  # Parent owns flyover open state, bound down to CartFlyover
+  state :cart_open, :any, from: :ephemeral, default: nil, optimistic: true
 
   # ============================================
   # Reads
@@ -146,9 +146,14 @@ defmodule DemoWeb.Storefront.ProductsLive do
       set :in_stock, false
     end
 
+    action :open_cart do
+      set :cart_open, true
+    end
+
     # Cart actions - use set to capture params, then effect to mutate + broadcast
     action :add_to_cart, [:product_id] do
-      # Store product_id in ephemeral state for access in effect
+      # Open cart flyover and store product_id for the effect
+      set :cart_open, true
       set :_pending_product_id, & &1.params.product_id
 
       effect fn state ->
@@ -352,7 +357,7 @@ defmodule DemoWeb.Storefront.ProductsLive do
           <!-- Cart Button -->
           <button
             class="btn btn-ghost btn-circle relative"
-            phx-click={Phoenix.LiveView.JS.dispatch("open-panel", to: "#cart-flyover-flyover", detail: %{open: true})}
+            phx-click="open_cart"
           >
             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
@@ -456,10 +461,8 @@ defmodule DemoWeb.Storefront.ProductsLive do
                   <button
                     type="button"
                     class="btn btn-sm btn-primary"
-                    phx-click={
-                      Phoenix.LiveView.JS.push("add_to_cart", value: %{"product_id" => product.id})
-                      |> Phoenix.LiveView.JS.dispatch("open-panel", to: "#cart-flyover-flyover", detail: %{open: true})
-                    }
+                    phx-click="add_to_cart"
+                    phx-value-product_id={product.id}
                   >
                     Add to Cart
                   </button>
@@ -487,6 +490,8 @@ defmodule DemoWeb.Storefront.ProductsLive do
         id="cart-flyover"
         items={@cart_items_json}
         item_count={@cart_item_count}
+        open={@cart_open}
+        bind={[open: :cart_open]}
       />
 
       <script :type={Phoenix.LiveView.ColocatedJS} name="optimistic">

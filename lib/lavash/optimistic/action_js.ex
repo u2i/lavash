@@ -6,27 +6,20 @@ defmodule Lavash.Optimistic.ActionJs do
   """
 
   @doc """
-  Checks if an action is optimistic (can be mirrored on client).
+  Checks if an action has transpilable client-side operations (sets/updates).
 
-  An action is optimistic if it has no side effects and only uses
-  set/update/run operations.
+  Actions with effects, submits, navigates, or invokes can still be partially
+  optimistic — the sets/updates run client-side immediately while the server
+  handles the side effects.
   """
   def action_is_optimistic?(action) do
-    has_side_effects =
-      (action.submits || []) != [] or
-      (action.navigates || []) != [] or
-      (action.effects || []) != [] or
-      (action.invokes || []) != []
-
     has_set_or_update = (action.sets || []) != [] or (action.updates || []) != []
 
     runs = action.runs || []
     reads = action.reads || []
     has_transpilable_runs = runs != [] and reads != []
 
-    has_operations = has_set_or_update or has_transpilable_runs
-
-    !has_side_effects and has_operations
+    has_set_or_update or has_transpilable_runs
   end
 
   @doc """
@@ -43,6 +36,16 @@ defmodule Lavash.Optimistic.ActionJs do
   def analyze_value(value)
       when is_number(value) or is_binary(value) or is_boolean(value) or is_atom(value) do
     {:literal, value}
+  end
+
+  def analyze_value(value) when is_list(value) do
+    if Enum.all?(value, fn v ->
+         is_number(v) or is_binary(v) or is_boolean(v) or is_atom(v)
+       end) do
+      {:literal, value}
+    else
+      :unknown
+    end
   end
 
   def analyze_value(value) when is_function(value, 1) do

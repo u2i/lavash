@@ -8,6 +8,15 @@ defmodule DemoWeb.ModalDemoLive do
   use Lavash.LiveView
   import Lavash.LiveView.Helpers
 
+  # Parent owns modal open state, bound down via bind=
+  state :modal_open, :any, from: :ephemeral, default: nil, optimistic: true
+
+  actions do
+    action :open_modal do
+      set :modal_open, true
+    end
+  end
+
   render fn assigns ->
     ~L"""
     <div class="max-w-4xl mx-auto p-6">
@@ -24,7 +33,7 @@ defmodule DemoWeb.ModalDemoLive do
         <p class="text-gray-600 mb-4">Click the button to open a basic modal. The modal opens optimistically (immediately) without waiting for the server.</p>
         <button
           class="btn btn-primary"
-          phx-click={Phoenix.LiveView.JS.dispatch("open-panel", to: "#simple-modal-modal", detail: %{open: true})}
+          phx-click="open_modal"
         >
           Open Modal
         </button>
@@ -44,6 +53,8 @@ defmodule DemoWeb.ModalDemoLive do
       <.lavash_component
         module={DemoWeb.SimpleModal}
         id="simple-modal"
+        open={@modal_open}
+        bind={[open: :modal_open]}
       />
     </div>
     """

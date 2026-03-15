@@ -7,15 +7,20 @@ defmodule DemoWeb.ProductEditModal do
   - set_product_id action is auto-generated (optimistic: true implies setter: true)
   - modal chrome, wrapper, and async_result are auto-generated
 
-  Opening the modal from client-side:
-  - JS.dispatch("open-panel", to: "#product-edit-modal-modal", detail: %{product_id: 123})
-
   ## Example usage
 
       <.lavash_component
         module={DemoWeb.ProductEditModal}
         id="product-edit-modal"
+        product_id={@product_id}
+        bind={[product_id: :product_id]}
       />
+
+  Parent owns the product_id state and opens via setter action:
+
+      state :product_id, :any, from: :ephemeral, default: nil, setter: true
+      # Auto-generates set_product_id action
+      # Button: phx-click="set_product_id" phx-value-value={product.id}
   """
   use Lavash.Component, extensions: [Lavash.Overlay.Modal.Dsl]
 

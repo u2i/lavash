@@ -4,15 +4,21 @@ defmodule DemoWeb.DetailsFlyover do
 
   This flyover slides in from the right and shows detail information.
 
-  Opening the flyover from client-side:
-  - JS.dispatch("open-panel", to: "#details-flyover-flyover", detail: %{open: true})
-
   ## Example usage
 
       <.lavash_component
         module={DemoWeb.DetailsFlyover}
         id="details-flyover"
+        open={@details_open}
+        bind={[open: :details_open]}
       />
+
+  Parent owns the open state and opens via a regular action:
+
+      state :details_open, :any, from: :ephemeral, default: nil, optimistic: true
+      action :open_details do
+        set :details_open, true
+      end
   """
   use Lavash.Component, extensions: [Lavash.Overlay.Flyover.Dsl]
 

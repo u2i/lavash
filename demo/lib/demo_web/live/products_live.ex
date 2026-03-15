@@ -218,12 +218,8 @@ defmodule DemoWeb.ProductsLive do
                 </span>
               </div>
               <button
-                phx-click={
-                  Phoenix.LiveView.JS.dispatch("open-panel",
-                    to: "#product-edit-modal-modal",
-                    detail: %{product_id: product.id}
-                  )
-                }
+                phx-click="set_product_id"
+                phx-value-value={product.id}
                 class="mt-3 block w-full text-center text-sm text-indigo-600 hover:text-indigo-800 border-t pt-3"
               >
                 Edit
@@ -246,6 +242,8 @@ defmodule DemoWeb.ProductsLive do
       <.lavash_component
         module={DemoWeb.ProductEditModal}
         id="product-edit-modal"
+        product_id={@product_id}
+        bind={[product_id: :product_id]}
       />
     </div>
     """
