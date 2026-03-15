@@ -50,10 +50,11 @@ import {
   getStateAtPath as _getStateAtPath,
   isInsideChildHook as _isInsideChildHook,
   isInsideHiddenContainer as _isInsideHiddenContainer,
-  humanizeFieldName as _humanizeFieldName,
   formatInputValue as _formatInputValue,
 } from "./concerns/utils.js";
 import { installGlobalDomCallback } from "./concerns/global_dom_callback.js";
+import { updateDOM as _updateDOM, notifyChildren as _notifyChildren } from "./concerns/dom_updater.js";
+import { refreshFromParent as _refreshFromParent, propagateBoundFieldsToParent as _propagateBoundFieldsToParent } from "./concerns/bindings.js";
 
 // Registry for optimistic function modules (for custom overrides)
 window.Lavash = window.Lavash || {};
@@ -999,370 +1000,27 @@ const LavashOptimistic = {
   },
 
   updateDOM() {
-    console.debug(`[LavashOptimistic] updateDOM() called`);
-
-    // Update all elements with data-lavash-display attribute (text content)
-    const displayElements = this.el.querySelectorAll("[data-lavash-display]");
-    displayElements.forEach(el => {
-      // Skip elements inside nested child hooks - they manage their own state
-      if (this.isInsideChildHook(el)) return;
-
-      const fieldName = el.dataset.lavashDisplay;
-      const value = this.state[fieldName];
-      if (value !== undefined) {
-        el.textContent = value;
-      }
+    _updateDOM(this.el, this.state, {
+      getFormField: this.getFormField.bind(this),
+      isFormSubmitted: this.isFormSubmitted.bind(this),
     });
-
-    // Update all elements with data-lavash-visible attribute (show/hide based on boolean)
-    const visibleElements = this.el.querySelectorAll("[data-lavash-visible]");
-    visibleElements.forEach(el => {
-      // Skip elements inside nested child hooks - they manage their own state
-      if (this.isInsideChildHook(el)) return;
-
-      const fieldName = el.dataset.lavashVisible;
-      const value = this.state[fieldName];
-      if (value) {
-        el.classList.remove("hidden");
-      } else {
-        el.classList.add("hidden");
-      }
-    });
-
-    // Update all elements with data-lavash-enabled attribute (enable/disable based on boolean)
-    const enabledElements = this.el.querySelectorAll("[data-lavash-enabled]");
-    enabledElements.forEach(el => {
-      // Skip elements inside nested child hooks - they manage their own state
-      if (this.isInsideChildHook(el)) return;
-
-      const fieldName = el.dataset.lavashEnabled;
-      const value = this.state[fieldName];
-      const enabled = value === true;
-      const wasDisabled = el.disabled;
-
-      // Update disabled attribute
-      el.disabled = !enabled;
-
-      // Log state changes for debugging
-      if (wasDisabled !== el.disabled) {
-        console.debug(`[LavashOptimistic] Button ${fieldName} enabled state changed: disabled=${wasDisabled} → ${el.disabled} (value=${value})`);
-      }
-
-      // Update classes for visual feedback
-      if (enabled) {
-        el.classList.remove('btn-disabled', 'opacity-60', 'cursor-not-allowed');
-      } else {
-        el.classList.add('opacity-60', 'cursor-not-allowed');
-      }
-    });
-
-    // Update all elements with data-lavash-toggle attribute
-    // Format: "fieldName|trueClasses|falseClasses" (uses | to avoid conflict with Tailwind's :)
-    const classToggleElements = this.el.querySelectorAll("[data-lavash-toggle]");
-    classToggleElements.forEach(el => {
-      // Skip elements inside nested child hooks - they manage their own state
-      if (this.isInsideChildHook(el)) return;
-
-      const spec = el.dataset.lavashToggle;
-      const [fieldName, trueClasses, falseClasses] = spec.split("|");
-      const value = this.state[fieldName];
-
-      // Remove all managed classes first
-      const allClasses = (trueClasses + " " + falseClasses).split(/\s+/).filter(c => c);
-      el.classList.remove(...allClasses);
-
-      // Add the appropriate classes
-      const classesToAdd = (value ? trueClasses : falseClasses).split(/\s+/).filter(c => c);
-      el.classList.add(...classesToAdd);
-    });
-
-    // Update all elements with data-lavash-class attribute (class from map)
-    // Format: data-lavash-class="roast_chips.light" means state.roast_chips["light"]
-    const classElements = this.el.querySelectorAll("[data-lavash-class]");
-    classElements.forEach(el => {
-      // Skip elements inside nested child hooks - they manage their own state
-      if (this.isInsideChildHook(el)) return;
-
-      const path = el.dataset.lavashClass;
-      const [field, key] = path.split(".");
-      const classMap = this.state[field];
-      if (classMap && key && classMap[key]) {
-        el.className = classMap[key];
-      } else if (classMap && !key) {
-        // Direct field reference (e.g., "in_stock_chip")
-        el.className = classMap;
-      }
-    });
-
-    // Update all elements with data-lavash-errors attribute
-    // Only show errors if the corresponding show_errors field is true (touched || submitted)
-    const errorElements = this.el.querySelectorAll("[data-lavash-errors]");
-    errorElements.forEach(el => {
-      // Skip elements inside nested child hooks - they manage their own state
-      if (this.isInsideChildHook(el)) return;
-
-      const errorsField = el.dataset.lavashErrors; // e.g., "registration_name_errors"
-      const clientErrors = this.state[errorsField] || [];
-
-      // Use explicit form/field if provided, otherwise derive from errors field name
-      const explicitForm = el.dataset.lavashForm;
-      const explicitField = el.dataset.lavashField;
-
-      let formName, fieldName;
-      if (explicitForm && explicitField) {
-        formName = explicitForm;
-        fieldName = explicitField;
-      } else {
-        // Derive from errors field name: "registration_name_errors" -> form=registration, field=name
-        const match = errorsField.match(/^(.+)_(.+)_errors$/);
-        if (match) {
-          [, formName, fieldName] = match;
-        }
-      }
-
-      const showErrorsField = el.dataset.lavashShowErrors || `${formName}_${fieldName}_show_errors`;
-      const showErrors = this.state[showErrorsField] ?? false;
-
-      // Errors already include both client and server errors (merged in the derive)
-      const allErrors = clientErrors;
-
-      // Track previous visibility state
-      const wasVisible = !el.classList.contains("hidden");
-      const willBeVisible = showErrors && allErrors.length > 0;
-
-      // Clear existing error content
-      el.innerHTML = "";
-
-      // Only render errors if showErrors is true and there are errors
-      if (willBeVisible) {
-        allErrors.forEach(error => {
-          const p = document.createElement("p");
-          p.className = "text-error text-sm";
-          p.textContent = error;
-          el.appendChild(p);
-        });
-        el.classList.remove("hidden");
-      } else {
-        el.classList.add("hidden");
-      }
-
-      // Log visibility changes for debugging flickering
-      if (wasVisible !== willBeVisible) {
-        console.debug(`[LavashOptimistic] DOM error visibility changed for ${errorsField}: ${wasVisible} → ${willBeVisible} (showErrors=${showErrors}, errors=${JSON.stringify(allErrors)})`);
-      }
-    });
-
-    // Update error summary element (shows all errors when form is submitted)
-    const errorSummaryElements = this.el.querySelectorAll("[data-lavash-error-summary]");
-    errorSummaryElements.forEach(el => {
-      // Skip elements inside nested child hooks - they manage their own state
-      if (this.isInsideChildHook(el)) return;
-
-      const formName = el.dataset.lavashErrorSummary; // e.g., "registration"
-
-      // Only show if this specific form has been submitted
-      if (!this.isFormSubmitted(formName)) {
-        el.classList.add("hidden");
-        el.innerHTML = "";
-        return;
-      }
-
-      // Collect all errors for this form
-      const allErrors = [];
-
-      // Find all error fields for this form (errors already include server errors from derive)
-      for (const key of Object.keys(this.state)) {
-        if (key.startsWith(`${formName}_`) && key.endsWith("_errors")) {
-          const fieldErrors = this.state[key] || [];
-          const fieldName = key.replace(`${formName}_`, "").replace(/_errors$/, "");
-
-          if (fieldErrors.length > 0) {
-            allErrors.push({ field: fieldName, errors: fieldErrors });
-          }
-        }
-      }
-
-      // Clear and rebuild content
-      el.innerHTML = "";
-
-      if (allErrors.length > 0) {
-        const title = document.createElement("p");
-        title.className = "font-semibold text-red-700 mb-2";
-        title.textContent = "Please fix the following errors:";
-        el.appendChild(title);
-
-        const ul = document.createElement("ul");
-        ul.className = "list-disc list-inside space-y-1";
-
-        for (const { field, errors } of allErrors) {
-          for (const error of errors) {
-            const li = document.createElement("li");
-            li.textContent = `${this.humanizeFieldName(field)}: ${error}`;
-            ul.appendChild(li);
-          }
-        }
-
-        el.appendChild(ul);
-        el.classList.remove("hidden");
-      } else {
-        el.classList.add("hidden");
-      }
-    });
-
-    // Update field status indicators (✗ when invalid, empty otherwise)
-    const statusElements = this.el.querySelectorAll("[data-lavash-status]");
-    statusElements.forEach(el => {
-      // Skip elements inside nested child hooks - they manage their own state
-      if (this.isInsideChildHook(el)) return;
-
-      const validField = el.dataset.lavashStatus; // e.g., "registration_name_valid"
-
-      // Use explicit form/field if provided
-      const explicitForm = el.dataset.lavashForm;
-      const explicitField = el.dataset.lavashField;
-
-      const showErrorsField = el.dataset.lavashShowErrors ||
-        (explicitForm && explicitField ? `${explicitForm}_${explicitField}_show_errors` : validField.replace(/_valid$/, "_show_errors"));
-
-      const isValid = this.state[validField] ?? true;
-      const showErrors = this.state[showErrorsField] ?? false;
-
-      // Check for errors (client + server already merged in derive)
-      const errorsField = validField.replace(/_valid$/, "_errors");
-      const hasErrors = (this.state[errorsField] || []).length > 0;
-
-      // Only show status if field has been touched/submitted and is invalid
-      // (no success indicator - green checkmarks are distracting)
-      if (!showErrors || (isValid && !hasErrors)) {
-        el.textContent = "";
-        el.className = el.className.replace(/text-red-\d+/g, "").trim();
-      } else {
-        el.textContent = "✗";
-        el.className = el.className.replace(/text-red-\d+/g, "").trim() + " text-red-500";
-      }
-    });
-
-    // Update input border colors based on validation state
-    // Find all bound inputs and update their border/ring classes
-    const boundInputs = this.el.querySelectorAll("[data-lavash-bind]");
-    boundInputs.forEach(input => {
-      // Skip elements inside nested child hooks - they manage their own state
-      if (this.isInsideChildHook(input)) return;
-
-      const fieldPath = input.dataset.lavashBind; // e.g., "registration_params.name"
-
-      // Get form/field from explicit attributes or derive from path
-      const { formName, fieldName } = this.getFormField(input, fieldPath);
-      if (!formName || !fieldName) return;
-
-      // Check show_errors state
-      const showErrorsField = `${formName}_${fieldName}_show_errors`;
-      const showErrors = this.state[showErrorsField] ?? false;
-
-      // Check validity - use custom valid field if specified, otherwise standard
-      const customValidField = input.dataset.lavashValid;
-      const validField = customValidField || `${formName}_${fieldName}_valid`;
-      const isValid = this.state[validField] ?? true;
-
-      // Check for errors (client + server already merged in derive)
-      const errorsField = `${formName}_${fieldName}_errors`;
-      const hasErrors = (this.state[errorsField] || []).length > 0;
-
-      // Remove existing validation state classes (DaisyUI semantic + Tailwind fallback)
-      const errorClass = input.tagName === "SELECT" ? "select-error" : "input-error";
-      const validationClasses = [
-        // DaisyUI semantic classes (both variants)
-        "input-error", "select-error",
-        // Tailwind fallback classes
-        "border-gray-300", "border-red-300",
-        "focus:ring-blue-500", "focus:ring-red-500"
-      ];
-      validationClasses.forEach(c => input.classList.remove(c));
-
-      // Apply error class only when invalid (no success styling - green is distracting)
-      if (showErrors && (!isValid || hasErrors)) {
-        input.classList.add(errorClass);
-      }
-    });
-
-    // Notify bound children to refresh from parent state
     this.notifyChildren();
   },
 
   notifyChildren() {
-    // Find all child hooks that bind to this parent
-    const children = this.el.querySelectorAll("[phx-hook]");
-    console.warn(`[LO] notifyChildren: found ${children.length} child elements`);
-    children.forEach(el => {
-      const hook = el.__lavash_hook__;
-      if (hook?.refreshFromParent) {
-        console.warn(`[LO] notifyChildren: refreshing child`, el.id || el.dataset.lavashModule);
-        hook.refreshFromParent(this);
-      }
-    });
+    _notifyChildren(this.el, this);
   },
 
-  /**
-   * Called by parent hook when parent state changes.
-   * Updates local state for bound fields and triggers animations.
-   */
   refreshFromParent(parentHook) {
-    if (!this.bindings || Object.keys(this.bindings).length === 0) return;
-
-    const changedFields = [];
-
-    // Check each binding for changes
-    for (const [localField, parentField] of Object.entries(this.bindings)) {
-      const parentValue = parentHook.state[parentField];
-      const localValue = this.state[localField];
-
-      console.warn(`[LO] refreshFromParent: ${localField} (from parent.${parentField}): parent=${JSON.stringify(parentValue)}, local=${JSON.stringify(localValue)}, changed=${parentValue !== localValue}`);
-
-      if (parentValue !== localValue) {
-        this.state[localField] = parentValue;
-        changedFields.push(localField);
-
-        // Use null so setOptimistic properly bumps version on new SVs
-        const syncedVar = this.store.get(localField, null, (newVal) => {
-          this.state[localField] = newVal;
-        });
-        syncedVar.setOptimistic(parentValue);
-      }
-    }
-
+    const changedFields = _refreshFromParent(this.bindings, this.state, this.store, parentHook);
     if (changedFields.length > 0) {
       this.recomputeDerives(changedFields);
       this.updateDOM();
     }
   },
 
-  /**
-   * Propagate bound field changes to parent hook via lavash-set events.
-   * When the server updates a bound field (e.g., on_saved sets open: nil),
-   * the parent needs to update its corresponding state.
-   */
   propagateBoundFieldsToParent(changedFields) {
-    if (!this.bindings || Object.keys(this.bindings).length === 0) return;
-    if (!changedFields || changedFields.length === 0) return;
-
-    for (const localField of changedFields) {
-      const parentField = this.bindings[localField];
-      if (parentField) {
-        const value = this.state[localField];
-        console.warn(`[LO] propagateToParent: ${localField} → parent.${parentField} = ${JSON.stringify(value)}`);
-
-        // Dispatch lavash-set event to parent
-        const event = new CustomEvent("lavash-set", {
-          bubbles: true,
-          detail: { field: parentField, value }
-        });
-        this.el.dispatchEvent(event);
-      }
-    }
-  },
-
-  humanizeFieldName(name) {
-    return _humanizeFieldName(name);
+    _propagateBoundFieldsToParent(this.bindings, this.state, this.el, changedFields);
   },
 
   // Sync URL fields to browser URL without triggering navigation
