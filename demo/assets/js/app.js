@@ -46,11 +46,15 @@ window.Lavash.SyncedVar = SyncedVar;
 window.Lavash.OverlayAnimator = OverlayAnimator;
 window.Lavash.optimistic = lavashOptimisticFns || {};
 
+// Plain LiveView demo hooks (hand-coded, no DSL)
+import PlainCounter from "./plain_counter_hook.js"
+
 // Merge hooks from Lavash library and app-specific hooks
 const colocatedHooks = {
   ...lavashHooks,
   ...demoHooks,
-  LavashOptimistic
+  LavashOptimistic,
+  PlainCounter
 }
 
 // Lavash state - survives reconnects, lost on page refresh

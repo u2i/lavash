@@ -21,8 +21,13 @@ defmodule DemoWeb.LiveViewDemos.IndexLive do
           <div class="grid md:grid-cols-2 gap-4">
             <.demo_card
               href={~p"/lv/counter"}
-              title="Counter"
-              description="State, derived fields, immediate and batched updates."
+              title="Counter (Reactive)"
+              description="Using Lavash.Reactive graph engine — no DSL, but uses defgraph + rx."
+            />
+            <.demo_card
+              href={~p"/lv/plain-counter"}
+              title="Counter (Plain)"
+              description="Plain LiveView + hand-coded JS hook. No Lavash Elixir, raw client primitives."
             />
           </div>
         </section>

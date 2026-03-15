@@ -75,6 +75,7 @@ defmodule DemoWeb.Router do
 
     live "/", IndexLive
     live "/counter", CounterLive
+    live "/plain-counter", PlainCounterLive
   end
 
   # Demo/playground routes
