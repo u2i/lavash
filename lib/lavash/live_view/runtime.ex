@@ -480,9 +480,22 @@ defmodule Lavash.LiveView.Runtime do
         ephemeral_fields = module.__lavash__(:ephemeral_fields)
         field_names = Enum.map(ephemeral_fields, & &1.name)
 
-        # Only accept if this is a known state field (prevents atom creation attacks)
-        if String.to_existing_atom(field_str) in field_names do
-          {:set, String.to_existing_atom(field_str)}
+        # Only accept if this is a known state field AND there's no explicit
+        # user-defined action with this name. User actions take priority over
+        # auto-generated setters because they may transform the value (e.g.,
+        # String.to_integer).
+        field_atom = String.to_existing_atom(field_str)
+
+        if field_atom in field_names do
+          # Check if a user-defined action with this name exists
+          actions = module.__lavash__(:actions)
+          has_explicit_action = Enum.any?(actions, &(Atom.to_string(&1.name) == event))
+
+          if has_explicit_action do
+            :not_set_field
+          else
+            {:set, field_atom}
+          end
         else
           :not_set_field
         end
