@@ -8,6 +8,7 @@ defmodule DemoWeb.ToggleDemoLive do
   - Clean binding to parent state
   """
   use Lavash.LiveView
+  import Lavash.LiveView.Helpers
 
   # Boolean states with optimistic updates
   state :feature_enabled, :boolean, default: false, optimistic: true
@@ -56,7 +57,7 @@ defmodule DemoWeb.ToggleDemoLive do
                 <h3 class="text-sm font-medium text-gray-900">Feature Flag</h3>
                 <p class="text-xs text-gray-500">Enable the new experimental feature</p>
               </div>
-              <.live_component
+              <.lavash_component
                 module={Lavash.Components.SyncedToggle}
                 id="feature-toggle"
                 bind={[value: :feature_enabled]}
@@ -69,7 +70,7 @@ defmodule DemoWeb.ToggleDemoLive do
                 <h3 class="text-sm font-medium text-gray-900">Dark Mode</h3>
                 <p class="text-xs text-gray-500">Switch to dark theme</p>
               </div>
-              <.live_component
+              <.lavash_component
                 module={Lavash.Components.SyncedToggle}
                 id="dark-mode-toggle"
                 bind={[value: :dark_mode]}
@@ -82,7 +83,7 @@ defmodule DemoWeb.ToggleDemoLive do
                 <h3 class="text-sm font-medium text-gray-900">Notifications</h3>
                 <p class="text-xs text-gray-500">Receive push notifications</p>
               </div>
-              <.live_component
+              <.lavash_component
                 module={Lavash.Components.SyncedToggle}
                 id="notifications-toggle"
                 bind={[value: :notifications]}

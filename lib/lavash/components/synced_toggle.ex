@@ -1,40 +1,28 @@
 defmodule Lavash.Components.SyncedToggle do
   @moduledoc """
-  Optimistic toggle switch using ClientComponent.
+  Optimistic toggle switch component.
 
   ## Usage
 
-      <.live_component
+      <.lavash_component
         module={Lavash.Components.SyncedToggle}
         id="feature-toggle"
         bind={[value: :enabled]}
         value={@enabled}
         label="Enable feature"
       />
-
-  ## How it works
-
-  1. User clicks toggle -> client instantly updates via optimistic action
-  2. Client re-renders with new state (instant visual feedback)
-  3. Server receives event and updates state
-  4. Server patch accepted if versions match, rejected if stale
   """
+  use Lavash.Component
 
-  use Lavash.ClientComponent
+  state :value, :boolean, from: :ephemeral, default: false, optimistic: true
 
-  # State connects to parent state
-  state :value, :boolean
-
-  # Props from parent (read-only)
   prop :label, :string, default: ""
   prop :on_label, :string, default: "On"
   prop :off_label, :string, default: "Off"
   prop :disabled, :boolean, default: false
 
-  # Calculate display label based on value
   calculate :display_label, rx(if(@value, do: @on_label, else: @off_label))
 
-  # Calculate full CSS class strings for client-side updates
   calculate :button_class,
     rx(
       "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 " <>
@@ -47,9 +35,11 @@ defmodule Lavash.Components.SyncedToggle do
         if(@value, do: "translate-x-5", else: "translate-x-0")
     )
 
-  # Optimistic action - toggle inverts the value
-  optimistic_action :toggle, :value,
-    run: fn value, _arg -> !value end
+  actions do
+    action :toggle do
+      set :value, rx(not @value)
+    end
+  end
 
   render fn assigns ->
     ~L"""
@@ -59,8 +49,7 @@ defmodule Lavash.Components.SyncedToggle do
         role="switch"
         aria-checked={to_string(@value)}
         disabled={@disabled}
-        data-lavash-action="toggle"
-        data-lavash-state-field="value"
+        phx-click="toggle"
         class={@button_class}
       >
         <span

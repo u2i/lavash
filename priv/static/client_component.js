@@ -102,16 +102,36 @@ export function createClientComponentHook({ fns = {}, graph = {}, render, valida
       const value = input.value.trim();
       if (!value) return;
 
-      if (!this._validateAction(action, field, value, undefined, this.state)) return;
+      // Set param on state so rx() expressions can read it
+      this.state.val = value;
+
+      if (!this._validateAction(action, field, value, undefined, this.state)) {
+        delete this.state.val;
+        return;
+      }
 
       this._applyOptimisticAction(action, field, value, undefined, this.state);
+      delete this.state.val;
+
+      this.rstore._bumpVersion(field);
       this.rstore.recompute([field]);
       this._updateDOM();
-      this._syncParentUrl();
 
       const newInput = this.el.querySelector(`[data-lavash-action="add"][data-lavash-state-field="${field}"]`);
       if (newInput) newInput.value = "";
 
+      // Check if bound to parent
+      const parentField = this.bindings[field];
+      if (parentField) {
+        const newValue = this.state[field];
+        this.el.dispatchEvent(new CustomEvent('lavash-set', {
+          bubbles: true,
+          detail: { field: parentField, value: newValue }
+        }));
+        return;
+      }
+
+      this._syncParentUrl();
       const phxEvent = `${action}_${field.replace(/s$/, '')}`;
       this.pushEventTo(this.el, phxEvent, { val: value }, () => {
         this.rstore.clearPending(field);

@@ -8,6 +8,7 @@ defmodule DemoWeb.TagEditorDemoLive do
   - Clean separation between optimistic and server-rendered content
   """
   use Lavash.LiveView
+  import Lavash.LiveView.Helpers
 
   # Tags with optimistic updates
   state :tags, {:array, :string}, from: :url, default: ["elixir", "phoenix"], optimistic: true
@@ -54,7 +55,7 @@ defmodule DemoWeb.TagEditorDemoLive do
         <div class="bg-gray-50 p-6 rounded-lg">
           <h2 class="font-semibold mb-4">Tag Editor A</h2>
 
-          <.live_component
+          <.lavash_component
             module={Lavash.Components.TagEditor}
             id="demo-tags"
             bind={[tags: :tags]}
@@ -72,7 +73,7 @@ defmodule DemoWeb.TagEditorDemoLive do
         <div class="bg-gray-50 p-6 rounded-lg">
           <h2 class="font-semibold mb-4">Tag Editor B (Sibling)</h2>
 
-          <.live_component
+          <.lavash_component
             module={Lavash.Components.TagEditor}
             id="demo-tags-sibling"
             bind={[tags: :tags]}
