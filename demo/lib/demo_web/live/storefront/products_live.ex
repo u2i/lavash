@@ -14,14 +14,11 @@ defmodule DemoWeb.Storefront.ProductsLive do
   # Filter State
   # ============================================
 
-  # Filter state — ChipSet components handle the toggle UX,
-  # parent just owns the selected values as plain array state
+  # Filter state — ChipSet/ToggleChip components handle the UX,
+  # parent just owns the selected values as plain state fields
   state :roast, {:array, :string}, from: :url, default: [], optimistic: true
   state :category, {:array, :string}, from: :url, default: [], optimistic: true
-
-  # Boolean toggle for in_stock filter
-  # This auto-generates: state, toggle action, and chip derive
-  toggle :in_stock, from: :url
+  state :in_stock, :boolean, from: :url, default: false, optimistic: true
 
   # ============================================
   # Cart State
@@ -364,7 +361,13 @@ defmodule DemoWeb.Storefront.ProductsLive do
           <!-- In Stock Filter (boolean toggle) -->
           <div>
             <h3 class="text-sm font-semibold text-base-content/60 mb-2">Availability</h3>
-            <.toggle_chip field={:in_stock} active={@in_stock} chip={@in_stock_chip} label="In Stock Only" />
+            <.lavash_component
+              module={Lavash.ToggleChip}
+              id="in-stock-toggle"
+              label="In Stock Only"
+              active={@in_stock}
+              bind={[active: :in_stock]}
+            />
           </div>
         </div>
 
