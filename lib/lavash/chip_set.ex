@@ -45,7 +45,9 @@ defmodule Lavash.ChipSet do
 
   optimistic_action :toggle, :selected,
     run: fn selected, val ->
-      if val in selected, do: selected -- [val], else: selected ++ [val]
+      if val in selected,
+        do: Enum.reject(selected, &(&1 == val)),
+        else: selected ++ [val]
     end
 
   render fn assigns ->

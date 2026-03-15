@@ -165,7 +165,7 @@ defmodule Lavash.ClientComponent.Transformers.GenerateHook do
   # JS generation
   # ============================================
 
-  defp generate_js_hook(template_source, calculations, actions) do
+  def generate_js_hook(template_source, calculations, actions) do
     tree =
       template_source
       |> Lavash.Template.tokenize()

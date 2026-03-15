@@ -27,7 +27,6 @@ export function createClientComponentHook({ fns = {}, graph = {}, render, valida
     mounted() {
       const initialState = JSON.parse(this.el.dataset.lavashState || "{}");
       this.bindings = JSON.parse(this.el.dataset.lavashBindings || "{}");
-
       this.rstore = new ReactiveStore({
         initialState, graph, fns,
         onChange: () => this._updateDOM()
@@ -50,11 +49,14 @@ export function createClientComponentHook({ fns = {}, graph = {}, render, valida
     },
 
     updated() {
-      if (this.rstore.getPendingPaths().length === 0) {
-        const serverState = JSON.parse(this.el.dataset.lavashState || "{}");
-        this.rstore.serverUpdate(serverState);
-        this.rstore.recompute();
-      }
+      const serverState = JSON.parse(this.el.dataset.lavashState || "{}");
+      this.rstore.serverUpdate(serverState);
+      this.rstore.recompute();
+      // Always re-render after server patch — LiveView's morphdom replaces
+      // inner HTML with server-rendered content that lacks client-only
+      // attributes (data-lavash-action, data-lavash-state-field).
+      // Client render restores them.
+      this._updateDOM();
     },
 
     _updateDOM() {
@@ -124,13 +126,19 @@ export function createClientComponentHook({ fns = {}, graph = {}, render, valida
       const field = target.dataset.lavashStateField;
       const value = target.dataset.lavashValue;
 
+      console.warn(`[CC:${this.el.id}] _handleClick: action=${action}, field=${field}, value=${value}, state[field]=${JSON.stringify(this.state[field])}`);
+
       if (action === "add" && !value) return;
 
       e.stopPropagation();
 
       if (!this._validateAction(action, field, value, undefined, this.state)) return;
 
+      const beforeApply = JSON.stringify(this.state[field]);
       this._applyOptimisticAction(action, field, value, undefined, this.state);
+      const afterApply = JSON.stringify(this.state[field]);
+      console.warn(`[CC:${this.el.id}] after applyAction: ${beforeApply} → ${afterApply}`);
+
       this.rstore._bumpVersion(field);
       this.rstore.recompute([field]);
       this._updateDOM();
@@ -139,11 +147,14 @@ export function createClientComponentHook({ fns = {}, graph = {}, render, valida
       const parentField = this.bindings[field];
       if (parentField) {
         const newValue = this.state[field];
+        console.warn(`[CC:${this.el.id}] dispatching lavash-set: field=${parentField}, value=${JSON.stringify(newValue)}, state===rstore.state: ${this.state === this.rstore.state}`);
         this.el.dispatchEvent(new CustomEvent('lavash-set', {
           bubbles: true,
           detail: { field: parentField, value: newValue }
         }));
-        this.rstore.clearPending(field);
+        // Don't clearPending here — let serverUpdate confirm when the
+        // server responds with the matching value. Clearing immediately
+        // allows stale server state to overwrite the optimistic value.
         return;
       }
 
@@ -192,7 +203,6 @@ export function createClientComponentHook({ fns = {}, graph = {}, render, valida
       for (const [localField, parentField] of Object.entries(this.bindings)) {
         const parentValue = parentHook.state[parentField];
         if (parentValue !== undefined && parentValue !== this.state[localField]) {
-          console.warn(`[refreshFromParent:CC] ${localField}: ${JSON.stringify(this.state[localField])} -> ${JSON.stringify(parentValue)}, hookEl=${this.el.id}`);
           this.state[localField] = parentValue;
           changedFields.push(localField);
         }

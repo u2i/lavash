@@ -177,6 +177,28 @@ defmodule Lavash.Sigil do
         |> Enum.map(fn action -> {action.name, action} end)
         |> Map.new()
 
+      # Build optimistic_actions from actions with transpilable sets
+      optimistic_actions_map =
+        declared_actions
+        |> Enum.filter(fn action ->
+          sets = action.sets || []
+          updates = action.updates || []
+          (sets ++ updates) != [] and
+            Enum.all?(sets, fn set ->
+              case Lavash.Optimistic.ActionJs.analyze_value(set.value) do
+                {:rx, _} -> true
+                {:literal, _} -> true
+                :from_params_value -> true
+                _ -> false
+              end
+            end)
+        end)
+        |> Enum.flat_map(fn action ->
+          (action.sets || [])
+          |> Enum.map(fn set -> {action.name, %{field: set.field}} end)
+        end)
+        |> Map.new()
+
       %{
         context: context,
         optimistic_fields: optimistic_fields,
@@ -184,7 +206,7 @@ defmodule Lavash.Sigil do
         calculations: %{},
         forms: forms_map,
         actions: actions_map,
-        optimistic_actions: %{}
+        optimistic_actions: optimistic_actions_map
       }
     rescue
       _ -> %{context: context}

@@ -176,22 +176,26 @@ defmodule Lavash.Component.Compiler do
 
   Syntax: `render fn assigns -> ~L\"\"\"...\"\"\" end`
   """
-  def generate_render_from_macros(renders, _env) do
+  def generate_render_from_macros(renders, env) do
     renders_map = Map.new(renders)
 
-    # Check for function-based render
     case Map.get(renders_map, :__render_fn__) do
       nil ->
-        # No render defined via macro
         quote do end
 
       escaped_fn ->
-        # Function-based render - function AST is escaped
-        generate_render_from_fn(escaped_fn)
+        client_hook_name =
+          Spark.Dsl.Extension.get_persisted(env.module, :lavash_client_hook_name)
+
+        if client_hook_name do
+          generate_render_with_client_hook(escaped_fn, client_hook_name)
+        else
+          generate_render_from_fn(escaped_fn)
+        end
     end
   end
 
-  # Generate render from function syntax: render fn assigns -> ~L"..." end
+  # Simple render — no client hook, just call the function
   defp generate_render_from_fn(escaped_fn) do
     quote do
       @impl Phoenix.LiveComponent
@@ -200,6 +204,62 @@ defmodule Lavash.Component.Compiler do
         render_fn.(var!(assigns))
       end
     end
+  end
+
+  # Render with client hook wrapper — serializes state and wraps in hook root div
+  defp generate_render_with_client_hook(escaped_fn, hook_name) do
+    quote do
+      @impl Phoenix.LiveComponent
+      def render(var!(assigns)) do
+        state = Lavash.Component.Compiler.build_client_state(__MODULE__, var!(assigns))
+        state_json = Jason.encode!(state)
+        bindings_json = Jason.encode!(Map.get(var!(assigns), :__lavash_binding_map__, %{}))
+        version = Map.get(var!(assigns), :__lavash_version__, 0)
+
+        var!(assigns) =
+          var!(assigns)
+          |> Phoenix.Component.assign(:__state_json__, state_json)
+          |> Phoenix.Component.assign(:__bindings_json__, bindings_json)
+          |> Phoenix.Component.assign(:__hook_name__, unquote(hook_name))
+          |> Phoenix.Component.assign(:__version__, version)
+          |> Phoenix.Component.assign(state)
+
+        render_fn = unquote(escaped_fn)
+        inner = render_fn.(var!(assigns))
+
+        Lavash.Component.HookWrapper.wrap(var!(assigns), inner)
+      end
+    end
+  end
+
+
+  @doc false
+  def build_client_state(module, assigns) do
+    # Collect optimistic state fields
+    state_fields =
+      if function_exported?(module, :__lavash__, 1) do
+        module.__lavash__(:optimistic_fields)
+      else
+        []
+      end
+
+    state_map =
+      Enum.reduce(state_fields, %{}, fn field, acc ->
+        Map.put(acc, field.name, Map.get(assigns, field.name))
+      end)
+
+    # Collect props
+    props =
+      if function_exported?(module, :__lavash__, 1) do
+        module.__lavash__(:props)
+      else
+        []
+      end
+
+    Enum.reduce(props, state_map, fn prop, acc ->
+      value = Map.get(assigns, prop.name, prop.default)
+      Map.put(acc, prop.name, value)
+    end)
   end
 
 end

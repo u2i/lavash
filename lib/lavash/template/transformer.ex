@@ -663,24 +663,51 @@ defmodule Lavash.Template.Transformer do
     end
   end
 
-  # Pattern 6: ClientComponent actions (inject data-lavash-state-field)
+  # Pattern 6: Component actions (inject data-lavash-action + data-lavash-state-field)
+  # Detects both data-lavash-action="name" and phx-click="name" matching optimistic actions
+  # Runs in any context where optimistic_actions are defined (client_component, component)
   defp maybe_inject_client_component_action(attrs, _tag_info, metadata) do
-    if metadata.context == :client_component and
-       not has_attr?(attrs, "data-lavash-state-field") do
-      case get_attr(attrs, "data-lavash-action") do
-        {:string, action_name} ->
-          action_atom = String.to_atom(action_name)
+    if map_size(metadata[:optimistic_actions] || %{}) > 0 do
+      # Check for phx-click matching an optimistic action — convert to data-lavash-action
+      attrs =
+        if not has_attr?(attrs, "data-lavash-action") do
+          case get_attr(attrs, "phx-click") do
+            {:string, action_name} ->
+              action_atom = String.to_atom(action_name)
 
-          if is_map_key(metadata.optimistic_actions, action_atom) do
-            action = metadata.optimistic_actions[action_atom]
-            field_str = to_string(action.field)
-            add_attr_if_missing(attrs, "data-lavash-state-field", {:string, field_str})
-          else
-            attrs
+              if is_map_key(metadata[:optimistic_actions] || %{}, action_atom) do
+                attrs
+                |> add_attr_if_missing("data-lavash-action", {:string, action_name})
+              else
+                attrs
+              end
+
+            _ ->
+              attrs
           end
-
-        _ ->
+        else
           attrs
+        end
+
+      # Inject data-lavash-state-field if we have data-lavash-action
+      if not has_attr?(attrs, "data-lavash-state-field") do
+        case get_attr(attrs, "data-lavash-action") do
+          {:string, action_name} ->
+            action_atom = String.to_atom(action_name)
+
+            if is_map_key(metadata[:optimistic_actions] || %{}, action_atom) do
+              action = metadata[:optimistic_actions][action_atom]
+              field_str = to_string(action.field)
+              add_attr_if_missing(attrs, "data-lavash-state-field", {:string, field_str})
+            else
+              attrs
+            end
+
+          _ ->
+            attrs
+        end
+      else
+        attrs
       end
     else
       attrs

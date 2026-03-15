@@ -19,9 +19,9 @@ defmodule Lavash.ToggleChip do
 
   Override with `active_class` and `inactive_class` props.
   """
-  use Lavash.ClientComponent
+  use Lavash.Component
 
-  state :active, :boolean
+  state :active, :boolean, from: :ephemeral, default: false, optimistic: true
 
   prop :label, :string, default: "Toggle"
   prop :active_class, :any,
@@ -29,16 +29,18 @@ defmodule Lavash.ToggleChip do
   prop :inactive_class, :any,
     default: "px-3 py-1.5 rounded-full text-sm font-medium border transition-colors bg-base-100 text-base-content/70 border-base-300 hover:bg-base-200"
 
-  optimistic_action :toggle, :active,
-    run: fn active, _params -> !active end
+  actions do
+    action :toggle do
+      set :active, rx(not @active)
+    end
+  end
 
   render fn assigns ->
     ~L"""
     <button
       type="button"
       class={if @active, do: @active_class, else: @inactive_class}
-      data-lavash-action="toggle"
-      data-lavash-state-field="active"
+      phx-click="toggle"
     >
       {@label}
     </button>

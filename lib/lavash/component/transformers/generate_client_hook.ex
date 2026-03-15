@@ -76,64 +76,98 @@ defmodule Lavash.Component.Transformers.GenerateClientHook do
   end
 
   defp generate(dsl_state, env, optimistic_actions) do
-    # Get template source from render macro
     lavash_renders = Module.get_attribute(env.module, :__lavash_renders__) || []
     template_source = resolve_template_source(lavash_renders)
 
     if is_nil(template_source) do
       {:ok, dsl_state}
     else
-      # Convert DSL actions to ClientComponent action format
-      # ClientComponent expects: {name, field, key, run_source, validate_source, max}
-      action_tuples = actions_to_tuples(optimistic_actions)
+      # Get calculations
+      calculations =
+        (Transformer.get_entities(dsl_state, [:calculations]) || [])
+        |> Enum.filter(&Map.get(&1, :optimistic, true))
+        |> Enum.map(fn calc ->
+          {calc.name, calc.rx.source, calc.rx.ast, calc.rx.deps}
+        end)
 
-      # Store as module attribute so the existing GenerateHook can read them
-      for tuple <- action_tuples do
-        Module.put_attribute(env.module, :__lavash_optimistic_actions__, tuple)
-      end
+      # Convert DSL actions to JS action specs
+      action_specs = actions_to_js_specs(optimistic_actions)
 
-      # Store template in renders attribute if not already there
-      # The existing GenerateHook reads from :__lavash_renders__
+      # Build metadata for template transformation
+      optimistic_actions_map =
+        action_specs
+        |> Enum.map(fn %{name: name, field: field} -> {name, %{field: field}} end)
+        |> Map.new()
 
-      # Now delegate to the existing GenerateHook transformer
-      # It reads from module attributes and generates the JS hook
-      Lavash.ClientComponent.Transformers.GenerateHook.transform(dsl_state)
+      metadata = %{
+        context: :client_component,
+        optimistic_fields: %{},
+        optimistic_derives: %{},
+        calculations:
+          calculations
+          |> Enum.map(fn {name, _, _, _} -> {name, %{optimistic: true}} end)
+          |> Map.new(),
+        forms: %{},
+        actions: %{},
+        optimistic_actions: optimistic_actions_map
+      }
+
+      # Transform template (injects data-lavash-action etc.)
+      transformed_source =
+        Lavash.Template.Transformer.transform(template_source, env.module,
+          context: :client_component,
+          metadata: metadata
+        )
+
+      # Generate the JS hook code
+      js_code = generate_js_hook(transformed_source, calculations, action_specs)
+
+      # Write colocated hook file
+      module_name = env.module |> Module.split() |> List.last()
+      full_hook_name = "#{inspect(env.module)}.#{module_name}"
+
+      hook_data = CompilerHelpers.write_colocated_hook(env, full_hook_name, js_code)
+
+      dsl_state =
+        dsl_state
+        |> Transformer.persist(:lavash_client_hook_data, hook_data)
+        |> Transformer.persist(:lavash_client_hook_name, full_hook_name)
+
+      {:ok, dsl_state}
     end
   end
 
-  # Convert DSL action entities to ClientComponent action tuples
-  defp actions_to_tuples(actions) do
+  # Convert DSL action entities to JS action specs
+  defp actions_to_js_specs(actions) do
     Enum.flat_map(actions, fn action ->
       sets = action.sets || []
       updates = action.updates || []
 
-      set_tuples =
+      set_specs =
         Enum.flat_map(sets, fn set ->
           case ActionJs.analyze_value(set.value) do
             {:rx, source} ->
-              [{action.name, set.field, nil,
-                "fn _current, _params -> #{source} end",
-                nil, nil}]
+              [%{name: action.name, field: set.field,
+                 run_source: "fn _current, _params -> #{source} end"}]
 
             :from_params_value ->
-              [{action.name, set.field, nil, nil, nil, nil}]
+              [%{name: action.name, field: set.field, run_source: nil}]
 
             {:literal, value} ->
-              [{action.name, set.field, nil,
-                "fn _current, _params -> #{inspect(value)} end",
-                nil, nil}]
+              [%{name: action.name, field: set.field,
+                 run_source: "fn _current, _params -> #{inspect(value)} end"}]
 
             _ -> []
           end
         end)
 
-      update_tuples =
+      update_specs =
         Enum.map(updates, fn update ->
           source = Macro.to_string(update.fun)
-          {action.name, update.field, nil, source, nil, nil}
+          %{name: action.name, field: update.field, run_source: source}
         end)
 
-      set_tuples ++ update_tuples
+      set_specs ++ update_specs
     end)
   end
 
@@ -156,4 +190,26 @@ defmodule Lavash.Component.Transformers.GenerateClientHook do
   defp extract_compiled_source({:__block__, _, [inner]}), do: extract_compiled_source(inner)
   defp extract_compiled_source({:quote, _, [[do: ast]]}), do: extract_compiled_source(ast)
   defp extract_compiled_source(_), do: nil
+
+  # JS generation — delegates to the existing GenerateHook
+  defp generate_js_hook(template_source, calculations, action_specs) do
+    # Convert action specs to the format GenerateHook.generate_js_hook expects
+    actions =
+      Enum.map(action_specs, fn spec ->
+        %{
+          name: spec.name,
+          field: spec.field,
+          key: nil,
+          run_source: spec.run_source,
+          validate_source: nil,
+          max: nil
+        }
+      end)
+
+    Lavash.ClientComponent.Transformers.GenerateHook.generate_js_hook(
+      template_source,
+      calculations,
+      actions
+    )
+  end
 end
