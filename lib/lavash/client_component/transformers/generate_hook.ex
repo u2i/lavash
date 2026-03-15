@@ -431,9 +431,17 @@ defmodule Lavash.ClientComponent.Transformers.GenerateHook do
     " #{name}=\"#{escaped}\""
   end
 
+  @boolean_attrs ~w(disabled checked readonly required hidden selected autofocus autoplay controls loop muted novalidate open)
+
   defp render_attr_to_js(name, {:expr, code, _}, _ctx) do
     js_expr = Lavash.Rx.Transpiler.to_js(code)
-    " #{name}=\"${#{js_expr}}\""
+
+    if name in @boolean_attrs do
+      # Boolean HTML attributes: presence = true, absence = false
+      " ${#{js_expr} ? '#{name}' : ''}"
+    else
+      " #{name}=\"${#{js_expr}}\""
+    end
   end
 
   defp render_attr_to_js(name, {:boolean, true}, _ctx), do: " #{name}"
