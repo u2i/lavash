@@ -7,14 +7,6 @@ defmodule Lavash.Component.Compiler do
     # Check if an overlay registered a render generator
     render_generator = Spark.Dsl.Extension.get_persisted(env.module, :lavash_overlay_render_generator)
 
-    # Get optimistic colocated data if available (persisted by ColocatedTransformer)
-    # Escape immediately to avoid "tried to unquote invalid AST" errors during incremental compilation
-    optimistic_colocated_data =
-      case Spark.Dsl.Extension.get_persisted(env.module, :lavash_optimistic_colocated_data) do
-        nil -> nil
-        data -> Macro.escape(data)
-      end
-
     # Check for render definitions from the new macro-based approach
     lavash_renders = Module.get_attribute(env.module, :__lavash_renders__) || []
 
@@ -118,16 +110,64 @@ defmodule Lavash.Component.Compiler do
       # Components don't have URL fields
       def __lavash__(:url_fields), do: []
 
-      # Phoenix colocated JS integration for optimistic functions
-      if unquote(not is_nil(optimistic_colocated_data)) do
-        # optimistic_colocated_data is already escaped, so just unquote it directly
-        @__lavash_optimistic_colocated_data__ unquote(optimistic_colocated_data)
-        def __phoenix_macro_components__ do
-          %{
-            Phoenix.LiveView.ColocatedJS => [@__lavash_optimistic_colocated_data__]
-          }
-        end
+      # Phoenix colocated integration for optimistic functions and client hooks
+      unquote(generate_phoenix_macro_components(env))
+    end
+  end
+
+  defp generate_phoenix_macro_components(env) do
+    optimistic_colocated_data =
+      case Spark.Dsl.Extension.get_persisted(env.module, :lavash_optimistic_colocated_data) do
+        nil -> nil
+        data -> Macro.escape(data)
       end
+
+    client_hook_data =
+      case Spark.Dsl.Extension.get_persisted(env.module, :lavash_client_hook_data) do
+        nil -> nil
+        data -> Macro.escape(data)
+      end
+
+    client_hook_name =
+      Spark.Dsl.Extension.get_persisted(env.module, :lavash_client_hook_name)
+
+    cond do
+      optimistic_colocated_data && client_hook_data ->
+        quote do
+          @__lavash_optimistic_colocated_data__ unquote(optimistic_colocated_data)
+          @__lavash_client_hook_data__ unquote(client_hook_data)
+          def __full_hook_name__, do: unquote(client_hook_name)
+          def __phoenix_macro_components__ do
+            %{
+              Phoenix.LiveView.ColocatedJS => [@__lavash_optimistic_colocated_data__],
+              Phoenix.LiveView.ColocatedHook => [@__lavash_client_hook_data__]
+            }
+          end
+        end
+
+      client_hook_data ->
+        quote do
+          @__lavash_client_hook_data__ unquote(client_hook_data)
+          def __full_hook_name__, do: unquote(client_hook_name)
+          def __phoenix_macro_components__ do
+            %{
+              Phoenix.LiveView.ColocatedHook => [@__lavash_client_hook_data__]
+            }
+          end
+        end
+
+      optimistic_colocated_data ->
+        quote do
+          @__lavash_optimistic_colocated_data__ unquote(optimistic_colocated_data)
+          def __phoenix_macro_components__ do
+            %{
+              Phoenix.LiveView.ColocatedJS => [@__lavash_optimistic_colocated_data__]
+            }
+          end
+        end
+
+      true ->
+        quote do end
     end
   end
 

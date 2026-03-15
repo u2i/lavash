@@ -326,6 +326,7 @@ defmodule Lavash.Component.Dsl do
     transformers: [
       Lavash.Optimistic.Transformers.ExpandAnimatedStates,
       Lavash.Transformers.ExpandFields,
+      Lavash.Component.Transformers.GenerateClientHook,
       Lavash.Optimistic.Transformers.ExtractColocatedJs
     ],
     imports: [Phoenix.Component, Lavash.DslHelpers, Lavash.Rx, Lavash.Component.Sigil, Lavash.Component.RenderImport]
