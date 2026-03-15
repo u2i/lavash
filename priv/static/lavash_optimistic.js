@@ -34,7 +34,6 @@
  * - data-lavash-visible: Show/hide element based on boolean state (toggles "hidden" class)
  * - data-lavash-enabled: Enable/disable element based on boolean state
  * - data-lavash-toggle: Toggle classes based on boolean (format: "field|trueClasses|falseClasses")
- * - data-lavash-class: Apply class from state map (e.g., "roast_chips.light")
  * - data-lavash-errors: Container for field error messages
  * - data-lavash-error-summary: Container for form error summary
  * - data-lavash-status: Field status indicator (✗ when invalid)

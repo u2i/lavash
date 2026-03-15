@@ -66,20 +66,6 @@ export function updateDOM(rootEl, state, opts) {
     el.classList.add(...classesToAdd);
   }
 
-  // data-lavash-class: apply class from state map
-  // Format: "roast_chips.light" means state.roast_chips["light"]
-  for (const el of rootEl.querySelectorAll("[data-lavash-class]")) {
-    if (isInsideChildHook(el, rootEl)) continue;
-    const path = el.dataset.lavashClass;
-    const [field, key] = path.split(".");
-    const classMap = state[field];
-    if (classMap && key && classMap[key]) {
-      el.className = classMap[key];
-    } else if (classMap && !key) {
-      el.className = classMap;
-    }
-  }
-
   // data-lavash-errors: error messages (only shown when touched/submitted)
   for (const el of rootEl.querySelectorAll("[data-lavash-errors]")) {
     if (isInsideChildHook(el, rootEl)) continue;
