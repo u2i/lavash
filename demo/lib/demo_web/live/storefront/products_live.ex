@@ -14,14 +14,9 @@ defmodule DemoWeb.Storefront.ProductsLive do
   # Filter State
   # ============================================
 
-  # Static multi-select: roast levels are known at compile time
-  # This auto-generates: state, toggle action, and chip derive
-  multi_select :roast, ["light", "medium", "medium_dark", "dark"],
-    from: :url,
-    labels: %{"medium_dark" => "Med-Dark"}
-
-  # Dynamic multi-select: category values come from a read
-  # We use explicit state + action + derive since values are runtime-dependent
+  # Filter state — ChipSet components handle the toggle UX,
+  # parent just owns the selected values as plain array state
+  state :roast, {:array, :string}, from: :url, default: [], optimistic: true
   state :category, {:array, :string}, from: :url, default: [], optimistic: true
 
   # Boolean toggle for in_stock filter
@@ -111,23 +106,6 @@ defmodule DemoWeb.Storefront.ProductsLive do
     Decimal.to_string(subtotal)
   end
 
-  # Chip classes for categories (dynamic values require explicit calculation)
-  calculate :category_chips, rx(compute_category_chips(@category, @categories)), optimistic: false
-
-  def compute_category_chips(selected, cats) do
-    Map.new(cats, fn cat -> {cat.slug, chip_class(cat.slug in selected)} end)
-  end
-
-  defp chip_class(active) do
-    base = "px-3 py-1.5 text-sm rounded-full border transition-colors cursor-pointer"
-
-    if active do
-      "#{base} bg-primary text-primary-content border-primary"
-    else
-      "#{base} bg-base-100 text-base-content/70 border-base-300 hover:border-primary/50"
-    end
-  end
-
   defp to_atoms(list) when is_list(list) do
     Enum.map(list, &String.to_existing_atom/1)
   end
@@ -135,11 +113,6 @@ defmodule DemoWeb.Storefront.ProductsLive do
   defp to_atoms(_), do: []
 
   actions do
-    # Toggle action for dynamic category values
-    action :toggle_category, [:val] do
-      set :category, &toggle_in_list(&1.state.category, &1.params.val)
-    end
-
     action :clear_filters do
       set :roast, []
       set :category, []
@@ -311,19 +284,6 @@ defmodule DemoWeb.Storefront.ProductsLive do
     {:ok, Lavash.Socket.put_state(socket, :cart_id, cart_id)}
   end
 
-  defp toggle_in_list(list, value) when value in ["", nil] do
-    # Ignore empty/nil values
-    list
-  end
-
-  defp toggle_in_list(list, value) do
-    if value in list do
-      List.delete(list, value)
-    else
-      [value | list]
-    end
-  end
-
   defp coffee_image(roast_level) do
     case roast_level do
       :light -> "photo-1495474472287-4d71bcdd2085"
@@ -375,25 +335,29 @@ defmodule DemoWeb.Storefront.ProductsLive do
       <!-- Filters -->
       <div class="card bg-base-200 p-4">
         <div class="flex flex-wrap gap-6">
-          <!-- Roast Level Filter (static values - uses chip_set helper) -->
+          <!-- Roast Level Filter -->
           <div>
             <h3 class="text-sm font-semibold text-base-content/60 mb-2">Roast Level</h3>
-            <.chip_set
-              field={:roast}
-              chips={@roast_chips}
+            <.lavash_component
+              module={Lavash.ChipSet}
+              id="roast-chips"
               values={["light", "medium", "medium_dark", "dark"]}
               labels={%{"medium_dark" => "Med-Dark"}}
+              selected={@roast}
+              bind={[selected: :roast]}
             />
           </div>
 
           <!-- Category Filter (dynamic values from read) -->
           <div>
             <h3 class="text-sm font-semibold text-base-content/60 mb-2">Category</h3>
-            <.chip_set
-              field={:category}
-              chips={@category_chips}
+            <.lavash_component
+              module={Lavash.ChipSet}
+              id="category-chips"
               values={Enum.map(@categories, & &1.slug)}
               labels={Map.new(@categories, &{&1.slug, &1.name})}
+              selected={@category}
+              bind={[selected: :category]}
             />
           </div>
 
@@ -494,50 +458,6 @@ defmodule DemoWeb.Storefront.ProductsLive do
         bind={[open: :cart_open]}
       />
 
-      <script :type={Phoenix.LiveView.ColocatedJS} name="optimistic">
-        // Client-side optimistic functions for dynamic filter chips
-        // Note: toggle_roast, toggle_in_stock, roast_chips, and in_stock_chip
-        // are auto-generated from the DSL. Only custom functions needed here.
-
-        const CHIP_BASE = "px-3 py-1.5 text-sm rounded-full border transition-colors cursor-pointer";
-        const CHIP_ACTIVE = CHIP_BASE + " bg-primary text-primary-content border-primary";
-        const CHIP_INACTIVE = CHIP_BASE + " bg-base-100 text-base-content/70 border-base-300 hover:border-primary/50";
-
-        function chipClass(active) {
-          return active ? CHIP_ACTIVE : CHIP_INACTIVE;
-        }
-
-        function toggleInList(list, value) {
-          if (!value) return list;
-          const arr = list || [];
-          const idx = arr.indexOf(value);
-          if (idx >= 0) {
-            return arr.filter(v => v !== value);
-          } else {
-            return [...arr, value];
-          }
-        }
-
-        export default {
-          // Action for dynamic category values
-          toggle_category(state, value) {
-            return { category: toggleInList(state.category, value) };
-          },
-
-          // Derive for dynamic category chips (values come from read result)
-          category_chips(state) {
-            // Use category_slugs from initial render data if available
-            const slugs = state._category_slugs || [];
-            const result = {};
-            for (const slug of slugs) {
-              result[slug] = chipClass((state.category || []).includes(slug));
-            }
-            return result;
-          }
-
-          // Cart optimistic updates are handled by CartItemList ClientComponent
-        };
-      </script>
     </div>
     """
   end
