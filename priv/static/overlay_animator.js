@@ -153,10 +153,20 @@ export class OverlayAnimator {
         this.panelContent.style.removeProperty("width");
         this.panelContent.style.removeProperty("height");
         this.panelContent.style.removeProperty("overflow");
+        // Reset transform to closed position so enter animation plays properly.
+        // During exit, the ghost clone animated out while the real panel stayed at
+        // the open position — so without this reset, alreadyVisible would be true
+        // and the enter animation would be skipped.
+        this.panelContent.style.transition = "none";
+        this.panelContent.style.transform = this._closedTransform;
+        if (this._panelFades) {
+          this.panelContent.style.opacity = "0";
+        }
+        this.panelContent.offsetHeight; // Force reflow
       }
       if (this.overlay) this.overlay.style.visibility = "";
 
-      // Hide main content so loading shows properly
+      // Hide main content so loading shows properly on reopen
       const mainContent = this.getMainContentContainer();
       if (mainContent) {
         this.js.addClass(mainContent, "hidden");
@@ -180,7 +190,7 @@ export class OverlayAnimator {
     this.js.removeClass(this.el, "invisible pointer-events-none");
     this.el.classList.remove("invisible", "pointer-events-none");
 
-    // Show loading content if present
+    // Show loading skeleton while waiting for server content
     const loadingContent = this.getLoadingContent();
     if (loadingContent) {
       this.js.removeClass(loadingContent, "hidden");
@@ -198,14 +208,23 @@ export class OverlayAnimator {
     // Animate panel in
     if (this.panelContent) {
       // Check current state before animating (for reopen handling)
-      const currentOpacity = this._panelFades
-        ? parseFloat(getComputedStyle(this.panelContent).opacity)
-        : 1;
-      const alreadyVisible = currentOpacity > 0.5;
-      console.debug(
-        `[OverlayAnimator:${this.type}] onEntering: alreadyVisible=${alreadyVisible}, opacity=${currentOpacity}`
+      // For fading overlays (modals): check opacity
+      // For sliding overlays (flyovers): check if panel is at the open position
+      let alreadyVisible;
+      if (this._panelFades) {
+        const currentOpacity = parseFloat(getComputedStyle(this.panelContent).opacity);
+        alreadyVisible = currentOpacity > 0.5;
+      } else {
+        // For flyovers: check if transform is at/near the open position
+        const currentTransform = getComputedStyle(this.panelContent).transform;
+        // "none" or "matrix(1,0,0,1,0,0)" means at open (identity) position
+        alreadyVisible = currentTransform === "none" || currentTransform === this._openTransform ||
+          currentTransform === "matrix(1, 0, 0, 1, 0, 0)";
+      }
+      console.warn(
+        `[OverlayAnimator:${this.type}] onEntering: alreadyVisible=${alreadyVisible}, transform=${getComputedStyle(this.panelContent).transform}`
       );
-      console.debug(
+      console.warn(
         `[OverlayAnimator:${this.type}] onEntering: wrapper.class="${this.el.className}"`
       );
 
@@ -370,6 +389,12 @@ export class OverlayAnimator {
 
   /**
    * Unified transition to content state.
+   *
+   * TODO: When the server responds quickly (low latency / fast refresh), the
+   * loading→content crossfade isn't smooth — content can pop in abruptly
+   * because the loading skeleton barely had time to fade in before content
+   * arrives. Consider a minimum display time for loading, or skip the
+   * loading skeleton entirely when content arrives during the enter animation.
    */
   _transitionToContent(syncedVar) {
     const mainContent = this.getMainContentContainer();
@@ -437,6 +462,9 @@ export class OverlayAnimator {
       mainContent.style.transition = "none";
       mainContent.style.opacity = "0";
       mainContent.offsetHeight;
+      console.warn(
+        `[OverlayAnimator:${this.type}] _transitionToContent step3: hidden=${mainContent.classList.contains('hidden')}, opacity=${mainContent.style.opacity}, offsetHeight=${mainContent.offsetHeight}, display=${getComputedStyle(mainContent).display}`
+      );
     }
 
     // 4. Measure target size (modal only)
@@ -507,9 +535,15 @@ export class OverlayAnimator {
     }
     if (mainContent) {
       mainContent.style.opacity = "1";
+      console.warn(
+        `[OverlayAnimator:${this.type}] _transitionToContent step6: mainContent opacity set to 1, transition=${mainContent.style.transition}`
+      );
     }
     if (loadingContent) {
       loadingContent.style.opacity = "0";
+      console.warn(
+        `[OverlayAnimator:${this.type}] _transitionToContent step6: loading opacity set to 0, shouldFade=${shouldFadeLoading}`
+      );
       if (shouldFadeLoading) {
         const loadingFadeDuration = this.duration * referenceOpacity;
         setTimeout(() => {
@@ -521,6 +555,23 @@ export class OverlayAnimator {
         loadingContent.style.removeProperty("transition");
       }
     }
+
+    // Verify final state after transition completes
+    const self = this;
+    setTimeout(() => {
+      if (mainContent) {
+        const cs = getComputedStyle(mainContent);
+        console.warn(
+          `[OverlayAnimator:${self.type}] _transitionToContent VERIFY (after ${self.duration + 50}ms): ` +
+          `hidden=${mainContent.classList.contains('hidden')}, ` +
+          `computedOpacity=${cs.opacity}, ` +
+          `computedDisplay=${cs.display}, ` +
+          `offsetHeight=${mainContent.offsetHeight}, ` +
+          `childCount=${mainContent.children.length}, ` +
+          `innerText.length=${mainContent.innerText?.length || 0}`
+        );
+      }
+    }, this.duration + 50);
 
     // Clean up after animation
     const cleanup = (e) => {
@@ -575,6 +626,9 @@ export class OverlayAnimator {
 
     this._preUpdateContentClone = originalElement.cloneNode(true);
     this._preUpdateContentClone.id = `${originalElement.id}_ghost`;
+    // Strip IDs from all descendants to prevent duplicate IDs in the DOM,
+    // which confuses morphdom and prevents hook updated() from firing
+    this._preUpdateContentClone.querySelectorAll("[id]").forEach((el) => el.removeAttribute("id"));
     const panelBg = this.panelContent
       ? getComputedStyle(this.panelContent).backgroundColor
       : "white";
@@ -689,6 +743,8 @@ export class OverlayAnimator {
     this.ghostElement.removeAttribute("phx-target");
     this.ghostElement.removeAttribute("phx-window-keydown");
     this.ghostElement.removeAttribute("phx-key");
+    // Strip IDs from all descendants to prevent duplicate IDs in the DOM
+    this.ghostElement.querySelectorAll("[id]").forEach((el) => el.removeAttribute("id"));
 
     Object.assign(this.ghostElement.style, {
       position: "fixed",

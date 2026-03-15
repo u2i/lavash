@@ -31,6 +31,8 @@
  *   onUpdated(syncedVar, phase) - LiveView patch applied
  */
 
+const _UNSET = Symbol("no-server-value");
+
 // --- Phase classes ---
 
 class Phase {
@@ -158,6 +160,10 @@ export class SyncedVar {
     this.version = 0;
     this.confirmedVersion = 0;
     this.onChange = options.onChange || null;
+    this.label = options.label || null; // for debug logging
+
+    // Track last server value to count distinct server transitions (not duplicate patches)
+    this._lastServerValue = _UNSET;
 
     // FLIP support
     this.flipPreRect = null;
@@ -192,8 +198,19 @@ export class SyncedVar {
   setOptimistic(newValue) {
     const oldValue = this.value;
     if (deepEqual(newValue, oldValue)) return false;
+    if (!this.isPending) this._lastServerValue = _UNSET;
     this.version++;
     this.value = newValue;
+    // Clear close protection when client sets a non-null value — deliberate reopen
+    if (newValue != null) {
+      this._closeProtection = false;
+    }
+    // Set close protection immediately when closing (null) from an open state.
+    // This protects against stale server reopens even before the server confirms.
+    if (newValue == null && oldValue != null) {
+      this._closeProtection = true;
+    }
+    console.warn(`[SV:${this.label}] setOptimistic: ${JSON.stringify(oldValue)} → ${JSON.stringify(newValue)}, v=${this.version}, cv=${this.confirmedVersion}, closeProt=${!!this._closeProtection}`, new Error().stack?.split('\n').slice(1,4).join(' <- '));
     this._handleValueChange(newValue, oldValue, "optimistic");
     return true;
   }
@@ -204,15 +221,31 @@ export class SyncedVar {
   set(newValue, pushFn, extraParams = {}) {
     const oldValue = this.value;
     if (deepEqual(newValue, oldValue)) return;
+    if (!this.isPending) this._lastServerValue = _UNSET;
     this.version++;
     const v = this.version;
     this.value = newValue;
+    // Set close protection immediately when closing — don't wait for server callback.
+    // The callback may never fire (stale version) in rapid open/close cycles.
+    if (newValue == null) {
+      this._closeProtection = true;
+    }
+    console.warn(`[SV:${this.label}] set+push: ${JSON.stringify(oldValue)} → ${JSON.stringify(newValue)}, v=${v}, cv=${this.confirmedVersion}, closeProt=${!!this._closeProtection}`);
     this._handleValueChange(newValue, oldValue, "optimistic");
 
     pushFn?.({ ...extraParams, _version: v }, (reply) => {
-      if (v !== this.version) return; // stale
+      if (v !== this.version) {
+        console.warn(`[SV:${this.label}] set callback STALE: pushed v=${v}, current v=${this.version}`);
+        return;
+      }
       this.confirmedVersion = v;
       this.confirmedValue = newValue;
+      // Activate close protection: reject stale server reopens until the
+      // close has fully propagated (next server null confirms it)
+      if (newValue == null) {
+        this._closeProtection = true;
+      }
+      console.warn(`[SV:${this.label}] set callback CONFIRMED: v=${v}, closeProt=${!!this._closeProtection}`);
       this.onChange?.(newValue, oldValue, "confirmed");
     });
   }
@@ -235,29 +268,92 @@ export class SyncedVar {
 
   _serverSetPlain(newValue) {
     if (this.isPending) {
-      if (deepEqual(newValue, this.value)) {
-        // Server confirmed our optimistic value
-        this.confirmedVersion = this.version;
+      const matches = deepEqual(newValue, this.value);
+      if (matches) {
+        // Increment confirmedVersion by 1 per match, NOT jump to this.version.
+        // With rapid open/close cycles, the server sends a sequence of values
+        // (e.g., [true, null, true, null, true]). A single matching "true" shouldn't
+        // confirm ALL pending changes — only one. This prevents premature confirmation
+        // that would leave the state unprotected against stale values still in the pipeline.
+        this.confirmedVersion++;
         this.confirmedValue = newValue;
-        return false;
+        if (newValue == null && !this.isPending) {
+          this._closeProtection = true;
+        }
+        console.warn(`[SV:${this.label}] serverPlain CONFIRMED (pending match, incremental): v=${this.version}, cv=${this.confirmedVersion}, value=${JSON.stringify(newValue)}, stillPending=${this.isPending}, closeProt=${!!this._closeProtection}`);
+      } else {
+        console.warn(`[SV:${this.label}] serverPlain REJECTED (pending, no match): v=${this.version}, cv=${this.confirmedVersion}, server=${JSON.stringify(newValue)}, client=${JSON.stringify(this.value)}, closeProt=${!!this._closeProtection}`);
       }
-      return false; // reject — client has uncommitted work
+      this._lastServerValue = newValue;
+      return false;
     }
+    this._lastServerValue = newValue;
     const oldValue = this.value;
-    if (deepEqual(newValue, oldValue)) return false;
+
+    if (deepEqual(newValue, oldValue)) {
+      console.warn(`[SV:${this.label}] serverPlain NO-OP (same value): ${JSON.stringify(newValue)}, closeProt=${!!this._closeProtection}`);
+      return false;
+    }
+
+    if (this._closeProtection && newValue != null) {
+      console.warn(`[SV:${this.label}] serverPlain BLOCKED (close protection): server=${JSON.stringify(newValue)}, client=${JSON.stringify(oldValue)}`);
+      return false;
+    }
+
     this.value = newValue;
     this.confirmedValue = newValue;
+    console.warn(`[SV:${this.label}] serverPlain ACCEPTED: ${JSON.stringify(oldValue)} → ${JSON.stringify(newValue)}`);
     this._handleValueChange(newValue, oldValue, "server");
     return true;
   }
 
   _serverSetAnimated(newValue) {
     const oldValue = this.value;
-    // Clear pending regardless — server is authoritative
+
+    if (this.isPending) {
+      const matches = deepEqual(newValue, this.value);
+      if (matches) {
+        // Increment confirmedVersion by 1 per match, NOT jump to this.version.
+        // Same rationale as _serverSetPlain: with rapid open/close cycles,
+        // multiple server responses arrive in quick succession. A single matching
+        // value from an early response shouldn't confirm ALL pending changes,
+        // or the next stale null would be accepted and trigger a close.
+        this.confirmedVersion++;
+        this.confirmedValue = newValue;
+        if (newValue == null && !this.isPending) {
+          this._closeProtection = true;
+        }
+        console.warn(`[SV:${this.label}] serverAnim CONFIRMED (pending match, incremental): v=${this.version}, cv=${this.confirmedVersion}, value=${JSON.stringify(newValue)}, phase=${this.phase}, stillPending=${this.isPending}, closeProt=${!!this._closeProtection}`);
+      } else {
+        console.warn(`[SV:${this.label}] serverAnim REJECTED (pending, no match): v=${this.version}, cv=${this.confirmedVersion}, server=${JSON.stringify(newValue)}, client=${JSON.stringify(this.value)}, phase=${this.phase}, closeProt=${!!this._closeProtection}`);
+      }
+      this._lastServerValue = newValue;
+      return false;
+    }
+
+    this._lastServerValue = newValue;
     this.confirmedVersion = this.version;
     this.confirmedValue = newValue;
-    if (deepEqual(newValue, oldValue)) return false;
+
+    if (deepEqual(newValue, oldValue)) {
+      console.warn(`[SV:${this.label}] serverAnim NO-OP (same value): ${JSON.stringify(newValue)}, phase=${this.phase}, closeProt=${!!this._closeProtection}`);
+      return false;
+    }
+
+    if (this._closeProtection && newValue != null) {
+      console.warn(`[SV:${this.label}] serverAnim BLOCKED (close protection): server=${JSON.stringify(newValue)}, client=${JSON.stringify(oldValue)}, phase=${this.phase}`);
+      return false;
+    }
+
+    // DIAGNOSTIC: Detect server-initiated close while overlay is visually open.
+    // This is the "bouncing" bug — a stale null accepted after all pending cleared.
+    const openPhase = this.phase === "entering" || this.phase === "loading" || this.phase === "visible";
+    if (newValue == null && oldValue != null && openPhase) {
+      console.error(`[SV:${this.label}] ⚠️ SERVER CLOSE ACCEPTED while phase=${this.phase}! This may be a stale server value causing flyover bounce. server=${JSON.stringify(newValue)}, client=${JSON.stringify(oldValue)}, v=${this.version}, cv=${this.confirmedVersion}, closeProt=${!!this._closeProtection}`);
+    }
+
     this.value = newValue;
+    console.warn(`[SV:${this.label}] serverAnim ACCEPTED: ${JSON.stringify(oldValue)} → ${JSON.stringify(newValue)}, phase=${this.phase}`);
     this._handleValueChange(newValue, oldValue, "server");
     return true;
   }
@@ -314,9 +410,11 @@ export class SyncedVar {
       const wasOpen = oldValue != null;
       const isOpen = newValue != null;
       if (isOpen && !wasOpen) {
+        console.warn(`[SV:${this.label}] _handleValueChange: OPENING (source=${source}), phase=${this.phase}`);
         this.isAsyncReady = false;
         this._currentPhase?.onOpen();
       } else if (!isOpen && wasOpen) {
+        console.warn(`[SV:${this.label}] _handleValueChange: CLOSING (source=${source}), phase=${this.phase}`);
         this._currentPhase?.onClose();
       }
     }
@@ -325,7 +423,7 @@ export class SyncedVar {
   _transitionTo(newPhase) {
     if (!this.animated) return;
     const old = this._currentPhase ? this._currentPhase.name : "init";
-    console.debug(`[SyncedVar] ${old} -> ${newPhase.name}`);
+    console.warn(`[SV:${this.label}] PHASE: ${old} → ${newPhase.name}`);
     if (this._currentPhase) this._currentPhase.onExit();
     this._currentPhase = newPhase;
     this._currentPhase.onEnter();
@@ -375,6 +473,8 @@ export class SyncedVarStore {
       const opts = typeof options === "function"
         ? { onChange: options }
         : (options || {});
+      // Auto-label with path for debug logging
+      if (!opts.label) opts.label = path;
       // Merge in animated config if registered for this path
       const animConfig = this._animatedConfigs[path];
       if (animConfig) {

@@ -228,7 +228,10 @@ const LavashOptimistic = {
 
       // Eagerly create the SyncedVar so the delegate gets attached
       const currentValue = this.state[field] ?? null;
-      const syncedVar = this.store.get(field, currentValue, {
+      // Use null as initial value (not currentValue) so setOptimistic below
+      // properly bumps the version. Without this, SV starts at v=0/cv=0
+      // and appears "confirmed" even though the server hasn't confirmed it.
+      const syncedVar = this.store.get(field, null, {
         onChange: (newVal) => { this.state[field] = newVal; },
       });
       if (delegate) syncedVar.setDelegate(delegate);
@@ -241,6 +244,7 @@ const LavashOptimistic = {
 
         const openHandler = (e) => {
           const openValue = e.detail?.[field] ?? e.detail?.open ?? e.detail?.value ?? true;
+          console.warn(`[LO] openHandler: field=${field}, value=${JSON.stringify(openValue)}`);
           const sv = this.store.get(field);
           sv.set(openValue, (p, cb) => {
             this.pushEventTo(chromeEl, setterAction, { ...p, value: openValue }, cb);
@@ -248,10 +252,13 @@ const LavashOptimistic = {
         };
 
         const closeHandler = () => {
+          console.warn(`[LO] closeHandler: field=${field}`);
           const sv = this.store.get(field);
           sv.set(null, (p, cb) => {
             this.pushEventTo(chromeEl, setterAction, { ...p, value: null }, cb);
           });
+          // Propagate close to parent so parent state stays in sync.
+          this.propagateBoundFieldsToParent([field]);
         };
 
         chromeEl.addEventListener("open-panel", openHandler);
@@ -467,18 +474,25 @@ const LavashOptimistic = {
         if (anim) {
           const sv = hook.store.get(field);
           const phase = sv.getPhase();
-          const shouldPreserve = phase === "visible" || phase === "loading";
+          // Client thinks overlay is open — preserve content against stale server closes
+          const shouldPreserve = phase === "entering" || phase === "loading" || phase === "visible";
 
           if (shouldPreserve) {
             const fromHasInner = fromEl.querySelector(`#${innerId}`);
             const toHasInner = toEl.querySelector(`#${innerId}`);
 
             if (fromHasInner && !toHasInner) {
-              console.debug(`[LavashOptimistic] onBeforeElUpdated detected content removal for ${field}`);
-              if (anim.delegate?.createGhostBeforePatch) {
-                anim.delegate.createGhostBeforePatch(fromHasInner);
-              }
+              // Server wants to remove overlay content but client says it should be open.
+              // This is a stale server close — skip updating this element entirely to
+              // preserve the client content. The next server patch (with is_open=true)
+              // will update normally.
+              console.warn(`[LavashOptimistic] onBeforeElUpdated: PRESERVING content for ${field} (phase=${phase}, stale server close)`);
+              return false;
             }
+
+            // DIAGNOSTIC: Log all morphdom updates to the overlay content container during open phases,
+            // so we can see exactly what changes are being applied (or not).
+            console.warn(`[LavashOptimistic] onBeforeElUpdated: overlay ${field} (phase=${phase}): fromHasInner=${!!fromHasInner}, toHasInner=${!!toHasInner} → allowing update`);
           }
         }
       }
@@ -585,6 +599,7 @@ const LavashOptimistic = {
 
     // Run optimistic action for instant UI update
     // phx-click handles the server push automatically via LiveView
+    console.debug(`[LavashOptimistic] handleClick: action=${actionName}, isTrusted=${e.isTrusted}, target=`, target);
     this.runOptimisticAction(actionName, value);
 
     // Clear LiveView's element lock so rapid clicks on the same element work.
@@ -753,7 +768,7 @@ const LavashOptimistic = {
     const { field, value } = e.detail;
     if (!field) return;
 
-    console.debug("[LavashOptimistic] handleLavashSet", field, "=", value);
+    console.warn(`[LO] handleLavashSet: field=${field}, value=${JSON.stringify(value)}`);
 
     // Check if this field has an animated state (modal/flyover)
     if (this.animatedStates?.[field]) {
@@ -776,7 +791,10 @@ const LavashOptimistic = {
 
       // Track in SyncedVarStore if available
       if (this.store) {
-        const syncedVar = this.store.get(field, value);
+        // Use null as initial value so setOptimistic properly bumps
+        // the version when the SV is brand new, preventing stale server
+        // diffs from being accepted as confirmed.
+        const syncedVar = this.store.get(field, null);
         syncedVar.setOptimistic(value);
       }
 
@@ -1053,8 +1071,11 @@ const LavashOptimistic = {
       const changedFields = [];
       for (const [key, val] of Object.entries(delta)) {
         this.state[key] = val;
-        // Create/update SyncedVar for this field
-        const syncedVar = this.store.get(key, val, (newVal) => {
+        // Use null as initial value so setOptimistic properly bumps
+        // the version when the SV is brand new. Without this, the SV
+        // starts at v=0/cv=0 (appears confirmed) and a stale server diff
+        // can overwrite the client's optimistic close — causing bouncing.
+        const syncedVar = this.store.get(key, null, (newVal) => {
           this.state[key] = newVal;
         });
         syncedVar.setOptimistic(val);
@@ -1442,9 +1463,11 @@ const LavashOptimistic = {
   notifyChildren() {
     // Find all child hooks that bind to this parent
     const children = this.el.querySelectorAll("[phx-hook]");
+    console.warn(`[LO] notifyChildren: found ${children.length} child elements`);
     children.forEach(el => {
       const hook = el.__lavash_hook__;
       if (hook?.refreshFromParent) {
+        console.warn(`[LO] notifyChildren: refreshing child`, el.id || el.dataset.lavashModule);
         hook.refreshFromParent(this);
       }
     });
@@ -1464,14 +1487,14 @@ const LavashOptimistic = {
       const parentValue = parentHook.state[parentField];
       const localValue = this.state[localField];
 
+      console.warn(`[LO] refreshFromParent: ${localField} (from parent.${parentField}): parent=${JSON.stringify(parentValue)}, local=${JSON.stringify(localValue)}, changed=${parentValue !== localValue}`);
+
       if (parentValue !== localValue) {
         this.state[localField] = parentValue;
         changedFields.push(localField);
 
-        // All fields (including animated) live in the store.
-        // For animated fields, setOptimistic drives the phase machine automatically.
-        // For non-animated fields, it just tracks pending state.
-        const syncedVar = this.store.get(localField, parentValue, (newVal) => {
+        // Use null so setOptimistic properly bumps version on new SVs
+        const syncedVar = this.store.get(localField, null, (newVal) => {
           this.state[localField] = newVal;
         });
         syncedVar.setOptimistic(parentValue);
@@ -1497,9 +1520,9 @@ const LavashOptimistic = {
       const parentField = this.bindings[localField];
       if (parentField) {
         const value = this.state[localField];
+        console.warn(`[LO] propagateToParent: ${localField} → parent.${parentField} = ${JSON.stringify(value)}`);
 
         // Dispatch lavash-set event to parent
-        // The event bubbles up to the parent hook which handles it via handleLavashSet
         const event = new CustomEvent("lavash-set", {
           bubbles: true,
           detail: { field: parentField, value }
@@ -1557,6 +1580,15 @@ const LavashOptimistic = {
   updated() {
     const newServerVersion = parseInt(this.el.dataset.lavashVersion || "0", 10);
     const serverState = JSON.parse(this.el.dataset.lavashState || "{}");
+    const module = this.el.dataset.lavashModule || "?";
+
+    // Log animated field states from server
+    if (this.animatedStates) {
+      for (const field of Object.keys(this.animatedStates)) {
+        const sv = this.store.get(field);
+        console.warn(`[LO:${module}] updated() entry: field=${field}, serverVal=${JSON.stringify(serverState[field])}, clientVal=${JSON.stringify(sv.value)}, v=${sv.version}, cv=${sv.confirmedVersion}, phase=${sv.getPhase()}, closeProt=${!!sv._closeProtection}`);
+      }
+    }
 
     // Detect async fields that became ready (before store.serverUpdate overwrites old values)
     const asyncFieldsReady = this.detectAsyncFieldsReady(serverState);
@@ -1576,18 +1608,35 @@ const LavashOptimistic = {
       }
     }
 
+    // Capture pending paths BEFORE serverUpdate — serverUpdate may increment
+    // confirmedVersion (clearing pending state) while still rejecting the server
+    // value. Without this, mergeServerState would see "not pending" and overwrite
+    // this.state with the stale server value that the SyncedVar correctly rejected.
+    const pendingPaths = new Set(this.store.getPendingPaths());
+    if (pendingPaths.size > 0) {
+      console.warn(`[LO:${module}] updated() pendingPaths before serverUpdate:`, [...pendingPaths]);
+    }
+
     // Update all SyncedVars from server state.
-    // Animated vars always accept (server-authoritative). Plain vars reject when pending.
-    // The animated SyncedVar's onChange callback updates this.state automatically,
-    // and its phase machine fires from _handleValueChange.
+    console.warn(`[LO:${module}] updated() calling store.serverUpdate`);
     this.store.serverUpdate(serverState);
 
     // Track which _params fields were cleared by server (to skip re-init from DOM)
     this._clearedParamsFields = new Set();
 
     // Update this.state for non-store fields (nested objects, etc.)
-    const pendingPaths = new Set(this.store.getPendingPaths());
     this.mergeServerState(serverState, "", pendingPaths, [], isModalOpening);
+
+    // Ensure this.state matches SyncedVar values for all store-managed fields.
+    // SyncedVars are the source of truth — they may have rejected the server
+    // value (keeping the optimistic value) while mergeServerState accepted it.
+    for (const [path, sv] of Object.entries(this.store.vars)) {
+      const cur = this.getStateAtPath(path);
+      if (cur !== undefined && cur !== sv.value) {
+        console.warn(`[LO:${module}] SV override: ${path} state=${JSON.stringify(cur)} → sv=${JSON.stringify(sv.value)}`);
+        this.setStateAtPath(path, sv.value);
+      }
+    }
 
     // Update version tracking
     if (newServerVersion >= this.clientVersion) {
@@ -1656,11 +1705,26 @@ const LavashOptimistic = {
    * @param isModalOpening - true if a modal/overlay is opening in this update
    */
   mergeServerState(obj, prefix, pendingPaths, changedFields = [], isModalOpening = false) {
-    // Track changed fields at the top level only
+    // Build set of animated phase fields to skip (managed client-side, server always sends stale "idle")
+    if (!prefix && !this._animatedPhaseFields) {
+      this._animatedPhaseFields = new Set();
+      if (this.animatedStates) {
+        for (const anim of Object.values(this.animatedStates)) {
+          if (anim.config?.phaseField) {
+            this._animatedPhaseFields.add(anim.config.phaseField);
+          }
+        }
+      }
+    }
 
     for (const [key, value] of Object.entries(obj)) {
       const path = prefix ? `${prefix}.${key}` : key;
       const topLevelField = prefix ? prefix.split(".")[0] : key;
+
+      // Skip animated phase fields — they're managed by the SyncedVar phase machine,
+      // not by server state. The server always sends "idle" which would overwrite
+      // the client's actual phase (e.g., "visible", "entering").
+      if (!prefix && this._animatedPhaseFields?.has(key)) continue;
 
       // Check if this exact path or any child path is pending
       let hasPendingChild = [...pendingPaths].some(p => p === path || p.startsWith(path + "."));
