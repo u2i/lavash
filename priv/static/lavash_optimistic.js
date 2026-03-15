@@ -44,7 +44,7 @@
 
 import { SyncedVarStore } from "./synced_var.js";
 import { syncStateToUrl } from "./url_sync.js";
-import { parseGraph, addLeafDerive, recomputeGraph as _recomputeGraph } from "./graph.js";
+import { recomputeGraph as _recomputeGraph } from "./graph.js";
 import {
   setStateAtPath as _setStateAtPath,
   getStateAtPath as _getStateAtPath,
@@ -56,6 +56,7 @@ import { installGlobalDomCallback } from "./concerns/global_dom_callback.js";
 import { updateDOM as _updateDOM, notifyChildren as _notifyChildren } from "./concerns/dom_updater.js";
 import { refreshFromParent as _refreshFromParent, propagateBoundFieldsToParent as _propagateBoundFieldsToParent } from "./concerns/bindings.js";
 import { handleClick as _handleClick, runOptimisticAction as _runOptimisticAction } from "./concerns/optimistic_actions.js";
+import { loadGeneratedFunctions as _loadGeneratedFunctions } from "./concerns/function_loader.js";
 import {
   initAnimatedFields as _initAnimatedFields,
   captureBeforeUpdate,
@@ -277,67 +278,10 @@ const LavashOptimistic = {
   },
 
   loadGeneratedFunctions() {
-    // Load functions from the registry (populated by colocated JS imports in app.js)
-    // Functions are keyed by module name (e.g., "DemoWeb.CheckoutDemoLive")
-    const fnObj = this.moduleName ? (window.Lavash.optimistic[this.moduleName] || {}) : {};
-
-    this.fns = fnObj;
-    this.deriveNames = fnObj.__derives__ || [];
-
-    this.graph = parseGraph(fnObj.__graph__);
-
-    // Execute any component-generated optimistic scripts (LiveView doesn't auto-execute inline scripts)
-    this.executeComponentScripts();
-  },
-
-  executeComponentScripts() {
-    // Find all script tags with id ending in "-optimistic" (component-generated)
-    const scripts = this.el.querySelectorAll('script[id$="-optimistic"]');
-    scripts.forEach(script => {
-      // Skip the main functions script
-      if (script.id === "lavash-optimistic-fns") return;
-
-      try {
-        // Execute the script content (it's an IIFE that registers functions)
-        new Function(script.textContent)();
-      } catch (e) {
-        console.error(`[LavashOptimistic] Error executing component script ${script.id}:`, e);
-      }
-    });
-
-    // After executing component scripts, merge any registered functions into our local state
-    this.mergeRegisteredFunctions();
-  },
-
-  mergeRegisteredFunctions() {
-    if (!this.moduleName) return;
-
-    const moduleFns = window.Lavash.optimistic[this.moduleName];
-    if (!moduleFns) return;
-
-    // Merge functions
-    for (const [name, fn] of Object.entries(moduleFns)) {
-      if (typeof fn === 'function' && !this.fns[name]) {
-        this.fns[name] = fn;
-      }
-    }
-
-    // Merge derives
-    if (moduleFns.__derives__) {
-      for (const d of moduleFns.__derives__) {
-        if (!this.deriveNames.includes(d)) {
-          this.deriveNames.push(d);
-        }
-        // Add to graph if not present (component derives depend on their state field)
-        if (!this.graph.deps[d]) {
-          // Infer dependency from derive name pattern (e.g., "roast_chips" depends on "roast")
-          const match = d.match(/^(.+)_chips?$/);
-          if (match) {
-            addLeafDerive(this.graph, d, [match[1]]);
-          }
-        }
-      }
-    }
+    const result = _loadGeneratedFunctions(this.moduleName, this.el);
+    this.fns = result.fns;
+    this.deriveNames = result.deriveNames;
+    this.graph = result.graph;
   },
 
   handleClick(e) {
