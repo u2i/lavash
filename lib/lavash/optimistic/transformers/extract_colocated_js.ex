@@ -13,7 +13,7 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
   use Spark.Dsl.Transformer
 
   alias Lavash.Component.CompilerHelpers
-  alias Lavash.Optimistic.{ActionJs, StateJs}
+  alias Lavash.Optimistic.ActionJs
   alias Lavash.Form.ValidationJs
 
   # Run after all entities are defined but before compilation finishes
@@ -123,59 +123,27 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
   end
 
   defp generate_js_from_dsl(dsl_state, module) do
-    # Get entities from DSL state
     alias Spark.Dsl.Transformer
 
-    # Get multi_selects and toggles from states section
-    all_states = Transformer.get_entities(dsl_state, [:states]) || []
-    multi_selects = Enum.filter(all_states, &match?(%Lavash.State.MultiSelect{}, &1))
-    toggles = Enum.filter(all_states, &match?(%Lavash.State.Toggle{}, &1))
-
-    # Get actions (for optimistic action JS generation)
     actions = Transformer.get_entities(dsl_state, [:actions]) || []
-
-    # Filter to optimistic actions (exclude those handled by multi_select/toggle)
-    multi_select_names = Enum.map(multi_selects, & &1.name)
-    toggle_names = Enum.map(toggles, & &1.name)
-    excluded_names =
-      (Enum.map(multi_select_names, &:"toggle_#{&1}") ++
-       Enum.map(multi_select_names, &:"set_#{&1}") ++
-       Enum.map(toggle_names, &:"toggle_#{&1}") ++
-       Enum.map(toggle_names, &:"set_#{&1}"))
-      |> MapSet.new()
 
     optimistic_actions =
       actions
       |> Enum.filter(&ActionJs.action_is_optimistic?/1)
-      |> Enum.reject(&MapSet.member?(excluded_names, &1.name))
 
-    # Get calculations (only those with optimistic: true)
     calculations =
       (Transformer.get_entities(dsl_state, [:calculations]) || [])
       |> Enum.filter(& &1.optimistic)
 
-    # Get forms for validation generation
     forms = Transformer.get_entities(dsl_state, [:forms]) || []
-
-    # Get extend_errors
     extend_errors = Transformer.get_entities(dsl_state, [:extend_errors_declarations]) || []
-
-    # Get animated field configs (persisted by ExpandAnimatedStates transformer)
     animated_fields = Transformer.get_persisted(dsl_state, :lavash_animated_fields) || []
-
-    # Get defrx definitions from persisted state
-    # They are stored as {:lavash_defrx, name, arity} => {params, body_source}
     defrx_map = get_defrx_map(dsl_state)
 
-    # If nothing to generate, return nil
-    if multi_selects == [] and toggles == [] and calculations == [] and forms == [] and animated_fields == [] and optimistic_actions == [] do
+    if calculations == [] and forms == [] and animated_fields == [] and optimistic_actions == [] do
       nil
     else
-      # Use JsGenerator's internal logic to generate JS
-      # We need to call it with the module so it can access __lavash__ functions
-      # But since we're in a transformer, the module isn't compiled yet.
-      # So we need to generate the JS ourselves from the DSL state.
-      generate_js_code(multi_selects, toggles, calculations, forms, extend_errors, animated_fields, defrx_map, optimistic_actions, module)
+      generate_js_code(calculations, forms, extend_errors, animated_fields, defrx_map, optimistic_actions, module)
     end
   end
 
@@ -197,48 +165,28 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
     end
   end
 
-  defp generate_js_code(multi_selects, toggles, calculations, forms, extend_errors, animated_fields, defrx_map, optimistic_actions, _module) do
-    # Generate JS for each type
-    multi_select_action_fns = Enum.map(multi_selects, &StateJs.generate_multi_select_action_js/1)
-    multi_select_derive_fns = Enum.map(multi_selects, &StateJs.generate_multi_select_derive_js/1)
-    toggle_action_fns = Enum.map(toggles, &StateJs.generate_toggle_action_js/1)
-    toggle_derive_fns = Enum.map(toggles, &StateJs.generate_toggle_derive_js/1)
+  defp generate_js_code(calculations, forms, extend_errors, animated_fields, defrx_map, optimistic_actions, _module) do
     calculation_fns = Enum.map(calculations, &generate_calculation_js(&1, defrx_map)) |> Enum.filter(& &1)
-
-    # Generate JS for optimistic actions
     action_fns = Enum.map(optimistic_actions, &generate_action_js/1) |> Enum.filter(& &1)
 
-    # Generate form validation JS
     {form_validation_fns, form_error_fns, validation_derives, error_derives} =
       generate_form_validation_js(forms, extend_errors, defrx_map)
 
     fns =
       action_fns ++
-        multi_select_action_fns ++
-        multi_select_derive_fns ++
-        toggle_action_fns ++
-        toggle_derive_fns ++
         calculation_fns ++
         form_validation_fns ++
         form_error_fns
 
-    # Allow generating just animated metadata (for components with animated state)
     if fns == [] and animated_fields == [] do
       nil
     else
-      # Build derive names
-      multi_select_derive_names = Enum.map(multi_selects, fn ms -> "#{ms.name}_chips" end)
-      toggle_derive_names = Enum.map(toggles, fn t -> "#{t.name}_chip" end)
-
       calculation_derive_names =
         Enum.map(calculations, fn calc -> to_string(calc.name) end)
 
-      derive_names =
-        multi_select_derive_names ++
-          toggle_derive_names ++ calculation_derive_names ++ validation_derives ++ error_derives
+      derive_names = calculation_derive_names ++ validation_derives ++ error_derives
 
-      # Build graph entries
-      graph_entries = build_graph_entries(multi_selects, toggles, calculations, forms, extend_errors)
+      graph_entries = build_graph_entries(calculations, forms, extend_errors)
 
       # Build animated field metadata for JS
       # Format: [{ field: "open", phaseField: "open_phase", async: null, preserveDom: false, duration: 200 }, ...]
@@ -531,17 +479,7 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
     )
   end
 
-  defp build_graph_entries(multi_selects, toggles, calculations, forms, extend_errors) do
-    multi_select_entries =
-      Enum.map(multi_selects, fn ms ->
-        {"#{ms.name}_chips", %{deps: [to_string(ms.name)]}}
-      end)
-
-    toggle_entries =
-      Enum.map(toggles, fn t ->
-        {"#{t.name}_chip", %{deps: [to_string(t.name)]}}
-      end)
-
+  defp build_graph_entries(calculations, forms, extend_errors) do
     calculation_entries =
       Enum.map(calculations, fn calc ->
         deps =
@@ -624,7 +562,7 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
       end)
 
     deps_map =
-      (multi_select_entries ++ toggle_entries ++ calculation_entries ++ form_entries)
+      (calculation_entries ++ form_entries)
       |> Map.new()
 
     plain_deps = Map.new(deps_map, fn {name, %{deps: deps}} -> {name, deps} end)

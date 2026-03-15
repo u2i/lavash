@@ -106,15 +106,8 @@ defmodule Lavash.LiveView.Compiler do
       end
 
       # Introspection functions - entities from top_level? sections
-      # Note: This returns StateField structs, including synthetic ones from multi_select/toggle
       def __lavash__(:states) do
-        explicit_states = Spark.Dsl.Extension.get_entities(__MODULE__, [:states])
-                          |> Enum.filter(&match?(%Lavash.State.Field{}, &1))
-
-        multi_select_states = Lavash.LiveView.Compiler.generate_multi_select_states(__MODULE__)
-        toggle_states = Lavash.LiveView.Compiler.generate_toggle_states(__MODULE__)
-
-        explicit_states ++ multi_select_states ++ toggle_states
+        Spark.Dsl.Extension.get_entities(__MODULE__, [:states])
       end
 
       def __lavash__(:reads) do
@@ -145,10 +138,8 @@ defmodule Lavash.LiveView.Compiler do
         # - This runtime evaluation would need to be preserved or refactored
         declared_actions = Spark.Dsl.Extension.get_entities(__MODULE__, [:actions])
         setter_actions = Lavash.LiveView.Compiler.generate_setter_actions(__MODULE__)
-        multi_select_actions = Lavash.LiveView.Compiler.generate_multi_select_actions(__MODULE__)
-        toggle_actions = Lavash.LiveView.Compiler.generate_toggle_actions(__MODULE__)
         optimistic_actions = Lavash.LiveView.Compiler.generate_optimistic_actions(__MODULE__)
-        declared_actions ++ setter_actions ++ multi_select_actions ++ toggle_actions ++ optimistic_actions
+        declared_actions ++ setter_actions ++ optimistic_actions
       end
 
       # Convenience accessors by storage type
@@ -171,17 +162,6 @@ defmodule Lavash.LiveView.Compiler do
       def __lavash__(:optimistic_derives) do
         Spark.Dsl.Extension.get_entities(__MODULE__, [:derives])
         |> Enum.filter(&(Map.get(&1, :optimistic, false) == true))
-      end
-
-      # Multi-select and Toggle introspection
-      def __lavash__(:multi_selects) do
-        Spark.Dsl.Extension.get_entities(__MODULE__, [:states])
-        |> Enum.filter(&match?(%Lavash.State.MultiSelect{}, &1))
-      end
-
-      def __lavash__(:toggles) do
-        Spark.Dsl.Extension.get_entities(__MODULE__, [:states])
-        |> Enum.filter(&match?(%Lavash.State.Toggle{}, &1))
       end
 
       # Expose calculations for JsGenerator
@@ -272,73 +252,6 @@ defmodule Lavash.LiveView.Compiler do
     end)
   end
 
-  @doc """
-  Generate synthetic toggle actions for multi_select fields.
-  Each multi_select gets a toggle_<name> action that adds/removes values from the array.
-  """
-  def generate_multi_select_actions(module) do
-    module.__lavash__(:multi_selects)
-    |> Enum.map(fn ms ->
-      field_name = ms.name
-
-      %Lavash.Actions.Action{
-        name: :"toggle_#{ms.name}",
-        params: [:val],
-        when: [],
-        sets: [
-          %Lavash.Actions.Set{
-            field: field_name,
-            value: &toggle_in_list(Map.get(&1.state, field_name) || [], &1.params.val)
-          }
-        ],
-        updates: [],
-        effects: [],
-        submits: [],
-        navigates: [],
-        flashes: [],
-        invokes: []
-      }
-    end)
-  end
-
-  @doc """
-  Generate synthetic toggle actions for toggle fields.
-  Each toggle gets a toggle_<name> action that flips the boolean.
-  """
-  def generate_toggle_actions(module) do
-    module.__lavash__(:toggles)
-    |> Enum.map(fn toggle ->
-      field_name = toggle.name
-
-      %Lavash.Actions.Action{
-        name: :"toggle_#{toggle.name}",
-        params: [],
-        when: [],
-        sets: [],
-        updates: [
-          %Lavash.Actions.Update{
-            field: field_name,
-            fun: &(not &1)
-          }
-        ],
-        effects: [],
-        submits: [],
-        navigates: [],
-        flashes: [],
-        invokes: []
-      }
-    end)
-  end
-
-  defp toggle_in_list(list, value) when value in ["", nil], do: list
-
-  defp toggle_in_list(list, value) do
-    if value in list do
-      List.delete(list, value)
-    else
-      [value | list]
-    end
-  end
 
   @doc """
   Generate actions from optimistic_action macro definitions.
@@ -414,45 +327,5 @@ defmodule Lavash.LiveView.Compiler do
       []
     end
   end
-
-  # ============================================
-  # State generation for multi_select and toggle
-  # ============================================
-
-  @doc """
-  Generate synthetic state fields for multi_select declarations.
-  """
-  def generate_multi_select_states(module) do
-    module.__lavash__(:multi_selects)
-    |> Enum.map(fn ms ->
-      %Lavash.State.Field{
-        name: ms.name,
-        type: {:array, :string},
-        from: ms.from,
-        default: ms.default || [],
-        optimistic: true
-      }
-    end)
-  end
-
-  @doc """
-  Generate synthetic state fields for toggle declarations.
-  """
-  def generate_toggle_states(module) do
-    module.__lavash__(:toggles)
-    |> Enum.map(fn toggle ->
-      %Lavash.State.Field{
-        name: toggle.name,
-        type: :boolean,
-        from: toggle.from,
-        default: toggle.default || false,
-        optimistic: true
-      }
-    end)
-  end
-
-  # ============================================
-  # Derive generation for multi_select and toggle
-  # ============================================
 
 end

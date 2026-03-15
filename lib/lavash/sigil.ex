@@ -130,14 +130,10 @@ defmodule Lavash.Sigil do
         states
         |> Enum.filter(fn
           %Lavash.State.Field{} = f -> Lavash.State.Field.optimistic?(f)
-          %Lavash.State.MultiSelect{} -> true
-          %Lavash.State.Toggle{} -> true
           _ -> false
         end)
         |> Enum.map(fn
           %Lavash.State.Field{name: name} = field -> {name, field}
-          %Lavash.State.MultiSelect{name: name} = ms -> {name, %{name: name, type: {:array, :string}, optimistic: true, from: ms.from}}
-          %Lavash.State.Toggle{name: name} = toggle -> {name, %{name: name, type: :boolean, optimistic: true, from: toggle.from}}
         end)
         |> Map.new()
 

@@ -81,7 +81,6 @@ defmodule Lavash.ClientComponent do
       require Phoenix.LiveView.TagEngine
       require Phoenix.Component
       import Phoenix.Component
-      import Lavash.Component.Conveniences, only: [toggle: 1, toggle: 2, multi_select: 2, multi_select: 3]
       import Lavash.Template.RenderMacro
       import Lavash.Sigil, only: [sigil_L: 2]
 
@@ -90,8 +89,6 @@ defmodule Lavash.ClientComponent do
 
       Module.register_attribute(__MODULE__, :__lavash_calculations__, accumulate: true)
       Module.register_attribute(__MODULE__, :__lavash_optimistic_actions__, accumulate: true)
-      Module.register_attribute(__MODULE__, :__lavash_toggle_states__, accumulate: true)
-      Module.register_attribute(__MODULE__, :__lavash_multi_select_states__, accumulate: true)
       Module.register_attribute(__MODULE__, :__lavash_renders__, accumulate: true)
 
       @before_compile Lavash.ClientComponent.Compiler

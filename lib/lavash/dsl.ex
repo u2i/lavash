@@ -107,88 +107,11 @@ defmodule Lavash.Dsl do
   # Multi-select - convenience for array state with toggle action
   # ============================================
 
-  @multi_select_entity %Spark.Dsl.Entity{
-    name: :multi_select,
-    target: Lavash.State.MultiSelect,
-    args: [:name, :values],
-    schema: [
-      name: [
-        type: :atom,
-        required: true,
-        doc: "The name of the multi-select field"
-      ],
-      values: [
-        type: {:list, :string},
-        required: true,
-        doc: "The list of possible values"
-      ],
-      from: [
-        type: {:in, [:url, :socket, :ephemeral]},
-        default: :ephemeral,
-        doc: "Storage location: :url, :socket, or :ephemeral"
-      ],
-      default: [
-        type: {:list, :string},
-        default: [],
-        doc: "Default selected values"
-      ],
-      labels: [
-        type: {:map, :string, :string},
-        default: %{},
-        doc: "Map of value to display label, e.g. %{\"medium_dark\" => \"Med-Dark\"}"
-      ],
-      chip_class: [
-        type: :keyword_list,
-        doc: """
-        Custom chip class configuration. Keyword list with:
-        - base: base classes for all chips
-        - active: classes when selected
-        - inactive: classes when not selected
-        """
-      ]
-    ]
-  }
-
-  # ============================================
-  # Toggle - convenience for boolean state with toggle action
-  # ============================================
-
-  @toggle_entity %Spark.Dsl.Entity{
-    name: :toggle,
-    target: Lavash.State.Toggle,
-    args: [:name],
-    schema: [
-      name: [
-        type: :atom,
-        required: true,
-        doc: "The name of the toggle field"
-      ],
-      from: [
-        type: {:in, [:url, :socket, :ephemeral]},
-        default: :ephemeral,
-        doc: "Storage location: :url, :socket, or :ephemeral"
-      ],
-      default: [
-        type: :boolean,
-        default: false,
-        doc: "Default value"
-      ],
-      label: [
-        type: :string,
-        doc: "Display label for the toggle"
-      ],
-      chip_class: [
-        type: :keyword_list,
-        doc: "Custom chip class configuration (same as multi_select)"
-      ]
-    ]
-  }
-
   @states_section %Spark.Dsl.Section{
     name: :states,
     top_level?: true,
     describe: "Mutable state from external sources (URL, socket, ephemeral).",
-    entities: [@state_entity, @multi_select_entity, @toggle_entity]
+    entities: [@state_entity]
   }
 
   # ============================================

@@ -58,7 +58,6 @@ defmodule Lavash.Optimistic.Transformers.ExpandAnimatedStates do
     states = Transformer.get_entities(dsl_state, [:states]) || []
 
     # Only check StateField structs that have the animated field
-    # (MultiSelect and Toggle don't have animated support)
     animated_states =
       Enum.filter(states, fn state ->
         is_struct(state, Lavash.State.Field) and

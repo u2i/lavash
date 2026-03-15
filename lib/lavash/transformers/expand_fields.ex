@@ -23,12 +23,6 @@ defmodule Lavash.Transformers.ExpandFields do
   # Compile-time: extract specs and persist
   # ============================================================
 
-  @default_chip_class [
-    base: "px-3 py-1.5 text-sm rounded-full border transition-colors cursor-pointer",
-    active: "bg-primary text-primary-content border-primary",
-    inactive: "bg-base-100 text-base-content/70 border-base-300 hover:border-primary/50"
-  ]
-
   def transform(dsl_state) do
     module = Transformer.get_persisted(dsl_state, :module)
 
@@ -36,11 +30,7 @@ defmodule Lavash.Transformers.ExpandFields do
     read_specs = extract_read_specs(dsl_state)
     form_specs = extract_form_specs(dsl_state)
     calc_specs = extract_calc_specs(dsl_state, module)
-    multi_select_specs = extract_multi_select_specs(dsl_state)
-    toggle_specs = extract_toggle_specs(dsl_state)
-
-    specs = derive_specs ++ read_specs ++ form_specs ++ calc_specs ++
-            multi_select_specs ++ toggle_specs
+    specs = derive_specs ++ read_specs ++ form_specs ++ calc_specs
     dsl_state = Transformer.persist(dsl_state, :lavash_field_specs, specs)
 
     {:ok, dsl_state}
@@ -92,59 +82,6 @@ defmodule Lavash.Transformers.ExpandFields do
   end
 
   # --- Multi-select chip spec extraction ---
-
-  defp extract_multi_select_specs(dsl_state) do
-    states = Transformer.get_entities(dsl_state, [:states]) || []
-
-    states
-    |> Enum.filter(&match?(%Lavash.State.MultiSelect{}, &1))
-    |> Enum.map(fn ms ->
-      chip_class = ms.chip_class || @default_chip_class
-      base = Keyword.get(chip_class, :base, "")
-      active = Keyword.get(chip_class, :active, "")
-      inactive = Keyword.get(chip_class, :inactive, "")
-
-      %{
-        type: :multi_select_chip,
-        name: :"#{ms.name}_chips",
-        depends_on: [ms.name],
-        async: false,
-        reads: [],
-        optimistic: true,
-        field_name: ms.name,
-        values: ms.values,
-        active_class: String.trim("#{base} #{active}"),
-        inactive_class: String.trim("#{base} #{inactive}")
-      }
-    end)
-  end
-
-  # --- Toggle chip spec extraction ---
-
-  defp extract_toggle_specs(dsl_state) do
-    states = Transformer.get_entities(dsl_state, [:states]) || []
-
-    states
-    |> Enum.filter(&match?(%Lavash.State.Toggle{}, &1))
-    |> Enum.map(fn toggle ->
-      chip_class = toggle.chip_class || @default_chip_class
-      base = Keyword.get(chip_class, :base, "")
-      active = Keyword.get(chip_class, :active, "")
-      inactive = Keyword.get(chip_class, :inactive, "")
-
-      %{
-        type: :toggle_chip,
-        name: :"#{toggle.name}_chip",
-        depends_on: [toggle.name],
-        async: false,
-        reads: [],
-        optimistic: true,
-        field_name: toggle.name,
-        active_class: String.trim("#{base} #{active}"),
-        inactive_class: String.trim("#{base} #{inactive}")
-      }
-    end)
-  end
 
   # --- Read spec extraction ---
 
@@ -531,44 +468,6 @@ defmodule Lavash.Transformers.ExpandFields do
       reads: spec.reads,
       optimistic: spec.optimistic,
       compute: compute
-    }
-  end
-
-  defp spec_to_field(%{type: :multi_select_chip} = spec, _module) do
-    field_name = spec.field_name
-    values = spec.values
-    active_class = spec.active_class
-    inactive_class = spec.inactive_class
-
-    %Lavash.Derived.Field{
-      name: spec.name,
-      depends_on: spec.depends_on,
-      async: false,
-      optimistic: true,
-      compute: fn deps ->
-        selected = Map.get(deps, field_name) || []
-        Map.new(values, fn value ->
-          class = if value in selected, do: active_class, else: inactive_class
-          {value, class}
-        end)
-      end
-    }
-  end
-
-  defp spec_to_field(%{type: :toggle_chip} = spec, _module) do
-    field_name = spec.field_name
-    active_class = spec.active_class
-    inactive_class = spec.inactive_class
-
-    %Lavash.Derived.Field{
-      name: spec.name,
-      depends_on: spec.depends_on,
-      async: false,
-      optimistic: true,
-      compute: fn deps ->
-        active = Map.get(deps, field_name)
-        if active, do: active_class, else: inactive_class
-      end
     }
   end
 
