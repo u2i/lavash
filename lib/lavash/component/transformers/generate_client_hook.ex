@@ -91,6 +91,7 @@ defmodule Lavash.Component.Transformers.GenerateClientHook do
         |> Enum.map(fn calc ->
           {calc.name, calc.rx.source, calc.rx.ast, calc.rx.deps}
         end)
+        |> topo_sort_calculations()
 
       # Convert DSL actions to JS action specs
       action_specs = actions_to_js_specs(optimistic_actions)
@@ -188,6 +189,19 @@ defmodule Lavash.Component.Transformers.GenerateClientHook do
         |> Enum.filter(& &1.transform_source)
 
       set_specs ++ update_specs ++ map_by_specs
+    end)
+  end
+
+  defp topo_sort_calculations(calcs) do
+    deps_map = Map.new(calcs, fn {name, _, _, deps} -> {name, deps} end)
+    sorted = Lavash.Graph.topo_sort(deps_map)
+
+    sorted
+    |> Enum.flat_map(fn name ->
+      case Enum.find(calcs, fn {n, _, _, _} -> n == name end) do
+        nil -> []
+        calc -> [calc]
+      end
     end)
   end
 

@@ -144,22 +144,23 @@ export function createClientComponentHook({ fns = {}, graph = {}, render, valida
 
       const action = target.dataset.lavashAction;
       const field = target.dataset.lavashStateField;
-      const value = target.dataset.lavashValue;
+      let value = target.dataset.lavashValue;
 
-      if (action === "add" && !value) return;
-
-      e.stopPropagation();
-
-      // Set phx-value-* params on state so rx() expressions can read them
-      // e.g., phx-value-val="x" → state.val = "x" → @val in rx() works
+      // Extract phx-value-* params and set on state
       const params = {};
       for (const attr of target.attributes) {
         if (attr.name.startsWith("phx-value-")) {
           const paramName = attr.name.slice("phx-value-".length);
           params[paramName] = attr.value;
           this.state[paramName] = attr.value;
+          // Use first phx-value-* as fallback for value (keyed actions)
+          if (value === undefined) value = attr.value;
         }
       }
+
+      if (action === "add" && !value) return;
+
+      e.stopPropagation();
 
       if (!this._validateAction(action, field, value, undefined, this.state)) return;
 
