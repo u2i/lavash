@@ -264,7 +264,7 @@ defmodule Lavash.LiveView.Helpers do
   """
   attr(:module, :atom, required: true, doc: "The Lavash component module")
   attr(:id, :string, required: true, doc: "The component ID (used for state namespacing)")
-  attr(:rest, :global, include: ~w(bind items item_count count open selected values labels active active_class inactive_class label product_id value on_label off_label disabled placeholder max_tags tag_class input_class tags), doc: "Additional assigns passed to the component")
+  attr(:rest, :global, doc: "All additional assigns passed through to the component")
 
   def lavash_component(assigns) do
     # Get component states from process dictionary (set by parent during render)
@@ -272,12 +272,13 @@ defmodule Lavash.LiveView.Helpers do
     initial_state = Map.get(component_states, assigns.id, %{})
 
     # Inherit current_user from parent for actor-based authorization
-    # This allows child components to use Ash authorization automatically
     current_user = assigns[:current_user]
 
-    # Build the assigns for live_component
+    # Build the assigns for live_component — pass ALL extra assigns through
     component_assigns =
-      assigns.rest
+      assigns
+      |> Map.drop([:__changed__, :__given__, :module, :id, :rest])
+      |> Map.merge(assigns.rest)
       |> Map.put(:module, assigns.module)
       |> Map.put(:id, assigns.id)
       |> Map.put(:__lavash_initial_state__, initial_state)

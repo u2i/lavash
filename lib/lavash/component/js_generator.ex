@@ -2,7 +2,7 @@ defmodule Lavash.Component.JsGenerator do
   @moduledoc """
   Generates JS hook code for components with optimistic client-side rendering.
 
-  Produces a `createClientComponentHook(...)` call with render function,
+  Produces a `createComponentHook(...)` call with render function,
   calculation functions, dependency graph, and action handlers — all
   transpiled from the component's `~L` template and DSL declarations.
   """
@@ -178,9 +178,9 @@ defmodule Lavash.Component.JsGenerator do
     action_js = generate_action_js(actions)
 
     ~s"""
-    import { createClientComponentHook, humanize } from "lavash/client_component.js";
+    import { createComponentHook, humanize } from "lavash/component_hook.js";
 
-    export default createClientComponentHook({
+    export default createComponentHook({
       fns: #{calc_fns_js},
       graph: #{graph_js},
       render(state) {

@@ -22,7 +22,7 @@ function humanize(value) {
  * @param {Function} opts.validateAction - (action, field, value, arg, state) => boolean
  * @param {Function} opts.applyOptimisticAction - (action, field, value, arg, state) => void
  */
-export function createClientComponentHook({ fns = {}, graph = {}, render, validateAction, applyOptimisticAction }) {
+export function createComponentHook({ fns = {}, graph = {}, render, validateAction, applyOptimisticAction }) {
   return {
     mounted() {
       const initialState = JSON.parse(this.el.dataset.lavashState || "{}");
@@ -264,4 +264,4 @@ export function createClientComponentHook({ fns = {}, graph = {}, render, valida
 export { humanize };
 
 window.Lavash = window.Lavash || {};
-window.Lavash.createClientComponentHook = createClientComponentHook;
+window.Lavash.createComponentHook = createComponentHook;

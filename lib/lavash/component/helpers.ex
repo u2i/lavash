@@ -138,7 +138,7 @@ defmodule Lavash.Component.Helpers do
   attr :myself, :any, required: true, doc: "The parent component's @myself"
   attr :bind, :list, default: nil
   attr :__lavash_client_bindings__, :map, default: %{}, doc: "Auto-injected by ~L sigil"
-  attr :rest, :global, include: ~w(items count open)
+  attr :rest, :global
 
   def child_component(assigns) do
     # Get parent's client bindings from assigns (set by Lavash.Component runtime)
