@@ -94,9 +94,8 @@ defmodule DemoWeb.Storefront.AddressEditModal do
         <.input field={@address_form[:phone]} label="Phone (optional)" type="tel" />
 
         <div class="flex gap-3 pt-4 border-t">
-          <button type="submit" data-lavash-enabled="address_form_valid" phx-disable-with="Saving..."
-            class="flex-1 btn btn-disabled"
-            data-lavash-toggle="address_form_valid|btn-primary|btn-disabled">
+          <button type="submit" disabled={not @address_form_valid} phx-disable-with="Saving..."
+            class={"flex-1 btn " <> if(@address_form_valid, do: "btn-primary", else: "btn-disabled")}>
             {if @address_form_action == :create, do: "Save address", else: "Update address"}
           </button>
           <button type="button" phx-click="close" class="btn btn-outline">Cancel</button>

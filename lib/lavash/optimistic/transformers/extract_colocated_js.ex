@@ -140,10 +140,18 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
     animated_fields = Transformer.get_persisted(dsl_state, :lavash_animated_fields) || []
     defrx_map = get_defrx_map(dsl_state)
 
-    if calculations == [] and forms == [] and animated_fields == [] and optimistic_actions == [] do
+    # Read reactive attribute derives accumulated by the ~L sigil
+    attr_derives =
+      try do
+        Module.get_attribute(module, :__lavash_attr_derives__) || []
+      rescue
+        _ -> []
+      end
+
+    if calculations == [] and forms == [] and animated_fields == [] and optimistic_actions == [] and attr_derives == [] do
       nil
     else
-      generate_js_code(calculations, forms, extend_errors, animated_fields, defrx_map, optimistic_actions, module)
+      generate_js_code(calculations, forms, extend_errors, animated_fields, defrx_map, optimistic_actions, attr_derives, module)
     end
   end
 
@@ -165,18 +173,22 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
     end
   end
 
-  defp generate_js_code(calculations, forms, extend_errors, animated_fields, defrx_map, optimistic_actions, _module) do
+  defp generate_js_code(calculations, forms, extend_errors, animated_fields, defrx_map, optimistic_actions, attr_derives, _module) do
     calculation_fns = Enum.map(calculations, &generate_calculation_js(&1, defrx_map)) |> Enum.filter(& &1)
     action_fns = Enum.map(optimistic_actions, &generate_action_js/1) |> Enum.filter(& &1)
 
     {form_validation_fns, form_error_fns, validation_derives, error_derives} =
       generate_form_validation_js(forms, extend_errors, defrx_map)
 
+    # Generate attr derive functions
+    attr_derive_fns = Enum.map(attr_derives, &generate_attr_derive_js/1)
+
     fns =
       action_fns ++
         calculation_fns ++
         form_validation_fns ++
-        form_error_fns
+        form_error_fns ++
+        attr_derive_fns
 
     if fns == [] and animated_fields == [] do
       nil
@@ -184,9 +196,28 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
       calculation_derive_names =
         Enum.map(calculations, fn calc -> to_string(calc.name) end)
 
-      derive_names = calculation_derive_names ++ validation_derives ++ error_derives
+      attr_derive_names = Enum.map(attr_derives, fn d -> d.name end)
+
+      derive_names = calculation_derive_names ++ validation_derives ++ error_derives ++ attr_derive_names
 
       graph_entries = build_graph_entries(calculations, forms, extend_errors)
+
+      # Add attr derives to the graph
+      graph_entries =
+        Enum.reduce(attr_derives, graph_entries, fn derive, graph ->
+          deps = derive.deps
+          name = derive.name
+
+          updated_deps = Map.put(graph.deps, name, %{deps: deps})
+
+          updated_dependents =
+            Enum.reduce(deps, graph.dependents, fn dep, acc ->
+              Map.update(acc, dep, [name], fn existing -> [name | existing] end)
+            end)
+
+          updated_topo = graph.topo_order ++ [name]
+          %{graph | deps: updated_deps, dependents: updated_dependents, topo_order: updated_topo}
+        end)
 
       # Build animated field metadata for JS
       # Format: [{ field: "open", phaseField: "open_phase", async: null, preserveDom: false, duration: 200 }, ...]
@@ -283,6 +314,14 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
   end
 
   defp generate_update_js(update), do: ActionJs.generate_update_js(update)
+
+  defp generate_attr_derive_js(%{name: name, js_expr: js_expr}) do
+    """
+      #{name}(state) {
+        return #{js_expr};
+      }
+    """
+  end
 
   defp generate_calculation_js(calc, defrx_map) do
     name = calc.name

@@ -66,6 +66,30 @@ export function updateDOM(rootEl, state, opts) {
     el.classList.add(...classesToAdd);
   }
 
+  // data-lavash-attr-disabled: set disabled from reactive derive
+  for (const el of rootEl.querySelectorAll("[data-lavash-attr-disabled]")) {
+    if (isInsideChildHook(el, rootEl)) continue;
+    const deriveName = el.dataset.lavashAttrDisabled;
+    const value = state[deriveName];
+    if (value !== undefined) el.disabled = !!value;
+  }
+
+  // data-lavash-attr-class: set full className from reactive derive
+  for (const el of rootEl.querySelectorAll("[data-lavash-attr-class]")) {
+    if (isInsideChildHook(el, rootEl)) continue;
+    const deriveName = el.dataset.lavashAttrClass;
+    const value = state[deriveName];
+    if (value !== undefined) el.className = value;
+  }
+
+  // data-lavash-attr-hidden: set hidden from reactive derive
+  for (const el of rootEl.querySelectorAll("[data-lavash-attr-hidden]")) {
+    if (isInsideChildHook(el, rootEl)) continue;
+    const deriveName = el.dataset.lavashAttrHidden;
+    const value = state[deriveName];
+    if (value !== undefined) el.hidden = !!value;
+  }
+
   // data-lavash-errors: error messages (only shown when touched/submitted)
   for (const el of rootEl.querySelectorAll("[data-lavash-errors]")) {
     if (isInsideChildHook(el, rootEl)) continue;

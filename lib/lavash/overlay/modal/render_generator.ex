@@ -62,6 +62,9 @@ defmodule Lavash.Overlay.Modal.RenderGenerator do
       end)
       |> Jason.encode!()
 
+    # Check if this component has a client hook (for client-side form validation etc.)
+    client_hook_name = Spark.Dsl.Extension.get_persisted(module, :lavash_client_hook_name)
+
     # Generate code to define render_fn based on template type
     # For render AST, we compile in the module's context
     render_fn_code = generate_render_fn_code(render_template, :modal_render_template, module)
@@ -124,6 +127,7 @@ defmodule Lavash.Overlay.Modal.RenderGenerator do
           |> Phoenix.Component.assign(:__lavash_version__, version)
           |> Phoenix.Component.assign(:__lavash_animated__, unquote(animated_json))
           |> Phoenix.Component.assign(:__lavash_bindings__, bindings_json)
+          |> Phoenix.Component.assign(:__client_hook_name__, unquote(client_hook_name))
 
         ~H"""
         <div
@@ -151,12 +155,29 @@ defmodule Lavash.Overlay.Modal.RenderGenerator do
             <:loading>
               {@__modal_loading__.(assigns)}
             </:loading>
-            <Lavash.Overlay.Modal.Helpers.modal_content
-              assigns={assigns}
-              async_assign={@__modal_async_assign__}
-              render={@__modal_render__}
-              loading={@__modal_loading__}
-            />
+            <%= if @__client_hook_name__ do %>
+              <div
+                id={"#{@id}-content-hook"}
+                phx-hook={@__client_hook_name__}
+                data-lavash-state={@__lavash_state__}
+                data-lavash-version={@__lavash_version__}
+                data-lavash-bindings={@__lavash_bindings__}
+              >
+                <Lavash.Overlay.Modal.Helpers.modal_content
+                  assigns={assigns}
+                  async_assign={@__modal_async_assign__}
+                  render={@__modal_render__}
+                  loading={@__modal_loading__}
+                />
+              </div>
+            <% else %>
+              <Lavash.Overlay.Modal.Helpers.modal_content
+                assigns={assigns}
+                async_assign={@__modal_async_assign__}
+                render={@__modal_render__}
+                loading={@__modal_loading__}
+              />
+            <% end %>
           </.modal_chrome>
         </div>
         """

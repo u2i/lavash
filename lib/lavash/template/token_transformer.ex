@@ -193,6 +193,7 @@ defmodule Lavash.Template.TokenTransformer do
     |> maybe_inject_state_binding(name, metadata)
     |> maybe_inject_visibility(metadata)
     |> maybe_inject_enabled(metadata)
+    |> maybe_inject_reactive_attrs(metadata)
     |> maybe_inject_client_component_action(metadata)
   end
 
@@ -345,7 +346,6 @@ defmodule Lavash.Template.TokenTransformer do
           case parse_negated_field(expr) do
             {:ok, field_name} ->
               field_atom = String.to_atom(field_name)
-
               if is_optimistic_boolean?(field_atom, metadata) do
                 add_attr_if_missing(attrs, "data-lavash-enabled", {:string, field_name})
               else
@@ -360,6 +360,113 @@ defmodule Lavash.Template.TokenTransformer do
           attrs
       end
     end
+  end
+
+  # Pattern 7: General reactive attribute binding
+  # Detects expression attributes that reference optimistic fields/derives
+  # and generates attr derives + data-lavash-attr-* annotations.
+  defp maybe_inject_reactive_attrs(attrs, metadata) do
+    caller_module = metadata[:caller_module]
+    if is_nil(caller_module), do: throw(:no_module)
+
+    # Check each supported attribute for reactive expressions
+    Enum.reduce(["disabled", "class", "hidden"], attrs, fn attr_name, acc ->
+      lavash_attr = "data-lavash-attr-#{attr_name}"
+
+      if has_attr?(acc, lavash_attr) do
+        acc
+      else
+        val = get_attr_value(acc, attr_name)
+        case val do
+          {:expr, expr, _meta} ->
+            maybe_generate_attr_derive(acc, attr_name, expr, lavash_attr, metadata, caller_module)
+          _ ->
+            acc
+        end
+      end
+    end)
+  catch
+    :no_module -> attrs
+  end
+
+  defp maybe_generate_attr_derive(attrs, attr_name, expr, lavash_attr, metadata, caller_module) do
+    # Extract @field references from the expression
+    deps = extract_reactive_deps(expr, metadata)
+
+    if deps != [] do
+      # Try to transpile the expression to JS
+      # Wrap in a function-like source for the Rx transpiler
+      elixir_source = normalize_attr_expr(expr)
+
+      case transpile_attr_expr(elixir_source) do
+        {:ok, js_expr} ->
+          # Generate unique derive name
+          counter = next_attr_derive_counter()
+          derive_name = "__attr_#{counter}_#{attr_name}"
+
+          # Register the derive in the module attribute
+          Module.put_attribute(caller_module, :__lavash_attr_derives__, %{
+            name: derive_name,
+            js_expr: js_expr,
+            deps: deps,
+            attr: attr_name
+          })
+
+          # Annotate the element
+          add_attr_if_missing(attrs, lavash_attr, {:string, derive_name})
+
+        :error ->
+          attrs
+      end
+    else
+      attrs
+    end
+  end
+
+  # Extract optimistic field references from an expression string
+  defp extract_reactive_deps(expr, metadata) do
+    optimistic_fields = metadata[:optimistic_fields] || %{}
+    optimistic_derives = metadata[:optimistic_derives] || %{}
+    calculations = metadata[:calculations] || %{}
+    all = Map.merge(optimistic_fields, Map.merge(optimistic_derives, calculations))
+
+    Regex.scan(~r/@(\w+)/, expr)
+    |> Enum.map(fn [_, field] -> String.to_atom(field) end)
+    |> Enum.filter(&is_map_key(all, &1))
+    |> Enum.uniq()
+    |> Enum.map(&to_string/1)
+  end
+
+  # Normalize Elixir attribute expression for transpilation
+  defp normalize_attr_expr(expr) do
+    # Replace @field with state.field for Rx transpiler
+    String.trim(expr)
+  end
+
+  # Transpile an attribute expression to JS
+  defp transpile_attr_expr(expr) do
+    try do
+      # Parse the Elixir expression
+      {:ok, ast} = Code.string_to_quoted(expr)
+
+      # Use Rx transpiler
+      js = Lavash.Rx.Transpiler.to_js(expr)
+
+      if js && !String.contains?(js, "undefined /* untranspilable") do
+        {:ok, js}
+      else
+        :error
+      end
+    rescue
+      _ -> :error
+    end
+  end
+
+  # Counter for unique derive names within a compilation
+  defp next_attr_derive_counter do
+    counter = Process.get(:__lavash_attr_derive_counter__, 0)
+    Process.put(:__lavash_attr_derive_counter__, counter + 1)
+    counter
   end
 
   # Pattern 6: ClientComponent actions (inject data-lavash-state-field)

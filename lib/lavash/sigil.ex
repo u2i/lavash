@@ -53,8 +53,13 @@ defmodule Lavash.Sigil do
     # Detect context from module type attribute
     context = detect_context(module)
 
-    # Build metadata for token transformation
-    metadata = build_metadata(module, context)
+    # Register accumulator for reactive attribute derives
+    unless Module.has_attribute?(module, :__lavash_attr_derives__) do
+      Module.register_attribute(module, :__lavash_attr_derives__, accumulate: true)
+    end
+
+    # Build metadata for token transformation, include caller module for attr derive registration
+    metadata = build_metadata(module, context) |> Map.put(:caller_module, module)
 
     # Compile with Lavash.TagEngine and token transformer
     compiled = compile_template(template, caller, metadata)
@@ -199,11 +204,27 @@ defmodule Lavash.Sigil do
         end)
         |> Map.new()
 
+      # Build form validation derives — the form system generates
+      # {form}_valid, {form}_{field}_valid, {form}_{field}_errors etc.
+      form_derives =
+        forms
+        |> Enum.flat_map(fn form ->
+          [{:"#{form.name}_valid", %{optimistic: true}}]
+        end)
+        |> Map.new()
+
+      # Get explicit calculations from Spark
+      calculations =
+        (Spark.Dsl.Extension.get_entities(module, [:calculations]) || [])
+        |> Enum.filter(&Map.get(&1, :optimistic, true))
+        |> Enum.map(fn calc -> {calc.name, %{optimistic: true}} end)
+        |> Map.new()
+
       %{
         context: context,
         optimistic_fields: optimistic_fields,
-        optimistic_derives: %{},
-        calculations: %{},
+        optimistic_derives: form_derives,
+        calculations: calculations,
         forms: forms_map,
         actions: actions_map,
         optimistic_actions: optimistic_actions_map
