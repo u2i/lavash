@@ -45,6 +45,7 @@ defmodule Lavash.Template.TokenTransformer do
 
     tokens
     |> Enum.map(&transform_token(&1, metadata, state))
+    |> maybe_inject_display_attrs(metadata)
   end
 
   # Transform individual tokens
@@ -68,6 +69,88 @@ defmodule Lavash.Template.TokenTransformer do
   end
 
   defp transform_token(token, _metadata, _state), do: token
+
+  # ===========================================================================
+  # Display injection — data-lavash-display on elements with {@field} content
+  # ===========================================================================
+
+  # Scans token pairs: when a tag is followed by an expression referencing
+  # an optimistic field, inject data-lavash-display on the tag.
+  defp maybe_inject_display_attrs(tokens, metadata) do
+    optimistic_fields = metadata[:optimistic_fields] || %{}
+    optimistic_derives = metadata[:optimistic_derives] || %{}
+    calculations = metadata[:calculations] || %{}
+    all_optimistic = Map.merge(optimistic_fields, Map.merge(optimistic_derives, calculations))
+
+    if map_size(all_optimistic) == 0 do
+      tokens
+    else
+      do_inject_display(tokens, all_optimistic, [])
+    end
+  end
+
+  defp do_inject_display([], _fields, acc), do: Enum.reverse(acc)
+
+  # Pattern: {:tag, ...} followed by {:expr, "@field"} — inject display attr
+  # Pattern: tag, optional whitespace, then {@field} expression
+  defp do_inject_display(
+         [{:tag, name, attrs, meta} | rest],
+         fields,
+         acc
+       ) do
+    {ws_tokens, after_ws} = split_leading_whitespace(rest)
+
+    case after_ws do
+      [{:expr, expr, _} = expr_token | after_expr] ->
+        field_name = extract_optimistic_field_ref(expr, fields)
+
+        if field_name && !has_attr?(attrs, "data-lavash-display") && !has_attr?(attrs, "data-lavash-manual") do
+          new_attrs = attrs ++ [{"data-lavash-display", {:string, field_name}}]
+          remaining = ws_tokens ++ [expr_token | after_expr]
+          do_inject_display(remaining, fields, [{:tag, name, new_attrs, meta} | acc])
+        else
+          remaining = ws_tokens ++ [expr_token | after_expr]
+          do_inject_display(remaining, fields, [{:tag, name, attrs, meta} | acc])
+        end
+
+      _ ->
+        do_inject_display(rest, fields, [{:tag, name, attrs, meta} | acc])
+    end
+  end
+
+  defp do_inject_display([token | rest], fields, acc) do
+    do_inject_display(rest, fields, [token | acc])
+  end
+
+  defp split_leading_whitespace(tokens) do
+    split_leading_whitespace(tokens, [])
+  end
+
+  defp split_leading_whitespace([{:text, text} = t | rest], ws) do
+    if String.trim(text) == "" do
+      split_leading_whitespace(rest, ws ++ [t])
+    else
+      {ws, [{:text, text} | rest]}
+    end
+  end
+
+  defp split_leading_whitespace(tokens, ws), do: {ws, tokens}
+
+  # Extract field name from expression like "@total_display" or "@count"
+  defp extract_optimistic_field_ref(expr, fields) do
+    trimmed = String.trim(expr)
+
+    case Regex.run(~r/^@(\w+)$/, trimmed) do
+      [_, field_str] ->
+        field_atom = String.to_existing_atom(field_str)
+        if is_map_key(fields, field_atom), do: field_str, else: nil
+
+      _ ->
+        nil
+    end
+  rescue
+    ArgumentError -> nil
+  end
 
   # ===========================================================================
   # Component Transformations (__lavash_client_bindings__)
