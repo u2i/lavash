@@ -64,9 +64,13 @@ defmodule DemoWeb.LiveUserAuth do
 
   defp assign_user_from_session(socket, session) do
     assign_new(socket, :current_user, fn ->
-      if user_token = session["user_token"] do
-        case AshAuthentication.subject_to_user(user_token, Demo.Accounts.User) do
-          {:ok, user} -> user
+      if token = session["user_token"] do
+        with {:ok, %{"sub" => subject}, _resource} <-
+               AshAuthentication.Jwt.verify(token, :demo),
+             {:ok, user} <-
+               AshAuthentication.subject_to_user(subject, Demo.Accounts.User) do
+          user
+        else
           _ -> nil
         end
       end

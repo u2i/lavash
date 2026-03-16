@@ -14,12 +14,13 @@ defmodule Lavash.Optimistic.ActionJs do
   """
   def action_is_optimistic?(action) do
     has_set_or_update = (action.sets || []) != [] or (action.updates || []) != []
+    has_map_by = (action.map_bys || []) != []
 
     runs = action.runs || []
     reads = action.reads || []
     has_transpilable_runs = runs != [] and reads != []
 
-    has_set_or_update or has_transpilable_runs
+    has_set_or_update or has_map_by or has_transpilable_runs
   end
 
   @doc """

@@ -76,7 +76,7 @@ defmodule Lavash.Component.Runtime do
                         socket
                         |> init_lavash_state(module, assigns)
                         |> hydrate_socket_state(module, assigns)
-                        |> hydrate_ephemeral(module)
+                        |> hydrate_ephemeral(module, assigns)
                         |> State.hydrate_forms(module)
                         |> store_props(module, assigns)
                         |> resolve_bindings(module, assigns)
@@ -84,7 +84,8 @@ defmodule Lavash.Component.Runtime do
                         |> Reactive.recompute_all()
                         |> Assigns.project(module)
                       else
-                        # Subsequent update - store props (marks changed props as dirty)
+                        # Subsequent update - sync ephemeral fields from parent, store props
+                        socket = hydrate_ephemeral(socket, module, assigns)
                         socket = store_props(socket, module, assigns)
                         socket = resolve_bindings(socket, module, assigns)
                         socket = preserve_livecomponent_assigns(socket, module, assigns)
@@ -466,14 +467,26 @@ defmodule Lavash.Component.Runtime do
   end
 
   defp hydrate_ephemeral(socket, module) do
+    hydrate_ephemeral(socket, module, %{})
+  end
+
+  defp hydrate_ephemeral(socket, module, assigns) do
     ephemeral_fields = module.__lavash__(:ephemeral_fields)
     current_state = LSocket.state(socket)
 
     Enum.reduce(ephemeral_fields, socket, fn field, sock ->
-      if Map.has_key?(current_state, field.name) do
-        sock
-      else
-        LSocket.put_state(sock, field.name, field.default)
+      cond do
+        # Parent explicitly passed this field as an assign — use it
+        Map.has_key?(assigns, field.name) ->
+          LSocket.put_state(sock, field.name, Map.get(assigns, field.name))
+
+        # Already in state (from a previous update) — keep it
+        Map.has_key?(current_state, field.name) ->
+          sock
+
+        # Not in state yet, no parent value — use default
+        true ->
+          LSocket.put_state(sock, field.name, field.default)
       end
     end)
   end

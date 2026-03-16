@@ -43,7 +43,7 @@ defmodule DemoWeb.CartFlyover do
       <.child_component
         module={DemoWeb.Components.CartItemList}
         id="cart-item-list"
-        bind={[items: :cart_items_json, open: :open]}
+        bind={[items: :items, open: :open]}
         items={@items}
         open={@open}
         myself={@myself}

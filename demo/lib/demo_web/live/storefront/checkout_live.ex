@@ -279,9 +279,20 @@ defmodule DemoWeb.Storefront.CheckoutLive do
     cart_id =
       if user do
         case Cart |> Ash.Query.for_read(:for_user, %{user_id: user.id}) |> Ash.read_one() do
-          {:ok, nil} -> nil
-          {:ok, cart} -> cart.id
-          _ -> nil
+          {:ok, nil} ->
+            # Create cart if none exists
+            {:ok, cart} =
+              Cart
+              |> Ash.Changeset.for_create(:create, %{}, actor: user)
+              |> Ash.create()
+
+            cart.id
+
+          {:ok, cart} ->
+            cart.id
+
+          _ ->
+            nil
         end
       end
 

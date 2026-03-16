@@ -75,7 +75,7 @@ defmodule Demo.Cart.CartItem do
 
     read :for_cart do
       argument :cart_id, :uuid, allow_nil?: true
-      filter expr(is_nil(^arg(:cart_id)) or cart_id == ^arg(:cart_id))
+      filter expr(not is_nil(^arg(:cart_id)) and cart_id == ^arg(:cart_id))
       prepare build(load: [:product, :line_total])
     end
   end
