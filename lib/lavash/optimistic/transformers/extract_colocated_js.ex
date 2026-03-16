@@ -393,7 +393,12 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
         skip_constraints = form.skip_constraints || []
 
         if resource_available?(resource) do
-          validations = Lavash.Form.ConstraintTranspiler.extract_validations(resource)
+          action = Ash.Resource.Info.action(resource, create_action)
+          accepted = if action, do: action.accept || [], else: []
+
+          validations =
+            Lavash.Form.ConstraintTranspiler.extract_validations(resource)
+            |> Enum.filter(fn v -> accepted == [] or v.field in accepted end)
 
           # Get Ash validations with custom messages
           ash_validations = Lavash.Form.ValidationTranspiler.extract_validations_for_action(resource, create_action)

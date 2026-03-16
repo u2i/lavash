@@ -31,6 +31,18 @@ defmodule DemoWeb.Storefront.AddressEditModal do
     update :update
   end
 
+  calculate :address_form_valid,
+            rx(
+              @address_form_params != nil and
+                @address_form_params["first_name"] != "" and
+                @address_form_params["last_name"] != "" and
+                @address_form_params["address"] != "" and
+                @address_form_params["city"] != "" and
+                @address_form_params["state"] != "" and
+                @address_form_params["zip"] != "" and
+                @address_form_params["country"] != ""
+            )
+
   actions do
     action :save do
       submit :address_form, on_success: :on_saved
@@ -68,7 +80,7 @@ defmodule DemoWeb.Storefront.AddressEditModal do
         <.modal_close_button id={@__modal_id__} myself={@myself} />
       </div>
 
-      <.form for={@address_form} phx-change="validate" phx-submit="save" phx-target={@myself} class="space-y-4">
+      <.form for={@address_form} phx-change="validate_address_form" phx-submit="save" phx-target={@myself} class="space-y-4">
         <.select
           field={@address_form[:country]}
           label="Country/Region"
@@ -93,9 +105,12 @@ defmodule DemoWeb.Storefront.AddressEditModal do
 
         <.input field={@address_form[:phone]} label="Phone (optional)" type="tel" />
 
+        <!-- TODO: address_form_valid is server-computed here because overlay Components
+             don't yet get client hooks for form validation. Move to client-side once
+             GenerateClientHook supports overlays with forms. -->
         <div class="flex gap-3 pt-4 border-t">
-          <button type="submit" data-lavash-enabled="address_form_valid" phx-disable-with="Saving..."
-            class="flex-1 btn btn-primary">
+          <button type="submit" disabled={!@address_form_valid} phx-disable-with="Saving..."
+            class={"flex-1 btn " <> if(@address_form_valid, do: "btn-primary", else: "btn-disabled")}>
             {if @address_form_action == :create, do: "Save address", else: "Update address"}
           </button>
           <button type="button" phx-click="close" class="btn btn-outline">Cancel</button>

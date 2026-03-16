@@ -32,10 +32,12 @@ defmodule Lavash.Form.ValidationTranspiler do
     if action do
       action_type = action.type
       validations = Ash.Resource.Info.validations(resource, action_type)
+      accepted = action.accept || []
 
-      # Group validations by field
+      # Group validations by field, filtering to only accepted fields
       validations
       |> Enum.flat_map(&extract_field_validations/1)
+      |> Enum.filter(fn {field, _spec} -> accepted == [] or field in accepted end)
       |> Enum.group_by(fn {field, _spec} -> field end, fn {_field, spec} -> spec end)
     else
       %{}
