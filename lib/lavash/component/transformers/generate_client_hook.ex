@@ -125,6 +125,34 @@ defmodule Lavash.Component.Transformers.GenerateClientHook do
       # Generate the JS hook code
       js_code = generate_js_hook(transformed_source, calculations, action_specs)
 
+      # Check for untranspilable expressions in ACTION code only
+      # (render function may have untranspilable parts that fall back gracefully)
+      action_section =
+        case String.split(js_code, "applyOptimisticAction", parts: 2) do
+          [_, action_part] -> action_part
+          _ -> ""
+        end
+
+      if String.contains?(action_section, "undefined /* untranspilable:") do
+        [_, detail | _] = String.split(action_section, "undefined /* untranspilable: ", parts: 2)
+        [detail | _] = String.split(detail, " */", parts: 2)
+
+        raise CompileError,
+          description: """
+          Untranspilable expression in #{inspect(env.module)} action.
+
+          The expression could not be converted to JavaScript for client-side
+          optimistic rendering: #{String.trim(detail)}
+
+          Common fixes:
+          - Use Enum.reject/2 instead of the -- operator for list removal
+          - Use simple arithmetic and boolean expressions in rx()
+          - For map_by transforms, pass a string source instead of a function
+          """,
+          file: env.file,
+          line: env.line
+      end
+
       # Write colocated hook file
       module_name = env.module |> Module.split() |> List.last()
       full_hook_name = "#{inspect(env.module)}.#{module_name}"

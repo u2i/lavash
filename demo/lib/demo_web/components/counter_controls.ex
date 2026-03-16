@@ -13,7 +13,7 @@ defmodule DemoWeb.Components.CounterControls do
     end
 
     action :decrement do
-      set :count, rx(max(0, @count - 1))
+      set :count, rx(if @count > 0, do: @count - 1, else: 0)
     end
   end
 
