@@ -1,17 +1,21 @@
 defmodule DemoWeb.Components.CounterControls do
   @moduledoc """
-  A ClientComponent with increment/decrement buttons for a counter.
+  A component with increment/decrement buttons for a counter.
   Binds its `count` state to the parent's field.
   """
-  use Lavash.ClientComponent
+  use Lavash.Component
 
-  state :count, :integer
+  state :count, :integer, from: :ephemeral, default: 0, optimistic: true
 
-  optimistic_action :increment, :count,
-    run: fn count, _params -> count + 1 end
+  actions do
+    action :increment do
+      set :count, rx(@count + 1)
+    end
 
-  optimistic_action :decrement, :count,
-    run: fn count, _params -> max(0, count - 1) end
+    action :decrement do
+      set :count, rx(max(0, @count - 1))
+    end
+  end
 
   render fn assigns ->
     ~L"""
@@ -19,7 +23,7 @@ defmodule DemoWeb.Components.CounterControls do
       <button
         type="button"
         class="btn btn-sm btn-outline"
-        data-lavash-action="decrement"
+        phx-click="decrement"
       >
         −
       </button>
@@ -27,7 +31,7 @@ defmodule DemoWeb.Components.CounterControls do
       <button
         type="button"
         class="btn btn-sm btn-outline"
-        data-lavash-action="increment"
+        phx-click="increment"
       >
         +
       </button>
