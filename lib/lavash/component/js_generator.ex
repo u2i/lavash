@@ -1,14 +1,13 @@
-defmodule Lavash.ClientComponent.Transformers.GenerateHook do
+defmodule Lavash.Component.JsGenerator do
   @moduledoc """
-  Spark transformer that generates the ClientComponent JS hook and writes it
-  as a colocated file.
+  Generates JS hook code for components with optimistic client-side rendering.
 
-  Reads DSL entities (bindings, props, calculations, template) and module
-  attributes (optimistic_actions, renders), generates the complete JS hook
-  via `createClientComponentHook(...)`, writes it to the colocated directory,
-  and persists the result so the compiler can register it with Phoenix.
+  Produces a `createClientComponentHook(...)` call with render function,
+  calculation functions, dependency graph, and action handlers — all
+  transpiled from the component's `~L` template and DSL declarations.
   """
 
+  # Keep transformer behaviour for compatibility with the transform/1 entry point
   use Spark.Dsl.Transformer
 
   alias Spark.Dsl.Transformer

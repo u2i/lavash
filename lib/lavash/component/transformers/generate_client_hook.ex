@@ -257,7 +257,7 @@ defmodule Lavash.Component.Transformers.GenerateClientHook do
         end
       end)
 
-    Lavash.ClientComponent.Transformers.GenerateHook.generate_js_hook(
+    Lavash.Component.JsGenerator.generate_js_hook(
       template_source,
       calculations,
       actions
