@@ -65,13 +65,7 @@ defmodule Lavash.Component.Transformers.GenerateClientHook do
                   _ -> false
                 end
               end) &&
-              Enum.all?(map_bys, fn mb ->
-                case ActionJs.analyze_value(mb.transform) do
-                  {:rx, _} -> true
-                  {:literal, _} -> true
-                  _ -> false
-                end
-              end)
+              Enum.all?(map_bys, fn _mb -> true end)
           end)
         end
 
@@ -177,19 +171,21 @@ defmodule Lavash.Component.Transformers.GenerateClientHook do
         end)
 
       map_by_specs =
-        Enum.flat_map(map_bys, fn mb ->
-          case ActionJs.analyze_value(mb.transform) do
-            {:rx, source} ->
-              [%{type: :map_by, name: action.name, field: mb.field,
-                 key: mb.key, transform_source: source}]
-
-            {:literal, :remove} ->
-              [%{type: :map_by, name: action.name, field: mb.field,
-                 key: mb.key, transform_source: ":remove"}]
-
-            _ -> []
+        Enum.map(map_bys, fn mb ->
+          source = cond do
+            mb.transform == :remove -> ":remove"
+            is_binary(mb.transform) -> mb.transform
+            true ->
+              case ActionJs.analyze_value(mb.transform) do
+                {:rx, s} -> "fn item, _value -> #{s} end"
+                _ -> nil
+              end
           end
+
+          %{type: :map_by, name: action.name, field: mb.field,
+            key: mb.key, transform_source: source}
         end)
+        |> Enum.filter(& &1.transform_source)
 
       set_specs ++ update_specs ++ map_by_specs
     end)
@@ -224,15 +220,7 @@ defmodule Lavash.Component.Transformers.GenerateClientHook do
           :map_by ->
             # map_by specs: use key for keyed array mutation
             # Transform the rx source to a run_source that GenerateHook understands
-            transform = spec.transform_source
-            run_source =
-              if transform == ":remove" do
-                ":remove"
-              else
-                # Rewrite @item references to work with the keyed action JS generator
-                # The GenerateHook expects fn item, _value -> ... end format
-                "fn item, _value -> #{transform} end"
-              end
+            run_source = spec.transform_source
 
             %{
               name: spec.name,

@@ -287,10 +287,10 @@ defmodule Lavash.Dsl.CommonEntities do
           type: :any,
           required: true,
           doc: """
-          The transformation to apply. Use rx() with @item to reference the matched item.
-          Return :remove to filter the item out.
+          Function that transforms the matched item: `fn item, key_value -> new_item end`.
+          Return `:remove` to filter the item out.
 
-          Example: `map_by :items, :id, rx(%{@item | quantity: @item.quantity + 1})`
+          Example: `map_by :items, :id, fn item, _id -> %{item | quantity: item.quantity + 1} end`
           """
         ]
       ]

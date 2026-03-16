@@ -1,40 +1,26 @@
 defmodule DemoWeb.Components.CartItemList do
   @moduledoc """
-  Optimistic cart item list with key-based array mutations.
+  Optimistic cart item list component.
 
-  This ClientComponent handles:
-  - Incrementing/decrementing item quantities
-  - Removing items from cart
-  - Automatic subtotal recalculation
-
-  All mutations happen instantly on the client (optimistic), then sync with server.
+  Handles incrementing/decrementing item quantities, removing items,
+  and automatic subtotal recalculation — all with instant client-side updates.
 
   ## Usage
 
-      <.live_component
+      <.lavash_component
         module={DemoWeb.Components.CartItemList}
         id="cart-items"
         bind={[items: :cart_items_json]}
         items={@cart_items_json}
       />
-
-  ## How it works
-
-  1. User clicks +/- button -> client instantly updates quantity
-  2. Server receives event and updates database
-  3. When server confirms, client syncs version
-
-  Uses key-based optimistic_action with `:id` key to find and update
-  specific items in the array.
   """
-
-  use Lavash.ClientComponent
+  use Lavash.Component
 
   # Cart items as array of maps: %{id, quantity, unit_price, product: %{...}}
-  state :items, {:array, :map}
+  state :items, {:array, :map}, from: :ephemeral, default: [], optimistic: true
 
   # Bound to parent's flyover open state - allows closing from within
-  state :open, :boolean
+  state :open, :boolean, from: :ephemeral, default: false, optimistic: true
 
   # Calculations for display
   calculate :item_count, rx(Enum.reduce(@items || [], 0, fn item, acc -> acc + item.quantity end))
@@ -48,37 +34,28 @@ defmodule DemoWeb.Components.CartItemList do
 
   calculate :is_empty, rx(length(@items || []) == 0)
 
-  # Chained calculations — deliberately out of dependency order to demonstrate
-  # that ClientComponent calculation ordering matters.
-  # grand_total depends on subtotal and tax, but is declared first.
+  # Chained calculations
   calculate :grand_total, rx(Float.round(@subtotal + @tax, 2))
   calculate :tax, rx(Float.round(@subtotal * 0.08, 2))
   calculate :subtotal_formatted, rx(Float.round(@subtotal, 2))
 
-  # Key-based optimistic actions
-  # The :key option tells the system to find items by :id field
-
-  optimistic_action :increment, :items,
-    key: :id,
-    run: fn item, _delta -> %{item | quantity: item.quantity + 1} end
-
-  optimistic_action :decrement, :items,
-    key: :id,
-    run: fn item, _delta ->
-      if item.quantity <= 1 do
-        :remove
-      else
-        %{item | quantity: item.quantity - 1}
-      end
+  actions do
+    action :increment, [:id] do
+      map_by :items, :id, "fn item, _id -> %{item | quantity: item.quantity + 1} end"
     end
 
-  optimistic_action :remove, :items,
-    key: :id,
-    run: :remove
+    action :decrement, [:id] do
+      map_by :items, :id, "fn item, _id -> if item.quantity <= 1, do: :remove, else: %{item | quantity: item.quantity - 1} end"
+    end
 
-  # Close the flyover by setting open to false
-  optimistic_action :close, :open,
-    run: :set
+    action :remove, [:id] do
+      map_by :items, :id, :remove
+    end
+
+    action :close do
+      set :open, false
+    end
+  end
 
   render fn assigns ->
     ~L"""
@@ -110,8 +87,8 @@ defmodule DemoWeb.Components.CartItemList do
               <button
                 type="button"
                 class="btn btn-xs btn-circle btn-ghost"
-                data-lavash-action="decrement"
-                data-lavash-value={item.id}
+                phx-click="decrement"
+                phx-value-id={item.id}
               >
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4" />
@@ -121,8 +98,8 @@ defmodule DemoWeb.Components.CartItemList do
               <button
                 type="button"
                 class="btn btn-xs btn-circle btn-ghost"
-                data-lavash-action="increment"
-                data-lavash-value={item.id}
+                phx-click="increment"
+                phx-value-id={item.id}
               >
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
@@ -131,8 +108,8 @@ defmodule DemoWeb.Components.CartItemList do
               <button
                 type="button"
                 class="btn btn-xs btn-ghost text-error ml-auto"
-                data-lavash-action="remove"
-                data-lavash-value={item.id}
+                phx-click="remove"
+                phx-value-id={item.id}
               >
                 Remove
               </button>
@@ -141,7 +118,7 @@ defmodule DemoWeb.Components.CartItemList do
         </div>
       </div>
 
-      <!-- Footer with totals (inside ClientComponent for optimistic subtotal) -->
+      <!-- Footer with totals -->
       <div :if={!@is_empty} class="p-4 border-t border-base-300 space-y-4 bg-base-100 flex-shrink-0">
         <div class="flex justify-between">
           <span>Subtotal</span>
@@ -159,8 +136,7 @@ defmodule DemoWeb.Components.CartItemList do
         <button
           type="button"
           class="btn btn-ghost w-full"
-          data-lavash-action="close"
-          data-lavash-value="false"
+          phx-click="close"
         >
           Continue Shopping
         </button>
