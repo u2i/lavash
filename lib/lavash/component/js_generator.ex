@@ -164,7 +164,7 @@ defmodule Lavash.Component.JsGenerator do
   # JS generation
   # ============================================
 
-  def generate_js_hook(template_source, calculations, actions) do
+  def generate_js_hook(template_source, calculations, actions, attr_derives \\ []) do
     tree =
       template_source
       |> Lavash.Template.tokenize()
@@ -173,8 +173,13 @@ defmodule Lavash.Component.JsGenerator do
     render_parts = tree_to_js_parts(tree, %{})
     render_body = "`" <> Enum.join(render_parts, "") <> "`"
 
-    calc_fns_js = generate_calculation_fns_js(calculations)
-    graph_js = generate_calculation_graph_js(calculations)
+    # Merge attr derives into calculations for fns and graph generation
+    all_calculations = calculations ++ Enum.map(attr_derives, fn d ->
+      {String.to_atom(d.name), {:js, d.js_expr}, nil, Enum.map(d.deps, &String.to_atom/1)}
+    end)
+
+    calc_fns_js = generate_calculation_fns_js(all_calculations)
+    graph_js = generate_calculation_graph_js(all_calculations)
     action_js = generate_action_js(actions)
 
     ~s"""
@@ -201,7 +206,11 @@ defmodule Lavash.Component.JsGenerator do
     entries =
       calculations
       |> Enum.map(fn {name, source, _transformed_expr, _deps} ->
-        js_expr = Lavash.Rx.Transpiler.to_js(source)
+        js_expr =
+          case source do
+            {:js, js} -> js  # Pre-transpiled JS expression (attr derives)
+            elixir_source -> Lavash.Rx.Transpiler.to_js(elixir_source)
+          end
         "    #{name}: (state) => (#{js_expr})"
       end)
       |> Enum.join(",\n")

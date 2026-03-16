@@ -272,7 +272,7 @@ defmodule Lavash.LiveView.Helpers do
     initial_state = Map.get(component_states, assigns.id, %{})
 
     # Inherit current_user from parent for actor-based authorization
-    current_user = assigns[:current_user]
+    current_user = assigns[:current_user] || assigns[:rest][:current_user]
 
     # Build the assigns for live_component — pass ALL extra assigns through
     component_assigns =

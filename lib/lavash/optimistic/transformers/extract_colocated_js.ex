@@ -140,13 +140,14 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
     animated_fields = Transformer.get_persisted(dsl_state, :lavash_animated_fields) || []
     defrx_map = get_defrx_map(dsl_state)
 
-    # Read reactive attribute derives accumulated by the ~L sigil
+    # Read reactive attribute derives from GenerateClientHook or ~L sigil
     attr_derives =
-      try do
+      (Transformer.get_persisted(dsl_state, :lavash_attr_derives) || []) ++
+      (try do
         Module.get_attribute(module, :__lavash_attr_derives__) || []
       rescue
         _ -> []
-      end
+      end)
 
     if calculations == [] and forms == [] and animated_fields == [] and optimistic_actions == [] and attr_derives == [] do
       nil

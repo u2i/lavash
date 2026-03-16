@@ -38,6 +38,11 @@ defmodule Lavash.Component.Transformers.GenerateClientHook do
     if is_nil(module) or is_nil(env) do
       {:ok, dsl_state}
     else
+      has_overlay = Transformer.get_persisted(dsl_state, :lavash_overlay_render_generator) != nil
+
+      # Always try to extract attr derives from the template source
+      dsl_state = maybe_extract_attr_derives(dsl_state, env)
+
       actions = Transformer.get_entities(dsl_state, [:actions]) || []
 
       # Consider actions where ALL sets are transpilable to JS
@@ -61,11 +66,41 @@ defmodule Lavash.Component.Transformers.GenerateClientHook do
             Enum.all?(map_bys, fn _mb -> true end)
         end)
 
-      if optimistic_actions == [] do
+      # Only generate full client hook (with JS render) for non-overlay components
+      if optimistic_actions == [] or has_overlay do
         {:ok, dsl_state}
       else
         generate(dsl_state, env, optimistic_actions)
       end
+    end
+  end
+
+  defp maybe_extract_attr_derives(dsl_state, env) do
+    lavash_renders = Module.get_attribute(env.module, :__lavash_renders__) || []
+    template_source = resolve_template_source(lavash_renders)
+
+    if template_source do
+      # Build set of optimistic names for dep checking
+      calculations =
+        (Transformer.get_entities(dsl_state, [:calculations]) || [])
+        |> Enum.filter(&Map.get(&1, :optimistic, true))
+
+      calc_names = Enum.map(calculations, & &1.name)
+
+      forms = Transformer.get_entities(dsl_state, [:forms]) || []
+      form_derive_names = Enum.map(forms, fn f -> :"#{f.name}_valid" end)
+
+      all_optimistic_names = MapSet.new(calc_names ++ form_derive_names)
+
+      attr_derives = extract_attr_derives(template_source, all_optimistic_names)
+
+      if attr_derives != [] do
+        Transformer.persist(dsl_state, :lavash_attr_derives, attr_derives)
+      else
+        dsl_state
+      end
+    else
+      dsl_state
     end
   end
 
@@ -107,6 +142,21 @@ defmodule Lavash.Component.Transformers.GenerateClientHook do
         optimistic_actions: optimistic_actions_map
       }
 
+      # Extract reactive attribute derives from template source
+      # Build set of all known optimistic names for dep checking
+      all_optimistic_names =
+        MapSet.new(
+          Map.keys(metadata.calculations) ++
+          Enum.map(calculations, fn {name, _, _, _} -> name end)
+        )
+
+      # Also include form validation derives
+      forms = Transformer.get_entities(dsl_state, [:forms]) || []
+      form_derive_names = Enum.map(forms, fn f -> :"#{f.name}_valid" end)
+      all_optimistic_names = MapSet.union(all_optimistic_names, MapSet.new(form_derive_names))
+
+      attr_derives = extract_attr_derives(template_source, all_optimistic_names)
+
       # Transform template (injects data-lavash-action etc.)
       transformed_source =
         Lavash.Template.Transformer.transform(template_source, env.module,
@@ -114,8 +164,16 @@ defmodule Lavash.Component.Transformers.GenerateClientHook do
           metadata: metadata
         )
 
-      # Generate the JS hook code
-      js_code = generate_js_hook(transformed_source, calculations, action_specs)
+      # Generate the JS hook code (includes attr derives in fns and graph)
+      js_code = generate_js_hook(transformed_source, calculations, action_specs, attr_derives)
+
+      # Persist attr derives so ExtractColocatedJs can include them in optimistic_*.js
+      dsl_state =
+        if attr_derives != [] do
+          Transformer.persist(dsl_state, :lavash_attr_derives, attr_derives)
+        else
+          dsl_state
+        end
 
       # Check for untranspilable expressions in ACTION code only
       # (render function may have untranspilable parts that fall back gracefully)
@@ -158,6 +216,53 @@ defmodule Lavash.Component.Transformers.GenerateClientHook do
 
       {:ok, dsl_state}
     end
+  end
+
+  # Extract reactive attribute derives from template source
+  defp extract_attr_derives(template_source, optimistic_names) do
+    # Find attributes like disabled={expr} and class={expr} that reference optimistic fields
+    # Pattern: attr_name={elixir_expression} where expression contains @optimistic_field
+    Regex.scan(~r/(disabled|class|hidden)=\{([^}]+)\}/, template_source)
+    |> Enum.with_index()
+    |> Enum.flat_map(fn {[_full, attr_name, expr], index} ->
+      # Extract @field references
+      deps =
+        Regex.scan(~r/@(\w+)/, expr)
+        |> Enum.map(fn [_, field] -> String.to_atom(field) end)
+        |> Enum.filter(&MapSet.member?(optimistic_names, &1))
+        |> Enum.uniq()
+
+      if deps != [] do
+        # Transpile the expression to JS
+        case try_transpile(expr) do
+          {:ok, js_expr} ->
+            derive_name = "__attr_#{index}_#{attr_name}"
+            [%{
+              name: derive_name,
+              js_expr: js_expr,
+              deps: Enum.map(deps, &to_string/1),
+              attr: attr_name
+            }]
+
+          :error ->
+            []
+        end
+      else
+        []
+      end
+    end)
+  end
+
+  defp try_transpile(expr) do
+    js = Lavash.Rx.Transpiler.to_js(String.trim(expr))
+
+    if js && !String.contains?(js, "undefined /* untranspilable") do
+      {:ok, js}
+    else
+      :error
+    end
+  rescue
+    _ -> :error
   end
 
   # Convert DSL action entities to JS action specs
@@ -246,7 +351,7 @@ defmodule Lavash.Component.Transformers.GenerateClientHook do
   defp extract_compiled_source(_), do: nil
 
   # JS generation — delegates to the existing GenerateHook
-  defp generate_js_hook(template_source, calculations, action_specs) do
+  defp generate_js_hook(template_source, calculations, action_specs, attr_derives \\ []) do
     # Convert action specs to the format GenerateHook.generate_js_hook expects
     actions =
       Enum.map(action_specs, fn spec ->
@@ -280,7 +385,8 @@ defmodule Lavash.Component.Transformers.GenerateClientHook do
     Lavash.Component.JsGenerator.generate_js_hook(
       template_source,
       calculations,
-      actions
+      actions,
+      attr_derives
     )
   end
 end

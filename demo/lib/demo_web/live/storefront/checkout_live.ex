@@ -569,6 +569,7 @@ defmodule DemoWeb.Storefront.CheckoutLive do
           id="checkout-address-modal"
           open={@address_modal}
           bind={[open: :address_modal]}
+          current_user={@current_user}
         />
       </main>
     </div>

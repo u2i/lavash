@@ -139,6 +139,28 @@ defmodule Lavash.Form do
   def submit(%__MODULE__{changeset: changeset}, opts) do
     actor = Keyword.get(opts, :actor)
 
+    # Rebuild changeset with actor so relate_actor and other actor-dependent
+    # changes have access to the actor context
+    changeset =
+      if actor do
+        resource = changeset.resource
+        action = changeset.action.name
+        params = changeset.attributes
+
+        case changeset.action_type do
+          :create ->
+            Ash.Changeset.for_create(resource, action, params, actor: actor)
+
+          :update ->
+            Ash.Changeset.for_update(changeset.data, action, params, actor: actor)
+
+          _ ->
+            changeset
+        end
+      else
+        changeset
+      end
+
     case changeset.action_type do
       :create -> Ash.create(changeset, actor: actor)
       :update -> Ash.update(changeset, actor: actor)

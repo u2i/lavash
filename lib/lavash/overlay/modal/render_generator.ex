@@ -127,7 +127,6 @@ defmodule Lavash.Overlay.Modal.RenderGenerator do
           |> Phoenix.Component.assign(:__lavash_version__, version)
           |> Phoenix.Component.assign(:__lavash_animated__, unquote(animated_json))
           |> Phoenix.Component.assign(:__lavash_bindings__, bindings_json)
-          |> Phoenix.Component.assign(:__client_hook_name__, unquote(client_hook_name))
 
         ~H"""
         <div
@@ -155,29 +154,12 @@ defmodule Lavash.Overlay.Modal.RenderGenerator do
             <:loading>
               {@__modal_loading__.(assigns)}
             </:loading>
-            <%= if @__client_hook_name__ do %>
-              <div
-                id={"#{@id}-content-hook"}
-                phx-hook={@__client_hook_name__}
-                data-lavash-state={@__lavash_state__}
-                data-lavash-version={@__lavash_version__}
-                data-lavash-bindings={@__lavash_bindings__}
-              >
-                <Lavash.Overlay.Modal.Helpers.modal_content
-                  assigns={assigns}
-                  async_assign={@__modal_async_assign__}
-                  render={@__modal_render__}
-                  loading={@__modal_loading__}
-                />
-              </div>
-            <% else %>
-              <Lavash.Overlay.Modal.Helpers.modal_content
-                assigns={assigns}
-                async_assign={@__modal_async_assign__}
-                render={@__modal_render__}
-                loading={@__modal_loading__}
-              />
-            <% end %>
+            <Lavash.Overlay.Modal.Helpers.modal_content
+              assigns={assigns}
+              async_assign={@__modal_async_assign__}
+              render={@__modal_render__}
+              loading={@__modal_loading__}
+            />
           </.modal_chrome>
         </div>
         """

@@ -220,6 +220,14 @@ defmodule Lavash.Sigil do
         |> Enum.map(fn calc -> {calc.name, %{optimistic: true}} end)
         |> Map.new()
 
+      # Read persisted attr derives from GenerateClientHook transformer
+      attr_derives =
+        try do
+          Spark.Dsl.Extension.get_persisted(module, :lavash_attr_derives) || []
+        rescue
+          _ -> []
+        end
+
       %{
         context: context,
         optimistic_fields: optimistic_fields,
@@ -227,7 +235,8 @@ defmodule Lavash.Sigil do
         calculations: calculations,
         forms: forms_map,
         actions: actions_map,
-        optimistic_actions: optimistic_actions_map
+        optimistic_actions: optimistic_actions_map,
+        attr_derives: attr_derives
       }
     rescue
       _ -> %{context: context}
