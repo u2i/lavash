@@ -34,7 +34,7 @@ defmodule Lavash.ChipSet do
   """
   use Lavash.Component
 
-  state :selected, {:array, :string}, from: :ephemeral, default: [], optimistic: true
+  state :selected, {:array, :string}, from: :ephemeral, default: []
 
   prop :values, :any, required: true
   prop :labels, :any, default: %{}

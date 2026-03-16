@@ -5,7 +5,7 @@ defmodule DemoWeb.Components.CounterControls do
   """
   use Lavash.Component
 
-  state :count, :integer, from: :ephemeral, default: 0, optimistic: true
+  state :count, :integer, from: :ephemeral, default: 0
 
   actions do
     action :increment do

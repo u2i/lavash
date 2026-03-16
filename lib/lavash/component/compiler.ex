@@ -104,7 +104,27 @@ defmodule Lavash.Component.Compiler do
       end
 
       def __lavash__(:optimistic_fields) do
-        __lavash__(:states) |> Enum.filter(&Lavash.State.Field.optimistic?/1)
+        states = __lavash__(:states)
+        explicitly_optimistic = Enum.filter(states, &Lavash.State.Field.optimistic?/1)
+
+        # Auto-detect: fields touched by transpilable actions
+        actions = Spark.Dsl.Extension.get_entities(__MODULE__, [:actions]) || []
+        action_touched_fields =
+          actions
+          |> Enum.filter(&Lavash.Optimistic.ActionJs.action_is_optimistic?/1)
+          |> Enum.flat_map(fn action ->
+            sets = action.sets || []
+            map_bys = action.map_bys || []
+            Enum.map(sets, & &1.field) ++ Enum.map(map_bys, & &1.field)
+          end)
+          |> MapSet.new()
+
+        explicit_names = MapSet.new(explicitly_optimistic, & &1.name)
+        auto_optimistic =
+          states
+          |> Enum.filter(fn f -> f.name in action_touched_fields and f.name not in explicit_names end)
+
+        explicitly_optimistic ++ auto_optimistic
       end
 
       # Components don't have URL fields

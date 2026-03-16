@@ -17,10 +17,10 @@ defmodule DemoWeb.Components.CartItemList do
   use Lavash.Component
 
   # Cart items as array of maps: %{id, quantity, unit_price, product: %{...}}
-  state :items, {:array, :map}, from: :ephemeral, default: [], optimistic: true
+  state :items, {:array, :map}, from: :ephemeral, default: []
 
   # Bound to parent's flyover open state - allows closing from within
-  state :open, :boolean, from: :ephemeral, default: false, optimistic: true
+  state :open, :boolean, from: :ephemeral, default: false
 
   # Calculations for display
   calculate :item_count, rx(Enum.reduce(@items || [], 0, fn item, acc -> acc + item.quantity end))

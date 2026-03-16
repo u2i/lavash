@@ -15,7 +15,7 @@ defmodule Lavash.Components.TagEditor do
   """
   use Lavash.Component
 
-  state :tags, {:array, :string}, from: :ephemeral, default: [], optimistic: true
+  state :tags, {:array, :string}, from: :ephemeral, default: []
 
   prop :placeholder, :string, default: "Add tag..."
   prop :max_tags, :integer, default: nil
