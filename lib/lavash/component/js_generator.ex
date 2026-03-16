@@ -222,24 +222,30 @@ defmodule Lavash.Component.JsGenerator do
     topo_order = Enum.map(calculations, fn {name, _, _, _} -> name end)
     dependents = Lavash.Graph.build_dependents(full_deps_map)
 
-    topo_json = Jason.encode!(Enum.map(topo_order, &to_string/1))
+    topo_json = Jason.encode!(Enum.map(topo_order, &dep_to_string/1))
 
     deps_json =
       full_deps_map
       |> Enum.map(fn {name, deps} ->
-        ~s|#{name}: #{Jason.encode!(Enum.map(deps, &to_string/1))}|
+        key = dep_to_string(name)
+        ~s|#{Jason.encode!(key)}: #{Jason.encode!(Enum.map(deps, &dep_to_string/1))}|
       end)
       |> Enum.join(", ")
 
     dependents_json =
       dependents
       |> Enum.map(fn {name, deps} ->
-        ~s|#{name}: #{Jason.encode!(Enum.map(deps, &to_string/1))}|
+        key = dep_to_string(name)
+        ~s|#{Jason.encode!(key)}: #{Jason.encode!(Enum.map(deps, &dep_to_string/1))}|
       end)
       |> Enum.join(", ")
 
     ~s|{ topo_order: #{topo_json}, deps: { #{deps_json} }, dependents: { #{dependents_json} } }|
   end
+
+  # Convert a dependency to string, handling both atoms and path tuples
+  defp dep_to_string({:path, root, _segments}), do: to_string(root)
+  defp dep_to_string(dep), do: to_string(dep)
 
   # ============================================
   # Action JS generation

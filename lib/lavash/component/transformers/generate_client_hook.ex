@@ -38,36 +38,28 @@ defmodule Lavash.Component.Transformers.GenerateClientHook do
     if is_nil(module) or is_nil(env) do
       {:ok, dsl_state}
     else
-      # Skip components that use overlay extensions (modal/flyover) —
-      # they have their own animation mechanism, not client-side rendering
-      has_overlay = Transformer.get_persisted(dsl_state, :lavash_overlay_render_generator) != nil
-
       actions = Transformer.get_entities(dsl_state, [:actions]) || []
 
-      # Only consider actions where ALL sets are transpilable to JS
+      # Consider actions where ALL sets are transpilable to JS
       optimistic_actions =
-        if has_overlay do
-          []
-        else
-          actions
-          |> Enum.filter(fn action ->
-            sets = action.sets || []
-            updates = action.updates || []
-            map_bys = action.map_bys || []
-            has_transpilable = (sets ++ updates ++ map_bys) != []
+        actions
+        |> Enum.filter(fn action ->
+          sets = action.sets || []
+          updates = action.updates || []
+          map_bys = action.map_bys || []
+          has_transpilable = (sets ++ updates ++ map_bys) != []
 
-            has_transpilable &&
-              Enum.all?(sets, fn set ->
-                case ActionJs.analyze_value(set.value) do
-                  {:rx, _} -> true
-                  {:literal, _} -> true
-                  :from_params_value -> true
-                  _ -> false
-                end
-              end) &&
-              Enum.all?(map_bys, fn _mb -> true end)
-          end)
-        end
+          has_transpilable &&
+            Enum.all?(sets, fn set ->
+              case ActionJs.analyze_value(set.value) do
+                {:rx, _} -> true
+                {:literal, _} -> true
+                :from_params_value -> true
+                _ -> false
+              end
+            end) &&
+            Enum.all?(map_bys, fn _mb -> true end)
+        end)
 
       if optimistic_actions == [] do
         {:ok, dsl_state}
