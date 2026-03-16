@@ -46,6 +46,7 @@ defmodule DemoWeb.Router do
       live "/", StorefrontLive
       live "/products", Storefront.ProductsLive
       live "/products/:product_id", Storefront.ProductLive
+      live "/checkout", Storefront.CheckoutLive
     end
   end
 

@@ -132,7 +132,7 @@ defmodule DemoWeb.Components.CartItemList do
           <span>Total</span>
           <span>${@grand_total}</span>
         </div>
-        <button class="btn btn-primary w-full">Checkout</button>
+        <a href="/storefront/checkout" class="btn btn-primary w-full">Checkout</a>
         <button
           type="button"
           class="btn btn-ghost w-full"
