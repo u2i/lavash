@@ -53,7 +53,8 @@ defmodule Lavash.Component.Transformers.GenerateClientHook do
           |> Enum.filter(fn action ->
             sets = action.sets || []
             updates = action.updates || []
-            has_transpilable = (sets ++ updates) != []
+            map_bys = action.map_bys || []
+            has_transpilable = (sets ++ updates ++ map_bys) != []
 
             has_transpilable &&
               Enum.all?(sets, fn set ->
@@ -61,6 +62,13 @@ defmodule Lavash.Component.Transformers.GenerateClientHook do
                   {:rx, _} -> true
                   {:literal, _} -> true
                   :from_params_value -> true
+                  _ -> false
+                end
+              end) &&
+              Enum.all?(map_bys, fn mb ->
+                case ActionJs.analyze_value(mb.transform) do
+                  {:rx, _} -> true
+                  {:literal, _} -> true
                   _ -> false
                 end
               end)
@@ -142,19 +150,20 @@ defmodule Lavash.Component.Transformers.GenerateClientHook do
     Enum.flat_map(actions, fn action ->
       sets = action.sets || []
       updates = action.updates || []
+      map_bys = action.map_bys || []
 
       set_specs =
         Enum.flat_map(sets, fn set ->
           case ActionJs.analyze_value(set.value) do
             {:rx, source} ->
-              [%{name: action.name, field: set.field,
+              [%{type: :set, name: action.name, field: set.field,
                  run_source: "fn _current, _params -> #{source} end"}]
 
             :from_params_value ->
-              [%{name: action.name, field: set.field, run_source: nil}]
+              [%{type: :set, name: action.name, field: set.field, run_source: nil}]
 
             {:literal, value} ->
-              [%{name: action.name, field: set.field,
+              [%{type: :set, name: action.name, field: set.field,
                  run_source: "fn _current, _params -> #{inspect(value)} end"}]
 
             _ -> []
@@ -164,10 +173,25 @@ defmodule Lavash.Component.Transformers.GenerateClientHook do
       update_specs =
         Enum.map(updates, fn update ->
           source = Macro.to_string(update.fun)
-          %{name: action.name, field: update.field, run_source: source}
+          %{type: :set, name: action.name, field: update.field, run_source: source}
         end)
 
-      set_specs ++ update_specs
+      map_by_specs =
+        Enum.flat_map(map_bys, fn mb ->
+          case ActionJs.analyze_value(mb.transform) do
+            {:rx, source} ->
+              [%{type: :map_by, name: action.name, field: mb.field,
+                 key: mb.key, transform_source: source}]
+
+            {:literal, :remove} ->
+              [%{type: :map_by, name: action.name, field: mb.field,
+                 key: mb.key, transform_source: ":remove"}]
+
+            _ -> []
+          end
+        end)
+
+      set_specs ++ update_specs ++ map_by_specs
     end)
   end
 
@@ -196,14 +220,39 @@ defmodule Lavash.Component.Transformers.GenerateClientHook do
     # Convert action specs to the format GenerateHook.generate_js_hook expects
     actions =
       Enum.map(action_specs, fn spec ->
-        %{
-          name: spec.name,
-          field: spec.field,
-          key: nil,
-          run_source: spec.run_source,
-          validate_source: nil,
-          max: nil
-        }
+        case spec[:type] do
+          :map_by ->
+            # map_by specs: use key for keyed array mutation
+            # Transform the rx source to a run_source that GenerateHook understands
+            transform = spec.transform_source
+            run_source =
+              if transform == ":remove" do
+                ":remove"
+              else
+                # Rewrite @item references to work with the keyed action JS generator
+                # The GenerateHook expects fn item, _value -> ... end format
+                "fn item, _value -> #{transform} end"
+              end
+
+            %{
+              name: spec.name,
+              field: spec.field,
+              key: spec.key,
+              run_source: run_source,
+              validate_source: nil,
+              max: nil
+            }
+
+          _ ->
+            %{
+              name: spec.name,
+              field: spec.field,
+              key: nil,
+              run_source: spec[:run_source],
+              validate_source: nil,
+              max: nil
+            }
+        end
       end)
 
     Lavash.ClientComponent.Transformers.GenerateHook.generate_js_hook(

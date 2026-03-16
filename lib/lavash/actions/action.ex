@@ -20,6 +20,7 @@ defmodule Lavash.Actions.Action do
     :sets,
     :runs,
     :updates,
+    :map_bys,
     :effects,
     :submits,
     :navigates,

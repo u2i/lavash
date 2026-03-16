@@ -369,6 +369,7 @@ defmodule Lavash.Dsl do
   @set_entity CommonEntities.set_entity()
   @run_entity CommonEntities.run_entity()
   @update_entity CommonEntities.update_entity()
+  @map_by_entity CommonEntities.map_by_entity()
   @effect_entity CommonEntities.effect_entity()
   @submit_entity CommonEntities.submit_entity()
 
@@ -439,6 +440,7 @@ defmodule Lavash.Dsl do
       sets: [@set_entity],
       runs: [@run_entity],
       updates: [@update_entity],
+      map_bys: [@map_by_entity],
       effects: [@effect_entity],
       submits: [@submit_entity],
       navigates: [@navigate_entity],

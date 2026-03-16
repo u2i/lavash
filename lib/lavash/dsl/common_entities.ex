@@ -261,6 +261,43 @@ defmodule Lavash.Dsl.CommonEntities do
   end
 
   @doc """
+  MapBy entity for actions — key-based array mutations.
+
+  Finds items in an array by a key field and applies a transformation.
+  The `@item` variable references the matched item in the rx() expression.
+  Return `:remove` to filter the item out.
+  """
+  def map_by_entity do
+    %Spark.Dsl.Entity{
+      name: :map_by,
+      target: Lavash.Actions.MapBy,
+      args: [:field, :key, :transform],
+      schema: [
+        field: [
+          type: :atom,
+          required: true,
+          doc: "The array field to map over"
+        ],
+        key: [
+          type: :atom,
+          required: true,
+          doc: "The key field to match items by (e.g., :id)"
+        ],
+        transform: [
+          type: :any,
+          required: true,
+          doc: """
+          The transformation to apply. Use rx() with @item to reference the matched item.
+          Return :remove to filter the item out.
+
+          Example: `map_by :items, :id, rx(%{@item | quantity: @item.quantity + 1})`
+          """
+        ]
+      ]
+    }
+  end
+
+  @doc """
   Effect entity for actions - runs a side effect function.
   """
   def effect_entity do
