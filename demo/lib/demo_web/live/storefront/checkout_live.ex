@@ -231,7 +231,7 @@ defmodule DemoWeb.Storefront.CheckoutLive do
              }, actor: user)
              |> Ash.create() do
           {:ok, order} ->
-            Phoenix.Component.assign(state, :order_placed_id, order.id)
+            Lavash.Socket.put_state(state, :order_placed_id, order.id)
 
           {:error, _} ->
             state
@@ -260,7 +260,7 @@ defmodule DemoWeb.Storefront.CheckoutLive do
              }, actor: user)
              |> Ash.create() do
           {:ok, order} ->
-            Phoenix.Component.assign(state, :order_placed_id, order.id)
+            Lavash.Socket.put_state(state, :order_placed_id, order.id)
 
           {:error, _} ->
             state
