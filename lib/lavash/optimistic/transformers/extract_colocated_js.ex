@@ -79,13 +79,12 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
     lavash_renders = Module.get_attribute(env.module, :__lavash_renders__) || []
     has_optimistic = Transformer.get_persisted(dsl_state, :lavash_optimistic_colocated_data) != nil
 
-    # Overlay render generators call Spark.Dsl.Extension.get_persisted(module, ...)
-    # which reads @persisted from the module. Since we're still inside the transformer
-    # pipeline, @persisted isn't set yet. Temporarily set it so the generator can read values.
-    if render_generator do
-      persist_map = Map.get(dsl_state, :persist, %{})
-      Module.put_attribute(env.module, :persisted, persist_map)
-    end
+    # Set @persisted early so that code running during Transformer.eval
+    # (e.g. ~L sigil expansion, overlay render generators) can read persisted
+    # values via Spark.Dsl.Extension.get_persisted(module, ...).
+    # Spark normally sets @persisted after eval blocks, but we need it during eval.
+    persist_map = Map.get(dsl_state, :persist, %{})
+    Module.put_attribute(env.module, :persisted, persist_map)
 
     # Build render function AST
     render_ast = build_render_ast(render_generator, lavash_renders, has_optimistic, env)

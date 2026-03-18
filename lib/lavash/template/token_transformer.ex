@@ -196,6 +196,7 @@ defmodule Lavash.Template.TokenTransformer do
     |> maybe_inject_enabled(metadata)
     |> maybe_inject_reactive_attrs(metadata)
     |> maybe_inject_client_component_action(metadata)
+    |> maybe_inject_phx_target(metadata)
   end
 
   # Pattern 1: Form inputs
@@ -422,6 +423,20 @@ defmodule Lavash.Template.TokenTransformer do
     end
   end
 
+  # Pattern 7: Auto-inject phx-target={@myself} in component context
+  # In LiveComponents, phx-click events need phx-target to route to the
+  # component's handle_event instead of the parent LiveView.
+  defp maybe_inject_phx_target(attrs, metadata) do
+    if metadata[:context] == :component and has_phx_event?(attrs) do
+      add_attr_if_missing(attrs, "phx-target", {:expr, "@myself"})
+    else
+      attrs
+    end
+  end
+
+  @phx_events ~w(phx-click phx-change phx-submit phx-blur phx-focus phx-keydown phx-keyup phx-window-keydown phx-window-keyup)
+  defp has_phx_event?(attrs), do: Enum.any?(attrs, fn {name, _, _} -> name in @phx_events end)
+
   # ===========================================================================
   # Subtree Derive Injection (data-lavash-html on parent elements)
   # ===========================================================================
@@ -435,9 +450,16 @@ defmodule Lavash.Template.TokenTransformer do
     if subtree_derives == [] do
       tokens
     else
-      # Build lookup: {line, column} => derive_name
+      # Subtree derive line numbers are 1-based relative to the template source.
+      # Token line numbers are absolute file lines (offset by template_line_offset).
+      # Adjust derive lines to match token lines.
+      line_offset = metadata[:template_line_offset] || 0
+
+      # Build lookup: {file_line, column} => derive_name
       parent_locations =
-        Map.new(subtree_derives, fn d -> {{d.parent_line, d.parent_column}, d.name} end)
+        Map.new(subtree_derives, fn d ->
+          {{d.parent_line + line_offset, d.parent_column}, d.name}
+        end)
 
       Enum.map(tokens, fn
         {:tag, name, attrs, meta} = token ->
