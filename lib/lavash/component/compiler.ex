@@ -142,52 +142,17 @@ defmodule Lavash.Component.Compiler do
         data -> Macro.escape(data)
       end
 
-    client_hook_data =
-      case Spark.Dsl.Extension.get_persisted(env.module, :lavash_client_hook_data) do
-        nil -> nil
-        data -> Macro.escape(data)
+    if optimistic_colocated_data do
+      quote do
+        @__lavash_optimistic_colocated_data__ unquote(optimistic_colocated_data)
+        def __phoenix_macro_components__ do
+          %{
+            Phoenix.LiveView.ColocatedJS => [@__lavash_optimistic_colocated_data__]
+          }
+        end
       end
-
-    client_hook_name =
-      Spark.Dsl.Extension.get_persisted(env.module, :lavash_client_hook_name)
-
-    cond do
-      optimistic_colocated_data && client_hook_data ->
-        quote do
-          @__lavash_optimistic_colocated_data__ unquote(optimistic_colocated_data)
-          @__lavash_client_hook_data__ unquote(client_hook_data)
-          def __full_hook_name__, do: unquote(client_hook_name)
-          def __phoenix_macro_components__ do
-            %{
-              Phoenix.LiveView.ColocatedJS => [@__lavash_optimistic_colocated_data__],
-              Phoenix.LiveView.ColocatedHook => [@__lavash_client_hook_data__]
-            }
-          end
-        end
-
-      client_hook_data ->
-        quote do
-          @__lavash_client_hook_data__ unquote(client_hook_data)
-          def __full_hook_name__, do: unquote(client_hook_name)
-          def __phoenix_macro_components__ do
-            %{
-              Phoenix.LiveView.ColocatedHook => [@__lavash_client_hook_data__]
-            }
-          end
-        end
-
-      optimistic_colocated_data ->
-        quote do
-          @__lavash_optimistic_colocated_data__ unquote(optimistic_colocated_data)
-          def __phoenix_macro_components__ do
-            %{
-              Phoenix.LiveView.ColocatedJS => [@__lavash_optimistic_colocated_data__]
-            }
-          end
-        end
-
-      true ->
-        quote do end
+    else
+      quote do end
     end
   end
 
@@ -204,14 +169,44 @@ defmodule Lavash.Component.Compiler do
         quote do end
 
       escaped_fn ->
-        client_hook_name =
-          Spark.Dsl.Extension.get_persisted(env.module, :lavash_client_hook_name)
+        has_optimistic =
+          Spark.Dsl.Extension.get_persisted(env.module, :lavash_optimistic_colocated_data) != nil
 
-        if client_hook_name do
-          generate_render_with_client_hook(escaped_fn, client_hook_name)
+        if has_optimistic do
+          generate_render_with_optimistic_hook(escaped_fn, env.module)
         else
           generate_render_from_fn(escaped_fn)
         end
+    end
+  end
+
+  # Render with LavashOptimistic hook wrapper — for components with optimistic
+  # features (actions, calculations, subtree derives) but no full client hook.
+  # Uses data-lavash-* substitution instead of a full JS render function.
+  defp generate_render_with_optimistic_hook(escaped_fn, module) do
+    module_name = inspect(module)
+
+    quote do
+      @impl Phoenix.LiveComponent
+      def render(var!(assigns)) do
+        state = Lavash.Component.Compiler.build_client_state(__MODULE__, var!(assigns))
+        state_json = Jason.encode!(state)
+        bindings_json = Jason.encode!(Map.get(var!(assigns), :__lavash_binding_map__, %{}))
+        version = Map.get(var!(assigns), :__lavash_version__, 0)
+
+        var!(assigns) =
+          var!(assigns)
+          |> Phoenix.Component.assign(:__state_json__, state_json)
+          |> Phoenix.Component.assign(:__bindings_json__, bindings_json)
+          |> Phoenix.Component.assign(:__module_name__, unquote(module_name))
+          |> Phoenix.Component.assign(:__version__, version)
+          |> Phoenix.Component.assign(state)
+
+        render_fn = unquote(escaped_fn)
+        inner = render_fn.(var!(assigns))
+
+        Lavash.Component.OptimisticWrapper.wrap(var!(assigns), inner)
+      end
     end
   end
 
@@ -226,31 +221,6 @@ defmodule Lavash.Component.Compiler do
     end
   end
 
-  # Render with client hook wrapper — serializes state and wraps in hook root div
-  defp generate_render_with_client_hook(escaped_fn, hook_name) do
-    quote do
-      @impl Phoenix.LiveComponent
-      def render(var!(assigns)) do
-        state = Lavash.Component.Compiler.build_client_state(__MODULE__, var!(assigns))
-        state_json = Jason.encode!(state)
-        bindings_json = Jason.encode!(Map.get(var!(assigns), :__lavash_binding_map__, %{}))
-        version = Map.get(var!(assigns), :__lavash_version__, 0)
-
-        var!(assigns) =
-          var!(assigns)
-          |> Phoenix.Component.assign(:__state_json__, state_json)
-          |> Phoenix.Component.assign(:__bindings_json__, bindings_json)
-          |> Phoenix.Component.assign(:__hook_name__, unquote(hook_name))
-          |> Phoenix.Component.assign(:__version__, version)
-          |> Phoenix.Component.assign(state)
-
-        render_fn = unquote(escaped_fn)
-        inner = render_fn.(var!(assigns))
-
-        Lavash.Component.HookWrapper.wrap(var!(assigns), inner)
-      end
-    end
-  end
 
 
   @doc false

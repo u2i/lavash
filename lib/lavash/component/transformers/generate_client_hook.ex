@@ -19,7 +19,6 @@ defmodule Lavash.Component.Transformers.GenerateClientHook do
   use Spark.Dsl.Transformer
 
   alias Spark.Dsl.Transformer
-  alias Lavash.Component.CompilerHelpers
   alias Lavash.Optimistic.ActionJs
 
   # Run after ExpandAnimatedStates and ExpandFields
@@ -40,8 +39,14 @@ defmodule Lavash.Component.Transformers.GenerateClientHook do
     else
       has_overlay = Transformer.get_persisted(dsl_state, :lavash_overlay_render_generator) != nil
 
+      # Build optimistic names early — used for attr derives and subtree detection
+      all_optimistic_names = build_optimistic_names(dsl_state)
+
+      lavash_renders = Module.get_attribute(env.module, :__lavash_renders__) || []
+      template_source = resolve_template_source(lavash_renders)
+
       # Always try to extract attr derives from the template source
-      dsl_state = maybe_extract_attr_derives(dsl_state, env)
+      dsl_state = maybe_extract_attr_derives(dsl_state, template_source, all_optimistic_names)
 
       actions = Transformer.get_entities(dsl_state, [:actions]) || []
 
@@ -66,32 +71,59 @@ defmodule Lavash.Component.Transformers.GenerateClientHook do
             Enum.all?(map_bys, fn _mb -> true end)
         end)
 
-      # Only generate full client hook (with JS render) for non-overlay components
       if optimistic_actions == [] or has_overlay do
         {:ok, dsl_state}
       else
-        generate(dsl_state, env, optimistic_actions)
+        # Include action target fields as optimistic names for subtree detection
+        action_field_names =
+          optimistic_actions
+          |> Enum.flat_map(fn action ->
+            sets = action.sets || []
+            updates = action.updates || []
+            map_bys = action.map_bys || []
+            Enum.map(sets, & &1.field) ++ Enum.map(updates, & &1.field) ++ Enum.map(map_bys, & &1.field)
+          end)
+
+        all_names = MapSet.union(all_optimistic_names, MapSet.new(action_field_names))
+
+        # Extract subtree derives for :if/:for over optimistic state
+        subtree_derives =
+          if template_source do
+            extract_subtree_derives(template_source, all_names)
+          else
+            []
+          end
+
+        # Persist subtree derives if any were found.
+        # No full JS hook needed — substitution (data-lavash-*) handles
+        # simple state updates, subtree derives handle :if/:for.
+        dsl_state =
+          if subtree_derives != [] do
+            Transformer.persist(dsl_state, :lavash_subtree_derives, subtree_derives)
+          else
+            dsl_state
+          end
+
+        {:ok, dsl_state}
       end
     end
   end
 
-  defp maybe_extract_attr_derives(dsl_state, env) do
-    lavash_renders = Module.get_attribute(env.module, :__lavash_renders__) || []
-    template_source = resolve_template_source(lavash_renders)
+  defp build_optimistic_names(dsl_state) do
+    calculations =
+      (Transformer.get_entities(dsl_state, [:calculations]) || [])
+      |> Enum.filter(&Map.get(&1, :optimistic, true))
 
+    calc_names = Enum.map(calculations, & &1.name)
+
+    forms = Transformer.get_entities(dsl_state, [:forms]) || []
+    form_derive_names = Enum.map(forms, fn f -> :"#{f.name}_valid" end)
+
+    MapSet.new(calc_names ++ form_derive_names)
+  end
+
+  defp maybe_extract_attr_derives(dsl_state, template_source, all_optimistic_names) do
     if template_source do
-      # Build set of optimistic names for dep checking
-      calculations =
-        (Transformer.get_entities(dsl_state, [:calculations]) || [])
-        |> Enum.filter(&Map.get(&1, :optimistic, true))
-
-      calc_names = Enum.map(calculations, & &1.name)
-
-      forms = Transformer.get_entities(dsl_state, [:forms]) || []
-      form_derive_names = Enum.map(forms, fn f -> :"#{f.name}_valid" end)
-
-      all_optimistic_names = MapSet.new(calc_names ++ form_derive_names)
-
       attr_derives = extract_attr_derives(template_source, all_optimistic_names)
 
       if attr_derives != [] do
@@ -104,119 +136,115 @@ defmodule Lavash.Component.Transformers.GenerateClientHook do
     end
   end
 
-  defp generate(dsl_state, env, optimistic_actions) do
-    lavash_renders = Module.get_attribute(env.module, :__lavash_renders__) || []
-    template_source = resolve_template_source(lavash_renders)
+  # ============================================
+  # Subtree derive extraction
+  # ============================================
 
-    if is_nil(template_source) do
-      {:ok, dsl_state}
-    else
-      # Get calculations
-      calculations =
-        (Transformer.get_entities(dsl_state, [:calculations]) || [])
-        |> Enum.filter(&Map.get(&1, :optimistic, true))
-        |> Enum.map(fn calc ->
-          {calc.name, calc.rx.source, calc.rx.ast, calc.rx.deps}
-        end)
-        |> topo_sort_calculations()
+  # Walk the parsed template tree. When a parent element has a child with
+  # :if/:for over optimistic state, transpile ALL of that parent's children
+  # to a JS render derive. The parent gets data-lavash-html at token time;
+  # JS replaces its innerHTML on optimistic updates.
+  defp extract_subtree_derives(template_source, optimistic_names) do
+    tree =
+      template_source
+      |> Lavash.Template.tokenize()
+      |> Lavash.Template.parse()
 
-      # Convert DSL actions to JS action specs
-      action_specs = actions_to_js_specs(optimistic_actions)
+    {derives, _index} = find_parent_subtrees(tree, optimistic_names, [], 0)
+    Enum.reverse(derives)
+  end
 
-      # Build metadata for template transformation
-      optimistic_actions_map =
-        action_specs
-        |> Enum.map(fn %{name: name, field: field} -> {name, %{field: field}} end)
-        |> Map.new()
+  defp find_parent_subtrees(nodes, optimistic_names, acc, index) when is_list(nodes) do
+    Enum.reduce(nodes, {acc, index}, fn node, {a, i} ->
+      find_parent_subtrees(node, optimistic_names, a, i)
+    end)
+  end
 
-      metadata = %{
-        context: :client_component,
-        optimistic_fields: %{},
-        optimistic_derives: %{},
-        calculations:
-          calculations
-          |> Enum.map(fn {name, _, _, _} -> {name, %{optimistic: true}} end)
-          |> Map.new(),
-        forms: %{},
-        actions: %{},
-        optimistic_actions: optimistic_actions_map
+  defp find_parent_subtrees({:element, tag, _attrs, children, _meta}, optimistic_names, acc, index) do
+    # Check if any direct child has :if/:for over optimistic state
+    if has_optimistic_child?(children, optimistic_names) do
+      # Transpile ALL children to JS — this parent becomes the derive target
+      children_js =
+        children
+        |> Enum.map(&Lavash.Component.JsGenerator.subtree_to_js/1)
+        |> Enum.join("")
+
+      derive_name = "__subtree_#{index}"
+      all_deps = collect_all_optimistic_deps(children, optimistic_names)
+
+      derive = %{
+        name: derive_name,
+        js_expr: "`#{children_js}`",
+        deps: all_deps |> Enum.map(&to_string/1) |> Enum.uniq(),
+        parent_tag: tag
       }
 
-      # Extract reactive attribute derives from template source
-      # Build set of all known optimistic names for dep checking
-      all_optimistic_names =
-        MapSet.new(
-          Map.keys(metadata.calculations) ++
-          Enum.map(calculations, fn {name, _, _, _} -> name end)
-        )
-
-      # Also include form validation derives
-      forms = Transformer.get_entities(dsl_state, [:forms]) || []
-      form_derive_names = Enum.map(forms, fn f -> :"#{f.name}_valid" end)
-      all_optimistic_names = MapSet.union(all_optimistic_names, MapSet.new(form_derive_names))
-
-      attr_derives = extract_attr_derives(template_source, all_optimistic_names)
-
-      # Transform template (injects data-lavash-action etc.)
-      transformed_source =
-        Lavash.Template.Transformer.transform(template_source, env.module,
-          context: :client_component,
-          metadata: metadata
-        )
-
-      # Generate the JS hook code (includes attr derives in fns and graph)
-      js_code = generate_js_hook(transformed_source, calculations, action_specs, attr_derives)
-
-      # Persist attr derives so ExtractColocatedJs can include them in optimistic_*.js
-      dsl_state =
-        if attr_derives != [] do
-          Transformer.persist(dsl_state, :lavash_attr_derives, attr_derives)
-        else
-          dsl_state
-        end
-
-      # Check for untranspilable expressions in ACTION code only
-      # (render function may have untranspilable parts that fall back gracefully)
-      action_section =
-        case String.split(js_code, "applyOptimisticAction", parts: 2) do
-          [_, action_part] -> action_part
-          _ -> ""
-        end
-
-      if String.contains?(action_section, "undefined /* untranspilable:") do
-        [_, detail | _] = String.split(action_section, "undefined /* untranspilable: ", parts: 2)
-        [detail | _] = String.split(detail, " */", parts: 2)
-
-        raise CompileError,
-          description: """
-          Untranspilable expression in #{inspect(env.module)} action.
-
-          The expression could not be converted to JavaScript for client-side
-          optimistic rendering: #{String.trim(detail)}
-
-          Common fixes:
-          - Use Enum.reject/2 instead of the -- operator for list removal
-          - Use simple arithmetic and boolean expressions in rx()
-          - For map_by transforms, pass a string source instead of a function
-          """,
-          file: env.file,
-          line: env.line
-      end
-
-      # Write colocated hook file
-      module_name = env.module |> Module.split() |> List.last()
-      full_hook_name = "#{inspect(env.module)}.#{module_name}"
-
-      hook_data = CompilerHelpers.write_colocated_hook(env, full_hook_name, js_code)
-
-      dsl_state =
-        dsl_state
-        |> Transformer.persist(:lavash_client_hook_data, hook_data)
-        |> Transformer.persist(:lavash_client_hook_name, full_hook_name)
-
-      {:ok, dsl_state}
+      {[derive | acc], index + 1}
+    else
+      # No optimistic :if/:for in direct children — recurse deeper
+      find_parent_subtrees(children, optimistic_names, acc, index)
     end
   end
+
+  defp find_parent_subtrees(_node, _optimistic_names, acc, index), do: {acc, index}
+
+  defp has_optimistic_child?(children, optimistic_names) do
+    Enum.any?(children, fn
+      {:element, _tag, attrs, _children, _meta} ->
+        match?({:ok, _}, optimistic_conditional(attrs, optimistic_names))
+      _ ->
+        false
+    end)
+  end
+
+  # Check if element has :if or :for referencing optimistic state
+  defp optimistic_conditional(attrs, optimistic_names) do
+    conditional_attr =
+      Enum.find(attrs, fn
+        {":if", {:expr, _code, _meta}} -> true
+        {":for", {:expr, _code, _meta}} -> true
+        _ -> false
+      end)
+
+    case conditional_attr do
+      {_name, {:expr, code, _meta}} ->
+        deps =
+          Regex.scan(~r/@(\w+)/, code)
+          |> Enum.map(fn [_, field] -> String.to_atom(field) end)
+          |> Enum.filter(&MapSet.member?(optimistic_names, &1))
+
+        if deps != [], do: {:ok, deps}, else: :skip
+
+      _ ->
+        :skip
+    end
+  end
+
+  # Collect all @field references from a subtree that are in optimistic_names
+  defp collect_all_optimistic_deps(nodes, optimistic_names) when is_list(nodes) do
+    Enum.flat_map(nodes, &collect_all_optimistic_deps(&1, optimistic_names))
+  end
+
+  defp collect_all_optimistic_deps({:element, _tag, attrs, children, _meta}, optimistic_names) do
+    attr_deps =
+      Enum.flat_map(attrs, fn
+        {_name, {:expr, code, _meta}} ->
+          Regex.scan(~r/@(\w+)/, code)
+          |> Enum.map(fn [_, field] -> String.to_atom(field) end)
+          |> Enum.filter(&MapSet.member?(optimistic_names, &1))
+        _ -> []
+      end)
+
+    attr_deps ++ collect_all_optimistic_deps(children, optimistic_names)
+  end
+
+  defp collect_all_optimistic_deps({:expr, code, _meta}, optimistic_names) do
+    Regex.scan(~r/@(\w+)/, code)
+    |> Enum.map(fn [_, field] -> String.to_atom(field) end)
+    |> Enum.filter(&MapSet.member?(optimistic_names, &1))
+  end
+
+  defp collect_all_optimistic_deps(_node, _optimistic_names), do: []
 
   # Extract reactive attribute derives from template source
   defp extract_attr_derives(template_source, optimistic_names) do
@@ -265,71 +293,6 @@ defmodule Lavash.Component.Transformers.GenerateClientHook do
     _ -> :error
   end
 
-  # Convert DSL action entities to JS action specs
-  defp actions_to_js_specs(actions) do
-    Enum.flat_map(actions, fn action ->
-      sets = action.sets || []
-      updates = action.updates || []
-      map_bys = action.map_bys || []
-
-      set_specs =
-        Enum.flat_map(sets, fn set ->
-          case ActionJs.analyze_value(set.value) do
-            {:rx, source} ->
-              [%{type: :set, name: action.name, field: set.field,
-                 run_source: "fn _current, _params -> #{source} end"}]
-
-            :from_params_value ->
-              [%{type: :set, name: action.name, field: set.field, run_source: nil}]
-
-            {:literal, value} ->
-              [%{type: :set, name: action.name, field: set.field,
-                 run_source: "fn _current, _params -> #{inspect(value)} end"}]
-
-            _ -> []
-          end
-        end)
-
-      update_specs =
-        Enum.map(updates, fn update ->
-          source = Macro.to_string(update.fun)
-          %{type: :set, name: action.name, field: update.field, run_source: source}
-        end)
-
-      map_by_specs =
-        Enum.map(map_bys, fn mb ->
-          source = cond do
-            mb.transform == :remove -> ":remove"
-            is_binary(mb.transform) -> mb.transform
-            true ->
-              case ActionJs.analyze_value(mb.transform) do
-                {:rx, s} -> "fn item, _value -> #{s} end"
-                _ -> nil
-              end
-          end
-
-          %{type: :map_by, name: action.name, field: mb.field,
-            key: mb.key, transform_source: source}
-        end)
-        |> Enum.filter(& &1.transform_source)
-
-      set_specs ++ update_specs ++ map_by_specs
-    end)
-  end
-
-  defp topo_sort_calculations(calcs) do
-    deps_map = Map.new(calcs, fn {name, _, _, deps} -> {name, deps} end)
-    sorted = Lavash.Graph.topo_sort(deps_map)
-
-    sorted
-    |> Enum.flat_map(fn name ->
-      case Enum.find(calcs, fn {n, _, _, _} -> n == name end) do
-        nil -> []
-        calc -> [calc]
-      end
-    end)
-  end
-
   defp resolve_template_source(lavash_renders) do
     renders_map = Map.new(lavash_renders)
 
@@ -350,43 +313,4 @@ defmodule Lavash.Component.Transformers.GenerateClientHook do
   defp extract_compiled_source({:quote, _, [[do: ast]]}), do: extract_compiled_source(ast)
   defp extract_compiled_source(_), do: nil
 
-  # JS generation — delegates to the existing GenerateHook
-  defp generate_js_hook(template_source, calculations, action_specs, attr_derives \\ []) do
-    # Convert action specs to the format GenerateHook.generate_js_hook expects
-    actions =
-      Enum.map(action_specs, fn spec ->
-        case spec[:type] do
-          :map_by ->
-            # map_by specs: use key for keyed array mutation
-            # Transform the rx source to a run_source that GenerateHook understands
-            run_source = spec.transform_source
-
-            %{
-              name: spec.name,
-              field: spec.field,
-              key: spec.key,
-              run_source: run_source,
-              validate_source: nil,
-              max: nil
-            }
-
-          _ ->
-            %{
-              name: spec.name,
-              field: spec.field,
-              key: nil,
-              run_source: spec[:run_source],
-              validate_source: nil,
-              max: nil
-            }
-        end
-      end)
-
-    Lavash.Component.JsGenerator.generate_js_hook(
-      template_source,
-      calculations,
-      actions,
-      attr_derives
-    )
-  end
 end

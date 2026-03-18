@@ -62,9 +62,6 @@ defmodule Lavash.Overlay.Modal.RenderGenerator do
       end)
       |> Jason.encode!()
 
-    # Check if this component has a client hook (for client-side form validation etc.)
-    client_hook_name = Spark.Dsl.Extension.get_persisted(module, :lavash_client_hook_name)
-
     # Generate code to define render_fn based on template type
     # For render AST, we compile in the module's context
     render_fn_code = generate_render_fn_code(render_template, :modal_render_template, module)

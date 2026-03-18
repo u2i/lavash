@@ -1,28 +1,32 @@
-defmodule Lavash.Component.HookWrapper do
+defmodule Lavash.Component.OptimisticWrapper do
   @moduledoc false
 
   @doc """
-  Wraps inner rendered content in a hook root div.
-  Returns a Phoenix.LiveView.Rendered struct.
+  Wraps inner rendered content in a LavashOptimistic hook root div.
+
+  Used for components with optimistic features (actions, calculations,
+  subtree derives) that use data-lavash-* substitution instead of a
+  full client-side JS render function.
   """
   def wrap(assigns, inner_rendered) do
     id = to_iodata(assigns.id)
-    hook = to_iodata(assigns.__hook_name__)
     target = to_iodata(assigns.myself)
+    module_name = to_iodata(assigns.__module_name__)
     state = escape_attr(assigns.__state_json__)
     version = to_iodata(assigns.__version__)
     bindings = escape_attr(assigns.__bindings_json__)
 
     %Phoenix.LiveView.Rendered{
       static: [
-        "<div id=\"", "\" phx-hook=\"", "\" phx-target=\"",
-        "\" data-lavash-state=\"", "\" data-lavash-version=\"",
-        "\" data-lavash-bindings=\"", "\">", "</div>"
+        "<div id=\"", "\" phx-hook=\"LavashOptimistic\" phx-target=\"",
+        "\" data-lavash-component data-lavash-module=\"", "\" data-lavash-state=\"",
+        "\" data-lavash-version=\"", "\" data-lavash-bindings=\"", "\">",
+        "</div>"
       ],
       dynamic: fn _ ->
-        [id, hook, target, state, version, bindings, inner_rendered]
+        [id, target, module_name, state, version, bindings, inner_rendered]
       end,
-      fingerprint: :erlang.phash2({:lavash_hook_root, assigns.__hook_name__}),
+      fingerprint: :erlang.phash2({:lavash_optimistic_root, assigns.__module_name__}),
       root: true
     }
   end

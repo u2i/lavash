@@ -22,6 +22,8 @@ export function refreshFromParent(bindings, state, store, parentHook) {
 
   for (const [localField, parentField] of Object.entries(bindings)) {
     const parentValue = parentHook.state[parentField];
+    // Skip if parent doesn't have this field — avoid clobbering local state
+    if (parentValue === undefined) continue;
     const localValue = state[localField];
 
     if (parentValue !== localValue) {

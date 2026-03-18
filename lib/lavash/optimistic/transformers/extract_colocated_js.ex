@@ -149,10 +149,13 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
         _ -> []
       end)
 
-    if calculations == [] and forms == [] and animated_fields == [] and optimistic_actions == [] and attr_derives == [] do
+    # Read subtree derives (auto-extracted :if/:for over optimistic state)
+    subtree_derives = Transformer.get_persisted(dsl_state, :lavash_subtree_derives) || []
+
+    if calculations == [] and forms == [] and animated_fields == [] and optimistic_actions == [] and attr_derives == [] and subtree_derives == [] do
       nil
     else
-      generate_js_code(calculations, forms, extend_errors, animated_fields, defrx_map, optimistic_actions, attr_derives, module)
+      generate_js_code(calculations, forms, extend_errors, animated_fields, defrx_map, optimistic_actions, attr_derives, subtree_derives, module)
     end
   end
 
@@ -174,7 +177,7 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
     end
   end
 
-  defp generate_js_code(calculations, forms, extend_errors, animated_fields, defrx_map, optimistic_actions, attr_derives, _module) do
+  defp generate_js_code(calculations, forms, extend_errors, animated_fields, defrx_map, optimistic_actions, attr_derives, subtree_derives, _module) do
     calculation_fns = Enum.map(calculations, &generate_calculation_js(&1, defrx_map)) |> Enum.filter(& &1)
     action_fns = Enum.map(optimistic_actions, &generate_action_js/1) |> Enum.filter(& &1)
 
@@ -184,12 +187,16 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
     # Generate attr derive functions
     attr_derive_fns = Enum.map(attr_derives, &generate_attr_derive_js/1)
 
+    # Generate subtree derive functions (auto-extracted :if/:for)
+    subtree_derive_fns = Enum.map(subtree_derives, &generate_subtree_derive_js/1)
+
     fns =
       action_fns ++
         calculation_fns ++
         form_validation_fns ++
         form_error_fns ++
-        attr_derive_fns
+        attr_derive_fns ++
+        subtree_derive_fns
 
     if fns == [] and animated_fields == [] do
       nil
@@ -198,14 +205,15 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
         Enum.map(calculations, fn calc -> to_string(calc.name) end)
 
       attr_derive_names = Enum.map(attr_derives, fn d -> d.name end)
+      subtree_derive_names = Enum.map(subtree_derives, fn d -> d.name end)
 
-      derive_names = calculation_derive_names ++ validation_derives ++ error_derives ++ attr_derive_names
+      derive_names = calculation_derive_names ++ validation_derives ++ error_derives ++ attr_derive_names ++ subtree_derive_names
 
       graph_entries = build_graph_entries(calculations, forms, extend_errors)
 
       # Add attr derives to the graph
       graph_entries =
-        Enum.reduce(attr_derives, graph_entries, fn derive, graph ->
+        Enum.reduce(attr_derives ++ subtree_derives, graph_entries, fn derive, graph ->
           deps = derive.deps
           name = derive.name
 
@@ -268,25 +276,71 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
     name = action.name
     sets = action.sets || []
     updates = action.updates || []
+    map_bys = action.map_bys || []
     params = action.params || []
 
     # Generate JS expressions, filtering out non-transpilable ones
     set_exprs = sets |> Enum.map(&generate_set_js(&1, params)) |> Enum.filter(& &1)
     update_exprs = updates |> Enum.map(&generate_update_js/1) |> Enum.filter(& &1)
+    map_by_stmts = map_bys |> Enum.map(&generate_map_by_js/1) |> Enum.filter(& &1)
 
     all_exprs = set_exprs ++ update_exprs
 
-    if all_exprs == [] do
+    if all_exprs == [] and map_by_stmts == [] do
       nil
     else
-      expr_pairs = Enum.join(all_exprs, ", ")
       param_str = if params != [], do: ", value", else: ""
 
-      """
-        #{name}(state#{param_str}) {
-          return { #{expr_pairs} };
-        }
-      """
+      if map_by_stmts != [] do
+        # map_by actions mutate arrays in-place and return the full delta
+        stmts = Enum.join(map_by_stmts, "\n")
+        # Collect field names from map_by operations for the return delta
+        map_by_fields = Enum.map(map_bys, fn mb -> "#{mb.field}: state.#{mb.field}" end) |> Enum.uniq()
+        set_delta = if all_exprs != [], do: Enum.join(all_exprs, ", ") <> ", ", else: ""
+        map_by_delta = Enum.join(map_by_fields, ", ")
+
+        """
+          #{name}(state#{param_str}) {
+        #{stmts}
+            return { #{set_delta}#{map_by_delta} };
+          }
+        """
+      else
+        expr_pairs = Enum.join(all_exprs, ", ")
+
+        """
+          #{name}(state#{param_str}) {
+            return { #{expr_pairs} };
+          }
+        """
+      end
+    end
+  end
+
+  defp generate_map_by_js(map_by) do
+    field = map_by.field
+    key = map_by.key
+    key_str = to_string(key)
+    transform = map_by.transform
+
+    cond do
+      transform == :remove ->
+        "    state.#{field} = (state.#{field} || []).filter(item => item.#{key_str} !== value);"
+
+      is_binary(transform) ->
+        item_transform_js = Lavash.Component.CompilerHelpers.fn_source_to_js_item_transform(transform)
+        """
+            state.#{field} = (state.#{field} || []).map(item => {
+              if (String(item.#{key_str}) === String(value)) {
+                const result = #{item_transform_js};
+                return result === 'remove' ? null : result;
+              }
+              return item;
+            }).filter(item => item !== null);
+        """
+
+      true ->
+        nil
     end
   end
 
@@ -317,6 +371,14 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
   defp generate_update_js(update), do: ActionJs.generate_update_js(update)
 
   defp generate_attr_derive_js(%{name: name, js_expr: js_expr}) do
+    """
+      #{name}(state) {
+        return #{js_expr};
+      }
+    """
+  end
+
+  defp generate_subtree_derive_js(%{name: name, js_expr: js_expr}) do
     """
       #{name}(state) {
         return #{js_expr};

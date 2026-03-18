@@ -46,6 +46,7 @@ defmodule Lavash.Template.TokenTransformer do
     tokens
     |> Enum.map(&transform_token(&1, metadata, state))
     |> maybe_inject_display_attrs(metadata)
+    |> maybe_inject_subtree_html_attrs(metadata)
   end
 
   # Transform individual tokens
@@ -419,6 +420,113 @@ defmodule Lavash.Template.TokenTransformer do
     else
       attrs
     end
+  end
+
+  # ===========================================================================
+  # Subtree Derive Injection (data-lavash-html on parent elements)
+  # ===========================================================================
+
+  # When subtree derives exist, find the parent tags of :if/:for elements
+  # and inject data-lavash-html on them. Uses a tag stack to track nesting
+  # and identify which open tag is the parent of each :if/:for child.
+  defp maybe_inject_subtree_html_attrs(tokens, metadata) do
+    subtree_derives = metadata[:subtree_derives] || []
+
+
+    if subtree_derives == [] do
+      tokens
+    else
+      # Pass 1: Find the line numbers of parent tags that need data-lavash-html.
+      # Walk tokens with a stack to track the current parent tag.
+      parent_lines = find_parent_tag_lines(tokens, subtree_derives)
+
+      # Pass 2: Inject data-lavash-html on matching parent tags.
+      inject_html_attrs(tokens, parent_lines)
+    end
+  end
+
+  # Walk tokens tracking a tag stack. When we see a :if/:for tag,
+  # the top of the stack is the parent. Return a map of {line, column} => derive_name.
+  defp find_parent_tag_lines(tokens, derives) do
+    {parent_lines, _stack, _derive_idx} =
+      Enum.reduce(tokens, {%{}, [], 0}, fn token, {parents, stack, idx} ->
+        case token do
+          {:tag, _name, attrs, meta} ->
+            case meta[:closing] do
+              closing when closing in [:self, :void] ->
+                # Self-closing — check if it has :if/:for
+                if idx < length(derives) && has_if_or_for?(attrs) do
+                  case stack do
+                    [{parent_line, parent_col} | _] ->
+                      derive = Enum.at(derives, idx)
+                      {Map.put(parents, {parent_line, parent_col}, derive.name), stack, idx + 1}
+                    [] ->
+                      {parents, stack, idx}
+                  end
+                else
+                  {parents, stack, idx}
+                end
+
+              _ ->
+                # Opening tag — check if it has :if/:for
+                if idx < length(derives) && has_if_or_for?(attrs) do
+                  case stack do
+                    [{parent_line, parent_col} | _] ->
+                      derive = Enum.at(derives, idx)
+                      parents = Map.put(parents, {parent_line, parent_col}, derive.name)
+                      # Push this tag onto stack too (it's now open)
+                      {parents, [{meta[:line], meta[:column]} | stack], idx + 1}
+                    [] ->
+                      {parents, [{meta[:line], meta[:column]} | stack], idx}
+                  end
+                else
+                  # Regular opening tag — push onto stack
+                  {parents, [{meta[:line], meta[:column]} | stack], idx}
+                end
+            end
+
+          {:close, :tag, _name, _meta} ->
+            # Pop from stack
+            {parents, tl(stack || [[]]), idx}
+
+          _ ->
+            {parents, stack, idx}
+        end
+      end)
+
+    parent_lines
+  end
+
+  defp inject_html_attrs(tokens, parent_lines) when map_size(parent_lines) == 0, do: tokens
+
+  defp inject_html_attrs(tokens, parent_lines) do
+    Enum.map(tokens, fn
+      {:tag, name, attrs, meta} = token ->
+        key = {meta[:line], meta[:column]}
+        case Map.get(parent_lines, key) do
+          nil -> token
+          derive_name ->
+            if has_attr?(attrs, "data-lavash-html") do
+              token
+            else
+              attr_meta = %{line: meta[:line] || 1, column: meta[:column] || 1}
+              new_attr = {"data-lavash-html",
+                {:string, derive_name, %{delimiter: ?", line: attr_meta.line, column: attr_meta.column}},
+                attr_meta}
+              {:tag, name, attrs ++ [new_attr], meta}
+            end
+        end
+
+      token -> token
+    end)
+  end
+
+  defp has_if_or_for?(attrs) do
+    Enum.any?(attrs, fn
+      {":if", _value, _meta} -> true
+      {":for", _value, _meta} -> true
+      _ -> false
+    end)
   end
 
   # ===========================================================================

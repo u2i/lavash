@@ -330,10 +330,11 @@ const LavashOptimistic = {
   },
 
 
-  updateDOM() {
+  updateDOM(isOptimistic = false) {
     _updateDOM(this.el, this.state, {
       getFormField: this.getFormField.bind(this),
       isFormSubmitted: this.isFormSubmitted.bind(this),
+      isOptimistic,
     });
     this.notifyChildren();
   },

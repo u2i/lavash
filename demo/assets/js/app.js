@@ -33,26 +33,21 @@ window.morphdom = morphdom
 
 // Lavash optimistic UI library
 import { SyncedVar, LavashOptimistic, OverlayAnimator } from "lavash"
-// Colocated hooks from Lavash library
-import {hooks as lavashHooks} from "phoenix-colocated/lavash"
-// Colocated hooks from Demo app (ClientComponents)
-import {hooks as demoHooks} from "phoenix-colocated/demo"
 // Lavash optimistic functions - auto-generated at compile time via phoenix-colocated
-import {optimistic as lavashOptimisticFns} from "phoenix-colocated/demo"
+import {optimistic as lavashLibOptimisticFns} from "phoenix-colocated/lavash"
+import {optimistic as demoOptimisticFns} from "phoenix-colocated/demo"
 
 // Register Lavash on window for colocated hooks and generated optimistic functions
 window.Lavash = window.Lavash || {};
 window.Lavash.SyncedVar = SyncedVar;
 window.Lavash.OverlayAnimator = OverlayAnimator;
-window.Lavash.optimistic = lavashOptimisticFns || {};
+window.Lavash.optimistic = { ...lavashLibOptimisticFns, ...demoOptimisticFns };
 
 // Plain LiveView demo hooks (hand-coded, no DSL)
 import PlainCounter from "./plain_counter_hook.js"
 
-// Merge hooks from Lavash library and app-specific hooks
+// Merge hooks
 const colocatedHooks = {
-  ...lavashHooks,
-  ...demoHooks,
   LavashOptimistic,
   PlainCounter
 }

@@ -228,6 +228,14 @@ defmodule Lavash.Sigil do
           _ -> []
         end
 
+      # Read persisted subtree derives from GenerateClientHook transformer
+      subtree_derives =
+        try do
+          Spark.Dsl.Extension.get_persisted(module, :lavash_subtree_derives) || []
+        rescue
+          _ -> []
+        end
+
       %{
         context: context,
         optimistic_fields: optimistic_fields,
@@ -236,7 +244,8 @@ defmodule Lavash.Sigil do
         forms: forms_map,
         actions: actions_map,
         optimistic_actions: optimistic_actions_map,
-        attr_derives: attr_derives
+        attr_derives: attr_derives,
+        subtree_derives: subtree_derives
       }
     rescue
       _ -> %{context: context}

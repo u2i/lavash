@@ -25,7 +25,6 @@
 
 export { SyncedVar, SyncedVarStore } from "./synced_var.js";
 export { ReactiveStore } from "./reactive_store.js";
-export { createComponentHook, humanize } from "./component_hook.js";
 export { OverlayAnimator } from "./overlay_animator.js";
 export { LavashOptimistic } from "./lavash_optimistic.js";
 

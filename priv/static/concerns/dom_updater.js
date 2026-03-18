@@ -90,6 +90,32 @@ export function updateDOM(rootEl, state, opts) {
     if (value !== undefined) el.hidden = !!value;
   }
 
+  // data-lavash-html: render subtree from JS derive (for :if/:for over optimistic state)
+  // Only applies during optimistic updates (opts.isOptimistic), not server patches.
+  // The server renders correct HTML — we only override during the optimistic window.
+  if (opts.isOptimistic) {
+    for (const el of rootEl.querySelectorAll("[data-lavash-html]")) {
+      if (isInsideChildHook(el, rootEl)) continue;
+      const deriveName = el.dataset.lavashHtml;
+      const html = state[deriveName];
+      if (html !== undefined) {
+        if (window.morphdom) {
+          const temp = document.createElement(el.tagName);
+          temp.innerHTML = html;
+          window.morphdom(el, temp, {
+            childrenOnly: true,
+            onBeforeElUpdated(fromEl, toEl) {
+              if (fromEl.hasAttribute('data-lavash-preserve')) return false;
+              return true;
+            }
+          });
+        } else {
+          el.innerHTML = html;
+        }
+      }
+    }
+  }
+
   // data-lavash-errors: error messages (only shown when touched/submitted)
   for (const el of rootEl.querySelectorAll("[data-lavash-errors]")) {
     if (isInsideChildHook(el, rootEl)) continue;

@@ -91,7 +91,7 @@ export function runOptimisticAction(actionName, value, hook) {
 
     hook.propagateBoundFieldsToParent(changedFields);
     hook.recomputeDerives(changedFields);
-    hook.updateDOM();
+    hook.updateDOM(true);
     hook.syncUrl();
   } catch (err) {
     // Silently ignore client-side errors — server is source of truth
