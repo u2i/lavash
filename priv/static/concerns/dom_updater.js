@@ -8,31 +8,36 @@
 import { isInsideChildHook, humanizeFieldName } from "./utils.js";
 
 /**
+ * Select elements matching a selector within rootEl, excluding those
+ * inside nested child hooks (which have their own LavashOptimistic instance).
+ */
+function selectOwn(rootEl, selector) {
+  const results = [];
+  for (const el of rootEl.querySelectorAll(selector)) {
+    if (!isInsideChildHook(el, rootEl)) results.push(el);
+  }
+  return results;
+}
+
+/**
  * Update all data-lavash-* DOM elements from current state.
  *
  * @param {HTMLElement} rootEl - The hook root element
  * @param {Object} state - Current state object
- * @param {Object} opts - { getFormField, isFormSubmitted }
+ * @param {Object} opts - { getFormField, isFormSubmitted, isOptimistic }
  */
 export function updateDOM(rootEl, state, opts) {
   const { getFormField, isFormSubmitted } = opts;
 
   // data-lavash-display: text content from state
-  for (const el of rootEl.querySelectorAll("[data-lavash-display]")) {
-    if (isInsideChildHook(el, rootEl)) continue;
-    const fieldName = el.dataset.lavashDisplay;
-    const value = state[fieldName];
-    if (value !== undefined) {
-      el.textContent = value;
-    }
+  for (const el of selectOwn(rootEl, "[data-lavash-display]")) {
+    const value = state[el.dataset.lavashDisplay];
+    if (value !== undefined) el.textContent = value;
   }
 
   // data-lavash-visible: show/hide based on boolean state
-  for (const el of rootEl.querySelectorAll("[data-lavash-visible]")) {
-    if (isInsideChildHook(el, rootEl)) continue;
-    const fieldName = el.dataset.lavashVisible;
-    const value = state[fieldName];
-    if (value) {
+  for (const el of selectOwn(rootEl, "[data-lavash-visible]")) {
+    if (state[el.dataset.lavashVisible]) {
       el.classList.remove("hidden");
     } else {
       el.classList.add("hidden");
@@ -40,11 +45,8 @@ export function updateDOM(rootEl, state, opts) {
   }
 
   // data-lavash-enabled: enable/disable based on boolean state
-  for (const el of rootEl.querySelectorAll("[data-lavash-enabled]")) {
-    if (isInsideChildHook(el, rootEl)) continue;
-    const fieldName = el.dataset.lavashEnabled;
-    const value = state[fieldName];
-    const enabled = value === true;
+  for (const el of selectOwn(rootEl, "[data-lavash-enabled]")) {
+    const enabled = state[el.dataset.lavashEnabled] === true;
     el.disabled = !enabled;
     if (enabled) {
       el.classList.remove('btn-disabled', 'opacity-60', 'cursor-not-allowed');
@@ -55,10 +57,8 @@ export function updateDOM(rootEl, state, opts) {
 
   // data-lavash-toggle: toggle classes based on boolean
   // Format: "fieldName|trueClasses|falseClasses"
-  for (const el of rootEl.querySelectorAll("[data-lavash-toggle]")) {
-    if (isInsideChildHook(el, rootEl)) continue;
-    const spec = el.dataset.lavashToggle;
-    const [fieldName, trueClasses, falseClasses] = spec.split("|");
+  for (const el of selectOwn(rootEl, "[data-lavash-toggle]")) {
+    const [fieldName, trueClasses, falseClasses] = el.dataset.lavashToggle.split("|");
     const value = state[fieldName];
     const allClasses = (trueClasses + " " + falseClasses).split(/\s+/).filter(c => c);
     el.classList.remove(...allClasses);
@@ -67,37 +67,28 @@ export function updateDOM(rootEl, state, opts) {
   }
 
   // data-lavash-attr-disabled: set disabled from reactive derive
-  for (const el of rootEl.querySelectorAll("[data-lavash-attr-disabled]")) {
-    if (isInsideChildHook(el, rootEl)) continue;
-    const deriveName = el.dataset.lavashAttrDisabled;
-    const value = state[deriveName];
+  for (const el of selectOwn(rootEl, "[data-lavash-attr-disabled]")) {
+    const value = state[el.dataset.lavashAttrDisabled];
     if (value !== undefined) el.disabled = !!value;
   }
 
   // data-lavash-attr-class: set full className from reactive derive
-  for (const el of rootEl.querySelectorAll("[data-lavash-attr-class]")) {
-    if (isInsideChildHook(el, rootEl)) continue;
-    const deriveName = el.dataset.lavashAttrClass;
-    const value = state[deriveName];
+  for (const el of selectOwn(rootEl, "[data-lavash-attr-class]")) {
+    const value = state[el.dataset.lavashAttrClass];
     if (value !== undefined) el.className = value;
   }
 
   // data-lavash-attr-hidden: set hidden from reactive derive
-  for (const el of rootEl.querySelectorAll("[data-lavash-attr-hidden]")) {
-    if (isInsideChildHook(el, rootEl)) continue;
-    const deriveName = el.dataset.lavashAttrHidden;
-    const value = state[deriveName];
+  for (const el of selectOwn(rootEl, "[data-lavash-attr-hidden]")) {
+    const value = state[el.dataset.lavashAttrHidden];
     if (value !== undefined) el.hidden = !!value;
   }
 
   // data-lavash-html: render subtree from JS derive (for :if/:for over optimistic state)
-  // Only applies during optimistic updates (opts.isOptimistic), not server patches.
-  // The server renders correct HTML — we only override during the optimistic window.
+  // Only applies during optimistic updates, not server patches.
   if (opts.isOptimistic) {
-    for (const el of rootEl.querySelectorAll("[data-lavash-html]")) {
-      if (isInsideChildHook(el, rootEl)) continue;
-      const deriveName = el.dataset.lavashHtml;
-      const html = state[deriveName];
+    for (const el of selectOwn(rootEl, "[data-lavash-html]")) {
+      const html = state[el.dataset.lavashHtml];
       if (html !== undefined) {
         if (window.morphdom) {
           const temp = document.createElement(el.tagName);
@@ -117,8 +108,7 @@ export function updateDOM(rootEl, state, opts) {
   }
 
   // data-lavash-errors: error messages (only shown when touched/submitted)
-  for (const el of rootEl.querySelectorAll("[data-lavash-errors]")) {
-    if (isInsideChildHook(el, rootEl)) continue;
+  for (const el of selectOwn(rootEl, "[data-lavash-errors]")) {
     const errorsField = el.dataset.lavashErrors;
     const allErrors = state[errorsField] || [];
 
@@ -155,8 +145,7 @@ export function updateDOM(rootEl, state, opts) {
   }
 
   // data-lavash-error-summary: form-level error summary
-  for (const el of rootEl.querySelectorAll("[data-lavash-error-summary]")) {
-    if (isInsideChildHook(el, rootEl)) continue;
+  for (const el of selectOwn(rootEl, "[data-lavash-error-summary]")) {
     const formName = el.dataset.lavashErrorSummary;
 
     if (!isFormSubmitted(formName)) {
@@ -200,8 +189,7 @@ export function updateDOM(rootEl, state, opts) {
   }
 
   // data-lavash-status: field status indicator
-  for (const el of rootEl.querySelectorAll("[data-lavash-status]")) {
-    if (isInsideChildHook(el, rootEl)) continue;
+  for (const el of selectOwn(rootEl, "[data-lavash-status]")) {
     const validField = el.dataset.lavashStatus;
     const explicitForm = el.dataset.lavashForm;
     const explicitField = el.dataset.lavashField;
@@ -218,14 +206,13 @@ export function updateDOM(rootEl, state, opts) {
       el.textContent = "";
       el.className = el.className.replace(/text-red-\d+/g, "").trim();
     } else {
-      el.textContent = "✗";
+      el.textContent = "\u2717";
       el.className = el.className.replace(/text-red-\d+/g, "").trim() + " text-red-500";
     }
   }
 
   // Input border colors based on validation state
-  for (const input of rootEl.querySelectorAll("[data-lavash-bind]")) {
-    if (isInsideChildHook(input, rootEl)) continue;
+  for (const input of selectOwn(rootEl, "[data-lavash-bind]")) {
     const fieldPath = input.dataset.lavashBind;
     const { formName, fieldName } = getFormField(input, fieldPath);
     if (!formName || !fieldName) continue;
