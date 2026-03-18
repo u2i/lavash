@@ -1,13 +1,15 @@
 defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
   @moduledoc """
-  Spark transformer that extracts generated optimistic JS to colocated files.
+  Spark transformer that extracts generated optimistic JS to colocated files
+  and generates all component callbacks via Transformer.eval.
 
-  This runs at compile time and writes the generated JS functions to the
-  phoenix-colocated directory, allowing them to be bundled by esbuild instead
-  of being eval'd at runtime.
+  This runs last among all transformers (after? returns true for all).
+  It handles two responsibilities:
 
-  The generated files integrate with Phoenix.LiveView.ColocatedJS system,
-  which handles manifest generation and cleanup automatically.
+  1. Extracting optimistic JS to phoenix-colocated directory for esbuild bundling
+  2. Generating all LiveComponent callbacks (render/1, update/2, handle_event/2,
+     introspection functions, __phoenix_macro_components__/0) via Transformer.eval,
+     eliminating the need for a separate @before_compile hook
   """
 
   use Spark.Dsl.Transformer
@@ -15,23 +17,38 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
   alias Lavash.Component.CompilerHelpers
   alias Lavash.Optimistic.ActionJs
   alias Lavash.Form.ValidationJs
+  alias Spark.Dsl.Transformer
 
   # Run after all entities are defined but before compilation finishes
   def after?(_), do: true
   def before?(_), do: false
 
   @doc """
-  Transform the DSL state by extracting optimistic JS to a colocated file.
+  Transform the DSL state by extracting optimistic JS to a colocated file
+  and generating all component callbacks.
   """
   def transform(dsl_state) do
-    module = Spark.Dsl.Transformer.get_persisted(dsl_state, :module)
-    env = Spark.Dsl.Transformer.get_persisted(dsl_state, :env)
+    module = Transformer.get_persisted(dsl_state, :module)
+    env = Transformer.get_persisted(dsl_state, :env)
 
     # Skip if module or env is not available (shouldn't happen)
     if is_nil(module) or is_nil(env) do
       {:ok, dsl_state}
     else
-      extract_optimistic_js(dsl_state, module, env)
+      dsl_state = extract_optimistic_js(dsl_state, module, env)
+
+      # Only generate component callbacks for Lavash.Component modules,
+      # not Lavash.LiveView modules (which have their own @before_compile)
+      is_component = Module.get_attribute(env.module, :__lavash_module_type__) == :component
+
+      dsl_state =
+        if is_component do
+          generate_component_code(dsl_state, env)
+        else
+          dsl_state
+        end
+
+      {:ok, dsl_state}
     end
   end
 
@@ -44,13 +61,227 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
       # This writes to the same directory as other colocated hooks
       colocated_data = write_colocated_optimistic(env, module, js_code)
 
-      # Persist the colocated data so the compiler can include it in __phoenix_macro_components__
-      dsl_state = Spark.Dsl.Transformer.persist(dsl_state, :lavash_optimistic_colocated_data, colocated_data)
-      {:ok, dsl_state}
+      # Persist the colocated data so we can include it in __phoenix_macro_components__
+      Transformer.persist(dsl_state, :lavash_optimistic_colocated_data, colocated_data)
     else
       # No optimistic JS to generate - clean up any stale directory from previous compilations
       cleanup_stale_optimistic_dir(module)
-      {:ok, dsl_state}
+      dsl_state
+    end
+  end
+
+  # ============================================
+  # Component code generation via Transformer.eval
+  # ============================================
+
+  defp generate_component_code(dsl_state, env) do
+    render_generator = Transformer.get_persisted(dsl_state, :lavash_overlay_render_generator)
+    lavash_renders = Module.get_attribute(env.module, :__lavash_renders__) || []
+    has_optimistic = Transformer.get_persisted(dsl_state, :lavash_optimistic_colocated_data) != nil
+
+    # Overlay render generators call Spark.Dsl.Extension.get_persisted(module, ...)
+    # which reads @persisted from the module. Since we're still inside the transformer
+    # pipeline, @persisted isn't set yet. Temporarily set it so the generator can read values.
+    if render_generator do
+      persist_map = Map.get(dsl_state, :persist, %{})
+      Module.put_attribute(env.module, :persisted, persist_map)
+    end
+
+    # Build render function AST
+    render_ast = build_render_ast(render_generator, lavash_renders, has_optimistic, env)
+
+    # Build external_resource AST for overlay helpers recompilation tracking
+    external_resource_ast =
+      if render_generator do
+        helpers_path = render_generator.helpers_path()
+        quote do: @external_resource(unquote(helpers_path))
+      else
+        quote do: nil
+      end
+
+    # Build __phoenix_macro_components__ AST
+    colocated_ast = build_colocated_ast(dsl_state)
+
+    Transformer.eval(dsl_state, [], quote do
+      unquote(external_resource_ast)
+
+      @impl Phoenix.LiveComponent
+      def update(assigns, socket) do
+        Lavash.Component.Runtime.update(__MODULE__, assigns, socket)
+      end
+
+      @impl Phoenix.LiveComponent
+      def handle_event(event, params, socket) do
+        Lavash.Component.Runtime.handle_event(__MODULE__, event, params, socket)
+      end
+
+      unquote(render_ast)
+
+      # Introspection functions - entities from top_level? sections
+      def __lavash__(:props) do
+        Spark.Dsl.Extension.get_entities(__MODULE__, [:props])
+      end
+
+      def __lavash__(:states) do
+        Spark.Dsl.Extension.get_entities(__MODULE__, [:states])
+      end
+
+      def __lavash__(:reads) do
+        Spark.Dsl.Extension.get_entities(__MODULE__, [:reads])
+      end
+
+      def __lavash__(:forms) do
+        Spark.Dsl.Extension.get_entities(__MODULE__, [:forms])
+      end
+
+      def __lavash__(:calculations) do
+        Spark.Dsl.Extension.get_entities(__MODULE__, [:calculations])
+      end
+
+      # Expose calculations for Graph module
+      # Returns 7-tuples: {name, source, ast, deps, optimistic, async, reads}
+      def __lavash_calculations__ do
+        Spark.Dsl.Extension.get_entities(__MODULE__, [:calculations])
+        |> Enum.map(fn calc ->
+          {calc.name, calc.rx.source, calc.rx.ast, calc.rx.deps,
+           Map.get(calc, :optimistic, true),
+           Map.get(calc, :async, false),
+           Map.get(calc, :reads, [])}
+        end)
+      end
+
+      def __lavash__(:actions) do
+        declared_actions = Spark.Dsl.Extension.get_entities(__MODULE__, [:actions])
+        setter_actions = Lavash.LiveView.Compiler.generate_setter_actions(__MODULE__)
+        declared_actions ++ setter_actions
+      end
+
+      # Convenience accessors by storage type
+      def __lavash__(:socket_fields) do
+        __lavash__(:states) |> Enum.filter(&(&1.from == :socket))
+      end
+
+      def __lavash__(:ephemeral_fields) do
+        __lavash__(:states) |> Enum.filter(&(&1.from == :ephemeral))
+      end
+
+      def __lavash__(:optimistic_fields) do
+        states = __lavash__(:states)
+        explicitly_optimistic = Enum.filter(states, &Lavash.State.Field.optimistic?/1)
+
+        # Auto-detect: fields touched by transpilable actions
+        actions = Spark.Dsl.Extension.get_entities(__MODULE__, [:actions]) || []
+        action_touched_fields =
+          actions
+          |> Enum.filter(&Lavash.Optimistic.ActionJs.action_is_optimistic?/1)
+          |> Enum.flat_map(fn action ->
+            sets = action.sets || []
+            map_bys = action.map_bys || []
+            Enum.map(sets, & &1.field) ++ Enum.map(map_bys, & &1.field)
+          end)
+          |> MapSet.new()
+
+        explicit_names = MapSet.new(explicitly_optimistic, & &1.name)
+        auto_optimistic =
+          states
+          |> Enum.filter(fn f -> f.name in action_touched_fields and f.name not in explicit_names end)
+
+        explicitly_optimistic ++ auto_optimistic
+      end
+
+      # Components don't have URL fields
+      def __lavash__(:url_fields), do: []
+
+      unquote(colocated_ast)
+    end)
+  end
+
+  defp build_render_ast(render_generator, lavash_renders, has_optimistic, env) do
+    cond do
+      render_generator ->
+        # Overlay's render generator takes precedence
+        render_generator.generate(env.module)
+
+      lavash_renders != [] ->
+        build_render_from_macros(lavash_renders, has_optimistic, env)
+
+      true ->
+        # Fall back to user-defined render/1
+        quote do end
+    end
+  end
+
+  defp build_render_from_macros(renders, has_optimistic, env) do
+    renders_map = Map.new(renders)
+
+    case Map.get(renders_map, :__render_fn__) do
+      nil ->
+        quote do end
+
+      escaped_fn ->
+        if has_optimistic do
+          build_render_with_optimistic_hook(escaped_fn, env.module)
+        else
+          build_render_from_fn(escaped_fn)
+        end
+    end
+  end
+
+  # Render with LavashOptimistic hook wrapper
+  defp build_render_with_optimistic_hook(escaped_fn, module) do
+    module_name = inspect(module)
+
+    quote do
+      @impl Phoenix.LiveComponent
+      def render(var!(assigns)) do
+        state = Lavash.Component.Compiler.build_client_state(__MODULE__, var!(assigns))
+        state_json = Jason.encode!(state)
+        bindings_json = Jason.encode!(Map.get(var!(assigns), :__lavash_binding_map__, %{}))
+        version = Map.get(var!(assigns), :__lavash_version__, 0)
+
+        var!(assigns) =
+          var!(assigns)
+          |> Phoenix.Component.assign(:__state_json__, state_json)
+          |> Phoenix.Component.assign(:__bindings_json__, bindings_json)
+          |> Phoenix.Component.assign(:__module_name__, unquote(module_name))
+          |> Phoenix.Component.assign(:__version__, version)
+          |> Phoenix.Component.assign(state)
+
+        render_fn = unquote(escaped_fn)
+        inner = render_fn.(var!(assigns))
+
+        Lavash.Component.OptimisticWrapper.wrap(var!(assigns), inner)
+      end
+    end
+  end
+
+  # Simple render — no client hook, just call the function
+  defp build_render_from_fn(escaped_fn) do
+    quote do
+      @impl Phoenix.LiveComponent
+      def render(var!(assigns)) do
+        render_fn = unquote(escaped_fn)
+        render_fn.(var!(assigns))
+      end
+    end
+  end
+
+  defp build_colocated_ast(dsl_state) do
+    case Transformer.get_persisted(dsl_state, :lavash_optimistic_colocated_data) do
+      nil ->
+        quote do end
+
+      data ->
+        escaped_data = Macro.escape(data)
+
+        quote do
+          @__lavash_optimistic_colocated_data__ unquote(escaped_data)
+          def __phoenix_macro_components__ do
+            %{
+              Phoenix.LiveView.ColocatedJS => [@__lavash_optimistic_colocated_data__]
+            }
+          end
+        end
     end
   end
 

@@ -93,8 +93,6 @@ defmodule Lavash.Component do
       # ~H still uses Phoenix.Component.sigil_H for standard HEEx
       import Lavash.Sigil, only: [sigil_L: 2]
       import Lavash.Template.RenderMacro
-
-      @before_compile Lavash.Component.Compiler
     end
   end
 
