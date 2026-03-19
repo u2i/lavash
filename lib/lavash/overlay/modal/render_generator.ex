@@ -16,17 +16,39 @@ defmodule Lavash.Overlay.Modal.RenderGenerator do
   @impl true
   def helpers_path, do: @helpers_path
 
-  # Generate code for render function based on template type
-  # For function AST, we unquote it so the ~L sigil compiles in the module's context
-  # with access to DSL metadata (forms, states, etc.)
-  defp generate_render_fn_code({:render_ast, escaped_fn}, _field, _module) do
-    # Unquote the escaped AST - this injects it into the module code
-    # so ~L sigil is expanded during module compilation with proper context
-    escaped_fn
+  # Generate code for render function based on template type.
+  # Uses pre-tokenized tokens when available for consistent attribute injection.
+  defp generate_render_fn_code({:render_ast, escaped_fn}, field, _module, dsl_state, env) do
+    # Only use pre-tokenized tokens for the main render template.
+    # Loading templates have different content — pre-tokens are for the main render only.
+    use_pre_tokens = field == :modal_render_template
+    pre_tokens = use_pre_tokens && Spark.Dsl.Transformer.get_persisted(dsl_state, :lavash_template_tokens)
+    template_source = use_pre_tokens && Spark.Dsl.Transformer.get_persisted(dsl_state, :lavash_template_source)
+
+    if pre_tokens && template_source do
+      metadata = Lavash.Component.Transformers.CompileComponent.build_token_transformer_metadata_from_dsl(env, dsl_state)
+
+      compiled = Lavash.TagEngine.compile_from_tokens(pre_tokens, [
+        file: env.file,
+        line: 1,
+        caller: env,
+        source: template_source,
+        tag_handler: Phoenix.LiveView.HTMLEngine,
+        token_transformer: Lavash.Template.TokenTransformer,
+        lavash_metadata: metadata
+      ])
+
+      # Wrap compiled AST in a function for runtime invocation
+      quote do
+        fn var!(assigns) -> unquote(compiled) end
+      end
+    else
+      # Fallback: use escaped fn with ~L sigil expansion
+      escaped_fn
+    end
   end
 
-  defp generate_render_fn_code(_other, field, _module) do
-    # For direct functions or nil, retrieve at runtime
+  defp generate_render_fn_code(_other, field, _module, _dsl_state, _env) do
     quote do
       Spark.Dsl.Extension.get_persisted(__MODULE__, unquote(field))
     end
@@ -35,6 +57,7 @@ defmodule Lavash.Overlay.Modal.RenderGenerator do
   @impl true
   def generate(module, dsl_state) do
     alias Spark.Dsl.Transformer
+    env = Transformer.get_persisted(dsl_state, :env)
     open_field = Transformer.get_persisted(dsl_state, :modal_open_field) || :open
     close_on_escape = Transformer.get_persisted(dsl_state, :modal_close_on_escape) || true
     close_on_backdrop = Transformer.get_persisted(dsl_state, :modal_close_on_backdrop) || true
@@ -65,8 +88,8 @@ defmodule Lavash.Overlay.Modal.RenderGenerator do
 
     # Generate code to define render_fn based on template type
     # For render AST, we compile in the module's context
-    render_fn_code = generate_render_fn_code(render_template, :modal_render_template, module)
-    loading_fn_code = generate_render_fn_code(loading_template, :modal_render_loading_template, module)
+    render_fn_code = generate_render_fn_code(render_template, :modal_render_template, module, dsl_state, env)
+    loading_fn_code = generate_render_fn_code(loading_template, :modal_render_loading_template, module, dsl_state, env)
 
     quote do
       # Track helpers.ex so changes trigger recompilation of this module
