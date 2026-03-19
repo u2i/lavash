@@ -222,7 +222,7 @@ defmodule Lavash.Sigil do
         |> Enum.map(fn calc -> {calc.name, %{optimistic: true}} end)
         |> Map.new()
 
-      # Read persisted attr derives from ExtractTemplateDerives transformer
+      # Read persisted attr derives from AnalyzeTemplate transformer
       attr_derives =
         try do
           Spark.Dsl.Extension.get_persisted(module, :lavash_attr_derives) || []

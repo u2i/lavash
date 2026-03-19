@@ -328,8 +328,10 @@ defmodule Lavash.Component.Dsl do
     transformers: [
       Lavash.Optimistic.Transformers.ExpandAnimatedStates,
       Lavash.Transformers.ExpandFields,
-      Lavash.Component.Transformers.ExtractTemplateDerives,
-      Lavash.Optimistic.Transformers.ExtractColocatedJs
+      Lavash.Component.Transformers.TokenizeTemplate,
+      Lavash.Component.Transformers.AnalyzeTemplate,
+      Lavash.Optimistic.Transformers.ExtractColocatedJs,
+      Lavash.Component.Transformers.CompileComponent
     ],
     imports: [Phoenix.Component, Lavash.DslHelpers, Lavash.Rx, Lavash.Sigil, Lavash.Component.RenderImport]
 end

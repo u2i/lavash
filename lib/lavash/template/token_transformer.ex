@@ -44,7 +44,7 @@ defmodule Lavash.Template.TokenTransformer do
     metadata = state[:lavash_metadata] || %{}
 
     # Note: subtree derive injection (data-lavash-html) is handled upstream
-    # by ExtractTemplateDerives, which injects directly onto pre-tokenized tokens.
+    # by AnalyzeTemplate, which injects directly onto pre-tokenized tokens.
     # The token transformer handles all other injections.
     tokens
     |> Enum.map(&transform_token(&1, metadata, state))
@@ -367,7 +367,7 @@ defmodule Lavash.Template.TokenTransformer do
   end
 
   # Pattern 7: General reactive attribute binding
-  # Looks up pre-computed attr derives (from ExtractTemplateDerives transformer,
+  # Looks up pre-computed attr derives (from AnalyzeTemplate transformer,
   # persisted in DSL state and passed via sigil metadata) and injects
   # data-lavash-attr-* annotations on matching elements.
   # Only injects on elements whose attribute is an EXPRESSION referencing the derive's deps.
