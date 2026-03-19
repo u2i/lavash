@@ -57,10 +57,6 @@ defmodule Lavash.LiveView.Transformers.CompileLiveView do
         """
     end
 
-    # Set @persisted early for any code that reads it
-    persist_map = Map.get(dsl_state, :persist, %{})
-    Module.put_attribute(env.module, :persisted, persist_map)
-
     mount_ast = build_mount_ast(has_on_mount)
     render_ast = build_render_ast(render_template, has_render, env, dsl_state)
     colocated_ast = build_colocated_ast(dsl_state)

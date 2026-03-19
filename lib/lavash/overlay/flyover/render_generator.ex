@@ -33,22 +33,24 @@ defmodule Lavash.Overlay.Flyover.RenderGenerator do
   end
 
   @impl true
-  def generate(module) do
-    open_field = Spark.Dsl.Extension.get_persisted(module, :flyover_open_field) || :open
-    slide_from = Spark.Dsl.Extension.get_persisted(module, :flyover_slide_from) || :right
-    close_on_escape = Spark.Dsl.Extension.get_persisted(module, :flyover_close_on_escape) || true
-    close_on_backdrop = Spark.Dsl.Extension.get_persisted(module, :flyover_close_on_backdrop) || true
-    width = Spark.Dsl.Extension.get_persisted(module, :flyover_width) || :md
-    height = Spark.Dsl.Extension.get_persisted(module, :flyover_height) || :md
-    async_assign = Spark.Dsl.Extension.get_persisted(module, :flyover_async_assign)
+  def generate(module, dsl_state) do
+    alias Spark.Dsl.Transformer
+    _ = module
+    open_field = Transformer.get_persisted(dsl_state, :flyover_open_field) || :open
+    slide_from = Transformer.get_persisted(dsl_state, :flyover_slide_from) || :right
+    close_on_escape = Transformer.get_persisted(dsl_state, :flyover_close_on_escape) || true
+    close_on_backdrop = Transformer.get_persisted(dsl_state, :flyover_close_on_backdrop) || true
+    width = Transformer.get_persisted(dsl_state, :flyover_width) || :md
+    height = Transformer.get_persisted(dsl_state, :flyover_height) || :md
+    async_assign = Transformer.get_persisted(dsl_state, :flyover_async_assign)
     helpers_path = @helpers_path
 
     # Get render templates - may be {:render_ast, escaped_fn} or direct functions
-    render_template = Spark.Dsl.Extension.get_persisted(module, :flyover_render_template)
-    loading_template = Spark.Dsl.Extension.get_persisted(module, :flyover_render_loading_template)
+    render_template = Transformer.get_persisted(dsl_state, :flyover_render_template)
+    loading_template = Transformer.get_persisted(dsl_state, :flyover_render_loading_template)
 
     # Get animated fields config at compile time for JS consumption
-    animated_fields = Spark.Dsl.Extension.get_persisted(module, :lavash_animated_fields) || []
+    animated_fields = Transformer.get_persisted(dsl_state, :lavash_animated_fields) || []
 
     animated_json =
       animated_fields

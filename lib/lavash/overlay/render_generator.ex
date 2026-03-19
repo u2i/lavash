@@ -10,10 +10,11 @@ defmodule Lavash.Overlay.RenderGenerator do
   @doc """
   Generates the render/1 function AST for the overlay component.
 
-  Receives the module being compiled and returns quoted code that defines
-  the render/1 function with the overlay chrome and content.
+  Receives the module being compiled and the DSL state, and returns
+  quoted code that defines the render/1 function with the overlay
+  chrome and content.
   """
-  @callback generate(module :: module()) :: Macro.t()
+  @callback generate(module :: module(), dsl_state :: map()) :: Macro.t()
 
   @doc """
   Returns the path to the helpers module that should trigger recompilation.

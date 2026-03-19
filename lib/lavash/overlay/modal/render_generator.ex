@@ -33,20 +33,21 @@ defmodule Lavash.Overlay.Modal.RenderGenerator do
   end
 
   @impl true
-  def generate(module) do
-    open_field = Spark.Dsl.Extension.get_persisted(module, :modal_open_field) || :open
-    close_on_escape = Spark.Dsl.Extension.get_persisted(module, :modal_close_on_escape) || true
-    close_on_backdrop = Spark.Dsl.Extension.get_persisted(module, :modal_close_on_backdrop) || true
-    max_width = Spark.Dsl.Extension.get_persisted(module, :modal_max_width) || :md
-    async_assign = Spark.Dsl.Extension.get_persisted(module, :modal_async_assign)
+  def generate(module, dsl_state) do
+    alias Spark.Dsl.Transformer
+    open_field = Transformer.get_persisted(dsl_state, :modal_open_field) || :open
+    close_on_escape = Transformer.get_persisted(dsl_state, :modal_close_on_escape) || true
+    close_on_backdrop = Transformer.get_persisted(dsl_state, :modal_close_on_backdrop) || true
+    max_width = Transformer.get_persisted(dsl_state, :modal_max_width) || :md
+    async_assign = Transformer.get_persisted(dsl_state, :modal_async_assign)
     helpers_path = @helpers_path
 
     # Get render templates - may be {:render_ast, escaped_fn} or direct functions
-    render_template = Spark.Dsl.Extension.get_persisted(module, :modal_render_template)
-    loading_template = Spark.Dsl.Extension.get_persisted(module, :modal_render_loading_template)
+    render_template = Transformer.get_persisted(dsl_state, :modal_render_template)
+    loading_template = Transformer.get_persisted(dsl_state, :modal_render_loading_template)
 
     # Get animated fields config at compile time for JS consumption
-    animated_fields = Spark.Dsl.Extension.get_persisted(module, :lavash_animated_fields) || []
+    animated_fields = Transformer.get_persisted(dsl_state, :lavash_animated_fields) || []
 
     animated_json =
       animated_fields

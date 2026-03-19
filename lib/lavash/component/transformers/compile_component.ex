@@ -41,11 +41,6 @@ defmodule Lavash.Component.Transformers.CompileComponent do
     lavash_renders = Module.get_attribute(env.module, :__lavash_renders__) || []
     has_optimistic = Transformer.get_persisted(dsl_state, :lavash_optimistic_colocated_data) != nil
 
-    # Set @persisted early so overlay render generators can read persisted
-    # values via Spark.Dsl.Extension.get_persisted(module, ...).
-    persist_map = Map.get(dsl_state, :persist, %{})
-    Module.put_attribute(env.module, :persisted, persist_map)
-
     # Build render function AST
     render_ast = build_render_ast(render_generator, lavash_renders, has_optimistic, env, dsl_state)
 
@@ -156,7 +151,7 @@ defmodule Lavash.Component.Transformers.CompileComponent do
   defp build_render_ast(render_generator, lavash_renders, has_optimistic, env, dsl_state) do
     cond do
       render_generator ->
-        render_generator.generate(env.module)
+        render_generator.generate(env.module, dsl_state)
 
       lavash_renders != [] ->
         build_render_from_macros(lavash_renders, has_optimistic, env, dsl_state)
