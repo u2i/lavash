@@ -60,11 +60,8 @@ defmodule Lavash.Sigil do
     end
 
     # Build metadata for token transformation, include caller module for attr derive registration
-    # template_line_offset lets the token transformer align subtree derive line numbers
-    # (which are 1-based relative to template) with token line numbers (file-absolute)
     metadata = build_metadata(module, context)
                |> Map.put(:caller_module, module)
-               |> Map.put(:template_line_offset, caller.line)
 
     # Compile with Lavash.TagEngine and token transformer
     compiled = compile_template(template, caller, metadata)
@@ -233,7 +230,9 @@ defmodule Lavash.Sigil do
           _ -> []
         end
 
-      # Read persisted subtree derives from ExtractTemplateDerives transformer
+      # Read subtree derives for derive name mapping (the TokenTransformer
+      # finds parent positions itself from the token stream; it only needs
+      # the derive names here so they match the JS function names)
       subtree_derives =
         try do
           Spark.Dsl.Extension.get_persisted(module, :lavash_subtree_derives) || []

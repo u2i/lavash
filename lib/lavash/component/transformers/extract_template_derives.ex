@@ -136,9 +136,7 @@ defmodule Lavash.Component.Transformers.ExtractTemplateDerives do
       derive = %{
         name: derive_name,
         js_expr: "`#{children_js}`",
-        deps: all_deps |> Enum.map(&to_string/1) |> Enum.uniq(),
-        parent_line: meta[:line],
-        parent_column: meta[:column]
+        deps: all_deps |> Enum.map(&to_string/1) |> Enum.uniq()
       }
 
       {[derive | acc], index + 1}

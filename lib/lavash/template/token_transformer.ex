@@ -441,46 +441,143 @@ defmodule Lavash.Template.TokenTransformer do
   # Subtree Derive Injection (data-lavash-html on parent elements)
   # ===========================================================================
 
-  # Subtree derives include pre-computed parent_line/parent_column from the
-  # parsed tree. We match these directly to tag tokens — no need to re-walk
-  # the token stream to find parents.
+  # Finds parent elements whose children have :if/:for over optimistic state
+  # and injects data-lavash-html={derive_name} directly on the tokens.
+  #
+  # This works on the same token stream that the TagEngine produces — no
+  # separate tokenization pass, no line-number bridging needed.
   defp maybe_inject_subtree_html_attrs(tokens, metadata) do
     subtree_derives = metadata[:subtree_derives] || []
 
     if subtree_derives == [] do
       tokens
     else
-      # Subtree derive line numbers are 1-based relative to the template source.
-      # Token line numbers are absolute file lines (offset by template_line_offset).
-      # Adjust derive lines to match token lines.
-      line_offset = metadata[:template_line_offset] || 0
+      # Build optimistic names from metadata (same set used by ExtractTemplateDerives)
+      optimistic_names = build_optimistic_names_from_metadata(metadata)
 
-      # Build lookup: {file_line, column} => derive_name
-      parent_locations =
-        Map.new(subtree_derives, fn d ->
-          {{d.parent_line + line_offset, d.parent_column}, d.name}
-        end)
+      if MapSet.size(optimistic_names) == 0 do
+        tokens
+      else
+        # Parse tokens into a tree structure, find parent elements with
+        # optimistic :if/:for children, collect their {line, column} positions
+        tree = Lavash.Template.parse(tokens)
+        {parent_positions, _} = find_subtree_parent_positions(tree, optimistic_names, [], 0)
 
-      Enum.map(tokens, fn
-        {:tag, name, attrs, meta} = token ->
-          key = {meta[:line], meta[:column]}
-          case Map.get(parent_locations, key) do
-            nil -> token
-            derive_name ->
-              if has_attr?(attrs, "data-lavash-html") do
-                token
-              else
-                attr_meta = %{line: meta[:line] || 1, column: meta[:column] || 1}
-                new_attr = {"data-lavash-html",
-                  {:string, derive_name, %{delimiter: ?", line: attr_meta.line, column: attr_meta.column}},
-                  attr_meta}
-                {:tag, name, attrs ++ [new_attr], meta}
+        if parent_positions == [] do
+          tokens
+        else
+          # Build lookup from position to derive name
+          # derive names are ordered to match ExtractTemplateDerives enumeration
+          derive_names = Enum.map(subtree_derives, & &1.name)
+          position_to_derive = Enum.zip(parent_positions, derive_names) |> Map.new()
+
+          # Inject data-lavash-html on matching tag tokens
+          Enum.map(tokens, fn
+            {:tag, name, attrs, meta} = token ->
+              key = {meta[:line], meta[:column]}
+              case Map.get(position_to_derive, key) do
+                nil -> token
+                derive_name ->
+                  if has_attr?(attrs, "data-lavash-html") do
+                    token
+                  else
+                    attr_meta = %{line: meta[:line] || 1, column: meta[:column] || 1}
+                    new_attr = {"data-lavash-html",
+                      {:string, derive_name, %{delimiter: ?", line: attr_meta.line, column: attr_meta.column}},
+                      attr_meta}
+                    {:tag, name, attrs ++ [new_attr], meta}
+                  end
               end
-          end
 
-        token -> token
-      end)
+            token -> token
+          end)
+        end
+      end
     end
+  end
+
+  # Build the set of optimistic field names from token transformer metadata.
+  # This mirrors ExtractTemplateDerives.build_optimistic_names but uses the
+  # metadata already available to the token transformer.
+  defp build_optimistic_names_from_metadata(metadata) do
+    optimistic_fields = metadata[:optimistic_fields] || %{}
+    calculations = metadata[:calculations] || %{}
+    optimistic_derives = metadata[:optimistic_derives] || %{}
+
+    field_names = Map.keys(optimistic_fields)
+    calc_names = Map.keys(calculations)
+    derive_names = Map.keys(optimistic_derives)
+
+    # Also include action-touched fields
+    actions = metadata[:actions] || %{}
+    action_field_names =
+      actions
+      |> Map.values()
+      |> Enum.flat_map(fn action ->
+        sets = Map.get(action, :sets, []) |> List.wrap()
+        updates = Map.get(action, :updates, []) |> List.wrap()
+        map_bys = Map.get(action, :map_bys, []) |> List.wrap()
+
+        Enum.flat_map(sets, fn
+          s when is_map(s) -> [s.field]
+          _ -> []
+        end) ++
+        Enum.flat_map(updates, fn
+          u when is_map(u) -> [u.field]
+          _ -> []
+        end) ++
+        Enum.flat_map(map_bys, fn
+          m when is_map(m) -> [m.field]
+          _ -> []
+        end)
+      end)
+
+    MapSet.new(field_names ++ calc_names ++ derive_names ++ action_field_names)
+  end
+
+  # Walk the parsed tree to find parent elements with optimistic :if/:for children.
+  # Returns a list of {line, column} positions in tree-walk order (matching
+  # ExtractTemplateDerives enumeration so derive names align).
+  defp find_subtree_parent_positions(nodes, optimistic_names, acc, index) when is_list(nodes) do
+    Enum.reduce(nodes, {acc, index}, fn node, {a, i} ->
+      find_subtree_parent_positions(node, optimistic_names, a, i)
+    end)
+  end
+
+  defp find_subtree_parent_positions({:element, _tag, _attrs, children, meta}, optimistic_names, acc, index) do
+    if has_optimistic_child_token?(children, optimistic_names) do
+      position = {meta[:line], meta[:column]}
+      {acc ++ [position], index + 1}
+    else
+      find_subtree_parent_positions(children, optimistic_names, acc, index)
+    end
+  end
+
+  defp find_subtree_parent_positions(_node, _optimistic_names, acc, index), do: {acc, index}
+
+  defp has_optimistic_child_token?(children, optimistic_names) do
+    Enum.any?(children, fn
+      {:element, _tag, attrs, _children, _meta} ->
+        has_optimistic_conditional?(attrs, optimistic_names)
+      _ ->
+        false
+    end)
+  end
+
+  defp has_optimistic_conditional?(attrs, optimistic_names) do
+    Enum.any?(attrs, fn
+      {":if", {:expr, code, _meta}} ->
+        has_optimistic_ref?(code, optimistic_names)
+      {":for", {:expr, code, _meta}} ->
+        has_optimistic_ref?(code, optimistic_names)
+      _ ->
+        false
+    end)
+  end
+
+  defp has_optimistic_ref?(code, optimistic_names) do
+    Regex.scan(~r/@(\w+)/, code)
+    |> Enum.any?(fn [_, field] -> MapSet.member?(optimistic_names, String.to_atom(field)) end)
   end
 
   # ===========================================================================
