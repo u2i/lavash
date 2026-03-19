@@ -52,8 +52,6 @@ defmodule Lavash.LiveView do
       Module.register_attribute(__MODULE__, :__lavash_optimistic_actions__, accumulate: true)
       Module.register_attribute(__MODULE__, :__lavash_renders__, accumulate: true)
 
-      @before_compile Lavash.LiveView.Compiler
-
       import Lavash.LiveView.Helpers
       import Lavash.Optimistic.Macros, only: [optimistic_action: 3]
       import Lavash.Template.RenderMacro

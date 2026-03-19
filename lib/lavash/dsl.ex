@@ -477,7 +477,11 @@ defmodule Lavash.Dsl do
       Lavash.Optimistic.Transformers.ExpandAnimatedStates,
       Lavash.Optimistic.Transformers.ExpandDefrx,
       Lavash.Transformers.ExpandFields,
-      Lavash.Optimistic.Transformers.ExtractColocatedJs
+      Lavash.Component.Transformers.TokenizeEEx,
+      Lavash.Component.Transformers.TokenizeHtml,
+      Lavash.Component.Transformers.AnalyzeTemplate,
+      Lavash.Optimistic.Transformers.ExtractColocatedJs,
+      Lavash.LiveView.Transformers.CompileLiveView
     ],
     imports: [Phoenix.Component, Lavash.DslHelpers, Lavash.Rx, Lavash.Sigil, Lavash.Template.RenderMacro]
 end

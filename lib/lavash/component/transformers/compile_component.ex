@@ -205,7 +205,7 @@ defmodule Lavash.Component.Transformers.CompileComponent do
   # ============================================
 
   defp compile_template_from_tokens(tokens, source, env, dsl_state) do
-    metadata = build_token_transformer_metadata(env, dsl_state)
+    metadata = build_token_transformer_metadata_from_dsl(env, dsl_state)
 
     opts = [
       file: env.file,
@@ -222,7 +222,8 @@ defmodule Lavash.Component.Transformers.CompileComponent do
     _ -> nil
   end
 
-  defp build_token_transformer_metadata(env, dsl_state) do
+  @doc false
+  def build_token_transformer_metadata_from_dsl(env, dsl_state) do
     module_type = Module.get_attribute(env.module, :__lavash_module_type__)
     context = module_type || :live_view
 
