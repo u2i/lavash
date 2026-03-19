@@ -1,51 +1,45 @@
 defmodule Lavash.TagEngine do
   @moduledoc """
-  A fork of `Phoenix.LiveView.TagEngine` with a token transformer hook.
-
-  ## Source
-
-  Copied from `phoenix_live_view` v1.0.4 (or whatever version is in deps).
-  File: `deps/phoenix_live_view/lib/phoenix_live_view/tag_engine.ex`
+  A fork of `Phoenix.LiveView.TagEngine` v1.1.27 with token transformer hooks.
 
   ## Changes from upstream
 
-  1. In `init/1`: Accept `:token_transformer` and `:lavash_metadata` options
-
-  2. In `handle_body/1`: Apply token transformer to top-level tokens
-
-  3. In `handle_end/1`: Apply token transformer to nested block tokens (EEx do-blocks)
-     This is critical because content inside `<%= if ... do %>` blocks is compiled
-     through `handle_end`, not `handle_body`.
-
-  Example change (in both handle_body and handle_end):
-  ```elixir
-  tokens =
-    if transformer = state[:token_transformer] do
-      transformer.transform(tokens, state)
-    else
-      tokens
-    end
-  ```
-
-  ## Why this fork exists
-
-  Phoenix's TagEngine doesn't provide a hook to transform tokens after parsing
-  but before processing. This is needed for Lavash to:
-
-  1. Inject `data-lavash-*` attributes into `{:tag, ...}` tokens
-  2. Inject `__lavash_client_bindings__` into component tokens
-
-  ## Upstream proposal
-
-  This capability should be proposed upstream to Phoenix. The change is minimal
-  and would benefit other libraries that need compile-time template transformation.
-
-  See: https://github.com/phoenixframework/phoenix_live_view/issues/XXXX
+  1. Module renamed to `Lavash.TagEngine`
+  2. `init/1` accepts `:token_transformer` and `:lavash_metadata` options
+  3. `handle_body/1` and `handle_end/1` apply token transformer after tokens
+     are finalized/reversed but before processing
+  4. `handle_body/1` wraps `annotate_body` in try/rescue for compatibility
+  5. Self-references updated to `Lavash.TagEngine`
   """
 
-  # ============================================================================
-  # BEGIN COPIED CODE FROM Phoenix.LiveView.TagEngine
-  # ============================================================================
+  @doc """
+  Compiles the given string into Elixir AST.
+
+  The accepted options are:
+
+    * `tag_handler` - Required. The module implementing the `Lavash.TagEngine` behavior.
+    * `caller` - Required. The `Macro.Env`.
+    * `line` - the starting line offset. Defaults to 1.
+    * `file` - the file of the template. Defaults to `"nofile"`.
+    * `indentation` - the indentation of the template. Defaults to 0.
+
+  """
+  def compile(source, options) do
+    options =
+      Keyword.validate!(options, [
+        :caller,
+        :tag_handler,
+        line: 1,
+        indentation: 0,
+        file: "nofile"
+      ])
+      |> Keyword.merge(
+        engine: Lavash.TagEngine,
+        source: source
+      )
+
+    EEx.compile_string(source, options)
+  end
 
   @doc """
   Classify the tag type from the given binary.
@@ -249,18 +243,13 @@ defmodule Lavash.TagEngine do
     %{tokens: tokens, file: file, cont: cont, source: source, caller: caller} = state
     tokens = Tokenizer.finalize(tokens, file, cont, source)
 
-    # LAVASH CHANGE START - token transformer hook
-    # This allows a token_transformer module to modify the token list before processing.
-    # The transformer receives the finalized tokens and the engine state,
-    # and returns a (possibly modified) token list.
+    # LAVASH CHANGE - apply token transformer after finalize
     tokens =
       if transformer = state[:token_transformer] do
         transformer.transform(tokens, state)
       else
         tokens
       end
-
-    # LAVASH CHANGE END
 
     token_state =
       state
@@ -270,8 +259,7 @@ defmodule Lavash.TagEngine do
 
     opts = [root: token_state.root || false]
 
-    # LAVASH CHANGE - wrap annotate_body call in try/rescue for compatibility
-    # Phoenix's annotate_body may fail with certain caller contexts (e.g., function: nil)
+    # LAVASH CHANGE - wrap annotate_body in try/rescue for compatibility
     opts =
       try do
         if annotation = caller && has_tags?(tokens) && state.tag_handler.annotate_body(caller) do
@@ -320,9 +308,9 @@ defmodule Lavash.TagEngine do
 
   @impl true
   def handle_end(state) do
-    # LAVASH CHANGE - Apply token transformer to nested blocks (do-blocks in EEx)
-    # This ensures that all tags in conditional branches, loops, etc. get transformed
+    # LAVASH CHANGE - apply token transformer to nested blocks
     tokens = Enum.reverse(state.tokens)
+
     tokens =
       if transformer = state[:token_transformer] do
         transformer.transform(tokens, state)
@@ -1129,10 +1117,21 @@ defmodule Lavash.TagEngine do
     |> update_subengine(:handle_text, [meta, suffix])
   end
 
+  defp assign?({:@, _, [_]}), do: true
+  defp assign?({{:., _, [lhs, _rhs]}, _, []}), do: assign?(lhs)
+  defp assign?(_), do: false
+
   defp handle_tag_attrs(state, meta, attrs) do
     Enum.reduce(attrs, state, fn
       {:root, {:expr, _, _} = expr, _attr_meta}, state ->
         ast = parse_expr!(expr, state.file)
+
+        ast =
+          if assign?(ast) do
+            ast
+          else
+            expand_with_line(ast, meta[:line], state.caller)
+          end
 
         # If we have a map of literal keys, we unpack it as a list
         # to simplify the downstream check.
@@ -1739,8 +1738,4 @@ defmodule Lavash.TagEngine do
       state
     end
   end
-
-  # ============================================================================
-  # END COPIED CODE FROM Phoenix.LiveView.TagEngine
-  # ============================================================================
 end
