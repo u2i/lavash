@@ -1,258 +1,39 @@
 defmodule Lavash.Sigil do
   @moduledoc """
-  Unified `~L` sigil for Lavash-enhanced HEEx templates.
+  The `~L` sigil for Lavash HEEx templates.
 
-  The `~L` sigil works like `~H` but automatically:
-  - Injects `data-lavash-*` attributes based on DSL declarations
-  - Injects `__lavash_client_bindings__` for nested component binding propagation
+  Used inside `render fn assigns -> ~L\"\"\"...\"\"\" end` to mark templates
+  for Lavash processing. The sigil itself is a no-op — template compilation
+  is handled by the transformer pipeline (TokenizeTemplate → AnalyzeTemplate →
+  ExtractColocatedJs → CompileComponent/CompileLiveView).
 
-  ## Context Auto-Detection
-
-  The sigil automatically detects whether it's being used in a LiveView,
-  Component, or ClientComponent based on the `@__lavash_module_type__` attribute:
-
-  - `:live_view` - Standard data-lavash-* injection
-  - `:component` - Also injects binding propagation for nested components
-  - `:client_component` - Source is preserved for JS generation
-
-  ## Usage
-
-      defmodule MyApp.CounterLive do
-        use Lavash.LiveView
-
-        state :count, :integer, default: 0, optimistic: true
-
-        render fn assigns ->
-          ~L\"\"\"
-          <div>
-            <span>{@count}</span>
-            <button phx-click="increment">+</button>
-          </div>
-          \"\"\"
-        end
-      end
-
-  ## Opting Out
-
-  To skip auto-injection for a specific element, add `data-lavash-manual`:
-
-      <button phx-click="increment" data-lavash-manual>+</button>
+  The sigil exists so that:
+  1. Editors can provide HEEx syntax highlighting
+  2. `Macro.escape` captures a `{:sigil_L, meta, ...}` AST node that
+     `TokenizeTemplate` pattern-matches to extract the template source
   """
 
   @doc """
-  Handles the `~L` sigil for Lavash-enhanced HEEx templates.
+  Marks a HEEx template for Lavash processing.
 
-  Returns compiled HEEx content directly (a `%Phoenix.LiveView.Rendered{}` struct).
-  Use inside `render fn assigns -> ~L\"\"\"...\"\"\" end` for automatic data-lavash-*
-  attribute injection.
+  This macro is a no-op — it returns the compiled HEEx as-is. The actual
+  Lavash template processing (attribute injection, JS generation, etc.)
+  happens in the Spark transformer pipeline, not in the sigil.
   """
   defmacro sigil_L({:<<>>, _meta, [template]}, _modifiers) when is_binary(template) do
     caller = __CALLER__
-    module = caller.module
 
-
-    # Detect context from module type attribute
-    context = detect_context(module)
-
-    # Register accumulator for reactive attribute derives
-    unless Module.has_attribute?(module, :__lavash_attr_derives__) do
-      Module.register_attribute(module, :__lavash_attr_derives__, accumulate: true)
-    end
-
-    # Build metadata for token transformation, include caller module for attr derive registration
-    metadata = build_metadata(module, context)
-               |> Map.put(:caller_module, module)
-
-    # Compile with Lavash.TagEngine and token transformer
-    compiled = compile_template(template, caller, metadata)
-
-    # For ClientComponents, wrap with source for JS transpilation
-    # For other contexts, return compiled content directly
-    if context == :client_component do
-      quote do
-        %Lavash.Template.Compiled{
-          source: unquote(template),
-          compiled: unquote(compiled),
-          context: unquote(context),
-          file: unquote(caller.file),
-          line: unquote(caller.line)
-        }
-      end
-    else
-      compiled
-    end
-  end
-
-  @doc false
-  def detect_context(module) do
-    try do
-      case Module.get_attribute(module, :__lavash_module_type__) do
-        :live_view -> :live_view
-        :component -> :component
-        :client_component -> :client_component
-        nil -> :live_view  # Default fallback
-      end
-    rescue
-      _ -> :live_view
-    end
-  end
-
-  @doc false
-  def build_metadata(module, context) do
-    try do
-      if Code.ensure_loaded?(module) and function_exported?(module, :__lavash__, 1) do
-        Lavash.Template.TokenTransformer.build_metadata(module, context: context)
-      else
-        get_compile_time_metadata(module, context)
-      end
-    rescue
-      _ -> %{context: context}
-    end
-  end
-
-  defp compile_template(template, caller, metadata) do
+    # Compile as standard HEEx — the transformer pipeline handles
+    # Lavash-specific processing via pre-tokenized tokens.
     opts = [
-      engine: Lavash.TagEngine,
+      engine: Phoenix.LiveView.TagEngine,
       file: caller.file,
       line: caller.line + 1,
       caller: caller,
       source: template,
-      tag_handler: Phoenix.LiveView.HTMLEngine,
-      token_transformer: Lavash.Template.TokenTransformer,
-      lavash_metadata: metadata
+      tag_handler: Phoenix.LiveView.HTMLEngine
     ]
 
     EEx.compile_string(template, opts)
-  end
-
-  @doc false
-  # Build metadata from module attributes during compilation
-  def get_compile_time_metadata(module, context) do
-    try do
-      # Try to get states from Spark DSL
-      states = Spark.Dsl.Extension.get_entities(module, [:states]) || []
-      forms = Spark.Dsl.Extension.get_entities(module, [:forms]) || []
-
-      optimistic_fields =
-        states
-        |> Enum.filter(fn
-          %Lavash.State.Field{} = f -> Lavash.State.Field.optimistic?(f)
-          _ -> false
-        end)
-        |> Enum.map(fn
-          %Lavash.State.Field{name: name} = field -> {name, field}
-        end)
-        |> Map.new()
-
-      forms_map =
-        forms
-        |> Enum.map(fn form ->
-          fields =
-            try do
-              if Code.ensure_loaded?(form.resource) and function_exported?(form.resource, :spark_dsl_config, 0) do
-                Ash.Resource.Info.attributes(form.resource) |> Enum.map(& &1.name)
-              else
-                []
-              end
-            rescue
-              _ -> []
-            end
-
-          {form.name, %{resource: form.resource, fields: fields}}
-        end)
-        |> Map.new()
-
-      # Add implicit form fields to optimistic_fields
-      # Each form auto-generates {form}_params and {form}_server_errors as optimistic fields
-      implicit_form_fields =
-        forms
-        |> Enum.flat_map(fn form ->
-          [
-            {:"#{form.name}_params", %{name: :"#{form.name}_params", type: :map, optimistic: true, from: :ephemeral}},
-            {:"#{form.name}_server_errors", %{name: :"#{form.name}_server_errors", type: :map, optimistic: true, from: :ephemeral}}
-          ]
-        end)
-        |> Map.new()
-
-      # Merge implicit form fields into optimistic_fields
-      optimistic_fields = Map.merge(optimistic_fields, implicit_form_fields)
-
-      # Get actions from Spark
-      declared_actions = Spark.Dsl.Extension.get_entities(module, [:actions]) || []
-      actions_map =
-        declared_actions
-        |> Enum.map(fn action -> {action.name, action} end)
-        |> Map.new()
-
-      # Build optimistic_actions from actions with transpilable sets
-      optimistic_actions_map =
-        declared_actions
-        |> Enum.filter(fn action ->
-          sets = action.sets || []
-          updates = action.updates || []
-          (sets ++ updates) != [] and
-            Enum.all?(sets, fn set ->
-              case Lavash.Optimistic.ActionJs.analyze_value(set.value) do
-                {:rx, _} -> true
-                {:literal, _} -> true
-                :from_params_value -> true
-                _ -> false
-              end
-            end)
-        end)
-        |> Enum.flat_map(fn action ->
-          (action.sets || [])
-          |> Enum.map(fn set -> {action.name, %{field: set.field}} end)
-        end)
-        |> Map.new()
-
-      # Build form validation derives — the form system generates
-      # {form}_valid, {form}_{field}_valid, {form}_{field}_errors etc.
-      form_derives =
-        forms
-        |> Enum.flat_map(fn form ->
-          [{:"#{form.name}_valid", %{optimistic: true}}]
-        end)
-        |> Map.new()
-
-      # Get explicit calculations from Spark
-      calculations =
-        (Spark.Dsl.Extension.get_entities(module, [:calculations]) || [])
-        |> Enum.filter(&Map.get(&1, :optimistic, true))
-        |> Enum.map(fn calc -> {calc.name, %{optimistic: true}} end)
-        |> Map.new()
-
-      # Read persisted attr derives from AnalyzeTemplate transformer
-      attr_derives =
-        try do
-          Spark.Dsl.Extension.get_persisted(module, :lavash_attr_derives) || []
-        rescue
-          _ -> []
-        end
-
-      # Read subtree derives for derive name mapping (the TokenTransformer
-      # finds parent positions itself from the token stream; it only needs
-      # the derive names here so they match the JS function names)
-      subtree_derives =
-        try do
-          Spark.Dsl.Extension.get_persisted(module, :lavash_subtree_derives) || []
-        rescue
-          _ -> []
-        end
-
-      %{
-        context: context,
-        optimistic_fields: optimistic_fields,
-        optimistic_derives: form_derives,
-        calculations: calculations,
-        forms: forms_map,
-        actions: actions_map,
-        optimistic_actions: optimistic_actions_map,
-        attr_derives: attr_derives,
-        subtree_derives: subtree_derives
-      }
-    rescue
-      _ -> %{context: context}
-    end
   end
 end
