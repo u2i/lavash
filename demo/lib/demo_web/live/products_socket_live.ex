@@ -13,13 +13,13 @@ defmodule DemoWeb.ProductsSocketLive do
   alias Demo.Catalog
 
   # All filter state stored in socket - survives reconnects, not in URL
-  state :search, :string, from: :socket, default: ""
-  state :category, :string, from: :socket, default: ""
+  state :search, :string, from: :socket, default: "", setter: true
+  state :category, :string, from: :socket, default: "", setter: true
   # "", "true", "false"
-  state :in_stock, :string, from: :socket, default: ""
-  state :min_price, :integer, from: :socket, default: nil
-  state :max_price, :integer, from: :socket, default: nil
-  state :min_rating, :integer, from: :socket, default: nil
+  state :in_stock, :string, from: :socket, default: "", setter: true
+  state :min_price, :integer, from: :socket, default: nil, setter: true
+  state :max_price, :integer, from: :socket, default: nil, setter: true
+  state :min_rating, :integer, from: :socket, default: nil, setter: true
 
   # Products computed from filter state
   calculate :products,
@@ -68,30 +68,6 @@ defmodule DemoWeb.ProductsSocketLive do
             optimistic: false
 
   actions do
-    action :set_search, [:value] do
-      set :search, & &1.params.value
-    end
-
-    action :set_category, [:value] do
-      set :category, & &1.params.value
-    end
-
-    action :set_in_stock, [:value] do
-      set :in_stock, & &1.params.value
-    end
-
-    action :set_min_price, [:value] do
-      set :min_price, &parse_int(&1.params.value)
-    end
-
-    action :set_max_price, [:value] do
-      set :max_price, &parse_int(&1.params.value)
-    end
-
-    action :set_min_rating, [:value] do
-      set :min_rating, &parse_int(&1.params.value)
-    end
-
     action :clear_filters do
       set :search, ""
       set :category, ""
@@ -289,16 +265,4 @@ defmodule DemoWeb.ProductsSocketLive do
   defp parse_bool("true"), do: true
   defp parse_bool("false"), do: false
   defp parse_bool(_), do: nil
-
-  defp parse_int(nil), do: nil
-  defp parse_int(""), do: nil
-
-  defp parse_int(val) when is_binary(val) do
-    case Integer.parse(val) do
-      {int, _} -> int
-      :error -> nil
-    end
-  end
-
-  defp parse_int(val) when is_integer(val), do: val
 end

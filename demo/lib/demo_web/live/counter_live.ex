@@ -3,7 +3,7 @@ defmodule DemoWeb.CounterLive do
   import Lavash.LiveView.Helpers
 
   state :count, :integer, from: :url, default: 0, optimistic: true
-  state :multiplier, :integer, from: :ephemeral, default: 2, optimistic: true
+  state :multiplier, :integer, from: :ephemeral, default: 2, optimistic: true, setter: true
 
   calculate :doubled, rx(@count * @multiplier)
 
@@ -21,10 +21,6 @@ defmodule DemoWeb.CounterLive do
 
     action :set_count, [:amount] do
       set :count, rx(String.to_integer(@amount))
-    end
-
-    action :set_multiplier, [:value] do
-      set :multiplier, rx(String.to_integer(@value))
     end
 
     # Using reads + run for multi-field transpilable updates

@@ -23,7 +23,7 @@ defmodule Lavash.LiveView.Compiler do
         sets: [
           %Lavash.Actions.Set{
             field: state.name,
-            value: & &1.params.value
+            value: setter_value(state.type)
           }
         ],
         updates: [],
@@ -34,6 +34,30 @@ defmodule Lavash.LiveView.Compiler do
         invokes: []
       }
     end)
+  end
+
+  # Generate a type-coercing setter value.
+  # Uses rx() expressions so the value is transpilable to JS for optimistic updates.
+  defp setter_value(:integer) do
+    %Lavash.Rx{
+      source: "if(@value == \"\" or @value == nil, do: nil, else: String.to_integer(@value))",
+      ast: quote(do: if(var!(value) == "" or var!(value) == nil, do: nil, else: String.to_integer(var!(value)))),
+      deps: [:value]
+    }
+  end
+
+  defp setter_value(:boolean) do
+    %Lavash.Rx{
+      source: "@value == \"true\" or @value == true",
+      ast: quote(do: var!(value) == "true" or var!(value) == true),
+      deps: [:value]
+    }
+  end
+
+  defp setter_value(_type) do
+    # Default: pass through raw value (strings, atoms, etc.)
+    # coerce_value in Action.Runtime handles remaining coercion
+    & &1.params.value
   end
 
   @doc """
