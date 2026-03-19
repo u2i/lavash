@@ -181,6 +181,10 @@ defmodule DemoWeb.AddressEditModal do
   end
 
   actions do
+    action :close do
+      set :open, nil
+    end
+
     action :save do
       # Only inject session_id for create (update already has it from the loaded record)
       set :address_form_params, fn %{state: state} ->

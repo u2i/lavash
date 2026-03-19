@@ -31,6 +31,12 @@ defmodule DemoWeb.DetailsFlyover do
     width :md
   end
 
+  actions do
+    action :close do
+      set :open, false
+    end
+  end
+
   render fn assigns ->
     ~L"""
     <div class="h-full flex flex-col">
@@ -88,7 +94,7 @@ defmodule DemoWeb.DetailsFlyover do
 
       <div class="p-4 border-t border-base-300 space-y-3">
         <button class="btn btn-primary w-full">Add to Cart</button>
-        <button class="btn btn-outline w-full" phx-click={@on_close}>Close</button>
+        <button class="btn btn-outline w-full" phx-click="close">Close</button>
       </div>
     </div>
     """

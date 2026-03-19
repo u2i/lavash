@@ -32,6 +32,10 @@ defmodule DemoWeb.Storefront.AddressEditModal do
   end
 
   actions do
+    action :close do
+      set :open, nil
+    end
+
     action :save do
       submit :address_form, on_success: :on_saved
     end

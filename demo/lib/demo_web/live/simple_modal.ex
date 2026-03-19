@@ -41,6 +41,12 @@ defmodule DemoWeb.SimpleModal do
     id fn _state -> Demo.Catalog.Product |> Ash.Query.limit(1) |> Ash.read_one!() |> then(& &1.id) end
   end
 
+  actions do
+    action :close do
+      set :open, false
+    end
+  end
+
   render_loading fn assigns ->
     ~L"""
     <div class="p-6">
@@ -92,7 +98,7 @@ defmodule DemoWeb.SimpleModal do
         <div class="flex gap-3 pt-4 border-t">
           <button
             type="button"
-            phx-click={Phoenix.LiveView.JS.dispatch("close-panel", to: "#simple-modal-modal")}
+            phx-click="close"
             class="btn btn-primary flex-1"
           >
             Close Modal

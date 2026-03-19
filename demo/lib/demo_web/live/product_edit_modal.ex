@@ -87,7 +87,7 @@ defmodule DemoWeb.ProductEditModal do
           </CoreComponents.button>
           <CoreComponents.button
             type="button"
-            phx-click={Phoenix.LiveView.JS.dispatch("close-panel", to: "#product-edit-modal-modal")}
+            phx-click="close"
             class="btn-outline"
           >
             Cancel
@@ -117,6 +117,10 @@ defmodule DemoWeb.ProductEditModal do
   actions do
     # set_product_id is auto-generated because the modal's open_field (product_id)
     # has optimistic: true, which implies setter: true
+
+    action :close do
+      set :product_id, nil
+    end
 
     action :save do
       submit :edit_form, on_success: :close

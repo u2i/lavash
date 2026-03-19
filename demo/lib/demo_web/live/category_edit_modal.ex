@@ -52,7 +52,7 @@ defmodule DemoWeb.CategoryEditModal do
           </CoreComponents.button>
           <CoreComponents.button
             type="button"
-            phx-click={@on_close}
+            phx-click="close"
             class="btn-outline"
           >
             Cancel
@@ -76,6 +76,10 @@ defmodule DemoWeb.CategoryEditModal do
   actions do
     action :open, [:category_id] do
       set :category_id, & &1.params.category_id
+    end
+
+    action :close do
+      set :category_id, nil
     end
 
     action :save do
