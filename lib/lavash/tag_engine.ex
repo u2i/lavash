@@ -42,6 +42,33 @@ defmodule Lavash.TagEngine do
   end
 
   @doc """
+  Tokenizes a template source string into HTML tokens without compiling.
+
+  Runs the full EEx + HTML tokenization pipeline (including EEx block
+  handling) but stops after producing the finalized token list. Returns
+  the tokens that would normally be passed to `continue` → `%Rendered{}`.
+
+  This is used by the transformer pipeline to tokenize once, analyze
+  tokens for derive extraction, then compile later via `compile_from_tokens`.
+  """
+  def tokenize(source, options) do
+    options =
+      Keyword.merge(options,
+        engine: Lavash.TagEngine,
+        source: source,
+        tokenize_only: true
+      )
+
+    # EEx.compile_string drives the TagEngine callbacks.
+    # With tokenize_only: true, handle_body returns {:lavash_tokens, tokens}
+    # wrapped in a quote. We eval it to extract the tokens.
+    ast = EEx.compile_string(source, options)
+    {result, _} = Code.eval_quoted(ast)
+    {:lavash_tokens, tokens} = result
+    tokens
+  end
+
+  @doc """
   Compiles pre-tokenized HTML tokens directly into `%Rendered{}` AST.
 
   Bypasses the EEx → `handle_text` tokenization loop. The tokens must be
@@ -281,9 +308,10 @@ defmodule Lavash.TagEngine do
   def init(opts) do
     {subengine, opts} = Keyword.pop(opts, :subengine, Phoenix.LiveView.Engine)
     tag_handler = Keyword.fetch!(opts, :tag_handler)
-    # LAVASH CHANGE - accept token_transformer and lavash_metadata options
+    # LAVASH CHANGE - accept token_transformer, lavash_metadata, tokenize_only options
     token_transformer = Keyword.get(opts, :token_transformer)
     lavash_metadata = Keyword.get(opts, :lavash_metadata)
+    tokenize_only = Keyword.get(opts, :tokenize_only, false)
 
     %{
       cont: {:text, :enabled},
@@ -295,9 +323,10 @@ defmodule Lavash.TagEngine do
       caller: Keyword.fetch!(opts, :caller),
       source: Keyword.fetch!(opts, :source),
       tag_handler: tag_handler,
-      # LAVASH CHANGE - store token_transformer and lavash_metadata in state
+      # LAVASH CHANGE - store token_transformer, lavash_metadata, tokenize_only in state
       token_transformer: token_transformer,
-      lavash_metadata: lavash_metadata
+      lavash_metadata: lavash_metadata,
+      tokenize_only: tokenize_only
     }
   end
 
@@ -308,39 +337,46 @@ defmodule Lavash.TagEngine do
     %{tokens: tokens, file: file, cont: cont, source: source, caller: caller} = state
     tokens = Tokenizer.finalize(tokens, file, cont, source)
 
-    # LAVASH CHANGE - apply token transformer after finalize
-    tokens =
-      if transformer = state[:token_transformer] do
-        transformer.transform(tokens, state)
-      else
-        tokens
-      end
-
-    token_state =
-      state
-      |> token_state(nil)
-      |> continue(tokens)
-      |> validate_unclosed_tags!("template")
-
-    opts = [root: token_state.root || false]
-
-    # LAVASH CHANGE - wrap annotate_body in try/rescue for compatibility
-    opts =
-      try do
-        if annotation = caller && has_tags?(tokens) && state.tag_handler.annotate_body(caller) do
-          [meta: [template_annotation: annotation]] ++ opts
+    # LAVASH CHANGE - tokenize_only mode: return finalized tokens without compiling
+    if state[:tokenize_only] do
+      # Return tokens wrapped in a quote so EEx.compile_string returns valid AST
+      tokens_escaped = Macro.escape(tokens)
+      quote do: {:lavash_tokens, unquote(tokens_escaped)}
+    else
+      # LAVASH CHANGE - apply token transformer after finalize
+      tokens =
+        if transformer = state[:token_transformer] do
+          transformer.transform(tokens, state)
         else
-          opts
+          tokens
         end
-      rescue
-        _ -> opts
+
+      token_state =
+        state
+        |> token_state(nil)
+        |> continue(tokens)
+        |> validate_unclosed_tags!("template")
+
+      opts = [root: token_state.root || false]
+
+      # LAVASH CHANGE - wrap annotate_body in try/rescue for compatibility
+      opts =
+        try do
+          if annotation = caller && has_tags?(tokens) && state.tag_handler.annotate_body(caller) do
+            [meta: [template_annotation: annotation]] ++ opts
+          else
+            opts
+          end
+        rescue
+          _ -> opts
+        end
+
+      ast = invoke_subengine(token_state, :handle_body, [opts])
+
+      quote do
+        require Lavash.TagEngine
+        unquote(ast)
       end
-
-    ast = invoke_subengine(token_state, :handle_body, [opts])
-
-    quote do
-      require Lavash.TagEngine
-      unquote(ast)
     end
   end
 

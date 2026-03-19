@@ -477,8 +477,7 @@ defmodule Lavash.Dsl do
       Lavash.Optimistic.Transformers.ExpandAnimatedStates,
       Lavash.Optimistic.Transformers.ExpandDefrx,
       Lavash.Transformers.ExpandFields,
-      Lavash.Component.Transformers.TokenizeEEx,
-      Lavash.Component.Transformers.TokenizeHtml,
+      Lavash.Component.Transformers.TokenizeTemplate,
       Lavash.Component.Transformers.AnalyzeTemplate,
       Lavash.Optimistic.Transformers.ExtractColocatedJs,
       Lavash.LiveView.Transformers.CompileLiveView

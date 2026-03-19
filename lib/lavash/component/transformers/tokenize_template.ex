@@ -1,15 +1,14 @@
-defmodule Lavash.Component.Transformers.TokenizeEEx do
+defmodule Lavash.Component.Transformers.TokenizeTemplate do
   @moduledoc """
-  Tokenizes the template source string at the EEx level.
+  Tokenizes the template source string into HTML tokens.
 
-  Reads the raw template from the escaped `~L` sigil AST in `@__lavash_renders__`,
-  runs the EEx tokenizer to split `<% %>` blocks from text chunks, and persists
-  the EEx tokens for downstream HTML tokenization.
+  Runs the full EEx + HTML tokenization pipeline via `TagEngine.tokenize`
+  (which drives `EEx.compile_string` in tokenize-only mode). This handles
+  both `{expr}` and `<%= %>` syntax in a single pass.
 
   Persists:
-  - `:lavash_eex_tokens` — EEx token list ({:text, ...}, {:expr, ...}, etc.)
+  - `:lavash_template_tokens` — finalized HTML + expression token list
   - `:lavash_template_source` — raw template source string
-  - `:lavash_template_line` — starting line number in the source file
   """
 
   use Spark.Dsl.Transformer
@@ -20,7 +19,6 @@ defmodule Lavash.Component.Transformers.TokenizeEEx do
   def after?(Lavash.Transformers.ExpandFields), do: true
   def after?(_), do: false
 
-  def before?(Lavash.Component.Transformers.TokenizeHtml), do: true
   def before?(Lavash.Component.Transformers.AnalyzeTemplate), do: true
   def before?(Lavash.Optimistic.Transformers.ExtractColocatedJs), do: true
   def before?(_), do: false
@@ -37,23 +35,31 @@ defmodule Lavash.Component.Transformers.TokenizeEEx do
       if is_nil(template_source) do
         {:ok, dsl_state}
       else
-        start_line = (sigil_line || 0) + 1
+        dsl_state = Transformer.persist(dsl_state, :lavash_template_source, template_source)
 
-        dsl_state =
-          dsl_state
-          |> Transformer.persist(:lavash_template_source, template_source)
-          |> Transformer.persist(:lavash_template_line, start_line)
-
-        case EEx.Compiler.tokenize(template_source, line: start_line, file: env.file) do
-          {:ok, eex_tokens} ->
-            dsl_state = Transformer.persist(dsl_state, :lavash_eex_tokens, eex_tokens)
+        case safe_tokenize(template_source, sigil_line, env) do
+          {:ok, tokens} ->
+            dsl_state = Transformer.persist(dsl_state, :lavash_template_tokens, tokens)
             {:ok, dsl_state}
 
-          {:error, _message, _meta} ->
+          :error ->
             {:ok, dsl_state}
         end
       end
     end
+  end
+
+  defp safe_tokenize(source, sigil_line, env) do
+    opts = [
+      file: env.file,
+      line: (sigil_line || 0) + 1,
+      caller: env,
+      tag_handler: Phoenix.LiveView.HTMLEngine
+    ]
+
+    {:ok, Lavash.TagEngine.tokenize(source, opts)}
+  rescue
+    _ -> :error
   end
 
   # ============================================
