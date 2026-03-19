@@ -29,7 +29,7 @@ defmodule DemoWeb.Admin.ProductEditLive do
   end
 
   render fn assigns ->
-    ~H"""
+    ~L"""
     <div class="space-y-6">
       <div class="flex items-center gap-4">
         <a href={~p"/admin/products"} class="btn btn-ghost btn-sm">&larr;</a>

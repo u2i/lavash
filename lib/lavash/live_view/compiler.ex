@@ -7,25 +7,6 @@ defmodule Lavash.LiveView.Compiler do
   """
 
   @doc """
-  Generate render/1 function from render function macro.
-
-  Handles `render fn assigns -> ~L\"\"\"...\"\"\" end` (function-based render macro).
-  Used as a fallback when pre-tokenized compilation is not available
-  (e.g., ~H templates).
-  """
-  def generate_render_from_template(escaped_fn, _env) do
-    quote do
-      @impl Phoenix.LiveView
-      def render(var!(assigns)) do
-        render_fn = unquote(escaped_fn)
-        inner_content = render_fn.(var!(assigns))
-
-        Lavash.LiveView.Runtime.wrap_render(__MODULE__, var!(assigns), inner_content)
-      end
-    end
-  end
-
-  @doc """
   Generate synthetic setter actions for state fields with setter: true or optimistic: true.
   """
   def generate_setter_actions(module) do

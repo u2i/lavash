@@ -173,29 +173,16 @@ defmodule Lavash.Component.Transformers.CompileComponent do
       nil ->
         quote do end
 
-      escaped_fn ->
+      _escaped_fn ->
         pre_tokens = Transformer.get_persisted(dsl_state, :lavash_template_tokens)
         template_source = Transformer.get_persisted(dsl_state, :lavash_template_source)
 
-        compiled_ast =
-          if pre_tokens && template_source do
-            compile_template_from_tokens(pre_tokens, template_source, env, dsl_state)
-          else
-            nil
-          end
+        compiled_ast = compile_template_from_tokens(pre_tokens, template_source, env, dsl_state)
 
-        if compiled_ast do
-          if has_optimistic do
-            build_render_with_compiled_template(compiled_ast, env.module)
-          else
-            build_simple_render_with_compiled_template(compiled_ast)
-          end
+        if has_optimistic do
+          build_render_with_compiled_template(compiled_ast, env.module)
         else
-          if has_optimistic do
-            build_render_with_optimistic_hook(escaped_fn, env.module)
-          else
-            build_render_from_fn(escaped_fn)
-          end
+          build_simple_render_with_compiled_template(compiled_ast)
         end
     end
   end
@@ -218,8 +205,6 @@ defmodule Lavash.Component.Transformers.CompileComponent do
     ]
 
     Lavash.TagEngine.compile_from_tokens(tokens, opts)
-  rescue
-    _ -> nil
   end
 
   @doc false
@@ -342,45 +327,6 @@ defmodule Lavash.Component.Transformers.CompileComponent do
       @impl Phoenix.LiveComponent
       def render(var!(assigns)) do
         unquote(compiled_ast)
-      end
-    end
-  end
-
-  # Fallback render builders (when no pre-tokenized tokens available)
-
-  defp build_render_with_optimistic_hook(escaped_fn, module) do
-    module_name = inspect(module)
-
-    quote do
-      @impl Phoenix.LiveComponent
-      def render(var!(assigns)) do
-        state = Lavash.Component.Compiler.build_client_state(__MODULE__, var!(assigns))
-        state_json = Jason.encode!(state)
-        bindings_json = Jason.encode!(Map.get(var!(assigns), :__lavash_binding_map__, %{}))
-        version = Map.get(var!(assigns), :__lavash_version__, 0)
-
-        var!(assigns) =
-          var!(assigns)
-          |> Phoenix.Component.assign(:__state_json__, state_json)
-          |> Phoenix.Component.assign(:__bindings_json__, bindings_json)
-          |> Phoenix.Component.assign(:__module_name__, unquote(module_name))
-          |> Phoenix.Component.assign(:__version__, version)
-          |> Phoenix.Component.assign(state)
-
-        render_fn = unquote(escaped_fn)
-        inner = render_fn.(var!(assigns))
-
-        Lavash.Component.OptimisticWrapper.wrap(var!(assigns), inner)
-      end
-    end
-  end
-
-  defp build_render_from_fn(escaped_fn) do
-    quote do
-      @impl Phoenix.LiveComponent
-      def render(var!(assigns)) do
-        render_fn = unquote(escaped_fn)
-        render_fn.(var!(assigns))
       end
     end
   end

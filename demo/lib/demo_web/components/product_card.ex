@@ -28,7 +28,7 @@ defmodule DemoWeb.ProductCard do
   end
 
   render fn assigns ->
-    ~H"""
+    ~L"""
     <div
       id={@id}
       class={[

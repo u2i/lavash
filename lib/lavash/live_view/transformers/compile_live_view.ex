@@ -195,28 +195,16 @@ defmodule Lavash.LiveView.Transformers.CompileLiveView do
   defp build_render_ast(render_template, has_render, env, dsl_state) do
     cond do
       render_template ->
-        # Try pre-tokenized path first, fall back to ~L expansion
         pre_tokens = Transformer.get_persisted(dsl_state, :lavash_template_tokens)
         template_source = Transformer.get_persisted(dsl_state, :lavash_template_source)
+        compiled_ast = compile_template_from_tokens(pre_tokens, template_source, env, dsl_state)
 
-        compiled_ast =
-          if pre_tokens && template_source do
-            compile_template_from_tokens(pre_tokens, template_source, env, dsl_state)
-          else
-            nil
+        quote do
+          @impl Phoenix.LiveView
+          def render(var!(assigns)) do
+            inner_content = unquote(compiled_ast)
+            Lavash.LiveView.Runtime.wrap_render(__MODULE__, var!(assigns), inner_content)
           end
-
-        if compiled_ast do
-          quote do
-            @impl Phoenix.LiveView
-            def render(var!(assigns)) do
-              inner_content = unquote(compiled_ast)
-              Lavash.LiveView.Runtime.wrap_render(__MODULE__, var!(assigns), inner_content)
-            end
-          end
-        else
-          # Fallback: use escaped_fn with ~L expansion
-          Lavash.LiveView.Compiler.generate_render_from_template(render_template, env)
         end
 
       has_render ->
@@ -249,8 +237,6 @@ defmodule Lavash.LiveView.Transformers.CompileLiveView do
     ]
 
     Lavash.TagEngine.compile_from_tokens(tokens, opts)
-  rescue
-    _ -> nil
   end
 
   # ============================================
