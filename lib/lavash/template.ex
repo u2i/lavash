@@ -11,13 +11,21 @@ defmodule Lavash.Template do
 
   @doc """
   Tokenizes HEEx source into a list of tokens.
-  """
-  def tokenize(source) do
-    state = Tokenizer.init(0, "nofile", source, Phoenix.LiveView.HTMLEngine)
 
-    case Tokenizer.tokenize(source, [line: 1, column: 1], [], {:text, :enabled}, state) do
+  Options:
+    * `:line` - starting line number (default 1)
+    * `:file` - source file path for error messages (default "nofile")
+    * `:indentation` - indentation level (default 0)
+  """
+  def tokenize(source, opts \\ []) do
+    line = Keyword.get(opts, :line, 1)
+    file = Keyword.get(opts, :file, "nofile")
+    indentation = Keyword.get(opts, :indentation, 0)
+    state = Tokenizer.init(indentation, file, source, Phoenix.LiveView.HTMLEngine)
+
+    case Tokenizer.tokenize(source, [line: line, column: 1], [], {:text, :enabled}, state) do
       {tokens, _cont} ->
-        Tokenizer.finalize(tokens, "nofile", {:text, :enabled}, source)
+        Tokenizer.finalize(tokens, file, {:text, :enabled}, source)
     end
   end
 

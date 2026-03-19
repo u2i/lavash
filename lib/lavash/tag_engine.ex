@@ -42,6 +42,71 @@ defmodule Lavash.TagEngine do
   end
 
   @doc """
+  Compiles pre-tokenized HTML tokens directly into `%Rendered{}` AST.
+
+  Bypasses the EEx → `handle_text` tokenization loop. The tokens must be
+  in the format produced by `Phoenix.LiveView.Tokenizer` (already finalized).
+
+  Options are the same as `compile/2` plus:
+    * `:token_transformer` - module implementing token transformation
+    * `:lavash_metadata` - metadata passed to the token transformer
+    * `:source` - original template source string (for error messages)
+    * `:subengine` - the subengine module (defaults to `Phoenix.LiveView.Engine`)
+  """
+  def compile_from_tokens(tokens, opts) do
+    subengine = Keyword.get(opts, :subengine, Phoenix.LiveView.Engine)
+    tag_handler = Keyword.fetch!(opts, :tag_handler)
+
+    state = %{
+      subengine: subengine,
+      substate: subengine.init(opts),
+      file: Keyword.get(opts, :file, "nofile"),
+      indentation: Keyword.get(opts, :indentation, 0),
+      caller: Keyword.fetch!(opts, :caller),
+      source: Keyword.get(opts, :source, ""),
+      tag_handler: tag_handler,
+      token_transformer: Keyword.get(opts, :token_transformer),
+      lavash_metadata: Keyword.get(opts, :lavash_metadata)
+    }
+
+    # Apply token transformer (phx-target, display, reactive attrs, etc.)
+    tokens =
+      if transformer = state[:token_transformer] do
+        transformer.transform(tokens, state)
+      else
+        tokens
+      end
+
+    token_state =
+      state
+      |> token_state(nil)
+      |> continue(tokens)
+      |> validate_unclosed_tags!("template")
+
+    opts = [root: token_state.root || false]
+
+    caller = state.caller
+
+    opts =
+      try do
+        if annotation = caller && has_tags?(tokens) && state.tag_handler.annotate_body(caller) do
+          [meta: [template_annotation: annotation]] ++ opts
+        else
+          opts
+        end
+      rescue
+        _ -> opts
+      end
+
+    ast = invoke_subengine(token_state, :handle_body, [opts])
+
+    quote do
+      require Lavash.TagEngine
+      unquote(ast)
+    end
+  end
+
+  @doc """
   Classify the tag type from the given binary.
 
   This must return a tuple containing the type of the tag and the name of tag.

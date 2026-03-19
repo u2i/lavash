@@ -33,7 +33,7 @@ defmodule Lavash.Component.Transformers.ExtractTemplateDerives do
       {:ok, dsl_state}
     else
       lavash_renders = Module.get_attribute(env.module, :__lavash_renders__) || []
-      template_source = resolve_template_source(lavash_renders)
+      {template_source, sigil_line} = resolve_template_source_and_line(lavash_renders)
 
       if is_nil(template_source) do
         {:ok, dsl_state}
@@ -41,9 +41,21 @@ defmodule Lavash.Component.Transformers.ExtractTemplateDerives do
         # Build set of all optimistic names (calculations, form derives, action target fields)
         all_optimistic_names = build_optimistic_names(dsl_state)
 
-        # Extract attr derives (data-lavash-attr-*) and subtree derives (data-lavash-html)
+        # Tokenize once with file-absolute line numbers
+        tokens = Lavash.Template.tokenize(template_source,
+          line: (sigil_line || 0) + 1,
+          file: env.file
+        )
+
+        # Extract attr derives (data-lavash-attr-*) from the raw source
         dsl_state = maybe_extract_attr_derives(dsl_state, template_source, all_optimistic_names)
-        dsl_state = maybe_extract_subtree_derives(dsl_state, template_source, all_optimistic_names)
+
+        # Extract subtree derives and inject data-lavash-html onto tokens
+        {dsl_state, tokens} = extract_and_inject_subtree_derives(dsl_state, tokens, all_optimistic_names)
+
+        # Persist tokens and source for ExtractColocatedJs to compile via TagEngine
+        dsl_state = Transformer.persist(dsl_state, :lavash_template_tokens, tokens)
+        dsl_state = Transformer.persist(dsl_state, :lavash_template_source, template_source)
 
         {:ok, dsl_state}
       end
@@ -87,32 +99,45 @@ defmodule Lavash.Component.Transformers.ExtractTemplateDerives do
     end
   end
 
-  defp maybe_extract_subtree_derives(dsl_state, template_source, all_optimistic_names) do
-    subtree_derives = extract_subtree_derives(template_source, all_optimistic_names)
+  # Extract subtree derives from the token tree AND inject data-lavash-html
+  # attributes directly onto the tokens. Single tokenization, single tree walk.
+  defp extract_and_inject_subtree_derives(dsl_state, tokens, all_optimistic_names) do
+    tree = Lavash.Template.parse(tokens)
+    {derives_with_positions, _index} = find_parent_subtrees(tree, all_optimistic_names, [], 0)
+    derives_with_positions = Enum.reverse(derives_with_positions)
 
-    if subtree_derives != [] do
-      Transformer.persist(dsl_state, :lavash_subtree_derives, subtree_derives)
+    if derives_with_positions == [] do
+      {dsl_state, tokens}
     else
-      dsl_state
+      derives = Enum.map(derives_with_positions, &elem(&1, 0))
+
+      # Build lookup: {line, column} => derive_name for token injection
+      position_to_derive =
+        derives_with_positions
+        |> Enum.map(fn {derive, {line, col}} -> {{line, col}, derive.name} end)
+        |> Map.new()
+
+      # Inject data-lavash-html attributes onto parent tokens
+      tokens =
+        Enum.map(tokens, fn
+          {:tag, name, attrs, meta} = token ->
+            key = {meta[:line], meta[:column]}
+            case Map.get(position_to_derive, key) do
+              nil -> token
+              derive_name ->
+                attr_meta = %{line: meta[:line] || 1, column: meta[:column] || 1}
+                new_attr = {"data-lavash-html",
+                  {:string, derive_name, %{delimiter: ?", line: attr_meta.line, column: attr_meta.column}},
+                  attr_meta}
+                {:tag, name, attrs ++ [new_attr], meta}
+            end
+
+          token -> token
+        end)
+
+      dsl_state = Transformer.persist(dsl_state, :lavash_subtree_derives, derives)
+      {dsl_state, tokens}
     end
-  end
-
-  # ============================================
-  # Subtree derive extraction
-  # ============================================
-
-  # Walk the parsed template tree. When a parent element has a child with
-  # :if/:for over optimistic state, transpile ALL of that parent's children
-  # to a JS render derive. The parent gets data-lavash-html at token time;
-  # JS replaces its innerHTML on optimistic updates.
-  defp extract_subtree_derives(template_source, optimistic_names) do
-    tree =
-      template_source
-      |> Lavash.Template.tokenize()
-      |> Lavash.Template.parse()
-
-    {derives, _index} = find_parent_subtrees(tree, optimistic_names, [], 0)
-    Enum.reverse(derives)
   end
 
   defp find_parent_subtrees(nodes, optimistic_names, acc, index) when is_list(nodes) do
@@ -139,7 +164,8 @@ defmodule Lavash.Component.Transformers.ExtractTemplateDerives do
         deps: all_deps |> Enum.map(&to_string/1) |> Enum.uniq()
       }
 
-      {[derive | acc], index + 1}
+      position = {meta[:line], meta[:column]}
+      {[{derive, position} | acc], index + 1}
     else
       # No optimistic :if/:for in direct children — recurse deeper
       find_parent_subtrees(children, optimistic_names, acc, index)
@@ -253,24 +279,26 @@ defmodule Lavash.Component.Transformers.ExtractTemplateDerives do
     _ -> :error
   end
 
-  defp resolve_template_source(lavash_renders) do
+  defp resolve_template_source_and_line(lavash_renders) do
     renders_map = Map.new(lavash_renders)
 
     case Map.get(renders_map, :__render_fn__) do
-      nil -> nil
-      escaped_fn -> extract_source(escaped_fn)
+      nil -> {nil, nil}
+      escaped_fn -> extract_source_and_line(escaped_fn)
     end
   end
 
-  defp extract_source({:fn, _, [{:->, _, [[_], body]}]}), do: extract_compiled_source(body)
-  defp extract_source(_), do: nil
+  defp extract_source_and_line({:fn, _, [{:->, _, [[_], body]}]}), do: extract_compiled_source_and_line(body)
+  defp extract_source_and_line(_), do: {nil, nil}
 
-  defp extract_compiled_source({:sigil_L, _, [{:<<>>, _, [source]}, _]}) when is_binary(source), do: source
-  defp extract_compiled_source({:%, _, [{:__aliases__, _, [:Lavash, :Template, :Compiled]}, {:%{}, _, fields}]}) do
-    Keyword.get(fields, :source)
+  defp extract_compiled_source_and_line({:sigil_L, meta, [{:<<>>, _, [source]}, _]}) when is_binary(source) do
+    {source, Keyword.get(meta, :line)}
   end
-  defp extract_compiled_source({:__block__, _, [inner]}), do: extract_compiled_source(inner)
-  defp extract_compiled_source({:quote, _, [[do: ast]]}), do: extract_compiled_source(ast)
-  defp extract_compiled_source(_), do: nil
+  defp extract_compiled_source_and_line({:%, _, [{:__aliases__, _, [:Lavash, :Template, :Compiled]}, {:%{}, _, fields}]}) do
+    {Keyword.get(fields, :source), nil}
+  end
+  defp extract_compiled_source_and_line({:__block__, _, [inner]}), do: extract_compiled_source_and_line(inner)
+  defp extract_compiled_source_and_line({:quote, _, [[do: ast]]}), do: extract_compiled_source_and_line(ast)
+  defp extract_compiled_source_and_line(_), do: {nil, nil}
 
 end
