@@ -289,7 +289,7 @@ defmodule DemoWeb.CheckoutDemoLive do
                 <div class="divider my-2"></div>
                 <div class="flex justify-between font-bold text-lg">
                   <span>Total</span>
-                  <span data-lavash-display="total_display">{@total_display}</span>
+                  <span>{@total_display}</span>
                 </div>
               </div>
               <button phx-click="reset" class="btn btn-primary">Start Over</button>
@@ -397,7 +397,7 @@ defmodule DemoWeb.CheckoutDemoLive do
 
                 <div class="flex items-center justify-between border-t border-base-300 pt-3">
                   <div class="text-sm font-semibold">Light Shipping</div>
-                  <div class="text-sm font-semibold" data-lavash-display="shipping_display">{@shipping_display}</div>
+                  <div class="text-sm font-semibold">{@shipping_display}</div>
                 </div>
               </div>
 
@@ -424,7 +424,6 @@ defmodule DemoWeb.CheckoutDemoLive do
                     <span class="ml-auto flex items-center gap-1">
                       <span
                         data-lavash-visible="has_card_type"
-                        data-lavash-display="card_type_display"
                         class={"text-sm font-medium text-primary" <> unless @has_card_type, do: " hidden", else: ""}
                       >{@card_type_display}</span>
                       <span
@@ -590,7 +589,7 @@ defmodule DemoWeb.CheckoutDemoLive do
                     <div class="text-sm opacity-70">12 oz</div>
                   </div>
 
-                  <div class="text-sm font-bold" data-lavash-display="subtotal_display">{@subtotal_display}</div>
+                  <div class="text-sm font-bold">{@subtotal_display}</div>
                 </div>
 
                 <!-- Gift card - Floating Label -->
@@ -606,11 +605,11 @@ defmodule DemoWeb.CheckoutDemoLive do
                 <div class="space-y-2">
                   <div class="flex items-center justify-between">
                     <span class="opacity-80">Subtotal</span>
-                    <span data-lavash-display="subtotal_display">{@subtotal_display}</span>
+                    <span>{@subtotal_display}</span>
                   </div>
                   <div class="flex items-center justify-between">
                     <span class="opacity-80">Shipping</span>
-                    <span data-lavash-display="shipping_display">{@shipping_display}</span>
+                    <span>{@shipping_display}</span>
                   </div>
 
                   <div class="divider my-2"></div>
@@ -619,7 +618,7 @@ defmodule DemoWeb.CheckoutDemoLive do
                     <div class="text-lg font-bold">Total</div>
                     <div class="flex items-baseline gap-2">
                       <div class="text-xs opacity-60">USD</div>
-                      <div class="text-2xl font-bold" data-lavash-display="total_display">{@total_display}</div>
+                      <div class="text-2xl font-bold">{@total_display}</div>
                     </div>
                   </div>
                 </div>

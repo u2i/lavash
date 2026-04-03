@@ -323,20 +323,20 @@ defmodule DemoWeb.Storefront.CheckoutLive do
               <div class="bg-base-200 rounded-xl p-4 mb-4">
                 <div class="flex justify-between mb-2">
                   <span>Subtotal</span>
-                  <span data-lavash-display="subtotal_display">{@subtotal_display}</span>
+                  <span>{@subtotal_display}</span>
                 </div>
                 <div class="flex justify-between mb-2">
                   <span>Tax</span>
-                  <span data-lavash-display="tax_display">{@tax_display}</span>
+                  <span>{@tax_display}</span>
                 </div>
                 <div class="flex justify-between mb-2">
                   <span>Shipping</span>
-                  <span data-lavash-display="shipping_display">{@shipping_display}</span>
+                  <span>{@shipping_display}</span>
                 </div>
                 <div class="divider my-2"></div>
                 <div class="flex justify-between font-bold text-lg">
                   <span>Total</span>
-                  <span data-lavash-display="total_display">{@total_display}</span>
+                  <span>{@total_display}</span>
                 </div>
               </div>
               <a href={~p"/storefront/products"} class="btn btn-primary">Continue Shopping</a>
@@ -408,7 +408,7 @@ defmodule DemoWeb.Storefront.CheckoutLive do
                   <div class="space-y-3 border-t border-base-300 pt-6">
                     <div class="flex items-center justify-between">
                       <div class="text-sm font-semibold">Shipping</div>
-                      <div class="text-sm font-semibold" data-lavash-display="shipping_display">{@shipping_display}</div>
+                      <div class="text-sm font-semibold">{@shipping_display}</div>
                     </div>
                     <p class="text-xs text-base-content/50">Free shipping on orders over $35</p>
                   </div>
@@ -428,7 +428,7 @@ defmodule DemoWeb.Storefront.CheckoutLive do
                           checked={@payment_method == "card"} />
                         <span class="font-semibold">Credit card</span>
                         <span class="ml-auto flex items-center gap-1">
-                          <span data-lavash-visible="has_card_type" data-lavash-display="card_type_display"
+                          <span data-lavash-visible="has_card_type"
                             class={"text-sm font-medium text-primary" <> unless @has_card_type, do: " hidden", else: ""}
                           >{@card_type_display}</span>
                           <span data-lavash-visible="show_visa" class={"badge badge-outline badge-sm" <> unless @show_visa, do: " hidden", else: ""}>VISA</span>
@@ -525,22 +525,22 @@ defmodule DemoWeb.Storefront.CheckoutLive do
                     <div class="space-y-2 border-t border-base-300 pt-4">
                       <div class="flex items-center justify-between">
                         <span class="opacity-80">Subtotal</span>
-                        <span data-lavash-display="subtotal_display">{@subtotal_display}</span>
+                        <span>{@subtotal_display}</span>
                       </div>
                       <div class="flex items-center justify-between">
                         <span class="opacity-80">Tax (8%)</span>
-                        <span data-lavash-display="tax_display">{@tax_display}</span>
+                        <span>{@tax_display}</span>
                       </div>
                       <div class="flex items-center justify-between">
                         <span class="opacity-80">Shipping</span>
-                        <span data-lavash-display="shipping_display">{@shipping_display}</span>
+                        <span>{@shipping_display}</span>
                       </div>
                       <div class="divider my-2"></div>
                       <div class="flex items-end justify-between">
                         <div class="text-lg font-bold">Total</div>
                         <div class="flex items-baseline gap-2">
                           <div class="text-xs opacity-60">USD</div>
-                          <div class="text-2xl font-bold" data-lavash-display="total_display">{@total_display}</div>
+                          <div class="text-2xl font-bold">{@total_display}</div>
                         </div>
                       </div>
                     </div>

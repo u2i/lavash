@@ -145,53 +145,6 @@ defmodule Lavash.LiveView.Helpers do
   end
 
   @doc """
-  Renders an optimistic display element.
-
-  This component eliminates the duplication of specifying both the field name
-  and value when displaying optimistic state. It generates a wrapper element
-  with the appropriate `data-lavash-display` attribute.
-
-  ## Examples
-
-      # Simple usage - renders a span
-      <.o field={:count} value={@count} />
-      # Outputs: <span data-lavash-display="count">5</span>
-
-      # With custom tag
-      <.o field={:count} value={@count} tag="div" />
-      # Outputs: <div data-lavash-display="count">5</div>
-
-      # With additional attributes
-      <.o field={:doubled} value={@doubled} class="text-xl font-bold" />
-      # Outputs: <span data-lavash-display="doubled" class="text-xl font-bold">10</span>
-
-      # With inner block for custom content (value still used for optimistic updates)
-      <.o field={:count} value={@count}>
-        Count: {@count}
-      </.o>
-      # Outputs: <span data-lavash-display="count">Count: 5</span>
-  """
-  attr :field, :atom, required: true, doc: "The state/derive field name"
-  attr :value, :any, required: true, doc: "The current value from assigns"
-  attr :tag, :string, default: "span", doc: "The HTML tag to use (default: span)"
-  attr :rest, :global, doc: "Additional HTML attributes"
-  slot :inner_block, doc: "Optional custom content (defaults to displaying value)"
-
-  def o(assigns) do
-    assigns = assign(assigns, :field_name, to_string(assigns.field))
-
-    ~H"""
-    <.dynamic_tag tag_name={@tag} data-lavash-display={@field_name} {@rest}>
-      <%= if @inner_block != [] do %>
-        {render_slot(@inner_block)}
-      <% else %>
-        {@value}
-      <% end %>
-    </.dynamic_tag>
-    """
-  end
-
-  @doc """
   Renders an element with conditional visibility based on boolean state.
 
   This component generates a wrapper element with `data-lavash-visible` attribute,
