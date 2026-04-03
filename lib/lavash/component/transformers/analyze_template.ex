@@ -102,7 +102,7 @@ defmodule Lavash.Component.Transformers.AnalyzeTemplate do
         |> Enum.filter(&MapSet.member?(optimistic_names, &1))
         |> Enum.uniq()
 
-      if deps != [] do
+      if deps != [] and not has_loop_variables?(expr) do
         case try_transpile(expr) do
           {:ok, js_expr} ->
             derive_name = "__attr_#{index}_#{attr_name}"
@@ -120,6 +120,29 @@ defmodule Lavash.Component.Transformers.AnalyzeTemplate do
         []
       end
     end)
+  end
+
+  # Detect expressions that reference loop variables (bare identifiers not prefixed with @).
+  # These can't be transpiled to JS derives because the loop variable doesn't exist in derive scope.
+  defp has_loop_variables?(expr) do
+    # Parse the expression and look for bare variable references
+    case Code.string_to_quoted(expr) do
+      {:ok, ast} ->
+        {_, has_bare} =
+          Macro.prewalk(ast, false, fn
+            # @field references are fine (they become state.field in JS)
+            {:@, _, _} = node, acc -> {node, acc}
+            # Bare variable reference — this is a loop variable
+            {name, _, context} = node, _acc when is_atom(name) and is_atom(context) and context != Elixir and name not in [:do, :else, :end, :fn, :true, :false, :nil] ->
+              {node, true}
+            node, acc -> {node, acc}
+          end)
+
+        has_bare
+
+      _ ->
+        false
+    end
   end
 
   defp try_transpile(expr) do

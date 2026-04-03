@@ -66,6 +66,20 @@ export function updateDOM(rootEl, state, opts) {
     el.classList.add(...classesToAdd);
   }
 
+  // data-lavash-member: toggle classes based on array membership
+  // Format: "arrayField|trueClasses|falseClasses"
+  // Value to check comes from phx-value-val or data-lavash-member-value
+  for (const el of selectOwn(rootEl, "[data-lavash-member]")) {
+    const [fieldName, trueClasses, falseClasses] = el.dataset.lavashMember.split("|");
+    const arr = state[fieldName] || [];
+    const val = el.getAttribute("phx-value-val") || el.dataset.lavashMemberValue;
+    const isMember = Array.isArray(arr) && arr.includes(val);
+    const allClasses = (trueClasses + " " + falseClasses).split(/\s+/).filter(c => c);
+    el.classList.remove(...allClasses);
+    const classesToAdd = (isMember ? trueClasses : falseClasses).split(/\s+/).filter(c => c);
+    el.classList.add(...classesToAdd);
+  }
+
   // data-lavash-attr-disabled: set disabled from reactive derive
   for (const el of selectOwn(rootEl, "[data-lavash-attr-disabled]")) {
     const value = state[el.dataset.lavashAttrDisabled];

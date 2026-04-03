@@ -60,6 +60,7 @@ defmodule Lavash.ChipSet do
         :for={value <- @values}
         type="button"
         class={if value in (@selected || []), do: @active_class, else: @inactive_class}
+        data-lavash-member={"selected|#{@active_class}|#{@inactive_class}"}
         phx-click="toggle"
         phx-value-val={value}
       >
