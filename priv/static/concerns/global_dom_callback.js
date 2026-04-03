@@ -87,7 +87,8 @@ export function installGlobalDomCallback(liveSocket) {
       const memberSpec = fromEl.getAttribute('data-lavash-member');
       if (memberSpec) {
         const [fieldName, trueClasses, falseClasses] = memberSpec.split("|");
-        if (hook.hasPendingSources(fieldName)) {
+        // Check if the array field itself has a pending optimistic value
+        if (hook.store && hook.store.isPending(fieldName)) {
           const arr = hook.state[fieldName] || [];
           const val = fromEl.getAttribute("phx-value-val") || fromEl.dataset.lavashMemberValue;
           const isMember = Array.isArray(arr) && arr.includes(val);
