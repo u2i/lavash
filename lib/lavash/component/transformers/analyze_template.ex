@@ -127,23 +127,27 @@ defmodule Lavash.Component.Transformers.AnalyzeTemplate do
   defp has_loop_variables?(expr) do
     # Parse the expression and look for bare variable references
     case Code.string_to_quoted(expr) do
-      {:ok, ast} ->
-        {_, has_bare} =
-          Macro.prewalk(ast, false, fn
-            # @field references are fine (they become state.field in JS)
-            {:@, _, _} = node, acc -> {node, acc}
-            # Bare variable reference — this is a loop variable
-            {name, _, context} = node, _acc when is_atom(name) and is_atom(context) and context != Elixir and name not in [:do, :else, :end, :fn, :true, :false, :nil] ->
-              {node, true}
-            node, acc -> {node, acc}
-          end)
-
-        has_bare
-
-      _ ->
-        false
+      {:ok, ast} -> find_loop_variables(ast)
+      _ -> false
     end
   end
+
+  # Walk AST looking for bare variables that aren't @field references.
+  # Returns true if any loop variables are found.
+  defp find_loop_variables({:@, _, _}), do: false
+  defp find_loop_variables({name, _, context}) when is_atom(name) and is_atom(context) and context != Elixir and name not in [:do, :else, :end, :fn, :true, :false, :nil] do
+    true
+  end
+  defp find_loop_variables({_, _, args}) when is_list(args) do
+    Enum.any?(args, &find_loop_variables/1)
+  end
+  defp find_loop_variables(list) when is_list(list) do
+    Enum.any?(list, &find_loop_variables/1)
+  end
+  defp find_loop_variables({left, right}) do
+    find_loop_variables(left) or find_loop_variables(right)
+  end
+  defp find_loop_variables(_), do: false
 
   defp try_transpile(expr) do
     js = Lavash.Rx.Transpiler.to_js(String.trim(expr))
