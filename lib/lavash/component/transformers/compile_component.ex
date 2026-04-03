@@ -299,7 +299,7 @@ defmodule Lavash.Component.Transformers.CompileComponent do
       def render(var!(assigns)) do
         state = Lavash.Component.Compiler.build_client_state(__MODULE__, var!(assigns))
         state_json = Jason.encode!(state)
-        bindings_json = Jason.encode!(Map.get(var!(assigns), :__lavash_binding_map__, %{}))
+        bindings_json = Jason.encode!(Map.get(var!(assigns), :__lavash_client_bindings__, %{}))
         version = Map.get(var!(assigns), :__lavash_version__, 0)
 
         var!(assigns) =
