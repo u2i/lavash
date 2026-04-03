@@ -84,6 +84,20 @@ export function installGlobalDomCallback(liveSocket) {
         console.debug(`[LavashOptimistic] onBeforeElUpdated: Applied client state for data-lavash-display="${displayField}"`);
       }
 
+      const memberSpec = fromEl.getAttribute('data-lavash-member');
+      if (memberSpec) {
+        const [fieldName, trueClasses, falseClasses] = memberSpec.split("|");
+        if (hook.hasPendingSources(fieldName)) {
+          const arr = hook.state[fieldName] || [];
+          const val = fromEl.getAttribute("phx-value-val") || fromEl.dataset.lavashMemberValue;
+          const isMember = Array.isArray(arr) && arr.includes(val);
+          const allClasses = (trueClasses + " " + falseClasses).split(/\s+/).filter(c => c);
+          allClasses.forEach(c => toEl.classList.remove(c));
+          const classesToAdd = (isMember ? trueClasses : falseClasses).split(/\s+/).filter(c => c);
+          classesToAdd.forEach(c => toEl.classList.add(c));
+        }
+      }
+
       const errorsField = fromEl.getAttribute('data-lavash-errors');
       if (errorsField && hook.hasPendingSources(errorsField)) {
         toEl.innerHTML = fromEl.innerHTML;
