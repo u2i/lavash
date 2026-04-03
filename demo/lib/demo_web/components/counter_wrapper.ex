@@ -13,7 +13,7 @@ defmodule DemoWeb.Components.CounterWrapper do
   """
   use Lavash.Component
 
-  import Lavash.Component.Helpers, only: [child_component: 1]
+  import Lavash.LiveView.Helpers, only: [lavash_component: 1]
 
   # State that gets bound both upward (to parent) and downward (to child)
   state :count, :integer, from: :ephemeral, default: 0, optimistic: true
@@ -24,7 +24,7 @@ defmodule DemoWeb.Components.CounterWrapper do
       <div class="text-xs text-primary/70 mb-2 font-semibold">
         Lavash.Component Wrapper
       </div>
-      <.child_component
+      <.lavash_component
         module={DemoWeb.Components.CounterControls}
         id={@id <> "-controls"}
         bind={[count: :count]}

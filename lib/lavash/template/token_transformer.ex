@@ -205,11 +205,11 @@ defmodule Lavash.Template.TokenTransformer do
   # ===========================================================================
 
   # Lavash component names that should receive __lavash_client_bindings__
-  @lavash_components ~w(lavash_component child_component)
+  @lavash_components ~w(lavash_component)
 
   # Only inject __lavash_client_bindings__ when:
   # 1. Context is :component (Lavash.Component) - these receive bindings from parent
-  # 2. Component is a Lavash component (lavash_component, child_component)
+  # 2. Component is a Lavash component (lavash_component)
   # 3. Not already present
   # LiveViews are top-level and don't have __lavash_client_bindings__ to pass down
   # Regular Phoenix components (form, input, link, etc.) should NOT receive this

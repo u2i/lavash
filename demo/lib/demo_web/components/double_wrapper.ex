@@ -10,7 +10,7 @@ defmodule DemoWeb.Components.DoubleWrapper do
   """
   use Lavash.Component
 
-  import Lavash.Component.Helpers, only: [child_component: 1]
+  import Lavash.LiveView.Helpers, only: [lavash_component: 1]
 
   # State that gets bound both upward (to parent) and downward (to CounterWrapper)
   state :count, :integer, from: :ephemeral, default: 0, optimistic: true
@@ -21,7 +21,7 @@ defmodule DemoWeb.Components.DoubleWrapper do
       <div class="text-xs text-secondary/70 mb-2 font-semibold">
         Double Wrapper (Level 2)
       </div>
-      <.child_component
+      <.lavash_component
         module={DemoWeb.Components.CounterWrapper}
         id={@id <> "-inner"}
         bind={[count: :count]}

@@ -194,21 +194,38 @@ defmodule Lavash.LiveView.Helpers do
   end
 
   @doc """
-  Renders a Lavash component with automatic state hydration.
+  Renders a Lavash component with automatic state hydration and binding resolution.
 
-  This function component wraps `Phoenix.Component.live_component/1` and automatically
-  injects the component's persisted state from the parent's `@__lavash_component_states__`.
+  Works from both LiveViews and Components. Handles:
+  - Initial state injection from parent's component states
+  - Binding resolution (`bind` prop) with client-side chain resolution
+  - Parent CID injection for server-side binding propagation (when `myself` is present)
+  - `current_user` inheritance for actor-based authorization
 
-  ## Example
+  ## From a LiveView
 
       <.lavash_component
         module={ProductCard}
         id={"product-\#{product.id}"}
         product={product}
+        bind={[selected: :roast]}
+      />
+
+  ## From a Component (pass myself for binding propagation)
+
+      <.lavash_component
+        module={CounterControls}
+        id="controls"
+        bind={[count: :count]}
+        count={@count}
+        myself={@myself}
       />
   """
   attr(:module, :atom, required: true, doc: "The Lavash component module")
   attr(:id, :string, required: true, doc: "The component ID (used for state namespacing)")
+  attr(:myself, :any, default: nil, doc: "Parent component's @myself (pass from components, omit from LiveViews)")
+  attr(:bind, :list, default: nil, doc: "Binding map [{child_field, parent_field}]")
+  attr(:__lavash_client_bindings__, :map, default: nil, doc: "Auto-injected by ~L template in component context")
   attr(:rest, :global, doc: "All additional assigns passed through to the component")
 
   def lavash_component(assigns) do
@@ -222,7 +239,7 @@ defmodule Lavash.LiveView.Helpers do
     # Build the assigns for live_component — pass ALL extra assigns through
     component_assigns =
       assigns
-      |> Map.drop([:__changed__, :__given__, :module, :id, :rest])
+      |> Map.drop([:__changed__, :__given__, :module, :id, :rest, :myself, :bind, :__lavash_client_bindings__])
       |> Map.merge(assigns.rest)
       |> Map.put(:module, assigns.module)
       |> Map.put(:id, assigns.id)
@@ -232,6 +249,34 @@ defmodule Lavash.LiveView.Helpers do
     component_assigns =
       if current_user do
         Map.put(component_assigns, :current_user, current_user)
+      else
+        component_assigns
+      end
+
+    # Handle bindings — resolve client bindings through parent chain
+    component_assigns =
+      if assigns.bind do
+        parent_client_bindings = assigns[:__lavash_client_bindings__] || %{}
+
+        resolved_client_bindings =
+          Enum.into(assigns.bind, %{}, fn {child_field, parent_field} ->
+            case Map.get(parent_client_bindings, parent_field) do
+              nil -> {child_field, parent_field}
+              grandparent_field -> {child_field, grandparent_field}
+            end
+          end)
+
+        component_assigns =
+          component_assigns
+          |> Map.put(:bind, assigns.bind)
+          |> Map.put(:__lavash_client_bindings__, resolved_client_bindings)
+
+        # Parent CID for server-side binding propagation (only from components)
+        if assigns.myself do
+          Map.put(component_assigns, :__lavash_parent_cid__, assigns.myself)
+        else
+          component_assigns
+        end
       else
         component_assigns
       end

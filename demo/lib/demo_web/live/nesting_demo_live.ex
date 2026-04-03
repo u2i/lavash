@@ -11,6 +11,7 @@ defmodule DemoWeb.NestingDemoLive do
   using send_update with CID targeting.
   """
   use Lavash.LiveView
+  import Lavash.LiveView.Helpers, only: [lavash_component: 1]
 
   # Three separate counters to demo different nesting levels
   state :direct_count, :integer, from: :ephemeral, default: 0, optimistic: true
@@ -70,7 +71,7 @@ defmodule DemoWeb.NestingDemoLive do
             LiveView → Component
           </p>
           <div class="flex items-center gap-4">
-            <.live_component
+            <.lavash_component
               module={DemoWeb.Components.CounterControls}
               id="direct-counter"
               bind={[count: :direct_count]}
@@ -89,12 +90,11 @@ defmodule DemoWeb.NestingDemoLive do
             LiveView → Component → Component
           </p>
           <div class="flex items-center gap-4">
-            <.live_component
+            <.lavash_component
               module={DemoWeb.Components.CounterWrapper}
               id="wrapped-counter"
               bind={[count: :wrapped_count]}
               count={@wrapped_count}
-              __lavash_parent_version__={@__lavash_parent_version__}
             />
             <div class="text-sm text-base-content/50">
               <div>Binding chain:</div>
@@ -112,12 +112,11 @@ defmodule DemoWeb.NestingDemoLive do
             LiveView → Lavash.Component → Component → Component
           </p>
           <div class="flex items-center gap-4">
-            <.live_component
+            <.lavash_component
               module={DemoWeb.Components.DoubleWrapper}
               id="deep-counter"
               bind={[count: :deep_count]}
               count={@deep_count}
-              __lavash_parent_version__={@__lavash_parent_version__}
             />
             <div class="text-sm text-base-content/50">
               <div>Binding chain:</div>

@@ -437,15 +437,6 @@ defmodule Lavash.Template.TokenTransformerTest do
       assert Enum.any?(attrs, fn {name, _, _} -> name == "__lavash_client_bindings__" end)
     end
 
-    test "injects on child_component in component context" do
-      tokens = [{:local_component, "child_component", [string_attr("id", "test")], meta()}]
-      metadata = optimistic_metadata([], context: :component)
-      result = transform(tokens, metadata)
-
-      [{:local_component, "child_component", attrs, _}] = result
-      assert Enum.any?(attrs, fn {name, _, _} -> name == "__lavash_client_bindings__" end)
-    end
-
     test "skips in live_view context" do
       tokens = [{:local_component, "lavash_component", [string_attr("id", "test")], meta()}]
       metadata = optimistic_metadata([], context: :live_view)
