@@ -48,7 +48,7 @@ export function refreshFromParent(bindings, state, store, parentHook) {
  * @param {HTMLElement} el - This hook's root element (event dispatch target)
  * @param {string[]} changedFields - Fields that changed
  */
-export function propagateBoundFieldsToParent(bindings, state, el, changedFields) {
+export function propagateBoundFieldsToParent(bindings, state, el, changedFields, opts = {}) {
   if (!bindings || Object.keys(bindings).length === 0) return;
   if (!changedFields || changedFields.length === 0) return;
 
@@ -58,7 +58,14 @@ export function propagateBoundFieldsToParent(bindings, state, el, changedFields)
       const value = state[localField];
       const event = new CustomEvent("lavash-set", {
         bubbles: true,
-        detail: { field: parentField, value }
+        detail: {
+          field: parentField,
+          value,
+          // When true, the server already has an event for this change
+          // (from the component's own action), so the parent should only
+          // update client-side state — not push a set_ event to the server.
+          serverHandled: opts.serverHandled || false
+        }
       });
       el.dispatchEvent(event);
     }

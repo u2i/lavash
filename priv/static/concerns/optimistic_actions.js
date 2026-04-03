@@ -89,7 +89,7 @@ export function runOptimisticAction(actionName, value, hook) {
       changedFields.push(key);
     }
 
-    hook.propagateBoundFieldsToParent(changedFields);
+    hook.propagateBoundFieldsToParent(changedFields, { serverHandled: true });
     hook.recomputeDerives(changedFields);
     hook.updateDOM(true);
     hook.syncUrl();

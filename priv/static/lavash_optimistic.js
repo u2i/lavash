@@ -244,19 +244,23 @@ const LavashOptimistic = {
    * @param {CustomEvent} e - Event with detail: { field: string, value: any }
    */
   handleLavashSet(e) {
-    const { field, value } = e.detail;
+    const { field, value, serverHandled } = e.detail;
     if (!field) return;
 
-    console.warn(`[LO] handleLavashSet: field=${field}, value=${JSON.stringify(value)}`);
+    console.warn(`[LO] handleLavashSet: field=${field}, value=${JSON.stringify(value)}, serverHandled=${serverHandled}`);
 
     // Check if this field has an animated state (modal/flyover)
     if (this.animatedStates?.[field]) {
       e.stopPropagation();
       const animValue = value ? value : null;
-      const setterAction = `set_${field}`;
-      this.store.get(field).set(animValue, (payload, callback) => {
-        this.pushEventTo(this.el, setterAction, { ...payload, value: animValue }, callback);
-      });
+      if (!serverHandled) {
+        const setterAction = `set_${field}`;
+        this.store.get(field).set(animValue, (payload, callback) => {
+          this.pushEventTo(this.el, setterAction, { ...payload, value: animValue }, callback);
+        });
+      } else {
+        this.store.get(field).setOptimistic(animValue);
+      }
       return;
     }
 
@@ -265,14 +269,11 @@ const LavashOptimistic = {
       // Stop propagation - we own this field
       e.stopPropagation();
 
-      // Regular field - update state and push to server
+      // Update client-side state
       this.state[field] = value;
 
       // Track in SyncedVarStore if available
       if (this.store) {
-        // Use null as initial value so setOptimistic properly bumps
-        // the version when the SV is brand new, preventing stale server
-        // diffs from being accepted as confirmed.
         const syncedVar = this.store.get(field, null);
         syncedVar.setOptimistic(value);
       }
@@ -286,9 +287,12 @@ const LavashOptimistic = {
       this.recomputeDerives([field]);
       this.updateDOM();
 
-      // Push to server
-      const setterAction = `set_${field}`;
-      this.pushEventTo(this.el, setterAction, { value }, () => {});
+      // Only push to server if the originating component hasn't already
+      // pushed its own action event (which will propagate server-side)
+      if (!serverHandled) {
+        const setterAction = `set_${field}`;
+        this.pushEventTo(this.el, setterAction, { value }, () => {});
+      }
       return;
     }
 
@@ -351,8 +355,8 @@ const LavashOptimistic = {
     }
   },
 
-  propagateBoundFieldsToParent(changedFields) {
-    _propagateBoundFieldsToParent(this.bindings, this.state, this.el, changedFields);
+  propagateBoundFieldsToParent(changedFields, opts) {
+    _propagateBoundFieldsToParent(this.bindings, this.state, this.el, changedFields, opts);
   },
 
   // Sync URL fields to browser URL without triggering navigation
