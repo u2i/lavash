@@ -39,17 +39,24 @@ defmodule Lavash.LiveView.Compiler do
   # Generate a type-coercing setter value.
   # Uses rx() expressions so the value is transpilable to JS for optimistic updates.
   defp setter_value(:integer) do
+    state_var = Macro.var(:state, nil)
+
     %Lavash.Rx{
       source: "if(@value == \"\" or @value == nil, do: nil, else: String.to_integer(@value))",
-      ast: quote(do: if(var!(value) == "" or var!(value) == nil, do: nil, else: String.to_integer(var!(value)))),
+      ast: quote do
+        value = Map.get(unquote(state_var), :value)
+        if(value == "" or value == nil, do: nil, else: String.to_integer(value))
+      end,
       deps: [:value]
     }
   end
 
   defp setter_value(:boolean) do
+    state_var = Macro.var(:state, nil)
+
     %Lavash.Rx{
       source: "@value == \"true\" or @value == true",
-      ast: quote(do: var!(value) == "true" or var!(value) == true),
+      ast: quote(do: Map.get(unquote(state_var), :value) == "true" or Map.get(unquote(state_var), :value) == true),
       deps: [:value]
     }
   end
