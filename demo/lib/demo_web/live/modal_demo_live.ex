@@ -25,7 +25,7 @@ defmodule DemoWeb.ModalDemoLive do
           <h1 class="text-3xl font-bold">Modal Demo</h1>
           <p class="text-gray-500 mt-1">Basic modal with optimistic animations</p>
         </div>
-        <a href="/demos" class="text-indigo-600 hover:text-indigo-800">&larr; All Demos</a>
+        <a href="/" class="text-indigo-600 hover:text-indigo-800">&larr; All Demos</a>
       </div>
 
       <div class="bg-white rounded-lg shadow p-6 mb-8">

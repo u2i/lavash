@@ -46,8 +46,8 @@ defmodule DemoWeb.CategoriesLive do
           >
             New Category
           </button>
-          <a href="/products" class="text-indigo-600 hover:text-indigo-800 self-center">
-            &larr; Back to Products
+          <a href="/admin" class="text-indigo-600 hover:text-indigo-800 self-center">
+            &larr; Back to Admin
           </a>
         </div>
       </div>

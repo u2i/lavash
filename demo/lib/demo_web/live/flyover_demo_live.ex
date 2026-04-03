@@ -53,7 +53,7 @@ defmodule DemoWeb.FlyoverDemoLive do
           <h1 class="text-3xl font-bold">Flyover (Slideover) Demo</h1>
           <p class="text-gray-500 mt-1">Sliding panels that animate from screen edges</p>
         </div>
-        <a href="/demos" class="text-indigo-600 hover:text-indigo-800">&larr; All Demos</a>
+        <a href="/" class="text-indigo-600 hover:text-indigo-800">&larr; All Demos</a>
       </div>
 
       <div class="grid grid-cols-2 gap-6 mb-8">

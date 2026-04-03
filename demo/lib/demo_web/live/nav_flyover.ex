@@ -42,7 +42,7 @@ defmodule DemoWeb.NavFlyover do
       <nav class="flex-1 overflow-auto p-4">
         <ul class="menu">
           <li><a href="/" class="text-base">Home</a></li>
-          <li><a href="/demos" class="text-base">Demos</a></li>
+          <li><a href="/" class="text-base">Demos</a></li>
           <li>
             <details open>
               <summary class="text-base font-medium">Forms</summary>
@@ -59,7 +59,7 @@ defmodule DemoWeb.NavFlyover do
               <ul>
                 <li><a href="/demos/products">Products (URL)</a></li>
                 <li><a href="/demos/products-socket">Products (Socket)</a></li>
-                <li><a href="/demos/categories">Categories</a></li>
+                <li><a href="/admin/categories">Categories</a></li>
               </ul>
             </details>
           </li>
@@ -68,7 +68,7 @@ defmodule DemoWeb.NavFlyover do
               <summary class="text-base font-medium">Components</summary>
               <ul>
                 <li><a href="/demos/counter">Counter</a></li>
-                <li><a href="/demos/tags">Tag Editor</a></li>
+                <li><a href="/demos/tag-editor">Tag Editor</a></li>
                 <li><a href="/demos/flyover">Flyover</a></li>
               </ul>
             </details>
