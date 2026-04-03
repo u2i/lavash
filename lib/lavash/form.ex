@@ -161,23 +161,11 @@ defmodule Lavash.Form do
         changeset
       end
 
-    case changeset.action_type do
-      :create -> Ash.create(changeset, actor: actor)
-      :update -> Ash.update(changeset, actor: actor)
-      :destroy -> Ash.destroy(changeset, actor: actor)
-      _ -> {:error, "Unknown action type: #{changeset.action_type}"}
-    end
+    run_action(changeset, actor)
   end
 
   def submit(%Ash.Changeset{} = changeset, opts) do
-    actor = Keyword.get(opts, :actor)
-
-    case changeset.action_type do
-      :create -> Ash.create(changeset, actor: actor)
-      :update -> Ash.update(changeset, actor: actor)
-      :destroy -> Ash.destroy(changeset, actor: actor)
-      _ -> {:error, "Unknown action type: #{changeset.action_type}"}
-    end
+    run_action(changeset, Keyword.get(opts, :actor))
   end
 
   # Also support AshPhoenix.Form directly for backwards compatibility
@@ -195,6 +183,15 @@ defmodule Lavash.Form do
   def submit(:loading, _opts), do: {:error, :loading}
   def submit({:error, _} = err, _opts), do: err
   def submit(nil, _opts), do: {:error, :no_form}
+
+  defp run_action(changeset, actor) do
+    case changeset.action_type do
+      :create -> Ash.create(changeset, actor: actor)
+      :update -> Ash.update(changeset, actor: actor)
+      :destroy -> Ash.destroy(changeset, actor: actor)
+      _ -> {:error, "Unknown action type: #{changeset.action_type}"}
+    end
+  end
 end
 
 defimpl Phoenix.HTML.FormData, for: Lavash.Form do

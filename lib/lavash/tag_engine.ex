@@ -253,31 +253,17 @@ defmodule Lavash.TagEngine do
   for more information.
   """
   defmacro inner_block(name, do: do_block) do
-    # TODO: Remove the catch-all clause, it is no longer used
-    case do_block do
-      [{:->, meta, _} | _] ->
-        inner_fun = {:fn, meta, do_block}
+    [{:->, meta, _} | _] = do_block
+    inner_fun = {:fn, meta, do_block}
 
-        quote do
-          fn parent_changed, arg ->
-            var!(assigns) =
-              unquote(__MODULE__).__assigns__(var!(assigns), unquote(name), parent_changed)
+    quote do
+      fn parent_changed, arg ->
+        var!(assigns) =
+          unquote(__MODULE__).__assigns__(var!(assigns), unquote(name), parent_changed)
 
-            _ = var!(assigns)
-            unquote(inner_fun).(arg)
-          end
-        end
-
-      _ ->
-        quote do
-          fn parent_changed, arg ->
-            var!(assigns) =
-              unquote(__MODULE__).__assigns__(var!(assigns), unquote(name), parent_changed)
-
-            _ = var!(assigns)
-            unquote(do_block)
-          end
-        end
+        _ = var!(assigns)
+        unquote(inner_fun).(arg)
+      end
     end
   end
 

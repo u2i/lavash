@@ -100,17 +100,9 @@ defmodule Lavash.LiveView.Helpers do
     state_map = add_form_validation_fields(state_map, forms)
 
     # Add calculations - compute them from state
-    # Handle both legacy 4-tuple and new 7-tuple formats
     # Only include optimistic calculations (optimistic: true)
     Enum.reduce(calculations, state_map, fn calc, acc ->
-      {name, _source, ast, _deps, optimistic} =
-        case calc do
-          {name, source, ast, deps} ->
-            {name, source, ast, deps, true}
-
-          {name, source, ast, deps, opt, _async, _reads} ->
-            {name, source, ast, deps, opt}
-        end
+      {name, _source, ast, _deps, optimistic, _async, _reads} = calc
 
       # Skip non-optimistic calculations
       if not optimistic do

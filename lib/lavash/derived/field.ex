@@ -14,9 +14,7 @@ defmodule Lavash.Derived.Field do
     reads: [],
     # Enable client-side optimistic computation
     optimistic: false,
-    # Legacy field - computed from arguments for backwards compatibility
     depends_on: [],
-    # Legacy field - wrapped version of run
     compute: nil,
     __spark_metadata__: nil
   ]

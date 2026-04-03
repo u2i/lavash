@@ -100,12 +100,6 @@ defmodule Lavash.Action.Runtime do
   end
 
   # Compile a function from its quoted AST
-  # Caches compiled functions for performance
-  defp compile_run_fun(fun_ast) when is_function(fun_ast, 1) do
-    # Already compiled (legacy support)
-    fun_ast
-  end
-
   defp compile_run_fun(fun_ast) do
     # Fun AST is in the form {:fn, _, [{:->, _, [[arg], body]}]}
     # We need to eval it with Phoenix.Component imported for assign/3
