@@ -129,7 +129,7 @@ defmodule DemoWeb.Storefront.ProductLive do
   defp parse_delta(d) when is_integer(d), do: d
   defp parse_delta(d) when is_binary(d), do: String.to_integer(d)
 
-  # Handle key-based mutations from CartItemList ClientComponent
+  # Handle key-based mutations from CartItemList component
   def handle_info({:lavash_component_increment, _field, %{key: item_id}}, socket) do
     case Ash.get(CartItem, item_id) do
       {:ok, item} ->

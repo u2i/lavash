@@ -23,7 +23,7 @@ defmodule Lavash.Component.Runtime do
     # Check if this is a binding update from a child component
     case Map.get(assigns, :__lavash_binding_update__) do
       {action, field, value} ->
-        # Handle binding update from child ClientComponent or Lavash.Component
+        # Handle binding update from child component
         handle_binding_update(module, action, field, value, socket)
 
       nil ->

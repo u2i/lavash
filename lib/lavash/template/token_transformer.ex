@@ -197,7 +197,6 @@ defmodule Lavash.Template.TokenTransformer do
     |> maybe_inject_visibility(metadata)
     |> maybe_inject_enabled(metadata)
     |> maybe_inject_reactive_attrs(metadata)
-    |> maybe_inject_client_component_action(metadata)
     |> maybe_inject_phx_target(metadata)
   end
 
@@ -400,32 +399,7 @@ defmodule Lavash.Template.TokenTransformer do
     end)
   end
 
-  # Pattern 6: ClientComponent actions (inject data-lavash-state-field)
-  defp maybe_inject_client_component_action(attrs, metadata) do
-    if metadata[:context] == :client_component and
-         not has_attr?(attrs, "data-lavash-state-field") do
-      case get_attr_value(attrs, "data-lavash-action") do
-        {:string, action_name, _meta} ->
-          action_atom = String.to_atom(action_name)
-          optimistic_actions = metadata[:optimistic_actions] || %{}
-
-          if is_map_key(optimistic_actions, action_atom) do
-            action = optimistic_actions[action_atom]
-            field_str = to_string(action.field)
-            add_attr_if_missing(attrs, "data-lavash-state-field", {:string, field_str})
-          else
-            attrs
-          end
-
-        _ ->
-          attrs
-      end
-    else
-      attrs
-    end
-  end
-
-  # Pattern 7: Auto-inject phx-target={@myself} in component context
+  # Pattern 6: Auto-inject phx-target={@myself} in component context
   # In LiveComponents, phx-click events need phx-target to route to the
   # component's handle_event instead of the parent LiveView.
   defp maybe_inject_phx_target(attrs, metadata) do

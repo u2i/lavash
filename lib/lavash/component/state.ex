@@ -2,7 +2,8 @@ defmodule Lavash.Component.State do
   @moduledoc """
   A state field that connects component state to parent state.
 
-  This is the unified state entity used by both LiveComponent and ClientComponent.
+  A state field that connects component state to parent state.
+
   State fields are bound to parent LiveView state and can be modified through
   optimistic actions.
 
@@ -15,7 +16,7 @@ defmodule Lavash.Component.State do
 
   ## Usage
 
-  In LiveComponent or ClientComponent:
+  In a Lavash.Component:
 
       state :tags, {:array, :string}
       state :active, :boolean, default: false

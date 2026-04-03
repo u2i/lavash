@@ -61,7 +61,7 @@ defmodule DemoWeb.Storefront.ProductsLive do
 
   calculate :has_filters, rx(@roast != [] or @category != [] or @in_stock), optimistic: false
 
-  # Transform cart items to JSON-serializable maps for ClientComponent
+  # Transform cart items to JSON-serializable maps for CartItemList component
   calculate :cart_items_json, rx(serialize_cart_items(@cart_items)), optimistic: false
 
   def serialize_cart_items(items) do
@@ -202,7 +202,7 @@ defmodule DemoWeb.Storefront.ProductsLive do
   defp parse_delta(d) when is_integer(d), do: d
   defp parse_delta(d) when is_binary(d), do: String.to_integer(d)
 
-  # Handle key-based mutations from CartItemList ClientComponent
+  # Handle key-based mutations from CartItemList component
   # These are sent when the component is bound to cart_items_json
 
   def handle_info({:lavash_component_increment, _field, %{key: item_id}}, socket) do

@@ -8,7 +8,7 @@ defmodule Lavash.Optimistic do
   ## Active Submodules
 
   - `Lavash.Optimistic.Macros` - Provides the `optimistic_action/3` macro for LiveViews
-  - `Lavash.Optimistic.ActionMacro` - Provides `optimistic_action` for ClientComponents
+  - `Lavash.Optimistic.ActionMacro` - Provides `optimistic_action` for components
   - `Lavash.Optimistic.Transformers.ExtractColocatedJs` - Extracts generated JS to colocated files
   - `Lavash.Optimistic.Transformers.ExpandAnimatedStates` - Expands animated state DSL
   - `Lavash.Optimistic.Transformers.ExpandDefrx` - Expands defrx function calls

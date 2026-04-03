@@ -6,7 +6,7 @@ defmodule Lavash.Template.Compiled do
   enabling:
 
   - Server-side rendering via the compiled HEEx
-  - Client-side JS generation for ClientComponent (from source)
+  - Client-side JS generation for components (from source)
 
   ## Usage
 
@@ -20,14 +20,14 @@ defmodule Lavash.Template.Compiled do
 
   - `:source` - Original template source string
   - `:compiled` - Compiled HEEx AST (quoted expression)
-  - `:context` - Compilation context (`:live_view`, `:component`, `:client_component`)
+  - `:context` - Compilation context (`:live_view` or `:component`)
   - `:file` - Source file path
   - `:line` - Source line number
   """
 
   defstruct [:source, :compiled, :context, :file, :line]
 
-  @type context :: :live_view | :component | :client_component
+  @type context :: :live_view | :component
 
   @type t :: %__MODULE__{
           source: String.t(),

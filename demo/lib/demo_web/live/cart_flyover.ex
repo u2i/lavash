@@ -3,11 +3,11 @@ defmodule DemoWeb.CartFlyover do
   A Shopify-style sliding cart panel.
 
   Opens from the right when items are added to cart or cart icon is clicked.
-  Uses a ClientComponent (CartItemList) inside for optimistic cart mutations.
+  Uses CartItemList component inside for optimistic cart mutations.
 
   Architecture:
   - Flyover DSL handles panel behavior (slide animation, backdrop, open/close)
-  - CartItemList ClientComponent handles item mutations optimistically
+  - CartItemList component handles item mutations optimistically
   - Parent LiveView owns the cart data and database mutations
   """
   use Lavash.Component, extensions: [Lavash.Overlay.Flyover.Dsl]
@@ -39,7 +39,7 @@ defmodule DemoWeb.CartFlyover do
         <.flyover_close_button id={@__flyover_id__} myself={@myself} />
       </div>
 
-      <!-- Cart Items - ClientComponent for optimistic updates (includes footer with subtotal) -->
+      <!-- Cart Items - Component for optimistic updates (includes footer with subtotal) -->
       <.child_component
         module={DemoWeb.Components.CartItemList}
         id="cart-item-list"

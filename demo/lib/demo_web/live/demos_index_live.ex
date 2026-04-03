@@ -26,7 +26,7 @@ defmodule DemoWeb.DemosIndexLive do
             />
             <.demo_card
               href={~p"/demos/tag-editor"}
-              title="Tag Editor (ClientComponent)"
+              title="Tag Editor (Component)"
               description="Full client-side re-rendering for structural DOM changes like adding/removing tags."
             />
             <.demo_card

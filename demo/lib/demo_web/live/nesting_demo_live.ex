@@ -3,9 +3,9 @@ defmodule DemoWeb.NestingDemoLive do
   Demo page showing various component nesting combinations with bindings.
 
   Demonstrates:
-  1. LiveView → ClientComponent (direct)
-  2. LiveView → Lavash.Component → ClientComponent (2-level)
-  3. LiveView → Lavash.Component → Lavash.Component → ClientComponent (3-level)
+  1. LiveView → Component (direct)
+  2. LiveView → Component → Component (2-level)
+  3. LiveView → Component → Component → Component (3-level)
 
   All bindings propagate changes back up through the component hierarchy
   using send_update with CID targeting.
@@ -65,11 +65,11 @@ defmodule DemoWeb.NestingDemoLive do
       </div>
 
       <div class="grid gap-6">
-        <!-- Case 1: Direct binding (LiveView → ClientComponent) -->
+        <!-- Case 1: Direct binding (LiveView → Component) -->
         <section class="bg-base-100 p-6 rounded-lg border border-base-300">
           <h3 class="font-semibold mb-1">1. Direct Binding</h3>
           <p class="text-sm text-base-content/60 mb-4">
-            LiveView → ClientComponent
+            LiveView → Component
           </p>
           <div class="flex items-center gap-4">
             <.live_component
@@ -84,11 +84,11 @@ defmodule DemoWeb.NestingDemoLive do
           </div>
         </section>
 
-        <!-- Case 2: Single wrapper (LiveView → Lavash.Component → ClientComponent) -->
+        <!-- Case 2: Single wrapper (LiveView → Component → Component) -->
         <section class="bg-base-100 p-6 rounded-lg border border-base-300">
           <h3 class="font-semibold mb-1">2. Single Wrapper</h3>
           <p class="text-sm text-base-content/60 mb-4">
-            LiveView → Lavash.Component → ClientComponent
+            LiveView → Component → Component
           </p>
           <div class="flex items-center gap-4">
             <.live_component
@@ -107,11 +107,11 @@ defmodule DemoWeb.NestingDemoLive do
           </div>
         </section>
 
-        <!-- Case 3: Double wrapper (LiveView → Lavash.Component → Lavash.Component → ClientComponent) -->
+        <!-- Case 3: Double wrapper (LiveView → Lavash.Component → Component → Component) -->
         <section class="bg-base-100 p-6 rounded-lg border border-base-300">
           <h3 class="font-semibold mb-1">3. Double Wrapper (3-level nesting)</h3>
           <p class="text-sm text-base-content/60 mb-4">
-            LiveView → Lavash.Component → Lavash.Component → ClientComponent
+            LiveView → Lavash.Component → Component → Component
           </p>
           <div class="flex items-center gap-4">
             <.live_component

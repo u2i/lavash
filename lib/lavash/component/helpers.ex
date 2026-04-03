@@ -116,7 +116,7 @@ defmodule Lavash.Component.Helpers do
   ## Usage
 
       <.child_component
-        module={MyClientComponent}
+        module={MyComponent}
         id="my-child"
         bind={[count: :my_count]}
         count={@my_count}
@@ -126,7 +126,7 @@ defmodule Lavash.Component.Helpers do
   This is equivalent to:
 
       <.live_component
-        module={MyClientComponent}
+        module={MyComponent}
         id="my-child"
         bind={[count: :my_count]}
         count={@my_count}

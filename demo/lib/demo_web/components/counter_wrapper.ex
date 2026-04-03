@@ -3,7 +3,7 @@ defmodule DemoWeb.Components.CounterWrapper do
   A Lavash.Component that wraps CounterControls.
 
   Demonstrates binding chains:
-  LiveView -> CounterWrapper (Lavash.Component) -> CounterControls (ClientComponent)
+  LiveView -> CounterWrapper (Component) -> CounterControls (Component)
 
   The wrapper has its own `count` state which is:
   - Bound to the parent via bind={[count: :parent_field]}
