@@ -5,7 +5,7 @@ defmodule DemoWeb.Components.CounterControls do
   """
   use Lavash.Component
 
-  state :count, :integer, from: :ephemeral, default: 0
+  state :count, :integer, from: :ephemeral, default: 0, optimistic: true
 
   actions do
     action :increment do
@@ -27,7 +27,7 @@ defmodule DemoWeb.Components.CounterControls do
       >
         −
       </button>
-      <span class="text-xl font-mono w-12 text-center">{@count || 0}</span>
+      <span class="text-xl font-mono w-12 text-center">{@count}</span>
       <button
         type="button"
         class="btn btn-sm btn-outline"
