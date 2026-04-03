@@ -6,7 +6,7 @@ defmodule DemoWeb.BindingsDemoLive do
   with changes flowing through the reactive graph.
   """
   use Lavash.LiveView
-  import Lavash.LiveView.Helpers
+  import Lavash.LiveView.Helpers, only: [lavash_component: 1]
 
   # State that the component will bind to
   # optimistic: true enables the wrapper hook that handles client-side updates
@@ -66,16 +66,16 @@ defmodule DemoWeb.BindingsDemoLive do
         <h2 class="font-semibold mb-2">State from Parent Graph</h2>
         <div class="space-y-2">
           <p class="text-gray-600">
-            Selected roasts: <.o field={:roast} value={@roast} tag="code" class="bg-gray-200 px-2 py-1 rounded">{inspect(@roast)}</.o>
+            Selected roasts: <code class="bg-gray-200 px-2 py-1 rounded">{@roast}</code>
           </p>
           <p class="text-gray-600">
-            Count (Level 1 calc): <.o field={:selected_count} value={@selected_count} tag="code" class="bg-gray-200 px-2 py-1 rounded" />
+            Count (Level 1 calc): <code class="bg-gray-200 px-2 py-1 rounded">{@selected_count}</code>
           </p>
           <p class="text-gray-600">
-            Has selection (Level 2 calc): <.o field={:has_selection} value={@has_selection} tag="code" class="bg-gray-200 px-2 py-1 rounded">{inspect(@has_selection)}</.o>
+            Has selection (Level 2 calc): <code class="bg-gray-200 px-2 py-1 rounded">{@has_selection}</code>
           </p>
           <p class="text-gray-600">
-            Summary (Level 3 calc): <.o field={:summary_text} value={@summary_text} tag="code" class="bg-gray-200 px-2 py-1 rounded" />
+            Summary (Level 3 calc): <code class="bg-gray-200 px-2 py-1 rounded">{@summary_text}</code>
           </p>
         </div>
         <p class="text-sm text-gray-500 mt-4">

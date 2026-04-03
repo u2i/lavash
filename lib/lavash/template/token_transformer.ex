@@ -74,11 +74,21 @@ defmodule Lavash.Template.TokenTransformer do
   defp transform_token(token, _metadata, _state), do: token
 
   # ===========================================================================
-  # Display injection — data-lavash-display on elements with {@field} content
+  # Display injection — auto-wrap {@field} in <span data-lavash-display>
   # ===========================================================================
 
-  # Scans token pairs: when a tag is followed by an expression referencing
-  # an optimistic field, inject data-lavash-display on the tag.
+  # Scans for {:body_expr, "@field", meta} tokens referencing optimistic fields.
+  # Wraps each in <span data-lavash-display="field">...</span> so the JS hook
+  # can update the value optimistically without a server round-trip.
+  #
+  # This fires for bare field references ({@count}) anywhere in the template —
+  # the field doesn't need to be the sole child of a tag. Mixed content like
+  # "Total: {@count}" produces "Total: <span data-lavash-display="count">5</span>".
+  #
+  # Does NOT fire for:
+  # - Function calls: {inspect(@count)} — not a bare @field
+  # - Already-wrapped: elements with data-lavash-display or data-lavash-manual
+  # - Attribute values: value={@count} — handled by other patterns
   defp maybe_inject_display_attrs(tokens, metadata) do
     optimistic_fields = metadata[:optimistic_fields] || %{}
     optimistic_derives = metadata[:optimistic_derives] || %{}
@@ -88,58 +98,93 @@ defmodule Lavash.Template.TokenTransformer do
     if map_size(all_optimistic) == 0 do
       tokens
     else
-      do_inject_display(tokens, all_optimistic, [])
+      wrap_display_exprs(tokens, all_optimistic, [])
     end
   end
 
-  defp do_inject_display([], _fields, acc), do: Enum.reverse(acc)
+  defp wrap_display_exprs([], _fields, acc), do: Enum.reverse(acc)
 
-  # Pattern: {:tag, ...} followed by {:expr, "@field"} — inject display attr
-  # Pattern: tag, optional whitespace, then {@field} expression
-  defp do_inject_display(
-         [{:tag, name, attrs, meta} | rest],
+  # Skip expressions inside tags that already have data-lavash-display or data-lavash-manual.
+  # Track the most recent tag to check its attrs.
+  defp wrap_display_exprs(
+         [{:tag, _name, attrs, _meta} = tag | rest],
          fields,
          acc
        ) do
-    {ws_tokens, after_ws} = split_leading_whitespace(rest)
+    if has_attr?(attrs, "data-lavash-display") || has_attr?(attrs, "data-lavash-manual") do
+      # Pass through everything until the close tag without wrapping
+      wrap_display_exprs(rest, fields, [tag | acc])
+    else
+      wrap_display_exprs(rest, fields, [tag | acc])
+    end
+  end
 
-    case after_ws do
-      [{:expr, expr, _} = expr_token | after_expr] ->
-        field_name = extract_optimistic_field_ref(expr, fields)
+  defp wrap_display_exprs(
+         [{:body_expr, expr, expr_meta} | rest],
+         fields,
+         acc
+       ) do
+    case extract_optimistic_field_ref(expr, fields) do
+      nil ->
+        wrap_display_exprs(rest, fields, [{:body_expr, expr, expr_meta} | acc])
 
-        if field_name && !has_attr?(attrs, "data-lavash-display") && !has_attr?(attrs, "data-lavash-manual") do
-          new_attrs = attrs ++ [{"data-lavash-display", {:string, field_name}}]
-          remaining = ws_tokens ++ [expr_token | after_expr]
-          do_inject_display(remaining, fields, [{:tag, name, new_attrs, meta} | acc])
+      field_name ->
+        # Check if we're already inside an element with data-lavash-display
+        if inside_display_element?(acc) do
+          wrap_display_exprs(rest, fields, [{:body_expr, expr, expr_meta} | acc])
         else
-          remaining = ws_tokens ++ [expr_token | after_expr]
-          do_inject_display(remaining, fields, [{:tag, name, attrs, meta} | acc])
+          # Wrap: <span data-lavash-display="field">{@field}</span>
+          span_meta = %{line: expr_meta[:line] || 1, column: expr_meta[:column] || 1,
+                        tag_name: "span", inner_location: {expr_meta[:line] || 1, (expr_meta[:column] || 1) + 6}}
+          display_attr = {"data-lavash-display",
+                          {:string, field_name, %{delimiter: ?", line: 1, column: 1}},
+                          %{line: 1, column: 1}}
+
+          close_meta = %{line: expr_meta[:line] || 1, column: (expr_meta[:column] || 1),
+                         tag_name: "span", inner_location: {expr_meta[:line] || 1, (expr_meta[:column] || 1)}}
+
+          tokens = [
+            {:close, :tag, "span", close_meta},
+            {:body_expr, expr, expr_meta},
+            {:tag, "span", [display_attr], span_meta}
+          ]
+
+          wrap_display_exprs(rest, fields, tokens ++ acc)
+        end
+    end
+  end
+
+  defp wrap_display_exprs([token | rest], fields, acc) do
+    wrap_display_exprs(rest, fields, [token | acc])
+  end
+
+  # Check if the accumulator's most recent unclosed tag has data-lavash-display.
+  # This prevents double-wrapping when someone manually adds the attribute.
+  defp inside_display_element?(acc) do
+    Enum.reduce_while(acc, 0, fn
+      {:close, :tag, _name, _meta}, depth ->
+        {:cont, depth + 1}
+
+      {:tag, _name, attrs, _meta}, 0 ->
+        if has_attr?(attrs, "data-lavash-display") || has_attr?(attrs, "data-lavash-manual") do
+          {:halt, true}
+        else
+          {:halt, false}
         end
 
-      _ ->
-        do_inject_display(rest, fields, [{:tag, name, attrs, meta} | acc])
+      {:tag, _name, _attrs, _meta}, depth ->
+        {:cont, depth - 1}
+
+      _, depth ->
+        {:cont, depth}
+    end)
+    |> case do
+      true -> true
+      _ -> false
     end
   end
 
-  defp do_inject_display([token | rest], fields, acc) do
-    do_inject_display(rest, fields, [token | acc])
-  end
-
-  defp split_leading_whitespace(tokens) do
-    split_leading_whitespace(tokens, [])
-  end
-
-  defp split_leading_whitespace([{:text, text} = t | rest], ws) do
-    if String.trim(text) == "" do
-      split_leading_whitespace(rest, ws ++ [t])
-    else
-      {ws, [{:text, text} | rest]}
-    end
-  end
-
-  defp split_leading_whitespace(tokens, ws), do: {ws, tokens}
-
-  # Extract field name from expression like "@total_display" or "@count"
+  # Extract field name from expression like "@count" (bare field reference only)
   defp extract_optimistic_field_ref(expr, fields) do
     trimmed = String.trim(expr)
 

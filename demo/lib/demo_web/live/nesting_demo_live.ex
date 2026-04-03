@@ -12,8 +12,6 @@ defmodule DemoWeb.NestingDemoLive do
   """
   use Lavash.LiveView
 
-  import Lavash.LiveView.Helpers, only: [o: 1]
-
   # Three separate counters to demo different nesting levels
   state :direct_count, :integer, from: :ephemeral, default: 0, optimistic: true
   state :wrapped_count, :integer, from: :ephemeral, default: 0, optimistic: true
@@ -43,22 +41,22 @@ defmodule DemoWeb.NestingDemoLive do
         <h2 class="font-semibold mb-3">LiveView State (reactive calculations)</h2>
         <div class="grid grid-cols-4 gap-4 text-center">
           <div>
-            <.o field={:direct_count} value={@direct_count} tag="div" class="text-2xl font-mono" />
+            <div class="text-2xl font-mono">{@direct_count}</div>
             <div class="text-xs text-base-content/50">Direct</div>
-            <div class="text-xs text-base-content/30">×2 = <.o field={:direct_doubled} value={@direct_doubled} /></div>
+            <div class="text-xs text-base-content/30">×2 = {@direct_doubled}</div>
           </div>
           <div>
-            <.o field={:wrapped_count} value={@wrapped_count} tag="div" class="text-2xl font-mono" />
+            <div class="text-2xl font-mono">{@wrapped_count}</div>
             <div class="text-xs text-base-content/50">Wrapped</div>
-            <div class="text-xs text-base-content/30">×2 = <.o field={:wrapped_doubled} value={@wrapped_doubled} /></div>
+            <div class="text-xs text-base-content/30">×2 = {@wrapped_doubled}</div>
           </div>
           <div>
-            <.o field={:deep_count} value={@deep_count} tag="div" class="text-2xl font-mono" />
+            <div class="text-2xl font-mono">{@deep_count}</div>
             <div class="text-xs text-base-content/50">Deep</div>
-            <div class="text-xs text-base-content/30">×2 = <.o field={:deep_doubled} value={@deep_doubled} /></div>
+            <div class="text-xs text-base-content/30">×2 = {@deep_doubled}</div>
           </div>
           <div class="border-l border-base-300 pl-4">
-            <.o field={:total} value={@total} tag="div" class="text-2xl font-mono font-bold" />
+            <div class="text-2xl font-mono font-bold">{@total}</div>
             <div class="text-xs text-base-content/50">Total</div>
           </div>
         </div>
