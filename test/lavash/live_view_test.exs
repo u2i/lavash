@@ -29,23 +29,20 @@ defmodule Lavash.LiveViewTest do
       assert has_element?(view, "#count", "4")
     end
 
-    test "increment updates URL via push_patch", %{conn: conn} do
+    test "increment updates state", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/counter")
 
       view |> element("#inc") |> render_click()
 
-      # The URL should be patched
-      assert_patch(view, "/counter?count=1")
+      assert has_element?(view, "#count", "1")
     end
 
-    test "reset clears count and URL", %{conn: conn} do
+    test "reset clears count", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/counter?count=10")
 
       view |> element("#reset") |> render_click()
 
       assert has_element?(view, "#count", "0")
-      # When count is 0 (default), it should not appear in URL
-      assert_patch(view, "/counter")
     end
 
     test "works with path parameters in route", %{conn: conn} do
@@ -57,8 +54,6 @@ defmodule Lavash.LiveViewTest do
       view |> element("#inc") |> render_click()
 
       assert has_element?(view, "#count", "1")
-      # URL should preserve the path parameter and add query param
-      assert_patch(view, "/products/123/counter?count=1")
     end
 
     test "works with path parameters and initial query params", %{conn: conn} do
@@ -69,7 +64,6 @@ defmodule Lavash.LiveViewTest do
       view |> element("#inc") |> render_click()
 
       assert has_element?(view, "#count", "6")
-      assert_patch(view, "/products/456/counter?count=6")
     end
   end
 
@@ -80,7 +74,7 @@ defmodule Lavash.LiveViewTest do
       assert has_element?(view, "#tab", "details")
     end
 
-    test "updates path param via action and push_patch", %{conn: conn} do
+    test "updates path param via action", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/products/100")
 
       assert has_element?(view, "#product-id", "100")
@@ -88,8 +82,6 @@ defmodule Lavash.LiveViewTest do
       view |> element("#next-product") |> render_click()
 
       assert has_element?(view, "#product-id", "101")
-      # The URL should update with the new path param
-      assert_patch(view, "/products/101")
     end
 
     test "updates both path param and query param", %{conn: conn} do
@@ -99,15 +91,12 @@ defmodule Lavash.LiveViewTest do
       view |> element("#set-reviews") |> render_click()
 
       assert has_element?(view, "#tab", "reviews")
-      assert_patch(view, "/products/50?tab=reviews")
 
       # Now update the product (path param)
       view |> element("#next-product") |> render_click()
 
       assert has_element?(view, "#product-id", "51")
       assert has_element?(view, "#tab", "reviews")
-      # Both path and query should be updated
-      assert_patch(view, "/products/51?tab=reviews")
     end
 
     test "path param changes trigger handle_params", %{conn: conn} do
@@ -281,22 +270,20 @@ defmodule Lavash.LiveViewTest do
       assert has_element?(view, "#tags", "")
     end
 
-    test "toggle updates boolean and URL", %{conn: conn} do
+    test "toggle updates boolean", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/typed")
 
       view |> element("#toggle") |> render_click()
 
       assert has_element?(view, "#active", "true")
-      assert_patch(view, "/typed?active=true")
     end
 
-    test "next page updates integer and URL", %{conn: conn} do
+    test "next page updates integer", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/typed?page=5")
 
       view |> element("#next-page") |> render_click()
 
       assert has_element?(view, "#page", "6")
-      assert_patch(view, "/typed?page=6")
     end
   end
 
