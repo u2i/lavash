@@ -39,13 +39,7 @@ defmodule Lavash.Component.Transformers.CompileComponent do
   defp generate_component_code(dsl_state, env) do
     render_generator = Transformer.get_persisted(dsl_state, :lavash_overlay_render_generator)
     lavash_renders = Module.get_attribute(env.module, :__lavash_renders__) || []
-    has_colocated_js = Transformer.get_persisted(dsl_state, :lavash_optimistic_colocated_data) != nil
-
-    has_optimistic_state =
-      (Transformer.get_entities(dsl_state, [:states]) || [])
-      |> Enum.any?(fn s -> Map.get(s, :optimistic, false) end)
-
-    has_optimistic = has_colocated_js or has_optimistic_state
+    has_optimistic = Transformer.get_persisted(dsl_state, :lavash_optimistic_colocated_data) != nil
 
     # Build render function AST
     render_ast = build_render_ast(render_generator, lavash_renders, has_optimistic, env, dsl_state)
