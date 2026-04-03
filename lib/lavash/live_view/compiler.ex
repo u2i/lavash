@@ -45,7 +45,13 @@ defmodule Lavash.LiveView.Compiler do
       source: "if(@value == \"\" or @value == nil, do: nil, else: String.to_integer(@value))",
       ast: quote do
         value = Map.get(unquote(state_var), :value)
-        if(value == "" or value == nil, do: nil, else: String.to_integer(value))
+
+        cond do
+          value == "" or value == nil -> nil
+          is_integer(value) -> value
+          is_binary(value) -> String.to_integer(value)
+          true -> value
+        end
       end,
       deps: [:value]
     }
