@@ -13,8 +13,8 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
   use Spark.Dsl.Transformer
 
   alias Lavash.Component.CompilerHelpers
-  alias Lavash.Optimistic.ActionJs
   alias Lavash.Form.ValidationJs
+  alias Lavash.Optimistic.ActionJs
   alias Spark.Dsl.Transformer
 
   # Run after AnalyzeTemplate but before CompileComponent
@@ -581,20 +581,20 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
 
           # Generate combined form_valid if we have field validations
           {combined_v, combined_e, combined_v_d, combined_e_d} =
-            if length(validations) > 0 do
+            if validations != [] do
               field_names = Enum.map(validations, & &1.field)
               form_valid_name = "#{form_name}_valid"
               form_errors_name = "#{form_name}_errors"
 
               v_checks =
-                field_names
-                |> Enum.map(fn field -> "state.#{form_name}_#{field}_valid" end)
-                |> Enum.join(" && ")
+                Enum.map_join(field_names, " && ", fn field ->
+                  "state.#{form_name}_#{field}_valid"
+                end)
 
               e_arrays =
-                field_names
-                |> Enum.map(fn field -> "...(state.#{form_name}_#{field}_errors || [])" end)
-                |> Enum.join(", ")
+                Enum.map_join(field_names, ", ", fn field ->
+                  "...(state.#{form_name}_#{field}_errors || [])"
+                end)
 
               v_fn = """
                 #{form_valid_name}(state) {
@@ -720,7 +720,7 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
             end)
 
           combined_v =
-            if length(field_names) > 0 do
+            if field_names != [] do
               deps = Enum.map(field_names, fn field -> "#{form_name}_#{field}_valid" end)
               [{"#{form_name}_valid", %{deps: deps}}]
             else
@@ -728,7 +728,7 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
             end
 
           combined_e =
-            if length(field_names) > 0 do
+            if field_names != [] do
               deps = Enum.map(field_names, fn field -> "#{form_name}_#{field}_errors" end)
               [{"#{form_name}_errors", %{deps: deps}}]
             else

@@ -323,7 +323,7 @@ defmodule Lavash.Transformers.ExpandFields do
         end)
 
       summary_specs =
-        if length(validations) > 0 do
+        if validations != [] do
           field_names = Enum.map(validations, & &1.field)
 
           [
@@ -688,10 +688,10 @@ defmodule Lavash.Transformers.ExpandFields do
           end
 
         errors =
-          if not is_empty do
-            errors ++ collect_constraint_errors(val_type, value, constraints, ash_messages)
-          else
+          if is_empty do
             errors
+          else
+            errors ++ collect_constraint_errors(val_type, value, constraints, ash_messages)
           end
 
         custom_error_messages =

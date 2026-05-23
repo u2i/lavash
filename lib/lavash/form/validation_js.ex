@@ -61,9 +61,7 @@ defmodule Lavash.Form.ValidationJs do
   """
   def generate_combined_validation_js(name, form_name, field_names) do
     checks =
-      field_names
-      |> Enum.map(fn field -> "state.#{form_name}_#{field}_valid" end)
-      |> Enum.join(" && ")
+      Enum.map_join(field_names, " && ", fn field -> "state.#{form_name}_#{field}_valid" end)
 
     """
       #{name}(state) {
@@ -195,9 +193,9 @@ defmodule Lavash.Form.ValidationJs do
   """
   def generate_combined_errors_js(name, form_name, field_names) do
     arrays =
-      field_names
-      |> Enum.map(fn field -> "...(state.#{form_name}_#{field}_errors || [])" end)
-      |> Enum.join(", ")
+      Enum.map_join(field_names, ", ", fn field ->
+        "...(state.#{form_name}_#{field}_errors || [])"
+      end)
 
     """
       #{name}(state) {

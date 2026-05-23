@@ -97,8 +97,7 @@ defmodule Lavash.Component.JsGenerator do
   defp render_attrs_to_js(attrs, ctx) do
     attrs
     |> Enum.reject(fn {name, _} -> String.starts_with?(name, ":") end)
-    |> Enum.map(fn {name, value} -> render_attr_to_js(name, value, ctx) end)
-    |> Enum.join("")
+    |> Enum.map_join("", fn {name, value} -> render_attr_to_js(name, value, ctx) end)
   end
 
   defp render_attr_to_js(name, {:string, value}, _ctx) do

@@ -106,15 +106,15 @@ defmodule Lavash.LiveView.Helpers do
       {name, _source, ast, _deps, optimistic, _async, _reads} = calc
 
       # Skip non-optimistic calculations
-      if not optimistic do
-        acc
-      else
+      if optimistic do
         try do
           {result, _binding} = Code.eval_quoted(ast, [state: acc], __ENV__)
           Map.put(acc, name, result)
         rescue
           _ -> acc
         end
+      else
+        acc
       end
     end)
   end

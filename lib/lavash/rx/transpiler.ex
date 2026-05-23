@@ -622,8 +622,7 @@ defmodule Lavash.Rx.Transpiler do
 
   # List literal
   def ast_to_js(list) when is_list(list) do
-    elements = Enum.map(list, &ast_to_js/1) |> Enum.join(", ")
-    "[#{elements}]"
+    "[#{Enum.map_join(list, ", ", &ast_to_js/1)}]"
   end
 
   # Binary operators

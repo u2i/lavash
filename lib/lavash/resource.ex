@@ -59,10 +59,8 @@ defmodule Lavash.Resource do
   Returns the notify_on attributes for a resource, or empty list if not configured.
   """
   def notify_on(resource) when is_atom(resource) do
-    try do
-      Spark.Dsl.Extension.get_opt(resource, [:lavash], :notify_on, [])
-    rescue
-      _ -> []
-    end
+    Spark.Dsl.Extension.get_opt(resource, [:lavash], :notify_on, [])
+  rescue
+    _ -> []
   end
 end

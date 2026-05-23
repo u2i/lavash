@@ -3,8 +3,8 @@ defmodule Lavash.State do
   State hydration and management.
   """
 
-  alias Lavash.Type
   alias Lavash.Socket, as: LSocket
+  alias Lavash.Type
 
   def hydrate_url(socket, module, params) do
     url_fields = module.__lavash__(:url_fields)

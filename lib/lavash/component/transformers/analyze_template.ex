@@ -236,10 +236,7 @@ defmodule Lavash.Component.Transformers.AnalyzeTemplate do
          index
        ) do
     if has_optimistic_child?(children, optimistic_names) do
-      children_js =
-        children
-        |> Enum.map(&Lavash.Component.JsGenerator.subtree_to_js/1)
-        |> Enum.join("")
+      children_js = Enum.map_join(children, "", &Lavash.Component.JsGenerator.subtree_to_js/1)
 
       derive_name = "__subtree_#{index}"
       all_deps = collect_all_optimistic_deps(children, optimistic_names)

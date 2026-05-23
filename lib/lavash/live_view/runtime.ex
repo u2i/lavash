@@ -13,13 +13,13 @@ defmodule Lavash.LiveView.Runtime do
   require Logger
   require Phoenix.Component
 
-  alias Lavash.State
-  alias Lavash.Dsl.Graph, as: DslGraph
-  alias Lavash.Reactive
-  alias Lavash.Assigns
-  alias Lavash.Socket, as: LSocket
   alias Lavash.Action.Runtime, as: ActionRuntime
+  alias Lavash.Assigns
+  alias Lavash.Dsl.Graph, as: DslGraph
   alias Lavash.Form.Runtime, as: FormRuntime
+  alias Lavash.Reactive
+  alias Lavash.Socket, as: LSocket
+  alias Lavash.State
 
   @doc """
   Wraps the user's render output with optimistic state tracking if needed.
