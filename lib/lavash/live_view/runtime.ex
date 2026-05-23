@@ -135,6 +135,7 @@ defmodule Lavash.LiveView.Runtime do
         component_states: component_states,
         graph: DslGraph.compiled_graph(module)
       })
+      |> Phoenix.Component.assign(:__lavash_component_states__, component_states)
       |> State.hydrate_socket(module, connect_params)
       |> State.hydrate_ephemeral(module)
       |> State.hydrate_forms(module)

@@ -454,6 +454,10 @@ defmodule Lavash.Component.Runtime do
       socket
       |> Phoenix.Component.assign(:id, Map.get(assigns, :id))
       |> Phoenix.Component.assign(:__component_module__, module)
+      |> Phoenix.Component.assign(
+        :__lavash_component_states__,
+        Map.get(assigns, :__lavash_component_states__) || %{}
+      )
 
     # Preserve current_user for actor-based authorization in read DSL and form submits
     # This is inherited from the parent via lavash_component helper

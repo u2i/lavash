@@ -152,23 +152,4 @@ defmodule Lavash.LiveView.HelpersTest do
       assert result == %{}
     end
   end
-
-  # ============================================
-  # component state management
-  # ============================================
-
-  describe "component state management" do
-    test "put/get round-trip via process dict" do
-      states = %{counter: %{count: 5}}
-      Helpers.put_component_states(states)
-      assert Helpers.get_component_states() == states
-    after
-      Process.delete(:__lavash_component_states__)
-    end
-
-    test "returns empty map when nothing stored" do
-      Process.delete(:__lavash_component_states__)
-      assert Helpers.get_component_states() == %{}
-    end
-  end
 end

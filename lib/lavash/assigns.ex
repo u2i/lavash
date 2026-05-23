@@ -11,20 +11,9 @@ defmodule Lavash.Assigns do
   alias Lavash.Socket, as: LSocket
 
   def project(socket, module) do
-    # Store component states in process dictionary for child lavash_component calls
-    component_states = LSocket.get(socket, :component_states) || %{}
-    Lavash.LiveView.Helpers.put_component_states(component_states)
-
-    # Project parent's optimistic version for child components to inherit
-    socket =
-      Phoenix.Component.assign(
-        socket,
-        :__lavash_parent_version__,
-        LSocket.optimistic_version(socket)
-      )
-
-    # Project form metadata (action_type) for each form
-    project_form_metadata(socket, module)
+    socket
+    |> Phoenix.Component.assign(:__lavash_parent_version__, LSocket.optimistic_version(socket))
+    |> project_form_metadata(module)
   end
 
   # For each form, project :form_action assign with the action type

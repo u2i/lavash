@@ -6,21 +6,6 @@ defmodule Lavash.LiveView.Helpers do
   use Phoenix.Component
 
   @doc """
-  Stores component states in process dictionary for child components to access.
-  Call this at the start of your render function, or use the `lavash_render` wrapper.
-  """
-  def put_component_states(states) do
-    Process.put(:__lavash_component_states__, states)
-  end
-
-  @doc """
-  Gets component states from process dictionary.
-  """
-  def get_component_states do
-    Process.get(:__lavash_component_states__, %{})
-  end
-
-  @doc """
   Builds the optimistic state map from assigns based on DSL metadata.
 
   Collects all state fields and derives marked with `optimistic: true` and
@@ -213,8 +198,10 @@ defmodule Lavash.LiveView.Helpers do
       />
   """
   def lavash_component(assigns) do
-    # Get component states from process dictionary (set by parent during render)
-    component_states = get_component_states()
+    # Component-state map travels through assigns from the root LiveView; each
+    # `lavash_component` call looks up its own entry and forwards the map onward
+    # so nested components can do the same.
+    component_states = assigns[:__lavash_component_states__] || %{}
     initial_state = Map.get(component_states, assigns.id, %{})
 
     # Inherit current_user from parent for actor-based authorization
@@ -228,6 +215,7 @@ defmodule Lavash.LiveView.Helpers do
       assigns
       |> Map.drop([:__changed__, :__given__, :myself, :bind, :__lavash_client_bindings__])
       |> Map.put(:__lavash_initial_state__, initial_state)
+      |> Map.put(:__lavash_component_states__, component_states)
 
     # Only include current_user if the parent has it
     component_assigns =
