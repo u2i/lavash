@@ -69,6 +69,8 @@ defmodule Lavash.Component.Transformers.CompileComponent do
         Lavash.Component.Runtime.handle_event(__MODULE__, event, params, socket)
       end
 
+      defoverridable update: 2, handle_event: 3
+
       unquote(render_ast)
 
       def __lavash__(:props) do

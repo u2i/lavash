@@ -18,4 +18,5 @@ Application.put_env(:phoenix, :json_library, Jason)
     strategy: :one_for_one
   )
 
-ExUnit.start()
+ExUnit.start(exclude: [:e2e])
+

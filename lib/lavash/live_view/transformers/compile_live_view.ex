@@ -80,6 +80,8 @@ defmodule Lavash.LiveView.Transformers.CompileLiveView do
         Lavash.LiveView.Runtime.handle_info(__MODULE__, msg, socket)
       end
 
+      defoverridable handle_params: 3, handle_event: 3, handle_info: 2
+
       def __lavash__(:states) do
         Spark.Dsl.Extension.get_entities(__MODULE__, [:states])
       end

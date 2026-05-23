@@ -95,9 +95,10 @@ defmodule Lavash.LiveView.Helpers do
         Map.put(acc, derive.name, value)
       end)
 
-    # Add auto-generated form validation fields BEFORE calculations
-    # Because calculations may reference *_valid or *_errors fields
-    state_map = add_form_validation_fields(state_map, forms)
+    # Form validation fields (_valid, _errors, _show_errors) are intentionally
+    # NOT included here — the client computes them from params, including
+    # extend_errors. Sending server-side versions would overwrite the
+    # client-computed values. Params themselves are synced above.
 
     # Add calculations - compute them from state
     # Only include optimistic calculations (optimistic: true)
@@ -116,16 +117,6 @@ defmodule Lavash.LiveView.Helpers do
         end
       end
     end)
-  end
-
-  # Form validation fields (_valid, _errors, _show_errors) are computed entirely
-  # client-side from params. We don't include them in server state because:
-  # 1. The client has the full validation logic including extend_errors
-  # 2. Server sending these would overwrite client-computed values
-  # 3. Params ARE synced from server, so client can recompute correctly
-  defp add_form_validation_fields(state_map, _forms) do
-    # Don't add any validation fields - client computes them from params
-    state_map
   end
 
   defp get_calculations(module) do
@@ -221,28 +212,21 @@ defmodule Lavash.LiveView.Helpers do
         myself={@myself}
       />
   """
-  attr(:module, :atom, required: true, doc: "The Lavash component module")
-  attr(:id, :string, required: true, doc: "The component ID (used for state namespacing)")
-  attr(:myself, :any, default: nil, doc: "Parent component's @myself (pass from components, omit from LiveViews)")
-  attr(:bind, :list, default: nil, doc: "Binding map [{child_field, parent_field}]")
-  attr(:__lavash_client_bindings__, :map, default: nil, doc: "Auto-injected by ~L template in component context")
-  attr(:rest, :global, doc: "All additional assigns passed through to the component")
-
   def lavash_component(assigns) do
     # Get component states from process dictionary (set by parent during render)
     component_states = get_component_states()
     initial_state = Map.get(component_states, assigns.id, %{})
 
     # Inherit current_user from parent for actor-based authorization
-    current_user = assigns[:current_user] || assigns[:rest][:current_user]
+    current_user = assigns[:current_user]
+
+    bind = assigns[:bind]
+    myself = assigns[:myself]
 
     # Build the assigns for live_component — pass ALL extra assigns through
     component_assigns =
       assigns
-      |> Map.drop([:__changed__, :__given__, :module, :id, :rest, :myself, :bind, :__lavash_client_bindings__])
-      |> Map.merge(assigns.rest)
-      |> Map.put(:module, assigns.module)
-      |> Map.put(:id, assigns.id)
+      |> Map.drop([:__changed__, :__given__, :myself, :bind, :__lavash_client_bindings__])
       |> Map.put(:__lavash_initial_state__, initial_state)
 
     # Only include current_user if the parent has it
@@ -255,11 +239,11 @@ defmodule Lavash.LiveView.Helpers do
 
     # Handle bindings — resolve client bindings through parent chain
     component_assigns =
-      if assigns.bind do
+      if bind do
         parent_client_bindings = assigns[:__lavash_client_bindings__] || %{}
 
         resolved_client_bindings =
-          Enum.into(assigns.bind, %{}, fn {child_field, parent_field} ->
+          Enum.into(bind, %{}, fn {child_field, parent_field} ->
             case Map.get(parent_client_bindings, parent_field) do
               nil -> {child_field, parent_field}
               grandparent_field -> {child_field, grandparent_field}
@@ -268,12 +252,12 @@ defmodule Lavash.LiveView.Helpers do
 
         component_assigns =
           component_assigns
-          |> Map.put(:bind, assigns.bind)
+          |> Map.put(:bind, bind)
           |> Map.put(:__lavash_client_bindings__, resolved_client_bindings)
 
         # Parent CID for server-side binding propagation (only from components)
-        if assigns.myself do
-          Map.put(component_assigns, :__lavash_parent_cid__, assigns.myself)
+        if myself do
+          Map.put(component_assigns, :__lavash_parent_cid__, myself)
         else
           component_assigns
         end

@@ -104,19 +104,10 @@ defmodule Lavash.Template.TokenTransformer do
 
   defp wrap_display_exprs([], _fields, acc), do: Enum.reverse(acc)
 
-  # Skip expressions inside tags that already have data-lavash-display or data-lavash-manual.
-  # Track the most recent tag to check its attrs.
-  defp wrap_display_exprs(
-         [{:tag, _name, attrs, _meta} = tag | rest],
-         fields,
-         acc
-       ) do
-    if has_attr?(attrs, "data-lavash-display") || has_attr?(attrs, "data-lavash-manual") do
-      # Pass through everything until the close tag without wrapping
-      wrap_display_exprs(rest, fields, [tag | acc])
-    else
-      wrap_display_exprs(rest, fields, [tag | acc])
-    end
+  # `inside_display_element?/1` walks the accumulator to decide whether a
+  # body_expr is already inside a wrapper, so tags themselves just pass through.
+  defp wrap_display_exprs([{:tag, _name, _attrs, _meta} = tag | rest], fields, acc) do
+    wrap_display_exprs(rest, fields, [tag | acc])
   end
 
   defp wrap_display_exprs(

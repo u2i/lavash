@@ -10,6 +10,7 @@ defmodule Lavash.LiveView.Runtime do
   - Assign projection
   """
 
+  require Logger
   require Phoenix.Component
 
   alias Lavash.State
@@ -735,6 +736,17 @@ defmodule Lavash.LiveView.Runtime do
   # This is sent to both resource-level topics and combination topics
   def handle_info(module, {:lavash_invalidate, resource}, socket) do
     invalidate_resource(module, resource, socket)
+  end
+
+  # Unrecognized :lavash_* tuples are library bugs — surface them.
+  def handle_info(module, {tag, _, _} = msg, socket) when is_atom(tag) do
+    if tag |> Atom.to_string() |> String.starts_with?("lavash_") do
+      Logger.warning(
+        "Unhandled Lavash internal message in #{inspect(module)}: #{inspect(msg)}"
+      )
+    end
+
+    {:noreply, socket}
   end
 
   def handle_info(_module, _msg, socket) do
