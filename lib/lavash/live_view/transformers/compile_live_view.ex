@@ -62,6 +62,7 @@ defmodule Lavash.LiveView.Transformers.CompileLiveView do
     colocated_ast = build_colocated_ast(dsl_state)
     callbacks_ast = build_callbacks_ast()
     lavash_introspection_ast = build_lavash_introspection_ast()
+    cache_invalidation_ast = build_cache_invalidation_ast()
 
     Transformer.eval(
       dsl_state,
@@ -71,9 +72,17 @@ defmodule Lavash.LiveView.Transformers.CompileLiveView do
         unquote(render_ast)
         unquote(callbacks_ast)
         unquote(lavash_introspection_ast)
+        unquote(cache_invalidation_ast)
         unquote(colocated_ast)
       end
     )
+  end
+
+  defp build_cache_invalidation_ast do
+    quote do
+      @after_compile {Lavash.Dsl.Graph, :erase}
+      @after_compile {Lavash.Reactive, :erase_graph}
+    end
   end
 
   defp build_callbacks_ast do

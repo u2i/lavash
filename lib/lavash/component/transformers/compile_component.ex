@@ -77,6 +77,9 @@ defmodule Lavash.Component.Transformers.CompileComponent do
 
         defoverridable update: 2, handle_event: 3
 
+        @after_compile {Lavash.Dsl.Graph, :erase}
+        @after_compile {Lavash.Reactive, :erase_graph}
+
         unquote(render_ast)
 
         def __lavash__(:props) do

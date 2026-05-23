@@ -15,18 +15,32 @@ defmodule Lavash.Dsl.Graph do
   Returns a cached `%Rx.Graph{}` for the given DSL module.
   """
   def compiled_graph(module) do
-    key = {__MODULE__, module}
-
-    case :persistent_term.get(key, nil) do
+    case :persistent_term.get(cache_key(module), nil) do
       nil ->
         graph = build_graph(module)
-        :persistent_term.put(key, graph)
+        :persistent_term.put(cache_key(module), graph)
         graph
 
       graph ->
         graph
     end
   end
+
+  @doc """
+  Drops the cached graph for the given module.
+
+  Takes an `Macro.Env` and the module's bytecode so it matches the
+  `@after_compile` callback shape. Lavash modules wire this in via
+  `build_cache_invalidation_ast/0` in their compile transformers so a hot
+  recompile in dev replaces the cached graph instead of leaving the stale
+  one in place.
+  """
+  def erase(%Macro.Env{module: module}, _bytecode) do
+    :persistent_term.erase(cache_key(module))
+    :ok
+  end
+
+  defp cache_key(module), do: {__MODULE__, module}
 
   @doc """
   Returns field names that depend on reads/forms of a given resource.

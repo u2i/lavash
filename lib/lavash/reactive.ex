@@ -184,18 +184,30 @@ defmodule Lavash.Reactive do
       end
   """
   def graph(module, build_fn) do
-    key = {__MODULE__, module}
-
-    case :persistent_term.get(key, nil) do
+    case :persistent_term.get(graph_cache_key(module), nil) do
       nil ->
         graph = build_fn.()
-        :persistent_term.put(key, graph)
+        :persistent_term.put(graph_cache_key(module), graph)
         graph
 
       graph ->
         graph
     end
   end
+
+  @doc """
+  Drops the cached graph for the given module.
+
+  Takes an `Macro.Env` and bytecode so it matches the `@after_compile` callback
+  shape. Wired in by `build_cache_invalidation_ast/0` in the Lavash compile
+  transformers so dev recompiles rebuild the graph.
+  """
+  def erase_graph(%Macro.Env{module: module}, _bytecode) do
+    :persistent_term.erase(graph_cache_key(module))
+    :ok
+  end
+
+  defp graph_cache_key(module), do: {__MODULE__, module}
 
   # --- Runtime functions (operate on socket, graph retrieved from socket) ---
 
