@@ -84,7 +84,9 @@ defmodule Lavash.Template.TokenTransformerTest do
           {"data-lavash-display", {:string, ^field_name, _}, _} -> true
           _ -> false
         end)
-      _ -> false
+
+      _ ->
+        false
     end)
   end
 
@@ -96,7 +98,9 @@ defmodule Lavash.Template.TokenTransformerTest do
           {"data-lavash-display", {:string, ^field_name, _}, _} -> true
           _ -> false
         end)
-      _ -> false
+
+      _ ->
+        false
     end)
   end
 
@@ -140,6 +144,7 @@ defmodule Lavash.Template.TokenTransformerTest do
         body_expr("@count"),
         close_tag("p")
       ]
+
       metadata = optimistic_metadata([:count])
       result = transform(tokens, metadata)
 
@@ -187,6 +192,7 @@ defmodule Lavash.Template.TokenTransformerTest do
         body_expr("@count"),
         close_tag("span")
       ]
+
       metadata = optimistic_metadata([:count])
       result = transform(tokens, metadata)
 
@@ -200,6 +206,7 @@ defmodule Lavash.Template.TokenTransformerTest do
         body_expr("@count"),
         close_tag("span")
       ]
+
       metadata = optimistic_metadata([:count])
       result = transform(tokens, metadata)
 
@@ -261,6 +268,7 @@ defmodule Lavash.Template.TokenTransformerTest do
         # After display parent closes — should wrap
         body_expr("@count")
       ]
+
       metadata = optimistic_metadata([:count, :total])
       result = transform(tokens, metadata)
 
@@ -303,7 +311,10 @@ defmodule Lavash.Template.TokenTransformerTest do
     end
 
     test "skips when data-lavash-bind already present" do
-      tokens = [tag("input", [expr_attr("value", "@count"), string_attr("data-lavash-bind", "count")])]
+      tokens = [
+        tag("input", [expr_attr("value", "@count"), string_attr("data-lavash-bind", "count")])
+      ]
+
       metadata = optimistic_metadata([{:count, :integer}])
       result = transform(tokens, metadata)
 
@@ -346,7 +357,10 @@ defmodule Lavash.Template.TokenTransformerTest do
     end
 
     test "skips when data-lavash-visible already present" do
-      tokens = [tag("span", [expr_attr(":if", "@visible"), string_attr("data-lavash-visible", "visible")])]
+      tokens = [
+        tag("span", [expr_attr(":if", "@visible"), string_attr("data-lavash-visible", "visible")])
+      ]
+
       metadata = optimistic_metadata([{:visible, :boolean}])
       result = transform(tokens, metadata)
 
@@ -404,7 +418,10 @@ defmodule Lavash.Template.TokenTransformerTest do
     end
 
     test "skips when phx-target already present" do
-      tokens = [tag("button", [string_attr("phx-click", "increment"), expr_attr("phx-target", "@myself")])]
+      tokens = [
+        tag("button", [string_attr("phx-click", "increment"), expr_attr("phx-target", "@myself")])
+      ]
+
       metadata = optimistic_metadata([], context: :component)
       result = transform(tokens, metadata)
 
@@ -469,6 +486,7 @@ defmodule Lavash.Template.TokenTransformerTest do
           string_attr("phx-click", "inc")
         ])
       ]
+
       metadata = optimistic_metadata([{:count, :integer}], context: :component)
       result = transform(tokens, metadata)
 
@@ -485,12 +503,13 @@ defmodule Lavash.Template.TokenTransformerTest do
 
   describe "smoke test with real tokenizer" do
     test "auto-injects display span via full tokenize + transform pipeline" do
-      tokens = Lavash.TagEngine.tokenize("<div>{@count}</div>", [
-        file: "test.heex",
-        line: 1,
-        caller: __ENV__,
-        tag_handler: Phoenix.LiveView.HTMLEngine
-      ])
+      tokens =
+        Lavash.TagEngine.tokenize("<div>{@count}</div>",
+          file: "test.heex",
+          line: 1,
+          caller: __ENV__,
+          tag_handler: Phoenix.LiveView.HTMLEngine
+        )
 
       metadata = optimistic_metadata([:count])
       result = transform(tokens, metadata)
@@ -499,12 +518,13 @@ defmodule Lavash.Template.TokenTransformerTest do
     end
 
     test "mixed content produces inline span" do
-      tokens = Lavash.TagEngine.tokenize("<p>Total: {@count}</p>", [
-        file: "test.heex",
-        line: 1,
-        caller: __ENV__,
-        tag_handler: Phoenix.LiveView.HTMLEngine
-      ])
+      tokens =
+        Lavash.TagEngine.tokenize("<p>Total: {@count}</p>",
+          file: "test.heex",
+          line: 1,
+          caller: __ENV__,
+          tag_handler: Phoenix.LiveView.HTMLEngine
+        )
 
       metadata = optimistic_metadata([:count])
       result = transform(tokens, metadata)
@@ -517,12 +537,13 @@ defmodule Lavash.Template.TokenTransformerTest do
     end
 
     test "function-wrapped expression is not auto-injected" do
-      tokens = Lavash.TagEngine.tokenize("<span>{inspect(@roast)}</span>", [
-        file: "test.heex",
-        line: 1,
-        caller: __ENV__,
-        tag_handler: Phoenix.LiveView.HTMLEngine
-      ])
+      tokens =
+        Lavash.TagEngine.tokenize("<span>{inspect(@roast)}</span>",
+          file: "test.heex",
+          line: 1,
+          caller: __ENV__,
+          tag_handler: Phoenix.LiveView.HTMLEngine
+        )
 
       metadata = optimistic_metadata([:roast])
       result = transform(tokens, metadata)

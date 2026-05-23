@@ -22,21 +22,30 @@ defmodule Lavash.Overlay.Modal.RenderGenerator do
     # Only use pre-tokenized tokens for the main render template.
     # Loading templates have different content — pre-tokens are for the main render only.
     use_pre_tokens = field == :modal_render_template
-    pre_tokens = use_pre_tokens && Spark.Dsl.Transformer.get_persisted(dsl_state, :lavash_template_tokens)
-    template_source = use_pre_tokens && Spark.Dsl.Transformer.get_persisted(dsl_state, :lavash_template_source)
+
+    pre_tokens =
+      use_pre_tokens && Spark.Dsl.Transformer.get_persisted(dsl_state, :lavash_template_tokens)
+
+    template_source =
+      use_pre_tokens && Spark.Dsl.Transformer.get_persisted(dsl_state, :lavash_template_source)
 
     if pre_tokens && template_source do
-      metadata = Lavash.Component.Transformers.CompileComponent.build_token_transformer_metadata_from_dsl(env, dsl_state)
+      metadata =
+        Lavash.Component.Transformers.CompileComponent.build_token_transformer_metadata_from_dsl(
+          env,
+          dsl_state
+        )
 
-      compiled = Lavash.TagEngine.compile_from_tokens(pre_tokens, [
-        file: env.file,
-        line: 1,
-        caller: env,
-        source: template_source,
-        tag_handler: Phoenix.LiveView.HTMLEngine,
-        token_transformer: Lavash.Template.TokenTransformer,
-        lavash_metadata: metadata
-      ])
+      compiled =
+        Lavash.TagEngine.compile_from_tokens(pre_tokens,
+          file: env.file,
+          line: 1,
+          caller: env,
+          source: template_source,
+          tag_handler: Phoenix.LiveView.HTMLEngine,
+          token_transformer: Lavash.Template.TokenTransformer,
+          lavash_metadata: metadata
+        )
 
       # Wrap compiled AST in a function for runtime invocation
       quote do
@@ -88,8 +97,17 @@ defmodule Lavash.Overlay.Modal.RenderGenerator do
 
     # Generate code to define render_fn based on template type
     # For render AST, we compile in the module's context
-    render_fn_code = generate_render_fn_code(render_template, :modal_render_template, module, dsl_state, env)
-    loading_fn_code = generate_render_fn_code(loading_template, :modal_render_loading_template, module, dsl_state, env)
+    render_fn_code =
+      generate_render_fn_code(render_template, :modal_render_template, module, dsl_state, env)
+
+    loading_fn_code =
+      generate_render_fn_code(
+        loading_template,
+        :modal_render_loading_template,
+        module,
+        dsl_state,
+        env
+      )
 
     quote do
       # Track helpers.ex so changes trigger recompilation of this module

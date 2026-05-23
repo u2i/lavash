@@ -89,7 +89,10 @@ defmodule Lavash.PubSubTest do
           price: 19.99
         })
 
-      assert String.starts_with?(topic, "lavash:Elixir.Lavash.PubSubTest.TestResource:price=19.99")
+      assert String.starts_with?(
+               topic,
+               "lavash:Elixir.Lavash.PubSubTest.TestResource:price=19.99"
+             )
     end
 
     test "encodes Decimal values" do

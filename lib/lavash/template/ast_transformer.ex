@@ -34,8 +34,7 @@ defmodule Lavash.Template.ASTTransformer do
         if is_component_assigns?(attrs) and not has_client_bindings?(attrs) do
           # Inject __lavash_client_bindings__ accessing assigns
           binding_attr =
-            {:__lavash_client_bindings__,
-             build_assigns_access(:__lavash_client_bindings__, meta)}
+            {:__lavash_client_bindings__, build_assigns_access(:__lavash_client_bindings__, meta)}
 
           {:%{}, meta, attrs ++ [binding_attr]}
         else

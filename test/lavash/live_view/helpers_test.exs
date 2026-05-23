@@ -7,8 +7,20 @@ defmodule Lavash.LiveView.HelpersTest do
   defmodule MockLiveView do
     def __lavash__(:optimistic_fields) do
       [
-        %Lavash.State.Field{name: :count, type: :integer, from: :url, default: 0, optimistic: true},
-        %Lavash.State.Field{name: :name, type: :string, from: :ephemeral, default: "", optimistic: true}
+        %Lavash.State.Field{
+          name: :count,
+          type: :integer,
+          from: :url,
+          default: 0,
+          optimistic: true
+        },
+        %Lavash.State.Field{
+          name: :name,
+          type: :string,
+          from: :ephemeral,
+          default: "",
+          optimistic: true
+        }
       ]
     end
 
@@ -31,7 +43,15 @@ defmodule Lavash.LiveView.HelpersTest do
 
   defmodule MockWithCalcs do
     def __lavash__(:optimistic_fields) do
-      [%Lavash.State.Field{name: :count, type: :integer, from: :ephemeral, default: 0, optimistic: true}]
+      [
+        %Lavash.State.Field{
+          name: :count,
+          type: :integer,
+          from: :ephemeral,
+          default: 0,
+          optimistic: true
+        }
+      ]
     end
 
     def __lavash__(:optimistic_derives), do: []
@@ -47,7 +67,15 @@ defmodule Lavash.LiveView.HelpersTest do
 
   defmodule MockWithNonOptimisticCalc do
     def __lavash__(:optimistic_fields) do
-      [%Lavash.State.Field{name: :count, type: :integer, from: :ephemeral, default: 0, optimistic: true}]
+      [
+        %Lavash.State.Field{
+          name: :count,
+          type: :integer,
+          from: :ephemeral,
+          default: 0,
+          optimistic: true
+        }
+      ]
     end
 
     def __lavash__(:optimistic_derives), do: []
@@ -94,7 +122,10 @@ defmodule Lavash.LiveView.HelpersTest do
     end
 
     test "returns nil for loading AsyncResult" do
-      assigns = %{doubled: %Phoenix.LiveView.AsyncResult{ok?: false, result: nil, loading: [self()]}}
+      assigns = %{
+        doubled: %Phoenix.LiveView.AsyncResult{ok?: false, result: nil, loading: [self()]}
+      }
+
       result = Helpers.optimistic_state(MockWithDerives, assigns)
 
       assert result[:doubled] == nil

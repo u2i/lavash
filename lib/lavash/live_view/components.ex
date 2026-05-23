@@ -216,7 +216,6 @@ defmodule Lavash.LiveView.Components do
     |> assign(:lavash_valid_field, valid_field)
   end
 
-
   @doc """
   Renders a select dropdown with label and optimistic validation.
 
@@ -299,5 +298,4 @@ defmodule Lavash.LiveView.Components do
     </div>
     """
   end
-
 end

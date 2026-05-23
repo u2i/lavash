@@ -145,19 +145,30 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
     # Read reactive attribute derives from AnalyzeTemplate or ~L sigil
     attr_derives =
       (Transformer.get_persisted(dsl_state, :lavash_attr_derives) || []) ++
-      (try do
-        Module.get_attribute(module, :__lavash_attr_derives__) || []
-      rescue
-        _ -> []
-      end)
+        try do
+          Module.get_attribute(module, :__lavash_attr_derives__) || []
+        rescue
+          _ -> []
+        end
 
     # Read subtree derives (auto-extracted :if/:for over optimistic state)
     subtree_derives = Transformer.get_persisted(dsl_state, :lavash_subtree_derives) || []
 
-    if calculations == [] and forms == [] and animated_fields == [] and optimistic_actions == [] and attr_derives == [] and subtree_derives == [] do
+    if calculations == [] and forms == [] and animated_fields == [] and optimistic_actions == [] and
+         attr_derives == [] and subtree_derives == [] do
       nil
     else
-      generate_js_code(calculations, forms, extend_errors, animated_fields, defrx_map, optimistic_actions, attr_derives, subtree_derives, module)
+      generate_js_code(
+        calculations,
+        forms,
+        extend_errors,
+        animated_fields,
+        defrx_map,
+        optimistic_actions,
+        attr_derives,
+        subtree_derives,
+        module
+      )
     end
   end
 
@@ -179,8 +190,20 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
     end
   end
 
-  defp generate_js_code(calculations, forms, extend_errors, animated_fields, defrx_map, optimistic_actions, attr_derives, subtree_derives, _module) do
-    calculation_fns = Enum.map(calculations, &generate_calculation_js(&1, defrx_map)) |> Enum.filter(& &1)
+  defp generate_js_code(
+         calculations,
+         forms,
+         extend_errors,
+         animated_fields,
+         defrx_map,
+         optimistic_actions,
+         attr_derives,
+         subtree_derives,
+         _module
+       ) do
+    calculation_fns =
+      Enum.map(calculations, &generate_calculation_js(&1, defrx_map)) |> Enum.filter(& &1)
+
     action_fns = Enum.map(optimistic_actions, &generate_action_js/1) |> Enum.filter(& &1)
 
     {form_validation_fns, form_error_fns, validation_derives, error_derives} =
@@ -209,7 +232,9 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
       attr_derive_names = Enum.map(attr_derives, fn d -> d.name end)
       subtree_derive_names = Enum.map(subtree_derives, fn d -> d.name end)
 
-      derive_names = calculation_derive_names ++ validation_derives ++ error_derives ++ attr_derive_names ++ subtree_derive_names
+      derive_names =
+        calculation_derive_names ++
+          validation_derives ++ error_derives ++ attr_derive_names ++ subtree_derive_names
 
       graph_entries = build_graph_entries(calculations, forms, extend_errors)
 
@@ -240,11 +265,13 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
 
       # Flatten deps map: %{"name" => %{deps: [...]}} -> %{"name" => [...]}
       flat_deps = Map.new(graph_entries.deps, fn {name, %{deps: d}} -> {name, d} end)
-      graph_json = Jason.encode!(%{
-        topo_order: graph_entries.topo_order,
-        deps: flat_deps,
-        dependents: graph_entries.dependents
-      })
+
+      graph_json =
+        Jason.encode!(%{
+          topo_order: graph_entries.topo_order,
+          deps: flat_deps,
+          dependents: graph_entries.dependents
+        })
 
       """
       export default {
@@ -297,7 +324,9 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
         # map_by actions mutate arrays in-place and return the full delta
         stmts = Enum.join(map_by_stmts, "\n")
         # Collect field names from map_by operations for the return delta
-        map_by_fields = Enum.map(map_bys, fn mb -> "#{mb.field}: state.#{mb.field}" end) |> Enum.uniq()
+        map_by_fields =
+          Enum.map(map_bys, fn mb -> "#{mb.field}: state.#{mb.field}" end) |> Enum.uniq()
+
         set_delta = if all_exprs != [], do: Enum.join(all_exprs, ", ") <> ", ", else: ""
         map_by_delta = Enum.join(map_by_fields, ", ")
 
@@ -330,7 +359,9 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
         "    state.#{field} = (state.#{field} || []).filter(item => item.#{key_str} !== value);"
 
       is_binary(transform) ->
-        item_transform_js = Lavash.Component.CompilerHelpers.fn_source_to_js_item_transform(transform)
+        item_transform_js =
+          Lavash.Component.CompilerHelpers.fn_source_to_js_item_transform(transform)
+
         """
             state.#{field} = (state.#{field} || []).map(item => {
               if (String(item.#{key_str}) === String(value)) {
@@ -359,10 +390,13 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
 
       {:rx, source} ->
         js_expr = Lavash.Rx.Transpiler.to_js(source)
-        js_expr = case action_params do
-          [param] -> String.replace(js_expr, "state.#{param}", "value")
-          _ -> js_expr
-        end
+
+        js_expr =
+          case action_params do
+            [param] -> String.replace(js_expr, "state.#{param}", "value")
+            _ -> js_expr
+          end
+
         "#{field}: #{js_expr}"
 
       :unknown ->
@@ -505,12 +539,15 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
             |> Enum.filter(fn v -> accepted == [] or v.field in accepted end)
 
           # Get Ash validations with custom messages
-          ash_validations = Lavash.Form.ValidationTranspiler.extract_validations_for_action(resource, create_action)
+          ash_validations =
+            Lavash.Form.ValidationTranspiler.extract_validations_for_action(
+              resource,
+              create_action
+            )
 
           # Generate per-field validation and error derives
           {field_v_fns, field_e_fns, field_v_derives, field_e_derives} =
-            Enum.reduce(validations, {[], [], [], []}, fn validation,
-                                                          {vf, ef, vd, ed} ->
+            Enum.reduce(validations, {[], [], [], []}, fn validation, {vf, ef, vd, ed} ->
               v_name = :"#{form_name}_#{validation.field}_valid"
               e_name = :"#{form_name}_#{validation.field}_errors"
               custom_errors = Map.get(extend_errors_map, e_name, [])
@@ -519,8 +556,25 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
               # Check if this field should skip constraint-based validation
               skip_field_constraints = validation.field in skip_constraints
 
-              v_fn = generate_field_validation_js(v_name, params_field, validation, skip_field_constraints)
-              e_fn = generate_field_errors_js(e_name, params_field, form_name, validation, custom_errors, field_ash_validations, skip_field_constraints, defrx_map)
+              v_fn =
+                generate_field_validation_js(
+                  v_name,
+                  params_field,
+                  validation,
+                  skip_field_constraints
+                )
+
+              e_fn =
+                generate_field_errors_js(
+                  e_name,
+                  params_field,
+                  form_name,
+                  validation,
+                  custom_errors,
+                  field_ash_validations,
+                  skip_field_constraints,
+                  defrx_map
+                )
 
               {[v_fn | vf], [e_fn | ef], [to_string(v_name) | vd], [to_string(e_name) | ed]}
             end)
@@ -579,10 +633,25 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
     ValidationJs.generate_field_validation_js(name, params_field, validation, skip_constraints)
   end
 
-  defp generate_field_errors_js(name, params_field, form_name, validation, custom_errors, ash_validations, skip_constraints, defrx_map) do
+  defp generate_field_errors_js(
+         name,
+         params_field,
+         form_name,
+         validation,
+         custom_errors,
+         ash_validations,
+         skip_constraints,
+         defrx_map
+       ) do
     expand_defrx = &expand_defrx_in_source(&1, defrx_map)
 
-    ValidationJs.generate_field_errors_js(name, params_field, validation, custom_errors, ash_validations, skip_constraints,
+    ValidationJs.generate_field_errors_js(
+      name,
+      params_field,
+      validation,
+      custom_errors,
+      ash_validations,
+      skip_constraints,
       expand_defrx: expand_defrx,
       server_errors_field: "#{form_name}_server_errors"
     )
@@ -645,7 +714,9 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
               e_name = :"#{form_name}_#{field}_errors"
               # Include deps from extend_errors if this field has custom errors
               extra_deps = Map.get(extend_errors_deps, e_name, [])
-              {"#{form_name}_#{field}_errors", %{deps: [params_field, server_errors_field | extra_deps] |> Enum.uniq()}}
+
+              {"#{form_name}_#{field}_errors",
+               %{deps: [params_field, server_errors_field | extra_deps] |> Enum.uniq()}}
             end)
 
           combined_v =
@@ -680,7 +751,6 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
 
     %{topo_order: topo_order, deps: deps_map, dependents: dependents}
   end
-
 
   defp normalize_dep_to_string(dep), do: ActionJs.normalize_dep_to_string(dep)
 

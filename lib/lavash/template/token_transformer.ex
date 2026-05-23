@@ -125,14 +125,23 @@ defmodule Lavash.Template.TokenTransformer do
           wrap_display_exprs(rest, fields, [{:body_expr, expr, expr_meta} | acc])
         else
           # Wrap: <span data-lavash-display="field">{@field}</span>
-          span_meta = %{line: expr_meta[:line] || 1, column: expr_meta[:column] || 1,
-                        tag_name: "span", inner_location: {expr_meta[:line] || 1, (expr_meta[:column] || 1) + 6}}
-          display_attr = {"data-lavash-display",
-                          {:string, field_name, %{delimiter: ?", line: 1, column: 1}},
-                          %{line: 1, column: 1}}
+          span_meta = %{
+            line: expr_meta[:line] || 1,
+            column: expr_meta[:column] || 1,
+            tag_name: "span",
+            inner_location: {expr_meta[:line] || 1, (expr_meta[:column] || 1) + 6}
+          }
 
-          close_meta = %{line: expr_meta[:line] || 1, column: (expr_meta[:column] || 1),
-                         tag_name: "span", inner_location: {expr_meta[:line] || 1, (expr_meta[:column] || 1)}}
+          display_attr =
+            {"data-lavash-display", {:string, field_name, %{delimiter: ?", line: 1, column: 1}},
+             %{line: 1, column: 1}}
+
+          close_meta = %{
+            line: expr_meta[:line] || 1,
+            column: expr_meta[:column] || 1,
+            tag_name: "span",
+            inner_location: {expr_meta[:line] || 1, expr_meta[:column] || 1}
+          }
 
           tokens = [
             {:close, :tag, "span", close_meta},
@@ -212,9 +221,7 @@ defmodule Lavash.Template.TokenTransformer do
          name in @lavash_components and
          not has_attr?(attrs, "__lavash_client_bindings__") do
       binding_attr =
-        {"__lavash_client_bindings__",
-         {:expr, "@__lavash_client_bindings__", meta},
-         meta}
+        {"__lavash_client_bindings__", {:expr, "@__lavash_client_bindings__", meta}, meta}
 
       attrs ++ [binding_attr]
     else
@@ -240,7 +247,8 @@ defmodule Lavash.Template.TokenTransformer do
   # Supports two patterns:
   # a) Explicit: name={@form[:field].name} - injects data-lavash-* attributes
   # b) Shorthand: field={@form[:field]} - injects name, value, and all data-lavash-*
-  defp maybe_inject_form_input(attrs, name, metadata) when name in ["input", "textarea", "select"] do
+  defp maybe_inject_form_input(attrs, name, metadata)
+       when name in ["input", "textarea", "select"] do
     forms = metadata[:forms] || %{}
 
     case get_attr_value(attrs, "field") do
@@ -385,6 +393,7 @@ defmodule Lavash.Template.TokenTransformer do
           case parse_negated_field(expr) do
             {:ok, field_name} ->
               field_atom = String.to_atom(field_name)
+
               if is_optimistic_boolean?(field_atom, metadata) do
                 add_attr_if_missing(attrs, "data-lavash-enabled", {:string, field_name})
               else
@@ -448,7 +457,6 @@ defmodule Lavash.Template.TokenTransformer do
 
   @phx_events ~w(phx-click phx-change phx-submit phx-blur phx-focus phx-keydown phx-keyup phx-window-keydown phx-window-keyup)
   defp has_phx_event?(attrs), do: Enum.any?(attrs, fn {name, _, _} -> name in @phx_events end)
-
 
   # ===========================================================================
   # Attribute Helpers
@@ -545,5 +553,4 @@ defmodule Lavash.Template.TokenTransformer do
   # ===========================================================================
   # Metadata Builder
   # ===========================================================================
-
 end

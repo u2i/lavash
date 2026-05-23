@@ -34,10 +34,11 @@ defmodule Lavash.Rx.Graph do
   """
   def compile(states, derives) do
     # Normalize 4-tuples to 5-tuples
-    derives = Enum.map(derives, fn
-      {name, dep_list, fun, async, tags} -> {name, dep_list, fun, async, tags}
-      {name, dep_list, fun, async} -> {name, dep_list, fun, async, []}
-    end)
+    derives =
+      Enum.map(derives, fn
+        {name, dep_list, fun, async, tags} -> {name, dep_list, fun, async, tags}
+        {name, dep_list, fun, async} -> {name, dep_list, fun, async, []}
+      end)
 
     state_defaults = Map.new(states)
 

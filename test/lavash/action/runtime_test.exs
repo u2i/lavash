@@ -105,6 +105,7 @@ defmodule Lavash.Action.RuntimeTest do
 
     test "applies multiple sets sequentially" do
       socket = socket_with_state(count: 0, name: "")
+
       sets = [
         %Lavash.Actions.Set{field: :count, value: 10},
         %Lavash.Actions.Set{field: :name, value: "hello"}
@@ -131,6 +132,7 @@ defmodule Lavash.Action.RuntimeTest do
 
     test "applies multiple updates sequentially" do
       socket = socket_with_state(count: 1)
+
       updates = [
         %Lavash.Actions.Update{field: :count, fun: &(&1 + 10)},
         %Lavash.Actions.Update{field: :count, fun: &(&1 * 2)}
@@ -149,7 +151,10 @@ defmodule Lavash.Action.RuntimeTest do
     test "executes effect function with current state" do
       test_pid = self()
       socket = socket_with_state(count: 42)
-      effect = %Lavash.Actions.Effect{fun: fn state -> send(test_pid, {:effect, state[:count]}) end}
+
+      effect = %Lavash.Actions.Effect{
+        fun: fn state -> send(test_pid, {:effect, state[:count]}) end
+      }
 
       Runtime.apply_effects(socket, [effect], %{})
       assert_receive {:effect, 42}

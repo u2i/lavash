@@ -32,11 +32,12 @@ defmodule Lavash.SocketTest do
     end
 
     test "accepts custom options" do
-      socket = init_socket(%{
-        url_fields: MapSet.new([:count]),
-        socket_fields: MapSet.new([:theme]),
-        optimistic_version: 5
-      })
+      socket =
+        init_socket(%{
+          url_fields: MapSet.new([:count]),
+          socket_fields: MapSet.new([:theme]),
+          optimistic_version: 5
+        })
 
       assert LSocket.url_field?(socket, :count)
       assert LSocket.socket_field?(socket, :theme)

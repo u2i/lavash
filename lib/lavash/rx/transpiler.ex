@@ -112,32 +112,37 @@ defmodule Lavash.Rx.Transpiler do
   @spec transpile_run_body(Macro.t()) :: {[String.t()], String.t()}
   def transpile_run_body(ast) do
     # Handle __block__ for multiple statements, or single expression
-    statements = case ast do
-      {:__block__, _, stmts} -> stmts
-      single -> [single]
-    end
+    statements =
+      case ast do
+        {:__block__, _, stmts} -> stmts
+        single -> [single]
+      end
 
     # Separate variable bindings from the final return expression
     {bindings, final_expr} = extract_bindings_and_return(statements)
 
     # Transpile variable bindings to const declarations
-    js_bindings = Enum.map(bindings, fn {var, expr} ->
-      "const #{var} = #{ast_to_js_with_assigns(expr)};"
-    end)
+    js_bindings =
+      Enum.map(bindings, fn {var, expr} ->
+        "const #{var} = #{ast_to_js_with_assigns(expr)};"
+      end)
 
     # Extract assign calls from the final expression
     assigns_map = extract_assigns(final_expr)
 
     # Build return object
-    return_obj = if map_size(assigns_map) > 0 do
-      pairs = Enum.map(assigns_map, fn {field, value_ast} ->
-        "#{field}: #{ast_to_js_with_assigns(value_ast)}"
-      end)
-      "{#{Enum.join(pairs, ", ")}}"
-    else
-      # Fallback: transpile the whole final expression
-      ast_to_js_with_assigns(final_expr)
-    end
+    return_obj =
+      if map_size(assigns_map) > 0 do
+        pairs =
+          Enum.map(assigns_map, fn {field, value_ast} ->
+            "#{field}: #{ast_to_js_with_assigns(value_ast)}"
+          end)
+
+        "{#{Enum.join(pairs, ", ")}}"
+      else
+        # Fallback: transpile the whole final expression
+        ast_to_js_with_assigns(final_expr)
+      end
 
     {js_bindings, return_obj}
   end
@@ -146,14 +151,17 @@ defmodule Lavash.Rx.Transpiler do
   defp extract_bindings_and_return(statements) do
     {bindings, [final | _]} = Enum.split(statements, length(statements) - 1)
 
-    parsed_bindings = Enum.flat_map(bindings, fn
-      {:=, _, [{var_name, _, nil}, expr]} when is_atom(var_name) ->
-        [{to_string(var_name), expr}]
-      {:=, _, [{var_name, _, ctx}, expr]} when is_atom(var_name) and is_atom(ctx) ->
-        [{to_string(var_name), expr}]
-      _ ->
-        []
-    end)
+    parsed_bindings =
+      Enum.flat_map(bindings, fn
+        {:=, _, [{var_name, _, nil}, expr]} when is_atom(var_name) ->
+          [{to_string(var_name), expr}]
+
+        {:=, _, [{var_name, _, ctx}, expr]} when is_atom(var_name) and is_atom(ctx) ->
+          [{to_string(var_name), expr}]
+
+        _ ->
+          []
+      end)
 
     {parsed_bindings, final}
   end
@@ -171,11 +179,17 @@ defmodule Lavash.Rx.Transpiler do
   end
 
   # Direct assign call: assign(assigns, :field, value)
-  defp extract_assigns({{:., _, [{:__aliases__, _, [:Phoenix, :Component]}, :assign]}, _, [_assigns, field, value]}, acc) when is_atom(field) do
+  defp extract_assigns(
+         {{:., _, [{:__aliases__, _, [:Phoenix, :Component]}, :assign]}, _,
+          [_assigns, field, value]},
+         acc
+       )
+       when is_atom(field) do
     Map.put(acc, field, value)
   end
 
-  defp extract_assigns({{:., _, [Phoenix.Component, :assign]}, _, [_assigns, field, value]}, acc) when is_atom(field) do
+  defp extract_assigns({{:., _, [Phoenix.Component, :assign]}, _, [_assigns, field, value]}, acc)
+       when is_atom(field) do
     Map.put(acc, field, value)
   end
 
@@ -315,7 +329,10 @@ defmodule Lavash.Rx.Transpiler do
   end
 
   # String.match?(str, regex) -> regex.test(str)
-  def ast_to_js({{:., _, [{:__aliases__, _, [:String]}, :match?]}, _, [str, {:sigil_r, _, [{:<<>>, _, [pattern]}, []]}]}) do
+  def ast_to_js(
+        {{:., _, [{:__aliases__, _, [:String]}, :match?]}, _,
+         [str, {:sigil_r, _, [{:<<>>, _, [pattern]}, []]}]}
+      ) do
     "(/#{pattern}/.test(#{ast_to_js(str)}))"
   end
 
@@ -335,18 +352,25 @@ defmodule Lavash.Rx.Transpiler do
   end
 
   # String.replace(str, pattern, replacement) with regex
-  def ast_to_js({{:., _, [{:__aliases__, _, [:String]}, :replace]}, _, [str, {:sigil_r, _, [{:<<>>, _, [pattern]}, _opts]}, replacement]}) do
+  def ast_to_js(
+        {{:., _, [{:__aliases__, _, [:String]}, :replace]}, _,
+         [str, {:sigil_r, _, [{:<<>>, _, [pattern]}, _opts]}, replacement]}
+      ) do
     "(#{ast_to_js(str)}.replace(/#{pattern}/g, #{ast_to_js(replacement)}))"
   end
 
   # String.replace(str, pattern, replacement) with string pattern
-  def ast_to_js({{:., _, [{:__aliases__, _, [:String]}, :replace]}, _, [str, pattern, replacement]}) when is_binary(pattern) do
+  def ast_to_js(
+        {{:., _, [{:__aliases__, _, [:String]}, :replace]}, _, [str, pattern, replacement]}
+      )
+      when is_binary(pattern) do
     escaped_pattern = Regex.escape(pattern)
     "(#{ast_to_js(str)}.replace(/#{escaped_pattern}/g, #{ast_to_js(replacement)}))"
   end
 
   # String.slice(str, start, length) with constants
-  def ast_to_js({{:., _, [{:__aliases__, _, [:String]}, :slice]}, _, [str, start, len]}) when is_integer(start) and is_integer(len) do
+  def ast_to_js({{:., _, [{:__aliases__, _, [:String]}, :slice]}, _, [str, start, len]})
+      when is_integer(start) and is_integer(len) do
     "(#{ast_to_js(str)}.slice(#{start}, #{start + len}))"
   end
 
@@ -360,13 +384,13 @@ defmodule Lavash.Rx.Transpiler do
 
   # String.chunk(str, size) or Lavash.Rx.String.chunk(str, size) with constant size
   def ast_to_js({{:., _, [{:__aliases__, _, modules}, :chunk]}, _, [str, size]})
-       when modules in [[:String], [:Lavash, :String]] and is_integer(size) do
+      when modules in [[:String], [:Lavash, :String]] and is_integer(size) do
     "(#{ast_to_js(str)}.match(/.{1,#{size}}/g) || [])"
   end
 
   # String.chunk or Lavash.Rx.String.chunk with dynamic size
   def ast_to_js({{:., _, [{:__aliases__, _, modules}, :chunk]}, _, [str, size]})
-       when modules in [[:String], [:Lavash, :String]] do
+      when modules in [[:String], [:Lavash, :String]] do
     str_js = ast_to_js(str)
     size_js = ast_to_js(size)
     "(#{str_js}.match(new RegExp('.{1,' + #{size_js} + '}', 'g')) || [])"
@@ -415,11 +439,14 @@ defmodule Lavash.Rx.Transpiler do
   # get_in(map, [keys]) -> nested access
   def ast_to_js({:get_in, _, [map, keys]}) when is_list(keys) do
     base = ast_to_js(map)
-    path = Enum.map(keys, fn
-      k when is_atom(k) -> ".#{k}"
-      k when is_binary(k) -> "[#{inspect(k)}]"
-      k -> "[#{ast_to_js(k)}]"
-    end)
+
+    path =
+      Enum.map(keys, fn
+        k when is_atom(k) -> ".#{k}"
+        k when is_binary(k) -> "[#{inspect(k)}]"
+        k -> "[#{ast_to_js(k)}]"
+      end)
+
     "(#{base}#{Enum.join(path, "")})"
   end
 
@@ -446,14 +473,20 @@ defmodule Lavash.Rx.Transpiler do
   end
 
   # Enum.map(list, fn x -> expr end) -> list.map(x => expr)
-  def ast_to_js({{:., _, [{:__aliases__, _, [:Enum]}, :map]}, _, [list, {:fn, _, [{:->, _, [[{var, _, _}], body]}]}]}) do
+  def ast_to_js(
+        {{:., _, [{:__aliases__, _, [:Enum]}, :map]}, _,
+         [list, {:fn, _, [{:->, _, [[{var, _, _}], body]}]}]}
+      ) do
     var_str = to_string(var)
     body_js = ast_to_js(body)
     "(#{ast_to_js(list)}.map(#{var_str} => #{body_js}))"
   end
 
   # Enum.map(list, fn {a, b} -> expr end) -> list.map(([a, b]) => expr) - tuple destructuring
-  def ast_to_js({{:., _, [{:__aliases__, _, [:Enum]}, :map]}, _, [list, {:fn, _, [{:->, _, [[{{var1, _, _}, {var2, _, _}}], body]}]}]}) do
+  def ast_to_js(
+        {{:., _, [{:__aliases__, _, [:Enum]}, :map]}, _,
+         [list, {:fn, _, [{:->, _, [[{{var1, _, _}, {var2, _, _}}], body]}]}]}
+      ) do
     var1_str = to_string(var1)
     var2_str = to_string(var2)
     body_js = ast_to_js(body)
@@ -461,21 +494,30 @@ defmodule Lavash.Rx.Transpiler do
   end
 
   # Enum.filter(list, fn x -> expr end) -> list.filter(x => expr)
-  def ast_to_js({{:., _, [{:__aliases__, _, [:Enum]}, :filter]}, _, [list, {:fn, _, [{:->, _, [[{var, _, _}], body]}]}]}) do
+  def ast_to_js(
+        {{:., _, [{:__aliases__, _, [:Enum]}, :filter]}, _,
+         [list, {:fn, _, [{:->, _, [[{var, _, _}], body]}]}]}
+      ) do
     var_str = to_string(var)
     body_js = ast_to_js(body)
     "(#{ast_to_js(list)}.filter(#{var_str} => #{body_js}))"
   end
 
   # Enum.reject(list, fn x -> expr end) -> list.filter(x => !expr)
-  def ast_to_js({{:., _, [{:__aliases__, _, [:Enum]}, :reject]}, _, [list, {:fn, _, [{:->, _, [[{var, _, _}], body]}]}]}) do
+  def ast_to_js(
+        {{:., _, [{:__aliases__, _, [:Enum]}, :reject]}, _,
+         [list, {:fn, _, [{:->, _, [[{var, _, _}], body]}]}]}
+      ) do
     var_str = to_string(var)
     body_js = ast_to_js(body)
     "(#{ast_to_js(list)}.filter(#{var_str} => !(#{body_js})))"
   end
 
   # Enum.reject with capture: Enum.reject(list, &(&1 == val))
-  def ast_to_js({{:., _, [{:__aliases__, _, [:Enum]}, :reject]}, _, [list, {:&, _, [{:==, _, [{:&, _, [1]}, val]}]}]}) do
+  def ast_to_js(
+        {{:., _, [{:__aliases__, _, [:Enum]}, :reject]}, _,
+         [list, {:&, _, [{:==, _, [{:&, _, [1]}, val]}]}]}
+      ) do
     val_js = ast_to_js(val)
     "(#{ast_to_js(list)}.filter(x => x !== #{val_js}))"
   end
@@ -497,16 +539,27 @@ defmodule Lavash.Rx.Transpiler do
 
   # Enum.reduce(list, acc, fn {item, index}, acc -> ... end)
   # Handle tuple destructuring in reduce for with_index pattern
-  def ast_to_js({{:., _, [{:__aliases__, _, [:Enum]}, :reduce]}, _, [list, initial, {:fn, _, [{:->, _, [[{{var1, _, _}, {var2, _, _}}, {acc_var, _, _}], body]}]}]}) do
+  def ast_to_js(
+        {{:., _, [{:__aliases__, _, [:Enum]}, :reduce]}, _,
+         [
+           list,
+           initial,
+           {:fn, _, [{:->, _, [[{{var1, _, _}, {var2, _, _}}, {acc_var, _, _}], body]}]}
+         ]}
+      ) do
     var1_str = to_string(var1)
     var2_str = to_string(var2)
     acc_str = to_string(acc_var)
     body_js = ast_to_js(body)
+
     "(#{ast_to_js(list)}.reduce((#{acc_str}, [#{var1_str}, #{var2_str}]) => #{body_js}, #{ast_to_js(initial)}))"
   end
 
   # Enum.reduce(list, acc, fn item, acc -> ... end) - simple form
-  def ast_to_js({{:., _, [{:__aliases__, _, [:Enum]}, :reduce]}, _, [list, initial, {:fn, _, [{:->, _, [[{var, _, _}, {acc_var, _, _}], body]}]}]}) do
+  def ast_to_js(
+        {{:., _, [{:__aliases__, _, [:Enum]}, :reduce]}, _,
+         [list, initial, {:fn, _, [{:->, _, [[{var, _, _}, {acc_var, _, _}], body]}]}]}
+      ) do
     var_str = to_string(var)
     acc_str = to_string(acc_var)
     body_js = ast_to_js(body)
@@ -574,7 +627,8 @@ defmodule Lavash.Rx.Transpiler do
   end
 
   # Binary operators
-  def ast_to_js({op, _, [left, right]}) when op in [:==, :!=, :&&, :||, :and, :or, :>, :<, :>=, :<=, :+, :-, :*, :/] do
+  def ast_to_js({op, _, [left, right]})
+      when op in [:==, :!=, :&&, :||, :and, :or, :>, :<, :>=, :<=, :+, :-, :*, :/] do
     js_op =
       case op do
         :== -> "==="
@@ -619,10 +673,13 @@ defmodule Lavash.Rx.Transpiler do
   # Pipe operator: a |> f(b) -> f(a, b)
   def ast_to_js({:|>, _, [left, right]}) do
     expanded = Macro.unpipe({:|>, [], [left, right]})
-    result = Enum.reduce(expanded, nil, fn
-      {expr, 0}, nil -> expr
-      {call, pos}, acc -> insert_pipe_arg(call, acc, pos)
-    end)
+
+    result =
+      Enum.reduce(expanded, nil, fn
+        {expr, 0}, nil -> expr
+        {call, pos}, acc -> insert_pipe_arg(call, acc, pos)
+      end)
+
     ast_to_js(result)
   end
 
@@ -654,10 +711,12 @@ defmodule Lavash.Rx.Transpiler do
     if pairs == [] do
       "{}"
     else
-      js_pairs = Enum.map(pairs, fn {key, value} ->
-        js_key = if is_atom(key), do: inspect(key), else: ast_to_js(key)
-        "#{js_key}: #{ast_to_js(value)}"
-      end)
+      js_pairs =
+        Enum.map(pairs, fn {key, value} ->
+          js_key = if is_atom(key), do: inspect(key), else: ast_to_js(key)
+          "#{js_key}: #{ast_to_js(value)}"
+        end)
+
       "{#{Enum.join(js_pairs, ", ")}}"
     end
   end
@@ -776,7 +835,18 @@ defmodule Lavash.Rx.Transpiler do
 
   # Supported Enum functions
   def validate_ast({{:., _, [{:__aliases__, _, [:Enum]}, func]}, _, args})
-       when func in [:member?, :count, :join, :map, :filter, :reject, :reverse, :sum, :with_index, :reduce] do
+      when func in [
+             :member?,
+             :count,
+             :join,
+             :map,
+             :filter,
+             :reject,
+             :reverse,
+             :sum,
+             :with_index,
+             :reduce
+           ] do
     validate_all_args(args)
   end
 
@@ -804,20 +874,53 @@ defmodule Lavash.Rx.Transpiler do
 
   # Supported String functions
   def validate_ast({{:., _, [{:__aliases__, _, modules}, func]}, _, args})
-       when modules in [[:String], [:Lavash, :String]] and
-            func in [:length, :to_float, :to_integer, :trim, :match?, :contains?, :starts_with?, :ends_with?, :replace, :slice, :chunk, :graphemes, :split] do
+      when modules in [[:String], [:Lavash, :String]] and
+             func in [
+               :length,
+               :to_float,
+               :to_integer,
+               :trim,
+               :match?,
+               :contains?,
+               :starts_with?,
+               :ends_with?,
+               :replace,
+               :slice,
+               :chunk,
+               :graphemes,
+               :split
+             ] do
     validate_all_args(args)
   end
 
   # Supported Float functions
   def validate_ast({{:., _, [{:__aliases__, _, [:Float]}, func]}, _, args})
-       when func in [:round, :floor, :ceil] do
+      when func in [:round, :floor, :ceil] do
     validate_all_args(args)
   end
 
   # Binary operators
   def validate_ast({op, _, [left, right]})
-       when op in [:==, :!=, :&&, :||, :and, :or, :>, :<, :>=, :<=, :+, :-, :*, :/, :<>, :++, :in, :|>] do
+      when op in [
+             :==,
+             :!=,
+             :&&,
+             :||,
+             :and,
+             :or,
+             :>,
+             :<,
+             :>=,
+             :<=,
+             :+,
+             :-,
+             :*,
+             :/,
+             :<>,
+             :++,
+             :in,
+             :|>
+           ] do
     with :ok <- validate_ast(left),
          :ok <- validate_ast(right) do
       :ok
@@ -945,7 +1048,21 @@ defmodule Lavash.Rx.Transpiler do
 
   # Local function call - not transpilable
   def validate_ast({func, _, args}) when is_atom(func) and is_list(args) do
-    if func in [:length, :humanize, :if, :not, :!, :round, :trunc, :floor, :ceil, :abs, :rem, :is_nil, :get_in] do
+    if func in [
+         :length,
+         :humanize,
+         :if,
+         :not,
+         :!,
+         :round,
+         :trunc,
+         :floor,
+         :ceil,
+         :abs,
+         :rem,
+         :is_nil,
+         :get_in
+       ] do
       validate_all_args(args)
     else
       {:error, "#{func}/#{length(args)}"}

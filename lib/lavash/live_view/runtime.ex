@@ -349,10 +349,14 @@ defmodule Lavash.LiveView.Runtime do
         changeset.errors
         |> Enum.filter(fn error ->
           case error do
-            %{field: ^field} -> true
+            %{field: ^field} ->
+              true
+
             %{field: field_atom} when is_atom(field_atom) ->
               to_string(field_atom) == to_string(field)
-            _ -> false
+
+            _ ->
+              false
           end
         end)
         |> Enum.map(fn error ->
@@ -425,50 +429,50 @@ defmodule Lavash.LiveView.Runtime do
               {:noreply, socket}
             end
 
-      action ->
-        # Bump optimistic version - client will use this to detect stale patches
-        socket = LSocket.bump_optimistic_version(socket)
+          action ->
+            # Bump optimistic version - client will use this to detect stale patches
+            socket = LSocket.bump_optimistic_version(socket)
 
-        case execute_action(socket, module, action, params) do
-          {:ok, socket} ->
-            socket =
-              socket
-              |> apply_flashes(action.flashes || [])
-              |> apply_navigates(action.navigates || [])
-              |> maybe_push_patch(module)
-              |> maybe_sync_socket_state(module)
-              |> Reactive.recompute()
-              |> Assigns.project(module)
+            case execute_action(socket, module, action, params) do
+              {:ok, socket} ->
+                socket =
+                  socket
+                  |> apply_flashes(action.flashes || [])
+                  |> apply_navigates(action.navigates || [])
+                  |> maybe_push_patch(module)
+                  |> maybe_sync_socket_state(module)
+                  |> Reactive.recompute()
+                  |> Assigns.project(module)
 
-            update_combination_subscriptions(socket, module, old_state)
-            {:noreply, socket}
+                update_combination_subscriptions(socket, module, old_state)
+                {:noreply, socket}
 
-          {:error, socket, on_error_action} ->
-            # Action failed with on_error - trigger the error action
-            actions = module.__lavash__(:actions)
-            error_action = Enum.find(actions, &(&1.name == on_error_action))
+              {:error, socket, on_error_action} ->
+                # Action failed with on_error - trigger the error action
+                actions = module.__lavash__(:actions)
+                error_action = Enum.find(actions, &(&1.name == on_error_action))
 
-            socket =
-              if error_action do
-                case execute_action(socket, module, error_action, params) do
-                  {:ok, sock} -> sock
-                  {:error, sock, _} -> sock
-                end
-              else
-                socket
-              end
+                socket =
+                  if error_action do
+                    case execute_action(socket, module, error_action, params) do
+                      {:ok, sock} -> sock
+                      {:error, sock, _} -> sock
+                    end
+                  else
+                    socket
+                  end
 
-            socket =
-              socket
-              |> maybe_push_patch(module)
-              |> maybe_sync_socket_state(module)
-              |> Reactive.recompute()
-              |> Assigns.project(module)
+                socket =
+                  socket
+                  |> maybe_push_patch(module)
+                  |> maybe_sync_socket_state(module)
+                  |> Reactive.recompute()
+                  |> Assigns.project(module)
 
-            update_combination_subscriptions(socket, module, old_state)
-            {:noreply, socket}
+                update_combination_subscriptions(socket, module, old_state)
+                {:noreply, socket}
+            end
         end
-    end
     end
   end
 
@@ -562,7 +566,9 @@ defmodule Lavash.LiveView.Runtime do
   end
 
   def handle_info(module, {:lavash_reactive, field, {:error, reason}}, socket) do
-    failed = Phoenix.LiveView.AsyncResult.loading() |> Phoenix.LiveView.AsyncResult.failed({:exit, reason})
+    failed =
+      Phoenix.LiveView.AsyncResult.loading()
+      |> Phoenix.LiveView.AsyncResult.failed({:exit, reason})
 
     socket =
       socket
@@ -741,9 +747,7 @@ defmodule Lavash.LiveView.Runtime do
   # Unrecognized :lavash_* tuples are library bugs — surface them.
   def handle_info(module, {tag, _, _} = msg, socket) when is_atom(tag) do
     if tag |> Atom.to_string() |> String.starts_with?("lavash_") do
-      Logger.warning(
-        "Unhandled Lavash internal message in #{inspect(module)}: #{inspect(msg)}"
-      )
+      Logger.warning("Unhandled Lavash internal message in #{inspect(module)}: #{inspect(msg)}")
     end
 
     {:noreply, socket}
@@ -999,11 +1003,14 @@ defmodule Lavash.LiveView.Runtime do
       case error do
         %{field: field, message: msg} when not is_nil(field) ->
           field_str = to_string(field)
-          message = case msg do
-            {m, _opts} -> m
-            m when is_binary(m) -> m
-            _ -> "Invalid value"
-          end
+
+          message =
+            case msg do
+              {m, _opts} -> m
+              m when is_binary(m) -> m
+              _ -> "Invalid value"
+            end
+
           Map.update(acc, field_str, [message], &[message | &1])
 
         _ ->

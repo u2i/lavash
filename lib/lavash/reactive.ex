@@ -129,7 +129,8 @@ defmodule Lavash.Reactive do
     %{builder | derives: [{name, deps, compute_fn, async, tags} | builder.derives]}
   end
 
-  def derive(%__MODULE__{} = builder, name, deps, fun, opts) when is_list(deps) and is_list(opts) do
+  def derive(%__MODULE__{} = builder, name, deps, fun, opts)
+      when is_list(deps) and is_list(opts) do
     async = Keyword.get(opts, :async, false)
     tags = Keyword.get(opts, :tags, [])
     %{builder | derives: [{name, deps, fun, async, tags} | builder.derives]}
@@ -414,7 +415,11 @@ defmodule Lavash.Reactive do
           result = compute_fn.(values)
           send(pid, {:lavash_component_async, component_module, component_id, field, result})
         rescue
-          e -> send(pid, {:lavash_component_async, component_module, component_id, field, {:error, e}})
+          e ->
+            send(
+              pid,
+              {:lavash_component_async, component_module, component_id, field, {:error, e}}
+            )
         end
       end)
     else

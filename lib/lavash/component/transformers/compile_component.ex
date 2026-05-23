@@ -39,10 +39,13 @@ defmodule Lavash.Component.Transformers.CompileComponent do
   defp generate_component_code(dsl_state, env) do
     render_generator = Transformer.get_persisted(dsl_state, :lavash_overlay_render_generator)
     lavash_renders = Module.get_attribute(env.module, :__lavash_renders__) || []
-    has_optimistic = Transformer.get_persisted(dsl_state, :lavash_optimistic_colocated_data) != nil
+
+    has_optimistic =
+      Transformer.get_persisted(dsl_state, :lavash_optimistic_colocated_data) != nil
 
     # Build render function AST
-    render_ast = build_render_ast(render_generator, lavash_renders, has_optimistic, env, dsl_state)
+    render_ast =
+      build_render_ast(render_generator, lavash_renders, has_optimistic, env, dsl_state)
 
     # Build external_resource AST for overlay helpers recompilation tracking
     external_resource_ast =
@@ -56,94 +59,101 @@ defmodule Lavash.Component.Transformers.CompileComponent do
     # Build __phoenix_macro_components__ AST
     colocated_ast = build_colocated_ast(dsl_state)
 
-    Transformer.eval(dsl_state, [], quote do
-      unquote(external_resource_ast)
+    Transformer.eval(
+      dsl_state,
+      [],
+      quote do
+        unquote(external_resource_ast)
 
-      @impl Phoenix.LiveComponent
-      def update(assigns, socket) do
-        Lavash.Component.Runtime.update(__MODULE__, assigns, socket)
-      end
+        @impl Phoenix.LiveComponent
+        def update(assigns, socket) do
+          Lavash.Component.Runtime.update(__MODULE__, assigns, socket)
+        end
 
-      @impl Phoenix.LiveComponent
-      def handle_event(event, params, socket) do
-        Lavash.Component.Runtime.handle_event(__MODULE__, event, params, socket)
-      end
+        @impl Phoenix.LiveComponent
+        def handle_event(event, params, socket) do
+          Lavash.Component.Runtime.handle_event(__MODULE__, event, params, socket)
+        end
 
-      defoverridable update: 2, handle_event: 3
+        defoverridable update: 2, handle_event: 3
 
-      unquote(render_ast)
+        unquote(render_ast)
 
-      def __lavash__(:props) do
-        Spark.Dsl.Extension.get_entities(__MODULE__, [:props])
-      end
+        def __lavash__(:props) do
+          Spark.Dsl.Extension.get_entities(__MODULE__, [:props])
+        end
 
-      def __lavash__(:states) do
-        Spark.Dsl.Extension.get_entities(__MODULE__, [:states])
-      end
+        def __lavash__(:states) do
+          Spark.Dsl.Extension.get_entities(__MODULE__, [:states])
+        end
 
-      def __lavash__(:reads) do
-        Spark.Dsl.Extension.get_entities(__MODULE__, [:reads])
-      end
+        def __lavash__(:reads) do
+          Spark.Dsl.Extension.get_entities(__MODULE__, [:reads])
+        end
 
-      def __lavash__(:forms) do
-        Spark.Dsl.Extension.get_entities(__MODULE__, [:forms])
-      end
+        def __lavash__(:forms) do
+          Spark.Dsl.Extension.get_entities(__MODULE__, [:forms])
+        end
 
-      def __lavash__(:calculations) do
-        Spark.Dsl.Extension.get_entities(__MODULE__, [:calculations])
-      end
+        def __lavash__(:calculations) do
+          Spark.Dsl.Extension.get_entities(__MODULE__, [:calculations])
+        end
 
-      def __lavash_calculations__ do
-        Spark.Dsl.Extension.get_entities(__MODULE__, [:calculations])
-        |> Enum.map(fn calc ->
-          {calc.name, calc.rx.source, calc.rx.ast, calc.rx.deps,
-           Map.get(calc, :optimistic, true),
-           Map.get(calc, :async, false),
-           Map.get(calc, :reads, [])}
-        end)
-      end
-
-      def __lavash__(:actions) do
-        declared_actions = Spark.Dsl.Extension.get_entities(__MODULE__, [:actions])
-        setter_actions = Lavash.LiveView.Compiler.generate_setter_actions(__MODULE__)
-        declared_actions ++ setter_actions
-      end
-
-      def __lavash__(:socket_fields) do
-        __lavash__(:states) |> Enum.filter(&(&1.from == :socket))
-      end
-
-      def __lavash__(:ephemeral_fields) do
-        __lavash__(:states) |> Enum.filter(&(&1.from == :ephemeral))
-      end
-
-      def __lavash__(:optimistic_fields) do
-        states = __lavash__(:states)
-        explicitly_optimistic = Enum.filter(states, &Lavash.State.Field.optimistic?/1)
-
-        actions = Spark.Dsl.Extension.get_entities(__MODULE__, [:actions]) || []
-        action_touched_fields =
-          actions
-          |> Enum.filter(&Lavash.Optimistic.ActionJs.action_is_optimistic?/1)
-          |> Enum.flat_map(fn action ->
-            sets = action.sets || []
-            map_bys = action.map_bys || []
-            Enum.map(sets, & &1.field) ++ Enum.map(map_bys, & &1.field)
+        def __lavash_calculations__ do
+          Spark.Dsl.Extension.get_entities(__MODULE__, [:calculations])
+          |> Enum.map(fn calc ->
+            {calc.name, calc.rx.source, calc.rx.ast, calc.rx.deps,
+             Map.get(calc, :optimistic, true), Map.get(calc, :async, false),
+             Map.get(calc, :reads, [])}
           end)
-          |> MapSet.new()
+        end
 
-        explicit_names = MapSet.new(explicitly_optimistic, & &1.name)
-        auto_optimistic =
-          states
-          |> Enum.filter(fn f -> f.name in action_touched_fields and f.name not in explicit_names end)
+        def __lavash__(:actions) do
+          declared_actions = Spark.Dsl.Extension.get_entities(__MODULE__, [:actions])
+          setter_actions = Lavash.LiveView.Compiler.generate_setter_actions(__MODULE__)
+          declared_actions ++ setter_actions
+        end
 
-        explicitly_optimistic ++ auto_optimistic
+        def __lavash__(:socket_fields) do
+          __lavash__(:states) |> Enum.filter(&(&1.from == :socket))
+        end
+
+        def __lavash__(:ephemeral_fields) do
+          __lavash__(:states) |> Enum.filter(&(&1.from == :ephemeral))
+        end
+
+        def __lavash__(:optimistic_fields) do
+          states = __lavash__(:states)
+          explicitly_optimistic = Enum.filter(states, &Lavash.State.Field.optimistic?/1)
+
+          actions = Spark.Dsl.Extension.get_entities(__MODULE__, [:actions]) || []
+
+          action_touched_fields =
+            actions
+            |> Enum.filter(&Lavash.Optimistic.ActionJs.action_is_optimistic?/1)
+            |> Enum.flat_map(fn action ->
+              sets = action.sets || []
+              map_bys = action.map_bys || []
+              Enum.map(sets, & &1.field) ++ Enum.map(map_bys, & &1.field)
+            end)
+            |> MapSet.new()
+
+          explicit_names = MapSet.new(explicitly_optimistic, & &1.name)
+
+          auto_optimistic =
+            states
+            |> Enum.filter(fn f ->
+              f.name in action_touched_fields and f.name not in explicit_names
+            end)
+
+          explicitly_optimistic ++ auto_optimistic
+        end
+
+        def __lavash__(:url_fields), do: []
+
+        unquote(colocated_ast)
       end
-
-      def __lavash__(:url_fields), do: []
-
-      unquote(colocated_ast)
-    end)
+    )
   end
 
   # ============================================
@@ -159,7 +169,8 @@ defmodule Lavash.Component.Transformers.CompileComponent do
         build_render_from_macros(lavash_renders, has_optimistic, env, dsl_state)
 
       true ->
-        quote do end
+        quote do
+        end
     end
   end
 
@@ -168,7 +179,8 @@ defmodule Lavash.Component.Transformers.CompileComponent do
 
     case Map.get(renders_map, :__render_fn__) do
       nil ->
-        quote do end
+        quote do
+        end
 
       _escaped_fn ->
         pre_tokens = Transformer.get_persisted(dsl_state, :lavash_template_tokens)
@@ -227,8 +239,10 @@ defmodule Lavash.Component.Transformers.CompileComponent do
       forms
       |> Enum.flat_map(fn form ->
         [
-          {:"#{form.name}_params", %{name: :"#{form.name}_params", type: :map, optimistic: true, from: :ephemeral}},
-          {:"#{form.name}_server_errors", %{name: :"#{form.name}_server_errors", type: :map, optimistic: true, from: :ephemeral}}
+          {:"#{form.name}_params",
+           %{name: :"#{form.name}_params", type: :map, optimistic: true, from: :ephemeral}},
+          {:"#{form.name}_server_errors",
+           %{name: :"#{form.name}_server_errors", type: :map, optimistic: true, from: :ephemeral}}
         ]
       end)
       |> Map.new()
@@ -240,7 +254,8 @@ defmodule Lavash.Component.Transformers.CompileComponent do
       |> Enum.map(fn form ->
         fields =
           try do
-            if Code.ensure_loaded?(form.resource) and function_exported?(form.resource, :spark_dsl_config, 0) do
+            if Code.ensure_loaded?(form.resource) and
+                 function_exported?(form.resource, :spark_dsl_config, 0) do
               Ash.Resource.Info.attributes(form.resource) |> Enum.map(& &1.name)
             else
               []
@@ -331,7 +346,8 @@ defmodule Lavash.Component.Transformers.CompileComponent do
   defp build_colocated_ast(dsl_state) do
     case Transformer.get_persisted(dsl_state, :lavash_optimistic_colocated_data) do
       nil ->
-        quote do end
+        quote do
+        end
 
       data ->
         escaped_data = Macro.escape(data)

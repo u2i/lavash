@@ -30,7 +30,12 @@ defmodule Lavash.FormTest do
       # Lavash.Form implements Access by delegating to the inner Phoenix.HTML.Form
       form = %Form{
         changeset: nil,
-        form: %Phoenix.HTML.Form{source: %{}, params: %{"name" => "test"}, name: "form", id: "form"},
+        form: %Phoenix.HTML.Form{
+          source: %{},
+          params: %{"name" => "test"},
+          name: "form",
+          id: "form"
+        },
         action_type: :create,
         name: "test"
       }

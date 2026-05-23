@@ -19,8 +19,10 @@ defmodule Lavash.Components.TagEditor do
 
   prop :placeholder, :string, default: "Add tag..."
   prop :max_tags, :integer, default: nil
+
   prop :tag_class, :string,
     default: "inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 rounded text-sm"
+
   prop :input_class, :string,
     default:
       "px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"

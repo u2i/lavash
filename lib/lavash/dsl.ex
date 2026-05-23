@@ -92,7 +92,8 @@ defmodule Lavash.Dsl do
                     setter: [
                       type: :boolean,
                       default: false,
-                      doc: "Auto-generate a set_<name> action that sets this field from params.value"
+                      doc:
+                        "Auto-generate a set_<name> action that sets this field from params.value"
                     ]
                   ]
 
@@ -482,5 +483,11 @@ defmodule Lavash.Dsl do
       Lavash.Optimistic.Transformers.ExtractColocatedJs,
       Lavash.LiveView.Transformers.CompileLiveView
     ],
-    imports: [Phoenix.Component, Lavash.DslHelpers, Lavash.Rx, Lavash.Sigil, Lavash.Template.RenderMacro]
+    imports: [
+      Phoenix.Component,
+      Lavash.DslHelpers,
+      Lavash.Rx,
+      Lavash.Sigil,
+      Lavash.Template.RenderMacro
+    ]
 end

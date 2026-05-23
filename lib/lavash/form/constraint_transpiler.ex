@@ -78,9 +78,10 @@ defmodule Lavash.Form.ConstraintTranspiler do
     field_str = to_string(field)
 
     # Build the base value access: @params_field["field"]
-    value_access = quote do
-      @unquote(Macro.var(params_field, nil))[unquote(field_str)]
-    end
+    value_access =
+      quote do
+        (@unquote(Macro.var(params_field, nil)))[unquote(field_str)]
+      end
 
     # Build individual checks
     checks = []
@@ -104,8 +105,12 @@ defmodule Lavash.Form.ConstraintTranspiler do
 
     # Combine with `and`
     case checks do
-      [] -> quote(do: true)
-      [single] -> single
+      [] ->
+        quote(do: true)
+
+      [single] ->
+        single
+
       multiple ->
         Enum.reduce(multiple, fn check, acc ->
           quote(do: unquote(acc) and unquote(check))

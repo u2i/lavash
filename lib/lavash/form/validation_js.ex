@@ -86,7 +86,15 @@ defmodule Lavash.Form.ValidationJs do
     - `:expand_defrx` - function to expand defrx in source strings (optional)
     - `:server_errors_field` - field name for server errors merge (optional)
   """
-  def generate_field_errors_js(name, params_field, validation, custom_errors, ash_validations, skip_constraints, opts \\ []) do
+  def generate_field_errors_js(
+        name,
+        params_field,
+        validation,
+        custom_errors,
+        ash_validations,
+        skip_constraints,
+        opts \\ []
+      ) do
     field = validation.field
     field_str = to_string(field)
     required = validation.required
@@ -103,17 +111,26 @@ defmodule Lavash.Form.ValidationJs do
       else
         error_checks =
           if required do
-            msg = Map.get(ash_messages, :required) ||
-                  Lavash.Form.ConstraintTranspiler.error_message(:required, nil)
-            ["{check: #{value_expr} != null && String(#{value_expr}).trim().length > 0, msg: #{Jason.encode!(msg)}}"]
+            msg =
+              Map.get(ash_messages, :required) ||
+                Lavash.Form.ConstraintTranspiler.error_message(:required, nil)
+
+            [
+              "{check: #{value_expr} != null && String(#{value_expr}).trim().length > 0, msg: #{Jason.encode!(msg)}}"
+            ]
           else
             []
           end
 
         case type do
-          :string -> build_string_error_checks(value_expr, constraints, error_checks, ash_messages)
-          :integer -> build_integer_error_checks(value_expr, constraints, error_checks, ash_messages)
-          _ -> error_checks
+          :string ->
+            build_string_error_checks(value_expr, constraints, error_checks, ash_messages)
+
+          :integer ->
+            build_integer_error_checks(value_expr, constraints, error_checks, ash_messages)
+
+          _ ->
+            error_checks
         end
       end
 
@@ -125,13 +142,15 @@ defmodule Lavash.Form.ValidationJs do
         expanded_condition = expand_defrx.(error.condition.source)
         js_condition = Lavash.Rx.Transpiler.to_js(expanded_condition)
 
-        msg_js = case error.message do
-          %Lavash.Rx{source: source} ->
-            expanded_msg = expand_defrx.(source)
-            "(#{Lavash.Rx.Transpiler.to_js(expanded_msg)})"
-          static_string when is_binary(static_string) ->
-            Jason.encode!(static_string)
-        end
+        msg_js =
+          case error.message do
+            %Lavash.Rx{source: source} ->
+              expanded_msg = expand_defrx.(source)
+              "(#{Lavash.Rx.Transpiler.to_js(expanded_msg)})"
+
+            static_string when is_binary(static_string) ->
+              Jason.encode!(static_string)
+          end
 
         check = "{check: !(#{js_condition}), msg: #{msg_js}}"
         [check | acc]
@@ -243,10 +262,15 @@ defmodule Lavash.Form.ValidationJs do
           checks
 
         min ->
-          msg = Map.get(ash_messages, :min_length) ||
-                Map.get(ash_messages, :length_between) ||
-                Lavash.Form.ConstraintTranspiler.error_message(:min_length, min)
-          ["{check: String(#{value_expr} || '').trim().length >= #{min}, msg: #{Jason.encode!(msg)}}" | checks]
+          msg =
+            Map.get(ash_messages, :min_length) ||
+              Map.get(ash_messages, :length_between) ||
+              Lavash.Form.ConstraintTranspiler.error_message(:min_length, min)
+
+          [
+            "{check: String(#{value_expr} || '').trim().length >= #{min}, msg: #{Jason.encode!(msg)}}"
+            | checks
+          ]
       end
 
     checks =
@@ -255,10 +279,15 @@ defmodule Lavash.Form.ValidationJs do
           checks
 
         max ->
-          msg = Map.get(ash_messages, :max_length) ||
-                Map.get(ash_messages, :length_between) ||
-                Lavash.Form.ConstraintTranspiler.error_message(:max_length, max)
-          ["{check: String(#{value_expr} || '').trim().length <= #{max}, msg: #{Jason.encode!(msg)}}" | checks]
+          msg =
+            Map.get(ash_messages, :max_length) ||
+              Map.get(ash_messages, :length_between) ||
+              Lavash.Form.ConstraintTranspiler.error_message(:max_length, max)
+
+          [
+            "{check: String(#{value_expr} || '').trim().length <= #{max}, msg: #{Jason.encode!(msg)}}"
+            | checks
+          ]
       end
 
     case Map.get(constraints, :match) do
@@ -267,9 +296,15 @@ defmodule Lavash.Form.ValidationJs do
 
       regex ->
         pattern = Regex.source(regex)
-        msg = Map.get(ash_messages, :match) ||
-              Lavash.Form.ConstraintTranspiler.error_message(:match, regex)
-        ["{check: new RegExp(#{Jason.encode!(pattern)}).test(#{value_expr} || ''), msg: #{Jason.encode!(msg)}}" | checks]
+
+        msg =
+          Map.get(ash_messages, :match) ||
+            Lavash.Form.ConstraintTranspiler.error_message(:match, regex)
+
+        [
+          "{check: new RegExp(#{Jason.encode!(pattern)}).test(#{value_expr} || ''), msg: #{Jason.encode!(msg)}}"
+          | checks
+        ]
     end
   end
 
@@ -283,9 +318,11 @@ defmodule Lavash.Form.ValidationJs do
           checks
 
         min ->
-          msg = Map.get(ash_messages, :min) ||
-                Map.get(ash_messages, :numericality) ||
-                Lavash.Form.ConstraintTranspiler.error_message(:min, min)
+          msg =
+            Map.get(ash_messages, :min) ||
+              Map.get(ash_messages, :numericality) ||
+              Lavash.Form.ConstraintTranspiler.error_message(:min, min)
+
           ["{check: #{parsed} >= #{min}, msg: #{Jason.encode!(msg)}}" | checks]
       end
 
@@ -294,9 +331,11 @@ defmodule Lavash.Form.ValidationJs do
         checks
 
       max ->
-        msg = Map.get(ash_messages, :max) ||
-              Map.get(ash_messages, :numericality) ||
-              Lavash.Form.ConstraintTranspiler.error_message(:max, max)
+        msg =
+          Map.get(ash_messages, :max) ||
+            Map.get(ash_messages, :numericality) ||
+            Lavash.Form.ConstraintTranspiler.error_message(:max, max)
+
         ["{check: #{parsed} <= #{max}, msg: #{Jason.encode!(msg)}}" | checks]
     end
   end

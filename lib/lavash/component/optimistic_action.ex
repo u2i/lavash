@@ -17,5 +17,15 @@ defmodule Lavash.Component.OptimisticAction do
   - `:validate_source` - Source string for JS validation
   - `:max` - Optional prop/state field containing max length limit
   """
-  defstruct [:name, :field, :key, :run, :run_source, :validate, :validate_source, :max, __spark_metadata__: nil]
+  defstruct [
+    :name,
+    :field,
+    :key,
+    :run,
+    :run_source,
+    :validate,
+    :validate_source,
+    :max,
+    __spark_metadata__: nil
+  ]
 end

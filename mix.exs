@@ -14,13 +14,6 @@ defmodule Lavash.MixProject do
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       test_coverage: [tool: ExCoveralls],
-      preferred_cli_env: [
-        coveralls: :test,
-        "coveralls.detail": :test,
-        "coveralls.post": :test,
-        "coveralls.html": :test,
-        "coveralls.github": :test
-      ],
       dialyzer: [
         plt_add_apps: [:mix, :ex_unit]
       ],
@@ -32,6 +25,18 @@ defmodule Lavash.MixProject do
       docs: docs(),
       source_url: @source_url,
       homepage_url: @source_url
+    ]
+  end
+
+  def cli do
+    [
+      preferred_envs: [
+        coveralls: :test,
+        "coveralls.detail": :test,
+        "coveralls.post": :test,
+        "coveralls.html": :test,
+        "coveralls.github": :test
+      ]
     ]
   end
 
@@ -87,7 +92,7 @@ defmodule Lavash.MixProject do
       source_url: @source_url,
       extras: ["README.md"],
       groups_for_modules: [
-        "Core": [
+        Core: [
           Lavash.LiveView,
           Lavash.Component,
           Lavash.Dsl
@@ -101,17 +106,17 @@ defmodule Lavash.MixProject do
         "Optimistic Updates": [
           Lavash.Optimistic
         ],
-        "Overlays": [
+        Overlays: [
           Lavash.Overlay,
           Lavash.Overlay.Modal,
           Lavash.Overlay.Modal.Dsl,
           Lavash.Overlay.Modal.Helpers
         ],
-        "PubSub": [
+        PubSub: [
           Lavash.PubSub,
           Lavash.Resource
         ],
-        "Types": [
+        Types: [
           Lavash.Type
         ]
       ]

@@ -10,7 +10,15 @@ defmodule Lavash.Component.CompilerTest do
   # Component with optimistic state, props, and a calculation that references a prop
   defmodule WithReferencedProp do
     def __lavash__(:optimistic_fields) do
-      [%Lavash.State.Field{name: :count, type: :integer, from: :ephemeral, default: 0, optimistic: true}]
+      [
+        %Lavash.State.Field{
+          name: :count,
+          type: :integer,
+          from: :ephemeral,
+          default: 0,
+          optimistic: true
+        }
+      ]
     end
 
     def __lavash__(:props) do
@@ -25,7 +33,10 @@ defmodule Lavash.Component.CompilerTest do
     def __lavash_calculations__ do
       # doubled depends on :count and :multiplier
       state_var = Macro.var(:state, nil)
-      ast = quote do: Map.get(unquote(state_var), :count) * Map.get(unquote(state_var), :multiplier)
+
+      ast =
+        quote do: Map.get(unquote(state_var), :count) * Map.get(unquote(state_var), :multiplier)
+
       [{:doubled, "@count * @multiplier", ast, [:count, :multiplier], true, false, []}]
     end
   end
@@ -33,7 +44,15 @@ defmodule Lavash.Component.CompilerTest do
   # Component with no calculations or actions — no props should be included
   defmodule WithUnreferencedProp do
     def __lavash__(:optimistic_fields) do
-      [%Lavash.State.Field{name: :expanded, type: :boolean, from: :ephemeral, default: false, optimistic: true}]
+      [
+        %Lavash.State.Field{
+          name: :expanded,
+          type: :boolean,
+          from: :ephemeral,
+          default: false,
+          optimistic: true
+        }
+      ]
     end
 
     def __lavash__(:props) do
@@ -47,7 +66,15 @@ defmodule Lavash.Component.CompilerTest do
   # Component with action that references a prop via rx
   defmodule WithActionPropDep do
     def __lavash__(:optimistic_fields) do
-      [%Lavash.State.Field{name: :total, type: :integer, from: :ephemeral, default: 0, optimistic: true}]
+      [
+        %Lavash.State.Field{
+          name: :total,
+          type: :integer,
+          from: :ephemeral,
+          default: 0,
+          optimistic: true
+        }
+      ]
     end
 
     def __lavash__(:props) do

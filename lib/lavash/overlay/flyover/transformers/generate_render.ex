@@ -58,7 +58,10 @@ defmodule Lavash.Overlay.Flyover.Transformers.GenerateRender do
         |> Transformer.persist(:flyover_height, height)
         |> Transformer.persist(:flyover_async_assign, async_assign)
         # Register the render generator for the component compiler
-        |> Transformer.persist(:lavash_overlay_render_generator, Lavash.Overlay.Flyover.RenderGenerator)
+        |> Transformer.persist(
+          :lavash_overlay_render_generator,
+          Lavash.Overlay.Flyover.RenderGenerator
+        )
 
       {:ok, dsl_state}
     else

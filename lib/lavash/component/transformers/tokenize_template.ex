@@ -75,16 +75,27 @@ defmodule Lavash.Component.Transformers.TokenizeTemplate do
     end
   end
 
-  defp extract_source_and_line({:fn, _, [{:->, _, [[_], body]}]}), do: extract_compiled_source_and_line(body)
+  defp extract_source_and_line({:fn, _, [{:->, _, [[_], body]}]}),
+    do: extract_compiled_source_and_line(body)
+
   defp extract_source_and_line(_), do: {nil, nil}
 
-  defp extract_compiled_source_and_line({:sigil_L, meta, [{:<<>>, _, [source]}, _]}) when is_binary(source) do
+  defp extract_compiled_source_and_line({:sigil_L, meta, [{:<<>>, _, [source]}, _]})
+       when is_binary(source) do
     {source, Keyword.get(meta, :line)}
   end
-  defp extract_compiled_source_and_line({:%, _, [{:__aliases__, _, [:Lavash, :Template, :Compiled]}, {:%{}, _, fields}]}) do
+
+  defp extract_compiled_source_and_line(
+         {:%, _, [{:__aliases__, _, [:Lavash, :Template, :Compiled]}, {:%{}, _, fields}]}
+       ) do
     {Keyword.get(fields, :source), nil}
   end
-  defp extract_compiled_source_and_line({:__block__, _, [inner]}), do: extract_compiled_source_and_line(inner)
-  defp extract_compiled_source_and_line({:quote, _, [[do: ast]]}), do: extract_compiled_source_and_line(ast)
+
+  defp extract_compiled_source_and_line({:__block__, _, [inner]}),
+    do: extract_compiled_source_and_line(inner)
+
+  defp extract_compiled_source_and_line({:quote, _, [[do: ast]]}),
+    do: extract_compiled_source_and_line(ast)
+
   defp extract_compiled_source_and_line(_), do: {nil, nil}
 end

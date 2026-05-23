@@ -57,19 +57,23 @@ defmodule Lavash.Component.CompilerHelpers do
         "(#{cond_js} ? #{then_js} : #{else_js})"
 
       {:%{}, _, [{:|, _, [{^item_var, _, _}, updates]}]} ->
-        update_parts = Enum.map(updates, fn {key, value} ->
-          key_str = to_string(key)
-          value_js = transform_expr_to_js(value, item_str, arg_str)
-          "#{key_str}: #{value_js}"
-        end)
+        update_parts =
+          Enum.map(updates, fn {key, value} ->
+            key_str = to_string(key)
+            value_js = transform_expr_to_js(value, item_str, arg_str)
+            "#{key_str}: #{value_js}"
+          end)
+
         "({...item, #{Enum.join(update_parts, ", ")}})"
 
       {:%{}, _, updates} when is_list(updates) ->
-        update_parts = Enum.map(updates, fn {key, value} ->
-          key_str = to_string(key)
-          value_js = transform_expr_to_js(value, item_str, arg_str)
-          "#{key_str}: #{value_js}"
-        end)
+        update_parts =
+          Enum.map(updates, fn {key, value} ->
+            key_str = to_string(key)
+            value_js = transform_expr_to_js(value, item_str, arg_str)
+            "#{key_str}: #{value_js}"
+          end)
+
         "({#{Enum.join(update_parts, ", ")}})"
 
       _ ->
@@ -79,6 +83,7 @@ defmodule Lavash.Component.CompilerHelpers do
 
   defp transform_expr_to_js(expr, item_str, arg_str) do
     js = Lavash.Rx.Transpiler.to_js(Macro.to_string(expr))
+
     js
     |> String.replace("state.#{item_str}", "item")
     |> String.replace("state.#{arg_str}", "arg")

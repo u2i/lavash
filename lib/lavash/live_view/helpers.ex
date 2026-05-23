@@ -288,7 +288,11 @@ defmodule Lavash.LiveView.Helpers do
   """
   attr :form, :atom, required: true, doc: "The form name (e.g., :registration)"
   attr :field, :atom, required: true, doc: "The field name (e.g., :name)"
-  attr :errors, :list, required: true, doc: "The errors list from assigns (e.g., @registration_name_errors)"
+
+  attr :errors, :list,
+    required: true,
+    doc: "The errors list from assigns (e.g., @registration_name_errors)"
+
   attr :class, :string, default: "text-error text-sm", doc: "CSS class for error messages"
   attr :rest, :global, doc: "Additional HTML attributes"
 
@@ -334,7 +338,11 @@ defmodule Lavash.LiveView.Helpers do
   attr :form, :atom, required: true, doc: "The form name (e.g., :registration)"
   attr :field, :atom, required: true, doc: "The field name (e.g., :name)"
   attr :valid, :boolean, required: true, doc: "The valid state from assigns"
-  attr :valid_field, :string, default: nil, doc: "Custom valid field name for JS (defaults to form_field_valid)"
+
+  attr :valid_field, :string,
+    default: nil,
+    doc: "Custom valid field name for JS (defaults to form_field_valid)"
+
   attr :message, :string, default: "Looks good!", doc: "Success message to display"
   attr :class, :string, default: "text-success text-sm", doc: "CSS class for success message"
   attr :rest, :global, doc: "Additional HTML attributes"
@@ -385,7 +393,11 @@ defmodule Lavash.LiveView.Helpers do
       <.error_summary form={:registration} class="alert alert-error p-4" />
   """
   attr :form, :atom, required: true, doc: "The form name (e.g., :registration)"
-  attr :class, :string, default: "alert alert-error text-sm mb-4", doc: "CSS class for the summary container"
+
+  attr :class, :string,
+    default: "alert alert-error text-sm mb-4",
+    doc: "CSS class for the summary container"
+
   attr :rest, :global, doc: "Additional HTML attributes"
 
   def error_summary(assigns) do
@@ -424,7 +436,11 @@ defmodule Lavash.LiveView.Helpers do
   attr :field, :atom, required: true, doc: "The field name (e.g., :name)"
   attr :valid, :boolean, required: true, doc: "Whether the field is valid (client validation)"
   attr :valid_field, :string, default: nil, doc: "Custom valid field name for JS"
-  attr :class, :string, default: "absolute right-3 top-1/2 -translate-y-1/2 text-lg pointer-events-none", doc: "CSS class for positioning"
+
+  attr :class, :string,
+    default: "absolute right-3 top-1/2 -translate-y-1/2 text-lg pointer-events-none",
+    doc: "CSS class for positioning"
+
   attr :rest, :global, doc: "Additional HTML attributes"
 
   def field_status(assigns) do

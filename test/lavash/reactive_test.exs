@@ -191,9 +191,12 @@ defmodule Lavash.ReactiveTest do
 
       # :step only affects :next, not :doubled or :quad
       assert socket.assigns.step == 3
-      assert socket.assigns.next == 3  # count(0) + step(3)
-      assert socket.assigns.doubled == 0  # unchanged
-      assert socket.assigns.quad == 0  # unchanged
+      # count(0) + step(3)
+      assert socket.assigns.next == 3
+      # unchanged
+      assert socket.assigns.doubled == 0
+      # unchanged
+      assert socket.assigns.quad == 0
     end
 
     test "put with function applies to current value", %{socket: socket, graph: graph} do
@@ -311,9 +314,12 @@ defmodule Lavash.ReactiveTest do
         |> Reactive.recompute()
 
       assert socket.assigns.step == 100
-      assert socket.assigns.next == 100  # count(0) + step(100)
-      assert socket.assigns.doubled == 0  # unchanged
-      assert socket.assigns.quad == 0     # unchanged
+      # count(0) + step(100)
+      assert socket.assigns.next == 100
+      # unchanged
+      assert socket.assigns.doubled == 0
+      # unchanged
+      assert socket.assigns.quad == 0
     end
 
     test "recompute_all recomputes everything", %{socket: socket, graph: graph} do
@@ -432,7 +438,10 @@ defmodule Lavash.ReactiveTest do
         |> Reactive.build()
 
       socket = Reactive.init(socket, graph)
-      socket = socket |> Reactive.put(:count, 10) |> Reactive.put(:step, 3) |> Reactive.recompute()
+
+      socket =
+        socket |> Reactive.put(:count, 10) |> Reactive.put(:step, 3) |> Reactive.recompute()
+
       assert socket.assigns.next == 13
     end
   end
@@ -522,10 +531,14 @@ defmodule Lavash.ReactiveTest do
 
       # Wait for task and handle the message
       assert_receive {:lavash_reactive, :results, {:ok, [:a, :b, :c]}}, 1000
-      {:ok, socket} = Reactive.handle_async(socket, {:lavash_reactive, :results, {:ok, [:a, :b, :c]}})
+
+      {:ok, socket} =
+        Reactive.handle_async(socket, {:lavash_reactive, :results, {:ok, [:a, :b, :c]}})
 
       # :results resolved, :count should compute with unwrapped value
-      assert %Phoenix.LiveView.AsyncResult{ok?: true, result: [:a, :b, :c]} = socket.assigns.results
+      assert %Phoenix.LiveView.AsyncResult{ok?: true, result: [:a, :b, :c]} =
+               socket.assigns.results
+
       # :count wraps in AsyncResult.ok since its dep was async
       assert %Phoenix.LiveView.AsyncResult{ok?: true, result: 3} = socket.assigns.count
     end
@@ -544,12 +557,18 @@ defmodule Lavash.ReactiveTest do
       assert_receive {:lavash_reactive, :fetched, {:error, %RuntimeError{message: "boom"}}}, 1000
 
       {:ok, socket} =
-        Reactive.handle_async(socket, {:lavash_reactive, :fetched, {:error, %RuntimeError{message: "boom"}}})
+        Reactive.handle_async(
+          socket,
+          {:lavash_reactive, :fetched, {:error, %RuntimeError{message: "boom"}}}
+        )
 
       # :fetched is failed (wrapped as {:exit, reason} per Phoenix convention)
-      assert %Phoenix.LiveView.AsyncResult{failed: {:exit, %RuntimeError{message: "boom"}}} = socket.assigns.fetched
+      assert %Phoenix.LiveView.AsyncResult{failed: {:exit, %RuntimeError{message: "boom"}}} =
+               socket.assigns.fetched
+
       # :downstream propagates the failed state
-      assert %Phoenix.LiveView.AsyncResult{failed: {:exit, %RuntimeError{message: "boom"}}} = socket.assigns.downstream
+      assert %Phoenix.LiveView.AsyncResult{failed: {:exit, %RuntimeError{message: "boom"}}} =
+               socket.assigns.downstream
     end
 
     test "state change re-triggers async derive", %{socket: socket} do
@@ -572,8 +591,12 @@ defmodule Lavash.ReactiveTest do
 
       # New task completes
       assert_receive {:lavash_reactive, :results, {:ok, ["hello", "hello"]}}, 1000
-      {:ok, socket} = Reactive.handle_async(socket, {:lavash_reactive, :results, {:ok, ["hello", "hello"]}})
-      assert %Phoenix.LiveView.AsyncResult{ok?: true, result: ["hello", "hello"]} = socket.assigns.results
+
+      {:ok, socket} =
+        Reactive.handle_async(socket, {:lavash_reactive, :results, {:ok, ["hello", "hello"]}})
+
+      assert %Phoenix.LiveView.AsyncResult{ok?: true, result: ["hello", "hello"]} =
+               socket.assigns.results
     end
 
     test "handle_async returns :not_handled for unrelated messages", %{socket: socket} do

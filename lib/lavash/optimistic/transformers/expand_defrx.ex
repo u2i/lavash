@@ -43,7 +43,9 @@ defmodule Lavash.Optimistic.Transformers.ExpandDefrx do
       imported_defs = collect_imported_defrx(imports)
 
       # Build map with imports first, then locals (locals override imports)
-      Enum.reduce(imported_defs ++ local_defs, %{}, fn {name, arity, params, body_ast, _body_source}, acc ->
+      Enum.reduce(imported_defs ++ local_defs, %{}, fn {name, arity, params, body_ast,
+                                                        _body_source},
+                                                       acc ->
         Map.put(acc, {name, arity}, {params, body_ast})
       end)
     else
@@ -81,7 +83,9 @@ defmodule Lavash.Optimistic.Transformers.ExpandDefrx do
     # Remove all calculations and add expanded versions
     dsl_state =
       Enum.reduce(calculations, dsl_state, fn calc, state ->
-        Spark.Dsl.Transformer.remove_entity(state, [:calculations], fn c -> c.name == calc.name end)
+        Spark.Dsl.Transformer.remove_entity(state, [:calculations], fn c ->
+          c.name == calc.name
+        end)
       end)
 
     dsl_state =
@@ -96,11 +100,14 @@ defmodule Lavash.Optimistic.Transformers.ExpandDefrx do
       end)
 
     # Also expand defrx in extend_errors conditions
-    extend_errors = Spark.Dsl.Transformer.get_entities(dsl_state, [:extend_errors_declarations]) || []
+    extend_errors =
+      Spark.Dsl.Transformer.get_entities(dsl_state, [:extend_errors_declarations]) || []
 
     dsl_state =
       Enum.reduce(extend_errors, dsl_state, fn ext, state ->
-        Spark.Dsl.Transformer.remove_entity(state, [:extend_errors_declarations], fn e -> e.field == ext.field end)
+        Spark.Dsl.Transformer.remove_entity(state, [:extend_errors_declarations], fn e ->
+          e.field == ext.field
+        end)
       end)
 
     dsl_state =
@@ -190,7 +197,8 @@ defmodule Lavash.Optimistic.Transformers.ExpandDefrx do
   defp do_expand_ast(other, _defrx_map), do: other
 
   # Substitute variable references with their values
-  defp substitute_vars({var_name, meta, context}, substitutions) when is_atom(var_name) and is_atom(context) do
+  defp substitute_vars({var_name, meta, context}, substitutions)
+       when is_atom(var_name) and is_atom(context) do
     case Map.get(substitutions, var_name) do
       nil -> {var_name, meta, context}
       value -> value
@@ -198,7 +206,8 @@ defmodule Lavash.Optimistic.Transformers.ExpandDefrx do
   end
 
   defp substitute_vars({form, meta, args}, substitutions) when is_list(args) do
-    {substitute_vars(form, substitutions), meta, Enum.map(args, &substitute_vars(&1, substitutions))}
+    {substitute_vars(form, substitutions), meta,
+     Enum.map(args, &substitute_vars(&1, substitutions))}
   end
 
   defp substitute_vars({left, right}, substitutions) do

@@ -143,7 +143,12 @@ defmodule Lavash.Form.ValidationTranspiler do
     if attr do
       validation_opts =
         opts
-        |> Keyword.take([:greater_than, :greater_than_or_equal_to, :less_than, :less_than_or_equal_to])
+        |> Keyword.take([
+          :greater_than,
+          :greater_than_or_equal_to,
+          :less_than,
+          :less_than_or_equal_to
+        ])
         |> Enum.into(%{})
 
       [{attr, %{type: :numericality, opts: validation_opts, message: custom_message}}]

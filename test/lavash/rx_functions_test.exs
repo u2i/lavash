@@ -68,7 +68,7 @@ defmodule Lavash.Rx.FunctionsTest do
     test "imported defrx functions are expanded in rx macro" do
       defmodule ImportingModule do
         import Lavash.Rx
-        import_rx Lavash.Rx.FunctionsTest.EmailValidators
+        import_rx(Lavash.Rx.FunctionsTest.EmailValidators)
 
         def get_rx do
           rx(valid_email?(@email))
@@ -88,7 +88,7 @@ defmodule Lavash.Rx.FunctionsTest do
     test "imported defrx functions work with :only option" do
       defmodule SelectiveImportModule do
         import Lavash.Rx
-        import_rx Lavash.Rx.FunctionsTest.EmailValidators, only: [valid_email?: 1]
+        import_rx(Lavash.Rx.FunctionsTest.EmailValidators, only: [valid_email?: 1])
 
         def get_rx do
           rx(valid_email?(@email))
@@ -102,7 +102,7 @@ defmodule Lavash.Rx.FunctionsTest do
     test "local defrx overrides imported defrx" do
       defmodule OverrideModule do
         import Lavash.Rx
-        import_rx Lavash.Rx.FunctionsTest.EmailValidators
+        import_rx(Lavash.Rx.FunctionsTest.EmailValidators)
 
         # Local definition overrides imported one
         defrx valid_email?(email) do
@@ -138,7 +138,7 @@ defmodule Lavash.Rx.FunctionsTest do
     test "nested defrx calls are expanded" do
       defmodule CardModule do
         import Lavash.Rx
-        import_rx Lavash.Rx.FunctionsTest.CardValidators
+        import_rx(Lavash.Rx.FunctionsTest.CardValidators)
 
         def get_rx do
           rx(valid_card_length?(@digits, @is_amex))

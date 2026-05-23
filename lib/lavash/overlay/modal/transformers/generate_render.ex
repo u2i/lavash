@@ -54,7 +54,10 @@ defmodule Lavash.Overlay.Modal.Transformers.GenerateRender do
         |> Transformer.persist(:modal_max_width, max_width)
         |> Transformer.persist(:modal_async_assign, async_assign)
         # Register the render generator for the component compiler
-        |> Transformer.persist(:lavash_overlay_render_generator, Lavash.Overlay.Modal.RenderGenerator)
+        |> Transformer.persist(
+          :lavash_overlay_render_generator,
+          Lavash.Overlay.Modal.RenderGenerator
+        )
 
       {:ok, dsl_state}
     else

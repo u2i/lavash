@@ -57,19 +57,21 @@ defmodule Lavash.Component.Compiler do
       if function_exported?(module, :__lavash__, 1) do
         module.__lavash__(:actions)
         |> Enum.flat_map(fn action ->
-          set_deps = Enum.flat_map(action.sets || [], fn s ->
-            case s.value do
-              %Lavash.Rx{deps: deps} -> deps
-              _ -> []
-            end
-          end)
+          set_deps =
+            Enum.flat_map(action.sets || [], fn s ->
+              case s.value do
+                %Lavash.Rx{deps: deps} -> deps
+                _ -> []
+              end
+            end)
 
-          run_deps = Enum.flat_map(action.runs || [], fn r ->
-            case r do
-              %{reads: reads} when is_list(reads) -> reads
-              _ -> []
-            end
-          end)
+          run_deps =
+            Enum.flat_map(action.runs || [], fn r ->
+              case r do
+                %{reads: reads} when is_list(reads) -> reads
+                _ -> []
+              end
+            end)
 
           set_deps ++ run_deps
         end)

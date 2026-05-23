@@ -24,7 +24,7 @@ defmodule Lavash.Reactive.GraphMacroTest do
 
     defgraph do
       state :query, ""
-      derive :results, rx(String.upcase(@query)), async: true
+      derive(:results, rx(String.upcase(@query)), async: true)
       derive :count, rx(length(@results))
     end
   end

@@ -73,10 +73,12 @@ defmodule Lavash.Socket do
     field_names = get(socket, :state_field_names) || MapSet.new()
     Map.take(socket.assigns, MapSet.to_list(field_names))
   end
+
   def derived(socket) do
     field_names = get(socket, :derived_field_names) || MapSet.new()
     Map.take(socket.assigns, MapSet.to_list(field_names))
   end
+
   def dirty(socket), do: get(socket, :dirty) || MapSet.new()
   def dirty?(socket), do: MapSet.size(dirty(socket)) > 0
   def props(socket), do: get(socket, :props) || %{}

@@ -100,7 +100,9 @@ defmodule Lavash.Rx do
       # - body_ast is used by DefrxExpander to expand defrx calls in rx ASTs
       # - body_source is used by ColocatedTransformer for JS expansion
       Module.register_attribute(__MODULE__, :lavash_defrx, accumulate: true)
-      @lavash_defrx {unquote(name), unquote(arity), unquote(param_names), unquote(Macro.escape(body)), unquote(body_source)}
+
+      @lavash_defrx {unquote(name), unquote(arity), unquote(param_names),
+                     unquote(Macro.escape(body)), unquote(body_source)}
     end
   end
 
@@ -166,7 +168,9 @@ defmodule Lavash.Rx do
     # Local definitions override imports
     # Format from defrx: {name, arity, params, body_ast, body_source}
     defrx_map =
-      Enum.reduce(imported_defs ++ local_defs, %{}, fn {name, arity, params, body_ast, _body_source}, acc ->
+      Enum.reduce(imported_defs ++ local_defs, %{}, fn {name, arity, params, body_ast,
+                                                        _body_source},
+                                                       acc ->
         Map.put(acc, {name, arity}, {params, body_ast})
       end)
 
@@ -229,7 +233,8 @@ defmodule Lavash.Rx do
   end
 
   defp expand_defrx_calls({form, meta, args}, defrx_map) when is_list(args) do
-    {expand_defrx_calls(form, defrx_map), meta, Enum.map(args, &expand_defrx_calls(&1, defrx_map))}
+    {expand_defrx_calls(form, defrx_map), meta,
+     Enum.map(args, &expand_defrx_calls(&1, defrx_map))}
   end
 
   defp expand_defrx_calls({left, right}, defrx_map) do
@@ -243,7 +248,8 @@ defmodule Lavash.Rx do
   defp expand_defrx_calls(other, _defrx_map), do: other
 
   # Substitute variable references with their values
-  defp substitute_vars({var_name, meta, context}, substitutions) when is_atom(var_name) and is_atom(context) do
+  defp substitute_vars({var_name, meta, context}, substitutions)
+       when is_atom(var_name) and is_atom(context) do
     case Map.get(substitutions, var_name) do
       nil -> {var_name, meta, context}
       value -> value
@@ -251,7 +257,8 @@ defmodule Lavash.Rx do
   end
 
   defp substitute_vars({form, meta, args}, substitutions) when is_list(args) do
-    {substitute_vars(form, substitutions), meta, Enum.map(args, &substitute_vars(&1, substitutions))}
+    {substitute_vars(form, substitutions), meta,
+     Enum.map(args, &substitute_vars(&1, substitutions))}
   end
 
   defp substitute_vars({left, right}, substitutions) do
@@ -422,7 +429,7 @@ defmodule Lavash.Rx do
         {name, meta, args}
 
       function_exported?(Kernel, name, length(args)) or
-        macro_exported?(Kernel, name, length(args)) ->
+          macro_exported?(Kernel, name, length(args)) ->
         {name, meta, args}
 
       # Bare local call — qualify with caller module

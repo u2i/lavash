@@ -115,7 +115,7 @@ defmodule Lavash.TestModalComponent do
 
   actions do
     action :open, [:id] do
-      set :item_id, &(&1.params.id)
+      set :item_id, & &1.params.id
     end
   end
 

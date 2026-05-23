@@ -38,7 +38,8 @@ defmodule Lavash.Component.Transformers.AnalyzeTemplate do
       dsl_state = maybe_extract_attr_derives(dsl_state, template_source, all_optimistic_names)
 
       # Extract subtree derives and inject data-lavash-html onto tokens
-      {dsl_state, tokens} = extract_and_inject_subtree_derives(dsl_state, tokens, all_optimistic_names)
+      {dsl_state, tokens} =
+        extract_and_inject_subtree_derives(dsl_state, tokens, all_optimistic_names)
 
       # Persist updated tokens
       dsl_state = Transformer.persist(dsl_state, :lavash_template_tokens, tokens)
@@ -62,13 +63,16 @@ defmodule Lavash.Component.Transformers.AnalyzeTemplate do
     form_derive_names = Enum.map(forms, fn f -> :"#{f.name}_valid" end)
 
     actions = Transformer.get_entities(dsl_state, [:actions]) || []
+
     action_field_names =
       actions
       |> Enum.flat_map(fn action ->
         sets = action.sets || []
         updates = action.updates || []
         map_bys = action.map_bys || []
-        Enum.map(sets, & &1.field) ++ Enum.map(updates, & &1.field) ++ Enum.map(map_bys, & &1.field)
+
+        Enum.map(sets, & &1.field) ++
+          Enum.map(updates, & &1.field) ++ Enum.map(map_bys, & &1.field)
       end)
 
     MapSet.new(calc_names ++ form_derive_names ++ action_field_names)
@@ -106,12 +110,15 @@ defmodule Lavash.Component.Transformers.AnalyzeTemplate do
         case try_transpile(expr) do
           {:ok, js_expr} ->
             derive_name = "__attr_#{index}_#{attr_name}"
-            [%{
-              name: derive_name,
-              js_expr: js_expr,
-              deps: Enum.map(deps, &to_string/1),
-              attr: attr_name
-            }]
+
+            [
+              %{
+                name: derive_name,
+                js_expr: js_expr,
+                deps: Enum.map(deps, &to_string/1),
+                attr: attr_name
+              }
+            ]
 
           :error ->
             []
@@ -135,18 +142,25 @@ defmodule Lavash.Component.Transformers.AnalyzeTemplate do
   # Walk AST looking for bare variables that aren't @field references.
   # Returns true if any loop variables are found.
   defp find_loop_variables({:@, _, _}), do: false
-  defp find_loop_variables({name, _, context}) when is_atom(name) and is_atom(context) and context != Elixir and name not in [:do, :else, :end, :fn, :true, :false, :nil] do
+
+  defp find_loop_variables({name, _, context})
+       when is_atom(name) and is_atom(context) and context != Elixir and
+              name not in [:do, :else, :end, :fn, true, false, nil] do
     true
   end
+
   defp find_loop_variables({_, _, args}) when is_list(args) do
     Enum.any?(args, &find_loop_variables/1)
   end
+
   defp find_loop_variables(list) when is_list(list) do
     Enum.any?(list, &find_loop_variables/1)
   end
+
   defp find_loop_variables({left, right}) do
     find_loop_variables(left) or find_loop_variables(right)
   end
+
   defp find_loop_variables(_), do: false
 
   defp try_transpile(expr) do
@@ -184,17 +198,24 @@ defmodule Lavash.Component.Transformers.AnalyzeTemplate do
         Enum.map(tokens, fn
           {:tag, name, attrs, meta} = _token ->
             key = {meta[:line], meta[:column]}
+
             case Map.get(position_to_derive, key) do
-              nil -> {:tag, name, attrs, meta}
+              nil ->
+                {:tag, name, attrs, meta}
+
               derive_name ->
                 attr_meta = %{line: meta[:line] || 1, column: meta[:column] || 1}
-                new_attr = {"data-lavash-html",
-                  {:string, derive_name, %{delimiter: ?", line: attr_meta.line, column: attr_meta.column}},
-                  attr_meta}
+
+                new_attr =
+                  {"data-lavash-html",
+                   {:string, derive_name,
+                    %{delimiter: ?", line: attr_meta.line, column: attr_meta.column}}, attr_meta}
+
                 {:tag, name, attrs ++ [new_attr], meta}
             end
 
-          token -> token
+          token ->
+            token
         end)
 
       dsl_state = Transformer.persist(dsl_state, :lavash_subtree_derives, derives)
@@ -208,7 +229,12 @@ defmodule Lavash.Component.Transformers.AnalyzeTemplate do
     end)
   end
 
-  defp find_parent_subtrees({:element, _tag, _attrs, children, meta}, optimistic_names, acc, index) do
+  defp find_parent_subtrees(
+         {:element, _tag, _attrs, children, meta},
+         optimistic_names,
+         acc,
+         index
+       ) do
     if has_optimistic_child?(children, optimistic_names) do
       children_js =
         children
@@ -237,6 +263,7 @@ defmodule Lavash.Component.Transformers.AnalyzeTemplate do
     Enum.any?(children, fn
       {:element, _tag, attrs, _children, _meta} ->
         match?({:ok, _}, optimistic_conditional(attrs, optimistic_names))
+
       _ ->
         false
     end)
@@ -275,7 +302,9 @@ defmodule Lavash.Component.Transformers.AnalyzeTemplate do
           Regex.scan(~r/@(\w+)/, code)
           |> Enum.map(fn [_, field] -> String.to_atom(field) end)
           |> Enum.filter(&MapSet.member?(optimistic_names, &1))
-        _ -> []
+
+        _ ->
+          []
       end)
 
     attr_deps ++ collect_all_optimistic_deps(children, optimistic_names)

@@ -43,16 +43,17 @@ defmodule Lavash.LiveView.Compiler do
 
     %Lavash.Rx{
       source: "if(@value == \"\" or @value == nil, do: nil, else: String.to_integer(@value))",
-      ast: quote do
-        value = Map.get(unquote(state_var), :value)
+      ast:
+        quote do
+          value = Map.get(unquote(state_var), :value)
 
-        cond do
-          value == "" or value == nil -> nil
-          is_integer(value) -> value
-          is_binary(value) -> String.to_integer(value)
-          true -> value
-        end
-      end,
+          cond do
+            value == "" or value == nil -> nil
+            is_integer(value) -> value
+            is_binary(value) -> String.to_integer(value)
+            true -> value
+          end
+        end,
       deps: [:value]
     }
   end
@@ -62,7 +63,12 @@ defmodule Lavash.LiveView.Compiler do
 
     %Lavash.Rx{
       source: "@value == \"true\" or @value == true",
-      ast: quote(do: Map.get(unquote(state_var), :value) == "true" or Map.get(unquote(state_var), :value) == true),
+      ast:
+        quote(
+          do:
+            Map.get(unquote(state_var), :value) == "true" or
+              Map.get(unquote(state_var), :value) == true
+        ),
       deps: [:value]
     }
   end

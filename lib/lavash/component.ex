@@ -77,7 +77,8 @@ defmodule Lavash.Component do
       import Phoenix.LiveView
       @behaviour Phoenix.LiveComponent
       @before_compile Phoenix.LiveView.Renderer
-      use Phoenix.Component, Keyword.merge([global_prefixes: []], Keyword.take(unquote(opts), [:global_prefixes]))
+      use Phoenix.Component,
+          Keyword.merge([global_prefixes: []], Keyword.take(unquote(opts), [:global_prefixes]))
 
       @doc false
       def __live__, do: %{kind: :component, layout: false}

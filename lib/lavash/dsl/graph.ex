@@ -49,9 +49,12 @@ defmodule Lavash.Dsl.Graph do
 
     graph = ReactiveGraph.compile(state_tuples, derive_tuples)
 
-    %{graph | dep_resolvers: %{
-      __actor__: fn socket -> socket.assigns[:current_user] end,
-      __all_state__: &LSocket.full_state/1
-    }}
+    %{
+      graph
+      | dep_resolvers: %{
+          __actor__: fn socket -> socket.assigns[:current_user] end,
+          __all_state__: &LSocket.full_state/1
+        }
+    }
   end
 end

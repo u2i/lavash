@@ -105,5 +105,4 @@ defmodule Lavash.Component.Helpers do
 
     Enum.filter(specs, &Map.get(&1, :optimistic, false))
   end
-
 end

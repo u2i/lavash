@@ -18,9 +18,13 @@ defmodule Lavash.Component.OptimisticWrapper do
 
     %Phoenix.LiveView.Rendered{
       static: [
-        "<div id=\"", "\" phx-hook=\"LavashOptimistic\" phx-target=\"",
-        "\" data-lavash-component data-lavash-module=\"", "\" data-lavash-state=\"",
-        "\" data-lavash-version=\"", "\" data-lavash-bindings=\"", "\">",
+        "<div id=\"",
+        "\" phx-hook=\"LavashOptimistic\" phx-target=\"",
+        "\" data-lavash-component data-lavash-module=\"",
+        "\" data-lavash-state=\"",
+        "\" data-lavash-version=\"",
+        "\" data-lavash-bindings=\"",
+        "\">",
         "</div>"
       ],
       dynamic: fn _ ->

@@ -51,7 +51,10 @@ defmodule Lavash.Component.Runtime do
                           Phoenix.LiveView.AsyncResult.ok(value)
 
                         {:error, reason} ->
-                          Phoenix.LiveView.AsyncResult.failed(%Phoenix.LiveView.AsyncResult{}, reason)
+                          Phoenix.LiveView.AsyncResult.failed(
+                            %Phoenix.LiveView.AsyncResult{},
+                            reason
+                          )
 
                         value ->
                           Phoenix.LiveView.AsyncResult.ok(value)
@@ -159,7 +162,9 @@ defmodule Lavash.Component.Runtime do
 
           parent_cid ->
             # Parent is a Lavash.Component - use send_update
-            Phoenix.LiveView.send_update(parent_cid, __lavash_binding_update__: {action, parent_field, parsed_value})
+            Phoenix.LiveView.send_update(parent_cid,
+              __lavash_binding_update__: {action, parent_field, parsed_value}
+            )
         end
     end
 
@@ -170,9 +175,12 @@ defmodule Lavash.Component.Runtime do
   defp parse_binding_value("false"), do: false
   defp parse_binding_value(nil), do: nil
   defp parse_binding_value(%{key: key, arg: arg}), do: %{key: key, arg: arg}
+
   defp parse_binding_value(value) when is_binary(value) do
     case Integer.parse(value) do
-      {int, ""} -> int
+      {int, ""} ->
+        int
+
       _ ->
         case Float.parse(value) do
           {float, ""} -> float
@@ -180,6 +188,7 @@ defmodule Lavash.Component.Runtime do
         end
     end
   end
+
   defp parse_binding_value(value), do: value
 
   # Resolve bindings from the bind prop - sets up binding map and parent CID
@@ -219,8 +228,11 @@ defmodule Lavash.Component.Runtime do
         # Sync parent's optimistic version when bound
         socket =
           case Map.get(assigns, :__lavash_parent_version__) do
-            nil -> socket
-            parent_version -> Phoenix.Component.assign(socket, :__lavash_version__, parent_version)
+            nil ->
+              socket
+
+            parent_version ->
+              Phoenix.Component.assign(socket, :__lavash_version__, parent_version)
           end
 
         # For bound fields, we need to update state when the prop changes from parent,
@@ -571,7 +583,6 @@ defmodule Lavash.Component.Runtime do
     end)
   end
 
-
   defp execute_action(socket, module, action, event_params) do
     params = ActionRuntime.build_params(action.params, event_params)
 
@@ -755,11 +766,14 @@ defmodule Lavash.Component.Runtime do
       case error do
         %{field: field, message: msg} when not is_nil(field) ->
           field_str = to_string(field)
-          message = case msg do
-            {m, _opts} -> m
-            m when is_binary(m) -> m
-            _ -> "Invalid value"
-          end
+
+          message =
+            case msg do
+              {m, _opts} -> m
+              m when is_binary(m) -> m
+              _ -> "Invalid value"
+            end
+
           Map.update(acc, field_str, [message], &[message | &1])
 
         _ ->

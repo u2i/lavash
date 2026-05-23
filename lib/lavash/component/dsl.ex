@@ -333,5 +333,11 @@ defmodule Lavash.Component.Dsl do
       Lavash.Optimistic.Transformers.ExtractColocatedJs,
       Lavash.Component.Transformers.CompileComponent
     ],
-    imports: [Phoenix.Component, Lavash.DslHelpers, Lavash.Rx, Lavash.Sigil, Lavash.Component.RenderImport]
+    imports: [
+      Phoenix.Component,
+      Lavash.DslHelpers,
+      Lavash.Rx,
+      Lavash.Sigil,
+      Lavash.Component.RenderImport
+    ]
 end

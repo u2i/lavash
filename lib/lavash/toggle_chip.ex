@@ -24,10 +24,14 @@ defmodule Lavash.ToggleChip do
   state :active, :boolean, from: :ephemeral, default: false
 
   prop :label, :string, default: "Toggle"
+
   prop :active_class, :any,
-    default: "px-3 py-1.5 rounded-full text-sm font-medium border transition-colors bg-primary text-primary-content border-primary"
+    default:
+      "px-3 py-1.5 rounded-full text-sm font-medium border transition-colors bg-primary text-primary-content border-primary"
+
   prop :inactive_class, :any,
-    default: "px-3 py-1.5 rounded-full text-sm font-medium border transition-colors bg-base-100 text-base-content/70 border-base-300 hover:bg-base-200"
+    default:
+      "px-3 py-1.5 rounded-full text-sm font-medium border transition-colors bg-base-100 text-base-content/70 border-base-300 hover:bg-base-200"
 
   actions do
     action :toggle do

@@ -49,10 +49,14 @@ defmodule Lavash.State do
 
       sock
       |> then(fn s ->
-        if Map.has_key?(current_state, params_field), do: s, else: LSocket.put_state(s, params_field, %{})
+        if Map.has_key?(current_state, params_field),
+          do: s,
+          else: LSocket.put_state(s, params_field, %{})
       end)
       |> then(fn s ->
-        if Map.has_key?(current_state, server_errors_field), do: s, else: LSocket.put_state(s, server_errors_field, %{})
+        if Map.has_key?(current_state, server_errors_field),
+          do: s,
+          else: LSocket.put_state(s, server_errors_field, %{})
       end)
     end)
   end

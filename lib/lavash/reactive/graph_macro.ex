@@ -49,6 +49,7 @@ defmodule Lavash.Reactive.GraphMacro do
 
     # Write colocated JS file
     env = __CALLER__
+
     colocated_data =
       if js_code do
         Macro.escape(write_colocated_js(env, js_code))
@@ -59,13 +60,13 @@ defmodule Lavash.Reactive.GraphMacro do
       Enum.map(states, fn {name, default} ->
         quote do: Lavash.Reactive.state(unquote(name), unquote(default))
       end) ++
-      Enum.map(derives, fn {name, rx_ast, opts} ->
-        if opts == [] do
-          quote do: Lavash.Reactive.derive(unquote(name), unquote(rx_ast))
-        else
-          quote do: Lavash.Reactive.derive(unquote(name), unquote(rx_ast), unquote(opts))
-        end
-      end)
+        Enum.map(derives, fn {name, rx_ast, opts} ->
+          if opts == [] do
+            quote do: Lavash.Reactive.derive(unquote(name), unquote(rx_ast))
+          else
+            quote do: Lavash.Reactive.derive(unquote(name), unquote(rx_ast), unquote(opts))
+          end
+        end)
 
     # Build: Reactive.new() |> Reactive.state(:x, 0) |> ... |> Reactive.build()
     pipe_chain =
@@ -191,11 +192,12 @@ defmodule Lavash.Reactive.GraphMacro do
       topo_order = Lavash.Graph.topo_sort(deps_map)
       dependents = Lavash.Graph.build_dependents(deps_map)
 
-      graph_json = Jason.encode!(%{
-        topo_order: topo_order,
-        deps: deps_map,
-        dependents: dependents
-      })
+      graph_json =
+        Jason.encode!(%{
+          topo_order: topo_order,
+          deps: deps_map,
+          dependents: dependents
+        })
 
       """
       export default {
@@ -230,7 +232,9 @@ defmodule Lavash.Reactive.GraphMacro do
           for file <- files, String.starts_with?(file, "reactive_"), file != filename do
             File.rm(Path.join(module_dir, file))
           end
-        _ -> :ok
+
+        _ ->
+          :ok
       end
 
       File.write!(full_path, js_code)
@@ -239,5 +243,4 @@ defmodule Lavash.Reactive.GraphMacro do
     module_name = inspect(env.module)
     {filename, %{name: module_name, key: "optimistic"}}
   end
-
 end
