@@ -810,20 +810,12 @@ defmodule Lavash.LiveView.Runtime do
         |> ActionRuntime.apply_effects(action.effects || [], params)
         |> apply_invokes(action.invokes || [], params)
 
-      # Handle submits - these can fail and trigger on_error
-      try do
-        apply_submits(socket, module, action.submits || [])
-      rescue
-        e ->
-          socket =
-            Phoenix.LiveView.put_flash(
-              socket,
-              :error,
-              "[DEBUG] Exception in submit: #{Exception.message(e)}"
-            )
-
-          {:ok, socket}
-      end
+      # Handle submits. Validation failures come back as {:error, form_with_errors}
+      # from Lavash.Form.submit and are routed to on_error inside apply_submits.
+      # Other exceptions are bugs and should crash the LiveView per Phoenix
+      # conventions — silent rescue here previously hid them behind a flash
+      # while also bypassing on_error.
+      apply_submits(socket, module, action.submits || [])
     else
       {:ok, socket}
     end
