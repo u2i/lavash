@@ -198,4 +198,16 @@ defimpl Phoenix.HTML.FormData, for: Lavash.Form do
   def to_form(%Lavash.Form{form: form}, opts) do
     Phoenix.Component.to_form(form, opts)
   end
+
+  def to_form(%Lavash.Form{form: form}, form_struct, field, opts) do
+    Phoenix.HTML.FormData.to_form(form, form_struct, field, opts)
+  end
+
+  def input_value(%Lavash.Form{form: form}, form_struct, field) do
+    Phoenix.HTML.FormData.input_value(form, form_struct, field)
+  end
+
+  def input_validations(%Lavash.Form{form: form}, form_struct, field) do
+    Phoenix.HTML.FormData.input_validations(form, form_struct, field)
+  end
 end

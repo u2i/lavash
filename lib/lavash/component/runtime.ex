@@ -466,10 +466,6 @@ defmodule Lavash.Component.Runtime do
     end
   end
 
-  defp hydrate_ephemeral(socket, module) do
-    hydrate_ephemeral(socket, module, %{})
-  end
-
   defp hydrate_ephemeral(socket, module, assigns) do
     ephemeral_fields = module.__lavash__(:ephemeral_fields)
     current_state = LSocket.state(socket)

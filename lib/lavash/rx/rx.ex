@@ -410,7 +410,7 @@ defmodule Lavash.Rx do
 
   # Qualify bare function calls with the caller's module so Code.eval_quoted can resolve them.
   # Already-qualified calls (Mod.fun), Kernel builtins, and special forms are left alone.
-  defp qualify_local_calls({name, meta, args} = node, module) when is_atom(name) and is_list(args) do
+  defp qualify_local_calls({name, meta, args}, module) when is_atom(name) and is_list(args) do
     args = Enum.map(args, &qualify_local_calls(&1, module))
 
     cond do

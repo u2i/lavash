@@ -101,7 +101,7 @@ defmodule DemoWeb.LiveViewDemos.PlainCounterLive do
   defp factorial(_), do: :infinity
 
   defp parse_int(nil, default), do: default
-  defp parse_int(val, default) when is_integer(val), do: val
+  defp parse_int(val, _default) when is_integer(val), do: val
 
   defp parse_int(str, default) when is_binary(str) do
     case Integer.parse(str) do
