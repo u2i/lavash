@@ -7,6 +7,35 @@ defmodule Lavash.LiveView.Compiler do
   """
 
   @doc """
+  Collect optimistic state fields — both fields declared optimistic and those
+  implicitly touched by an optimistic action.
+  """
+  def collect_optimistic_fields(module) do
+    states = module.__lavash__(:states)
+    explicitly_optimistic = Enum.filter(states, &Lavash.State.Field.optimistic?/1)
+    actions = Spark.Dsl.Extension.get_entities(module, [:actions]) || []
+
+    action_touched_fields =
+      actions
+      |> Enum.filter(&Lavash.Optimistic.ActionJs.action_is_optimistic?/1)
+      |> Enum.flat_map(fn action ->
+        sets = action.sets || []
+        map_bys = action.map_bys || []
+        Enum.map(sets, & &1.field) ++ Enum.map(map_bys, & &1.field)
+      end)
+      |> MapSet.new()
+
+    explicit_names = MapSet.new(explicitly_optimistic, & &1.name)
+
+    auto_optimistic =
+      Enum.filter(states, fn f ->
+        f.name in action_touched_fields and f.name not in explicit_names
+      end)
+
+    explicitly_optimistic ++ auto_optimistic
+  end
+
+  @doc """
   Generate synthetic setter actions for state fields with setter: true or optimistic: true.
   """
   def generate_setter_actions(module) do

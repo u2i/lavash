@@ -99,8 +99,8 @@ defmodule Lavash.Rx.TranspilerTest do
 
   describe "elixir_to_js/1 - if expressions" do
     test "if-else becomes ternary" do
-      assert Transpiler.to_js("if @active, do: \"on\", else: \"off\"") ==
-               "(state.active ? \"on\" : \"off\")"
+      assert Transpiler.to_js(~s|if @active, do: "on", else: "off"|) ==
+               ~s|(state.active ? "on" : "off")|
     end
 
     test "if without else returns null" do

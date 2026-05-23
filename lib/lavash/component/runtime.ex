@@ -11,104 +11,89 @@ defmodule Lavash.Component.Runtime do
   - Assign projection
   """
 
-  alias Lavash.Dsl.Graph, as: DslGraph
-  alias Lavash.Reactive
-  alias Lavash.Assigns
-  alias Lavash.State
-  alias Lavash.Socket, as: LSocket
   alias Lavash.Action.Runtime, as: ActionRuntime
+  alias Lavash.Assigns
+  alias Lavash.Dsl.Graph, as: DslGraph
   alias Lavash.Form.Runtime, as: FormRuntime
+  alias Lavash.Reactive
+  alias Lavash.Socket, as: LSocket
+  alias Lavash.State
 
   def update(module, assigns, socket) do
-    # Check if this is a binding update from a child component
-    case Map.get(assigns, :__lavash_binding_update__) do
-      {action, field, value} ->
-        # Handle binding update from child component
+    cond do
+      match?({_, _, _}, Map.get(assigns, :__lavash_binding_update__)) ->
+        {action, field, value} = assigns.__lavash_binding_update__
         handle_binding_update(module, action, field, value, socket)
 
-      nil ->
-        # Check if this is an invoke from parent
-        case Map.get(assigns, :__lavash_invoke__) do
-          {action_name, params} ->
-            # Handle invoke - execute the action
-            handle_invoke(module, action_name, params, socket)
+      match?({_, _}, Map.get(assigns, :__lavash_invoke__)) ->
+        {action_name, params} = assigns.__lavash_invoke__
+        handle_invoke(module, action_name, params, socket)
 
-          nil ->
-            # Check if this is an invalidation from parent LiveView
-            case Map.get(assigns, :__lavash_invalidate__) do
-              resource when is_atom(resource) and not is_nil(resource) ->
-                # Handle resource invalidation - same logic as LiveView
-                handle_invalidate(module, resource, socket)
+      is_atom(Map.get(assigns, :__lavash_invalidate__)) and
+          not is_nil(Map.get(assigns, :__lavash_invalidate__)) ->
+        handle_invalidate(module, assigns.__lavash_invalidate__, socket)
 
-              nil ->
-                # Check if this is an async result delivery
-                case Map.get(assigns, :__lavash_async_result__) do
-                  {field, result} ->
-                    # Handle async result delivery - convert to AsyncResult struct
-                    async =
-                      case result do
-                        {:ok, value} ->
-                          Phoenix.LiveView.AsyncResult.ok(value)
+      match?({_, _}, Map.get(assigns, :__lavash_async_result__)) ->
+        {field, result} = assigns.__lavash_async_result__
+        handle_async_result(module, field, result, socket)
 
-                        {:error, reason} ->
-                          Phoenix.LiveView.AsyncResult.failed(
-                            %Phoenix.LiveView.AsyncResult{},
-                            reason
-                          )
-
-                        value ->
-                          Phoenix.LiveView.AsyncResult.ok(value)
-                      end
-
-                    socket =
-                      socket
-                      |> LSocket.put_derived(field, async)
-                      |> Reactive.recompute_dependents(field)
-                      |> Assigns.project(module)
-
-                    {:ok, socket}
-
-                  nil ->
-                    # Normal update
-                    socket =
-                      if first_mount?(socket) do
-                        # First mount - initialize everything
-                        # Register with parent for invalidation forwarding
-                        register_with_parent(module, assigns)
-
-                        socket
-                        |> init_lavash_state(module, assigns)
-                        |> hydrate_socket_state(module, assigns)
-                        |> hydrate_ephemeral(module, assigns)
-                        |> State.hydrate_forms(module)
-                        |> store_props(module, assigns)
-                        |> resolve_bindings(module, assigns)
-                        |> preserve_livecomponent_assigns(module, assigns)
-                        |> Reactive.recompute_all()
-                        |> Assigns.project(module)
-                      else
-                        # Subsequent update - sync ephemeral fields from parent, store props
-                        socket = hydrate_ephemeral(socket, module, assigns)
-                        socket = store_props(socket, module, assigns)
-                        socket = resolve_bindings(socket, module, assigns)
-                        socket = preserve_livecomponent_assigns(socket, module, assigns)
-
-                        # Recompute any derived fields affected by dirty props
-                        socket =
-                          if LSocket.dirty?(socket) do
-                            Reactive.recompute(socket)
-                          else
-                            socket
-                          end
-
-                        Assigns.project(socket, module)
-                      end
-
-                    {:ok, socket}
-                end
-            end
-        end
+      true ->
+        handle_normal_update(module, assigns, socket)
     end
+  end
+
+  defp handle_async_result(module, field, result, socket) do
+    async =
+      case result do
+        {:ok, value} ->
+          Phoenix.LiveView.AsyncResult.ok(value)
+
+        {:error, reason} ->
+          Phoenix.LiveView.AsyncResult.failed(%Phoenix.LiveView.AsyncResult{}, reason)
+
+        value ->
+          Phoenix.LiveView.AsyncResult.ok(value)
+      end
+
+    socket =
+      socket
+      |> LSocket.put_derived(field, async)
+      |> Reactive.recompute_dependents(field)
+      |> Assigns.project(module)
+
+    {:ok, socket}
+  end
+
+  defp handle_normal_update(module, assigns, socket) do
+    socket =
+      if first_mount?(socket) do
+        register_with_parent(module, assigns)
+
+        socket
+        |> init_lavash_state(module, assigns)
+        |> hydrate_socket_state(module, assigns)
+        |> hydrate_ephemeral(module, assigns)
+        |> State.hydrate_forms(module)
+        |> store_props(module, assigns)
+        |> resolve_bindings(module, assigns)
+        |> preserve_livecomponent_assigns(module, assigns)
+        |> Reactive.recompute_all()
+        |> Assigns.project(module)
+      else
+        socket
+        |> hydrate_ephemeral(module, assigns)
+        |> store_props(module, assigns)
+        |> resolve_bindings(module, assigns)
+        |> preserve_livecomponent_assigns(module, assigns)
+        |> maybe_recompute()
+        |> Assigns.project(module)
+      end
+
+    {:ok, socket}
+  end
+
+  defp maybe_recompute(socket) do
+    if LSocket.dirty?(socket), do: Reactive.recompute(socket), else: socket
   end
 
   defp handle_invalidate(module, resource, socket) do
@@ -822,11 +807,9 @@ defmodule Lavash.Component.Runtime do
 
   # Get the modal open field from module metadata, if this component uses modal DSL
   defp get_modal_open_field(module) do
-    try do
-      Spark.Dsl.Extension.get_persisted(module, :modal_open_field)
-    rescue
-      _ -> nil
-    end
+    Spark.Dsl.Extension.get_persisted(module, :modal_open_field)
+  rescue
+    _ -> nil
   end
 
   # Clear all form params and mark reads as dirty when modal opens to prevent stale data

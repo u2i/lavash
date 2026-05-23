@@ -31,7 +31,7 @@ defmodule Lavash.Template.ASTTransformer do
     Macro.prewalk(ast, fn
       # Match map literals: {:%{}, meta, key_value_pairs}
       {:%{}, meta, attrs} = node when is_list(attrs) ->
-        if is_component_assigns?(attrs) and not has_client_bindings?(attrs) do
+        if component_assigns?(attrs) and not has_client_bindings?(attrs) do
           # Inject __lavash_client_bindings__ accessing assigns
           binding_attr =
             {:__lavash_client_bindings__, build_assigns_access(:__lavash_client_bindings__, meta)}
@@ -47,7 +47,7 @@ defmodule Lavash.Template.ASTTransformer do
   end
 
   # Check if this map looks like component assigns (has :module and :id keys)
-  defp is_component_assigns?(attrs) do
+  defp component_assigns?(attrs) do
     has_key?(attrs, :module) and has_key?(attrs, :id)
   end
 

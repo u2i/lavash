@@ -51,10 +51,8 @@ defmodule Lavash.Assigns do
 
   # Safely get entities, returning empty list if not defined
   defp safe_get(module, key) do
-    try do
-      module.__lavash__(key)
-    rescue
-      _ -> []
-    end
+    module.__lavash__(key)
+  rescue
+    _ -> []
   end
 end

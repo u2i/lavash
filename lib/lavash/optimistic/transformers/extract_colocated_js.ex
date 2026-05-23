@@ -158,17 +158,17 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
          attr_derives == [] and subtree_derives == [] do
       nil
     else
-      generate_js_code(
-        calculations,
-        forms,
-        extend_errors,
-        animated_fields,
-        defrx_map,
-        optimistic_actions,
-        attr_derives,
-        subtree_derives,
-        module
-      )
+      generate_js_code(%{
+        calculations: calculations,
+        forms: forms,
+        extend_errors: extend_errors,
+        animated_fields: animated_fields,
+        defrx_map: defrx_map,
+        optimistic_actions: optimistic_actions,
+        attr_derives: attr_derives,
+        subtree_derives: subtree_derives,
+        module: module
+      })
     end
   end
 
@@ -190,17 +190,17 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
     end
   end
 
-  defp generate_js_code(
-         calculations,
-         forms,
-         extend_errors,
-         animated_fields,
-         defrx_map,
-         optimistic_actions,
-         attr_derives,
-         subtree_derives,
-         _module
-       ) do
+  defp generate_js_code(%{
+         calculations: calculations,
+         forms: forms,
+         extend_errors: extend_errors,
+         animated_fields: animated_fields,
+         defrx_map: defrx_map,
+         optimistic_actions: optimistic_actions,
+         attr_derives: attr_derives,
+         subtree_derives: subtree_derives,
+         module: _module
+       }) do
     calculation_fns =
       Enum.map(calculations, &generate_calculation_js(&1, defrx_map)) |> Enum.filter(& &1)
 

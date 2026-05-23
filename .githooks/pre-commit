@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Pre-commit hook: format, compile (warnings-as-errors), credo, tests.
+# Enable per clone with:
+#   git config core.hooksPath .githooks
+
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+
+# Use `mise exec --` if mise is available so the right elixir/erlang is picked up.
+if command -v mise >/dev/null 2>&1; then
+  MIX=(mise exec -- mix)
+else
+  MIX=(mix)
+fi
+
+step() {
+  printf '\n→ %s\n' "$1"
+}
+
+step "mix format --check-formatted"
+"${MIX[@]}" format --check-formatted
+
+step "mix compile --warnings-as-errors"
+"${MIX[@]}" compile --warnings-as-errors
+
+step "mix credo --strict"
+"${MIX[@]}" credo --strict
+
+step "mix test"
+"${MIX[@]}" test
+
+printf '\n✓ pre-commit checks passed\n'

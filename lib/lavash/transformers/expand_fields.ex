@@ -838,67 +838,11 @@ defmodule Lavash.Transformers.ExpandFields do
 
   defp collect_constraint_errors(:string, value, constraints, ash_messages) do
     value_str = to_string(value || "")
-    trimmed = String.trim(value_str)
-    len = String.length(trimmed)
-    errors = []
+    len = value_str |> String.trim() |> String.length()
 
-    min_constraint = Map.get(constraints, :min_length)
-    max_constraint = Map.get(constraints, :max_length)
-
-    errors =
-      cond do
-        min_constraint && max_constraint && len < min_constraint ->
-          msg =
-            Map.get(ash_messages, :length_between) ||
-              Map.get(ash_messages, :min_length) ||
-              Lavash.Form.ConstraintTranspiler.error_message(:min_length, min_constraint)
-
-          [msg | errors]
-
-        min_constraint && max_constraint && len > max_constraint ->
-          msg =
-            Map.get(ash_messages, :length_between) ||
-              Map.get(ash_messages, :max_length) ||
-              Lavash.Form.ConstraintTranspiler.error_message(:max_length, max_constraint)
-
-          [msg | errors]
-
-        min_constraint && !max_constraint && len < min_constraint ->
-          msg =
-            Map.get(ash_messages, :min_length) ||
-              Lavash.Form.ConstraintTranspiler.error_message(:min_length, min_constraint)
-
-          [msg | errors]
-
-        max_constraint && !min_constraint && len > max_constraint ->
-          msg =
-            Map.get(ash_messages, :max_length) ||
-              Lavash.Form.ConstraintTranspiler.error_message(:max_length, max_constraint)
-
-          [msg | errors]
-
-        true ->
-          errors
-      end
-
-    errors =
-      case Map.get(constraints, :match) do
-        nil ->
-          errors
-
-        regex ->
-          if String.match?(value_str, regex) do
-            errors
-          else
-            msg =
-              Map.get(ash_messages, :match) ||
-                Lavash.Form.ConstraintTranspiler.error_message(:match, regex)
-
-            [msg | errors]
-          end
-      end
-
-    errors
+    []
+    |> add_string_length_errors(len, constraints, ash_messages)
+    |> add_string_match_errors(value_str, constraints, ash_messages)
   end
 
   defp collect_constraint_errors(:integer, value, constraints, ash_messages) do
@@ -952,6 +896,50 @@ defmodule Lavash.Transformers.ExpandFields do
   end
 
   defp collect_constraint_errors(_, _, _, _), do: []
+
+  defp add_string_length_errors(errors, len, constraints, ash_messages) do
+    min_c = Map.get(constraints, :min_length)
+    max_c = Map.get(constraints, :max_length)
+
+    cond do
+      min_c && len < min_c ->
+        msg =
+          (max_c && Map.get(ash_messages, :length_between)) ||
+            Map.get(ash_messages, :min_length) ||
+            Lavash.Form.ConstraintTranspiler.error_message(:min_length, min_c)
+
+        [msg | errors]
+
+      max_c && len > max_c ->
+        msg =
+          (min_c && Map.get(ash_messages, :length_between)) ||
+            Map.get(ash_messages, :max_length) ||
+            Lavash.Form.ConstraintTranspiler.error_message(:max_length, max_c)
+
+        [msg | errors]
+
+      true ->
+        errors
+    end
+  end
+
+  defp add_string_match_errors(errors, value_str, constraints, ash_messages) do
+    case Map.get(constraints, :match) do
+      nil ->
+        errors
+
+      regex ->
+        if String.match?(value_str, regex) do
+          errors
+        else
+          msg =
+            Map.get(ash_messages, :match) ||
+              Lavash.Form.ConstraintTranspiler.error_message(:match, regex)
+
+          [msg | errors]
+        end
+    end
+  end
 
   defp check_string_constraints(value, constraints) do
     value = String.trim(value || "")

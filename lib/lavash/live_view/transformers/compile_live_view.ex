@@ -60,6 +60,8 @@ defmodule Lavash.LiveView.Transformers.CompileLiveView do
     mount_ast = build_mount_ast(has_on_mount)
     render_ast = build_render_ast(render_template, has_render, env, dsl_state)
     colocated_ast = build_colocated_ast(dsl_state)
+    callbacks_ast = build_callbacks_ast()
+    lavash_introspection_ast = build_lavash_introspection_ast()
 
     Transformer.eval(
       dsl_state,
@@ -67,107 +69,92 @@ defmodule Lavash.LiveView.Transformers.CompileLiveView do
       quote do
         unquote(mount_ast)
         unquote(render_ast)
-
-        @impl Phoenix.LiveView
-        def handle_params(params, uri, socket) do
-          Lavash.LiveView.Runtime.handle_params(__MODULE__, params, uri, socket)
-        end
-
-        @impl Phoenix.LiveView
-        def handle_event(event, params, socket) do
-          Lavash.LiveView.Runtime.handle_event(__MODULE__, event, params, socket)
-        end
-
-        @impl Phoenix.LiveView
-        def handle_info(msg, socket) do
-          Lavash.LiveView.Runtime.handle_info(__MODULE__, msg, socket)
-        end
-
-        defoverridable handle_params: 3, handle_event: 3, handle_info: 2
-
-        def __lavash__(:states) do
-          Spark.Dsl.Extension.get_entities(__MODULE__, [:states])
-        end
-
-        def __lavash__(:reads) do
-          Spark.Dsl.Extension.get_entities(__MODULE__, [:reads])
-        end
-
-        def __lavash__(:forms) do
-          Spark.Dsl.Extension.get_entities(__MODULE__, [:forms])
-        end
-
-        def __lavash__(:extend_errors) do
-          Spark.Dsl.Extension.get_entities(__MODULE__, [:extend_errors_declarations])
-        end
-
-        def __lavash__(:actions) do
-          declared_actions = Spark.Dsl.Extension.get_entities(__MODULE__, [:actions])
-          setter_actions = Lavash.LiveView.Compiler.generate_setter_actions(__MODULE__)
-          optimistic_actions = Lavash.LiveView.Compiler.generate_optimistic_actions(__MODULE__)
-          declared_actions ++ setter_actions ++ optimistic_actions
-        end
-
-        def __lavash__(:url_fields) do
-          __lavash__(:states) |> Enum.filter(&(&1.from == :url))
-        end
-
-        def __lavash__(:socket_fields) do
-          __lavash__(:states) |> Enum.filter(&(&1.from == :socket))
-        end
-
-        def __lavash__(:ephemeral_fields) do
-          __lavash__(:states) |> Enum.filter(&(is_nil(&1.from) || &1.from == :ephemeral))
-        end
-
-        def __lavash__(:optimistic_fields) do
-          states = __lavash__(:states)
-          explicitly_optimistic = Enum.filter(states, &Lavash.State.Field.optimistic?/1)
-
-          actions = Spark.Dsl.Extension.get_entities(__MODULE__, [:actions]) || []
-
-          action_touched_fields =
-            actions
-            |> Enum.filter(&Lavash.Optimistic.ActionJs.action_is_optimistic?/1)
-            |> Enum.flat_map(fn action ->
-              sets = action.sets || []
-              map_bys = action.map_bys || []
-              Enum.map(sets, & &1.field) ++ Enum.map(map_bys, & &1.field)
-            end)
-            |> MapSet.new()
-
-          explicit_names = MapSet.new(explicitly_optimistic, & &1.name)
-
-          auto_optimistic =
-            states
-            |> Enum.filter(fn f ->
-              f.name in action_touched_fields and f.name not in explicit_names
-            end)
-
-          explicitly_optimistic ++ auto_optimistic
-        end
-
-        def __lavash__(:optimistic_derives) do
-          Spark.Dsl.Extension.get_entities(__MODULE__, [:derives])
-          |> Enum.filter(&(Map.get(&1, :optimistic, false) == true))
-        end
-
-        def __lavash_calculations__ do
-          Spark.Dsl.Extension.get_entities(__MODULE__, [:calculations])
-          |> Enum.map(fn calc ->
-            {calc.name, calc.rx.source, calc.rx.ast, calc.rx.deps,
-             Map.get(calc, :optimistic, true), Map.get(calc, :async, false),
-             Map.get(calc, :reads, [])}
-          end)
-        end
-
-        def __lavash_optimistic_actions__ do
-          @__lavash_optimistic_actions__ || []
-        end
-
+        unquote(callbacks_ast)
+        unquote(lavash_introspection_ast)
         unquote(colocated_ast)
       end
     )
+  end
+
+  defp build_callbacks_ast do
+    quote do
+      @impl Phoenix.LiveView
+      def handle_params(params, uri, socket) do
+        Lavash.LiveView.Runtime.handle_params(__MODULE__, params, uri, socket)
+      end
+
+      @impl Phoenix.LiveView
+      def handle_event(event, params, socket) do
+        Lavash.LiveView.Runtime.handle_event(__MODULE__, event, params, socket)
+      end
+
+      @impl Phoenix.LiveView
+      def handle_info(msg, socket) do
+        Lavash.LiveView.Runtime.handle_info(__MODULE__, msg, socket)
+      end
+
+      defoverridable handle_params: 3, handle_event: 3, handle_info: 2
+    end
+  end
+
+  defp build_lavash_introspection_ast do
+    quote do
+      def __lavash__(:states) do
+        Spark.Dsl.Extension.get_entities(__MODULE__, [:states])
+      end
+
+      def __lavash__(:reads) do
+        Spark.Dsl.Extension.get_entities(__MODULE__, [:reads])
+      end
+
+      def __lavash__(:forms) do
+        Spark.Dsl.Extension.get_entities(__MODULE__, [:forms])
+      end
+
+      def __lavash__(:extend_errors) do
+        Spark.Dsl.Extension.get_entities(__MODULE__, [:extend_errors_declarations])
+      end
+
+      def __lavash__(:actions) do
+        declared_actions = Spark.Dsl.Extension.get_entities(__MODULE__, [:actions])
+        setter_actions = Lavash.LiveView.Compiler.generate_setter_actions(__MODULE__)
+        optimistic_actions = Lavash.LiveView.Compiler.generate_optimistic_actions(__MODULE__)
+        declared_actions ++ setter_actions ++ optimistic_actions
+      end
+
+      def __lavash__(:url_fields) do
+        __lavash__(:states) |> Enum.filter(&(&1.from == :url))
+      end
+
+      def __lavash__(:socket_fields) do
+        __lavash__(:states) |> Enum.filter(&(&1.from == :socket))
+      end
+
+      def __lavash__(:ephemeral_fields) do
+        __lavash__(:states) |> Enum.filter(&(is_nil(&1.from) || &1.from == :ephemeral))
+      end
+
+      def __lavash__(:optimistic_fields) do
+        Lavash.LiveView.Compiler.collect_optimistic_fields(__MODULE__)
+      end
+
+      def __lavash__(:optimistic_derives) do
+        Spark.Dsl.Extension.get_entities(__MODULE__, [:derives])
+        |> Enum.filter(&(Map.get(&1, :optimistic, false) == true))
+      end
+
+      def __lavash_calculations__ do
+        Spark.Dsl.Extension.get_entities(__MODULE__, [:calculations])
+        |> Enum.map(fn calc ->
+          {calc.name, calc.rx.source, calc.rx.ast, calc.rx.deps, Map.get(calc, :optimistic, true),
+           Map.get(calc, :async, false), Map.get(calc, :reads, [])}
+        end)
+      end
+
+      def __lavash_optimistic_actions__ do
+        @__lavash_optimistic_actions__ || []
+      end
+    end
   end
 
   # ============================================

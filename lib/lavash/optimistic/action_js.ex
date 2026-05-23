@@ -50,18 +50,16 @@ defmodule Lavash.Optimistic.ActionJs do
   end
 
   def analyze_value(value) when is_function(value, 1) do
-    try do
-      test_ctx = %{params: %{value: "__TEST_VALUE__"}, state: %{}}
-      result = value.(test_ctx)
+    test_ctx = %{params: %{value: "__TEST_VALUE__"}, state: %{}}
+    result = value.(test_ctx)
 
-      if result == "__TEST_VALUE__" do
-        :from_params_value
-      else
-        :unknown
-      end
-    rescue
-      _ -> :unknown
+    if result == "__TEST_VALUE__" do
+      :from_params_value
+    else
+      :unknown
     end
+  rescue
+    _ -> :unknown
   end
 
   def analyze_value(_), do: :unknown
@@ -72,27 +70,25 @@ defmodule Lavash.Optimistic.ActionJs do
   Returns `{:increment, n}`, `{:decrement, n}`, or `:unknown`.
   """
   def analyze_update_function(fun) when is_function(fun, 1) do
-    try do
-      result_0 = fun.(0)
-      result_10 = fun.(10)
-      result_100 = fun.(100)
+    result_0 = fun.(0)
+    result_10 = fun.(10)
+    result_100 = fun.(100)
 
-      delta1 = result_0 - 0
-      delta2 = result_10 - 10
-      delta3 = result_100 - 100
+    delta1 = result_0 - 0
+    delta2 = result_10 - 10
+    delta3 = result_100 - 100
 
-      if delta1 == delta2 and delta2 == delta3 do
-        if delta1 >= 0 do
-          {:increment, delta1}
-        else
-          {:decrement, -delta1}
-        end
+    if delta1 == delta2 and delta2 == delta3 do
+      if delta1 >= 0 do
+        {:increment, delta1}
       else
-        :unknown
+        {:decrement, -delta1}
       end
-    rescue
-      _ -> :unknown
+    else
+      :unknown
     end
+  rescue
+    _ -> :unknown
   end
 
   def analyze_update_function(_), do: :unknown

@@ -371,7 +371,7 @@ defmodule Lavash.Template.TokenTransformer do
         {:expr, "@" <> field_name, _meta} ->
           field_atom = String.to_atom(field_name)
 
-          if is_optimistic_boolean?(field_atom, metadata) do
+          if optimistic_boolean?(field_atom, metadata) do
             add_attr_if_missing(attrs, "data-lavash-visible", {:string, field_name})
           else
             attrs
@@ -394,7 +394,7 @@ defmodule Lavash.Template.TokenTransformer do
             {:ok, field_name} ->
               field_atom = String.to_atom(field_name)
 
-              if is_optimistic_boolean?(field_atom, metadata) do
+              if optimistic_boolean?(field_atom, metadata) do
                 add_attr_if_missing(attrs, "data-lavash-enabled", {:string, field_name})
               else
                 attrs
@@ -533,7 +533,7 @@ defmodule Lavash.Template.TokenTransformer do
   end
 
   # Check if field is an optimistic boolean
-  defp is_optimistic_boolean?(field_atom, metadata) do
+  defp optimistic_boolean?(field_atom, metadata) do
     cond do
       is_map_key(metadata[:optimistic_fields] || %{}, field_atom) ->
         field = metadata[:optimistic_fields][field_atom]

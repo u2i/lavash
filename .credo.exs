@@ -4,7 +4,9 @@
       name: "default",
       files: %{
         included: ["lib/", "test/"],
-        excluded: [~r"/_build/", ~r"/deps/"]
+        # tag_engine.ex is a fork of Phoenix.LiveView.TagEngine — keep it close
+        # to upstream so we can rebase, not credo-clean.
+        excluded: [~r"/_build/", ~r"/deps/", ~r"lib/lavash/tag_engine\.ex$"]
       },
       plugins: [],
       requires: [],
