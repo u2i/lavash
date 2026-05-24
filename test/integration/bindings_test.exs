@@ -42,25 +42,24 @@ defmodule Lavash.Integration.BindingsTest do
     |> assert_has(css("#child-middle-grandchild-n", text: "1"))
   end
 
-  test "sibling components bound to the same field — each write reaches the parent", %{
-    session: session
-  } do
-    # Two children both bound to :shared. NOTE: as of writing, bind= is
-    # write-only — each child's local :n starts at its declared default (0)
-    # and is independent of the parent's :shared value. So child-a's bump
-    # propagates 1 → parent, then child-b's bump (starting from its own 0)
-    # also propagates 1 → parent. There's no observable "downward sync"
-    # from parent back into sibling children's local state. If that's ever
-    # added, broaden this test to check both children mirror the shared
-    # value after either write.
+  test "sibling components bound to the same field sync via the parent", %{session: session} do
+    # Two children both bound to :shared. Either child's bump should:
+    #   1. Update the parent's :shared via binding propagation
+    #   2. Re-render both children with the new shared value
+    # so subsequent bumps from either child see the up-to-date value.
     session
     |> visit("/bindings-siblings")
     |> assert_has(css("#shared", text: "0"))
+    |> assert_has(css("#child-a-n", text: "0"))
+    |> assert_has(css("#child-b-n", text: "0"))
     |> click(css("#child-a-bump"))
     |> assert_has(css("#shared", text: "1"))
     |> assert_has(css("#child-a-n", text: "1"))
-    |> click(css("#child-b-bump"))
     |> assert_has(css("#child-b-n", text: "1"))
+    |> click(css("#child-b-bump"))
+    |> assert_has(css("#shared", text: "2"))
+    |> assert_has(css("#child-a-n", text: "2"))
+    |> assert_has(css("#child-b-n", text: "2"))
   end
 
   test "binding chain survives parent re-render", %{session: session} do

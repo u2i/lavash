@@ -216,25 +216,87 @@ defmodule Lavash.Template.TokenTransformer do
   # Lavash component names that should receive __lavash_client_bindings__
   @lavash_components ~w(lavash_component)
 
-  # Only inject __lavash_client_bindings__ when:
-  # 1. Context is :component (Lavash.Component) - these receive bindings from parent
-  # 2. Component is a Lavash component (lavash_component)
-  # 3. Not already present
-  # LiveViews are top-level and don't have __lavash_client_bindings__ to pass down
-  # Regular Phoenix components (form, input, link, etc.) should NOT receive this
+  # Two compile-time injections on <.lavash_component> calls inside Lavash
+  # templates:
+  #
+  # 1. `__lavash_client_bindings__={@__lavash_client_bindings__}` — only in
+  #    component context, propagates the resolved client-binding chain so a
+  #    grandchild can resolve its binding back to the root LiveView field.
+  #
+  # 2. For each `{child_field, parent_field}` pair in the `bind=[...]`
+  #    attribute, inject `child_field={@parent_field}` so the child's
+  #    `update/2` sees the parent's current value under the local name. Fires
+  #    in both :live_view and :component contexts because either kind of
+  #    template can host a <.lavash_component>. Without this injection, bind
+  #    is effectively write-only — see u2i/lavash#10.
   defp maybe_inject_component_attrs(name, attrs, meta, metadata, _state) do
-    context = metadata[:context]
-
-    # Only inject in component context for Lavash components
-    if context == :component and
-         name in @lavash_components and
-         not has_attr?(attrs, "__lavash_client_bindings__") do
-      binding_attr =
-        {"__lavash_client_bindings__", {:expr, "@__lavash_client_bindings__", meta}, meta}
-
-      attrs ++ [binding_attr]
+    if name in @lavash_components do
+      attrs
+      |> maybe_inject_client_bindings(meta, metadata[:context])
+      |> maybe_inject_bound_field_values(meta)
     else
       attrs
+    end
+  end
+
+  defp maybe_inject_client_bindings(attrs, meta, :component) do
+    if has_attr?(attrs, "__lavash_client_bindings__") do
+      attrs
+    else
+      attrs ++
+        [
+          {"__lavash_client_bindings__", {:expr, "@__lavash_client_bindings__", meta}, meta}
+        ]
+    end
+  end
+
+  defp maybe_inject_client_bindings(attrs, _meta, _context), do: attrs
+
+  defp maybe_inject_bound_field_values(attrs, meta) do
+    case get_attr_value(attrs, "bind") do
+      {:expr, source, _expr_meta} ->
+        case parse_bind_pairs(source) do
+          {:ok, pairs} ->
+            Enum.reduce(pairs, attrs, fn {child_field, parent_field}, acc ->
+              child_attr_name = Atom.to_string(child_field)
+
+              if has_attr?(acc, child_attr_name) do
+                acc
+              else
+                acc ++
+                  [
+                    {child_attr_name, {:expr, "@#{parent_field}", meta}, meta}
+                  ]
+              end
+            end)
+
+          :error ->
+            attrs
+        end
+
+      _ ->
+        attrs
+    end
+  end
+
+  # Best-effort parser for `bind={[child: :parent, ...]}` source strings.
+  # We only handle the keyword-list literal shape because that's the shape
+  # the helper documents — anything more dynamic is up to the user to wire
+  # the values manually.
+  defp parse_bind_pairs(source) do
+    case Code.string_to_quoted(source) do
+      {:ok, list} when is_list(list) ->
+        if Enum.all?(list, fn
+             {child, parent} when is_atom(child) and is_atom(parent) -> true
+             _ -> false
+           end) do
+          {:ok, list}
+        else
+          :error
+        end
+
+      _ ->
+        :error
     end
   end
 
