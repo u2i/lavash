@@ -430,11 +430,7 @@ defmodule Lavash.Transformers.ExpandFields do
 
   defp spec_to_field(%{type: :derive} = spec, module) do
     # Look up the original entity to get run/compute fns and argument transforms
-    derive =
-      Enum.find(
-        Spark.Dsl.Extension.get_entities(module, [:derives]),
-        &(&1.name == spec.name)
-      )
+    derive = Enum.find(module.__lavash__(:derives), &(&1.name == spec.name))
 
     compute =
       if spec.has_run do

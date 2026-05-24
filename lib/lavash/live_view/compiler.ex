@@ -13,7 +13,7 @@ defmodule Lavash.LiveView.Compiler do
   def collect_optimistic_fields(module) do
     states = module.__lavash__(:states)
     explicitly_optimistic = Enum.filter(states, &Lavash.State.Field.optimistic?/1)
-    actions = Spark.Dsl.Extension.get_entities(module, [:actions]) || []
+    actions = module.__lavash__(:declared_actions)
 
     action_touched_fields =
       actions

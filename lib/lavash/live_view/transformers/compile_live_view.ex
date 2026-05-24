@@ -126,10 +126,24 @@ defmodule Lavash.LiveView.Transformers.CompileLiveView do
       end
 
       def __lavash__(:actions) do
-        declared_actions = Spark.Dsl.Extension.get_entities(__MODULE__, [:actions])
+        declared = __lavash__(:declared_actions)
         setter_actions = Lavash.LiveView.Compiler.generate_setter_actions(__MODULE__)
         optimistic_actions = Lavash.LiveView.Compiler.generate_optimistic_actions(__MODULE__)
-        declared_actions ++ setter_actions ++ optimistic_actions
+        declared ++ setter_actions ++ optimistic_actions
+      end
+
+      # The user-declared `action ... end` entities, unaugmented by the
+      # synthetic setter/optimistic actions that __lavash__(:actions) adds.
+      # Use this when generating the synthetic actions themselves so we don't
+      # recurse, and for callers that genuinely need only the user's intent.
+      def __lavash__(:declared_actions) do
+        Spark.Dsl.Extension.get_entities(__MODULE__, [:actions]) || []
+      end
+
+      # All `derive ... end` entities, including non-optimistic ones.
+      # __lavash__(:optimistic_derives) is the filtered subset.
+      def __lavash__(:derives) do
+        Spark.Dsl.Extension.get_entities(__MODULE__, [:derives]) || []
       end
 
       def __lavash__(:url_fields) do
