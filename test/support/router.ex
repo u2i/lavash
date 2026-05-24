@@ -29,5 +29,6 @@ defmodule Lavash.TestRouter do
     live("/bindings-siblings", TestBindingSiblingsHostLive)
     live("/dom-directives", TestDomDirectivesLive)
     live("/arrays", TestArraysLive)
+    live("/form", TestFormLive)
   end
 end
