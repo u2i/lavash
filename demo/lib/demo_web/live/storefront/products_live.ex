@@ -202,55 +202,6 @@ defmodule DemoWeb.Storefront.ProductsLive do
   defp parse_delta(d) when is_integer(d), do: d
   defp parse_delta(d) when is_binary(d), do: String.to_integer(d)
 
-  # Handle key-based mutations from CartItemList component
-  # These are sent when the component is bound to cart_items_json
-
-  def handle_info({:lavash_component_increment, _field, %{key: item_id}}, socket) do
-    case Ash.get(CartItem, item_id) do
-      {:ok, item} ->
-        item
-        |> Ash.Changeset.for_update(:update_quantity, %{quantity: item.quantity + 1})
-        |> Ash.update!()
-
-      _ ->
-        nil
-    end
-
-    Lavash.PubSub.broadcast(CartItem)
-    {:noreply, socket}
-  end
-
-  def handle_info({:lavash_component_decrement, _field, %{key: item_id}}, socket) do
-    case Ash.get(CartItem, item_id) do
-      {:ok, item} ->
-        new_qty = item.quantity - 1
-
-        if new_qty <= 0 do
-          Ash.destroy!(item)
-        else
-          item
-          |> Ash.Changeset.for_update(:update_quantity, %{quantity: new_qty})
-          |> Ash.update!()
-        end
-
-      _ ->
-        nil
-    end
-
-    Lavash.PubSub.broadcast(CartItem)
-    {:noreply, socket}
-  end
-
-  def handle_info({:lavash_component_remove, _field, %{key: item_id}}, socket) do
-    case Ash.get(CartItem, item_id) do
-      {:ok, item} -> Ash.destroy!(item)
-      _ -> nil
-    end
-
-    Lavash.PubSub.broadcast(CartItem)
-    {:noreply, socket}
-  end
-
   # Mount hook to find or create cart for current user
   def on_mount(socket) do
     user = socket.assigns[:current_user]
