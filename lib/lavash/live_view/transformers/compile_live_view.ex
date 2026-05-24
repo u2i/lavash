@@ -82,6 +82,7 @@ defmodule Lavash.LiveView.Transformers.CompileLiveView do
     quote do
       @after_compile {Lavash.Dsl.Graph, :erase}
       @after_compile {Lavash.Reactive, :erase_graph}
+      @after_compile {Lavash.Rx.Cache, :erase}
     end
   end
 

@@ -93,8 +93,8 @@ defmodule Lavash.LiveView.Helpers do
       # Skip non-optimistic calculations
       if optimistic do
         try do
-          {result, _binding} = Code.eval_quoted(ast, [state: acc], __ENV__)
-          Map.put(acc, name, result)
+          fun = Lavash.Rx.Cache.compile_rx(module, ast)
+          Map.put(acc, name, fun.(acc))
         rescue
           _ -> acc
         end

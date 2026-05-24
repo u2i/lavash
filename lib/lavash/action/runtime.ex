@@ -41,7 +41,7 @@ defmodule Lavash.Action.Runtime do
     states = module.__lavash__(:states)
 
     Enum.reduce(sets, socket, fn set, sock ->
-      value = evaluate_set_value(set.value, sock, params)
+      value = evaluate_set_value(set.value, sock, params, module)
 
       # Coerce value to the field's declared type
       state_field = Enum.find(states, &(&1.name == set.field))
@@ -52,22 +52,21 @@ defmodule Lavash.Action.Runtime do
   end
 
   # Evaluate a set value based on its type
-  defp evaluate_set_value(%Lavash.Rx{ast: ast}, sock, params) do
+  defp evaluate_set_value(%Lavash.Rx{ast: ast}, sock, params, module) do
     # Build state map from all lavash fields + params
     state =
       LSocket.full_state(sock)
       |> Map.merge(params)
 
-    {result, _} = Code.eval_quoted(ast, [state: state], __ENV__)
-    result
+    Lavash.Rx.Cache.compile_rx(module, ast).(state)
   end
 
-  defp evaluate_set_value(fun, sock, params) when is_function(fun, 1) do
+  defp evaluate_set_value(fun, sock, params, _module) when is_function(fun, 1) do
     state = LSocket.full_state(sock)
     fun.(%{params: params, state: state})
   end
 
-  defp evaluate_set_value(literal, _sock, _params) do
+  defp evaluate_set_value(literal, _sock, _params, _module) do
     # Literal value
     literal
   end
@@ -80,13 +79,12 @@ defmodule Lavash.Action.Runtime do
 
   This enables proper change tracking via the assigns mechanism.
   """
-  def apply_runs(socket, runs, params, _module) do
+  def apply_runs(socket, runs, params, module) do
     Enum.reduce(runs || [], socket, fn run, sock ->
       state = LSocket.state(sock)
       assigns = Map.merge(state, params) |> Map.put(:__changed__, %{})
 
-      # Compile and execute the function from its AST
-      fun = compile_run_fun(run.fun)
+      fun = Lavash.Rx.Cache.compile_run_fun(module, run.fun)
       updated_assigns = fun.(assigns)
 
       # Extract changed fields and apply them to socket
@@ -97,21 +95,6 @@ defmodule Lavash.Action.Runtime do
         LSocket.put_state(acc_sock, field, value)
       end)
     end)
-  end
-
-  # Compile a function from its quoted AST
-  defp compile_run_fun(fun_ast) do
-    # Fun AST is in the form {:fn, _, [{:->, _, [[arg], body]}]}
-    # We need to eval it with Phoenix.Component imported for assign/3
-    # Wrap the AST with an import statement
-    wrapped_ast =
-      quote do
-        import Phoenix.Component, only: [assign: 3]
-        unquote(fun_ast)
-      end
-
-    {fun, _bindings} = Code.eval_quoted(wrapped_ast, [], __ENV__)
-    fun
   end
 
   @doc """

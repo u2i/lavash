@@ -79,6 +79,7 @@ defmodule Lavash.Component.Transformers.CompileComponent do
 
         @after_compile {Lavash.Dsl.Graph, :erase}
         @after_compile {Lavash.Reactive, :erase_graph}
+        @after_compile {Lavash.Rx.Cache, :erase}
 
         unquote(render_ast)
 

@@ -653,7 +653,7 @@ defmodule Lavash.Transformers.ExpandFields do
     }
   end
 
-  defp spec_to_field(%{type: :form_field_errors} = spec, _module) do
+  defp spec_to_field(%{type: :form_field_errors} = spec, module) do
     params_dep = spec.params_dep
     server_errors_dep = spec.server_errors_dep
     field_str = spec.field_str
@@ -696,17 +696,16 @@ defmodule Lavash.Transformers.ExpandFields do
 
         custom_error_messages =
           Enum.flat_map(custom_error_specs, fn {condition_ast, message_spec} ->
-            {result, _binding} = Code.eval_quoted(condition_ast, [state: deps], __ENV__)
+            condition_fun = Lavash.Rx.Cache.compile_rx(module, condition_ast)
 
-            if result do
+            if condition_fun.(deps) do
               message =
                 case message_spec do
                   {:static, msg} ->
                     msg
 
                   {:dynamic, msg_ast} ->
-                    {msg_result, _} = Code.eval_quoted(msg_ast, [state: deps], __ENV__)
-                    msg_result
+                    Lavash.Rx.Cache.compile_rx(module, msg_ast).(deps)
                 end
 
               [message]
@@ -761,6 +760,14 @@ defmodule Lavash.Transformers.ExpandFields do
     ast = spec.ast
     module = spec.module
 
+    # rewrite_string_calls and rewrite_local_calls are deterministic given the
+    # module, so hoist them outside the per-fire closure. The cache then
+    # compiles the rewritten AST once per module load.
+    rewritten_ast =
+      ast
+      |> rewrite_string_calls()
+      |> rewrite_local_calls(module)
+
     %Lavash.Derived.Field{
       name: spec.name,
       depends_on: spec.depends_on,
@@ -768,15 +775,7 @@ defmodule Lavash.Transformers.ExpandFields do
       reads: spec.reads,
       optimistic: Map.get(spec, :optimistic, false),
       compute: fn deps_map ->
-        eval_env = %{__ENV__ | module: module}
-
-        rewritten_ast =
-          ast
-          |> rewrite_string_calls()
-          |> rewrite_local_calls(module)
-
-        {result, _binding} = Code.eval_quoted(rewritten_ast, [state: deps_map], eval_env)
-        result
+        Lavash.Rx.Cache.compile_rx(module, rewritten_ast).(deps_map)
       end
     }
   end
