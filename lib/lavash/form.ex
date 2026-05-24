@@ -25,12 +25,26 @@ defmodule Lavash.Form do
 
   @impl Access
   def get_and_update(%__MODULE__{}, _key, _fun) do
-    raise ArgumentError, "cannot update a Lavash.Form via Access"
+    raise ArgumentError, """
+    Cannot update a Lavash.Form struct via the Access protocol
+    (e.g. `update_in/3`, `put_in/2`).
+
+    Form params are managed by Lavash's optimistic update machinery — the
+    Lavash.Form struct is reconstructed from the underlying changeset on
+    each render and is not meant to be mutated directly. To change params,
+    send a phx-change event for the form (e.g. via an <input phx-change=...>
+    or a Lavash setter action) so the change flows through the same
+    validation path as user input.
+    """
   end
 
   @impl Access
   def pop(%__MODULE__{}, _key) do
-    raise ArgumentError, "cannot pop from a Lavash.Form"
+    raise ArgumentError, """
+    Cannot pop a field from a Lavash.Form struct — the wrapper holds a
+    changeset, not arbitrary user data. See `get_and_update/3` for the
+    same reasoning.
+    """
   end
 
   @doc """

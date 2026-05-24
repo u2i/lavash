@@ -7,6 +7,19 @@ defmodule Lavash.LiveView.Components do
 
       import Lavash.LiveView.Components
 
+  ## Styling dependency: daisyUI
+
+  These components ship with hard-coded [daisyUI](https://daisyui.com)
+  classes (`input input-bordered`, `select select-bordered`,
+  `floating-label`, etc.). Using them without daisyUI installed produces
+  unstyled markup — the components still work, just look unstyled.
+
+  If you're not on daisyUI, copy these components into your own app and
+  swap the class lists for your design system, or render the underlying
+  HTML directly with the `data-lavash-*` attributes from
+  `Lavash.LiveView.Helpers`. The lavash optimistic / validation
+  machinery lives in those attributes, not the classes.
+
   ## Input Component
 
   The `input/1` component renders a complete form field with:

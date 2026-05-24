@@ -178,8 +178,21 @@ defmodule Lavash.Rx do
     expanded_body = expand_defrx_calls(body, defrx_map)
 
     caller_module = __CALLER__.module
+
+    # Imports the caller has in scope when this rx() expands. We can't rely
+    # on Elixir's normal import resolution at runtime — the stored AST is
+    # evaluated via Code.eval_quoted in a fresh env with no imports — so we
+    # bake the resolution in here: bare calls to imported functions become
+    # explicit Mod.fun(...) references to the original module.
+    import_map = build_import_map(__CALLER__.functions, __CALLER__.macros)
+
     source = Macro.to_string(expanded_body)
-    ast = expanded_body |> transform_at_refs() |> qualify_local_calls(caller_module)
+
+    ast =
+      expanded_body
+      |> transform_at_refs()
+      |> qualify_local_calls(caller_module, import_map)
+
     deps = extract_deps(expanded_body)
 
     quote do
@@ -415,40 +428,64 @@ defmodule Lavash.Rx do
 
   defp extract_path(_, _), do: :not_a_path
 
-  # Qualify bare function calls with the caller's module so Code.eval_quoted can resolve them.
-  # Already-qualified calls (Mod.fun), Kernel builtins, and special forms are left alone.
-  defp qualify_local_calls({name, meta, args}, module) when is_atom(name) and is_list(args) do
-    args = Enum.map(args, &qualify_local_calls(&1, module))
+  # Build a map of {name, arity} -> source module from the caller's imports.
+  # Kernel is dropped because Kernel calls are left bare.
+  defp build_import_map(functions, macros) do
+    (functions ++ macros)
+    |> Enum.reject(fn {mod, _funs} -> mod == Kernel end)
+    |> Enum.reduce(%{}, fn {mod, funs}, acc ->
+      Enum.reduce(funs, acc, fn {name, arity}, inner ->
+        Map.put_new(inner, {name, arity}, mod)
+      end)
+    end)
+  end
+
+  # Qualify bare function calls so Code.eval_quoted can resolve them in a
+  # fresh env (no imports). The qualification target is:
+  #
+  # - For imported names: the import's source module (e.g. `upcase(x)`
+  #   becomes `String.upcase(x)` if `import String, only: [upcase: 1]`).
+  # - Otherwise: the caller's module (assumes the user defined the helper
+  #   locally).
+  #
+  # Already-qualified calls (Mod.fun), Kernel builtins, and special forms
+  # are left alone.
+  defp qualify_local_calls({name, meta, args}, module, import_map)
+       when is_atom(name) and is_list(args) do
+    args = Enum.map(args, &qualify_local_calls(&1, module, import_map))
+    arity = length(args)
 
     cond do
-      # Special forms and Kernel macros/functions — leave unqualified
-      Macro.special_form?(name, length(args)) ->
+      Macro.special_form?(name, arity) ->
         {name, meta, args}
 
-      Macro.operator?(name, length(args)) ->
+      Macro.operator?(name, arity) ->
         {name, meta, args}
 
-      function_exported?(Kernel, name, length(args)) or
-          macro_exported?(Kernel, name, length(args)) ->
+      function_exported?(Kernel, name, arity) or macro_exported?(Kernel, name, arity) ->
         {name, meta, args}
 
-      # Bare local call — qualify with caller module
+      Map.has_key?(import_map, {name, arity}) ->
+        {{:., [], [Map.fetch!(import_map, {name, arity}), name]}, [], args}
+
       true ->
         {{:., [], [module, name]}, [], args}
     end
   end
 
-  defp qualify_local_calls({form, meta, args}, module) when is_list(args) do
-    {qualify_local_calls(form, module), meta, Enum.map(args, &qualify_local_calls(&1, module))}
+  defp qualify_local_calls({form, meta, args}, module, import_map) when is_list(args) do
+    {qualify_local_calls(form, module, import_map), meta,
+     Enum.map(args, &qualify_local_calls(&1, module, import_map))}
   end
 
-  defp qualify_local_calls({left, right}, module) do
-    {qualify_local_calls(left, module), qualify_local_calls(right, module)}
+  defp qualify_local_calls({left, right}, module, import_map) do
+    {qualify_local_calls(left, module, import_map),
+     qualify_local_calls(right, module, import_map)}
   end
 
-  defp qualify_local_calls(list, module) when is_list(list) do
-    Enum.map(list, &qualify_local_calls(&1, module))
+  defp qualify_local_calls(list, module, import_map) when is_list(list) do
+    Enum.map(list, &qualify_local_calls(&1, module, import_map))
   end
 
-  defp qualify_local_calls(other, _module), do: other
+  defp qualify_local_calls(other, _module, _import_map), do: other
 end

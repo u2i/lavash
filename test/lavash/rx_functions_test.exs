@@ -156,4 +156,27 @@ defmodule Lavash.Rx.FunctionsTest do
       assert :is_amex in rx.deps
     end
   end
+
+  describe "rx with `import` (plain Elixir, not import_rx)" do
+    defmodule WithPlainImport do
+      import Lavash.Rx
+      # Plain Elixir import — not import_rx. Lavash should still resolve
+      # `upcase` to String.upcase at the qualify_local_calls step using the
+      # caller's import map.
+      import String, only: [upcase: 1]
+
+      def upper_rx, do: rx(upcase(@name))
+    end
+
+    test "bare imported call is qualified with its source module, not the caller" do
+      rx = WithPlainImport.upper_rx()
+
+      # Eval the AST against a state — if qualify_local_calls wrongly resolved
+      # `upcase` to WithPlainImport.upcase, this would raise
+      # UndefinedFunctionError. With the import-aware fix it resolves to
+      # String.upcase/1.
+      {result, _} = Code.eval_quoted(rx.ast, [state: %{name: "alice"}], __ENV__)
+      assert result == "ALICE"
+    end
+  end
 end
