@@ -1,31 +1,22 @@
 defmodule Lavash.Test.Explicit.ChainedEphemeralLive do
   @moduledoc """
-  Plain Phoenix.LiveView counterpart to
-  Lavash.Test.Magic.ChainedEphemeralLive. Same chain over ephemeral state.
+  Counterpart to Lavash.Test.Magic.ChainedEphemeralLive using
+  Lavash.LiveView.Explicit. Ephemeral state has no special handling
+  in the explicit path — every state is just an assigned value that
+  resets on remount.
   """
-  use Phoenix.LiveView
+  use Lavash.LiveView.Explicit
 
-  @impl Phoenix.LiveView
-  def mount(_params, _session, socket) do
-    {:ok, recompute(assign(socket, base: 1))}
+  reactive do
+    state :base, 1
+    derive :doubled, rx(@base * 2)
+    derive :quadrupled, rx(@doubled * 2)
+    derive :octupled, rx(@quadrupled * 2)
   end
 
   @impl Phoenix.LiveView
   def handle_event("increment", _, socket) do
-    {:noreply, recompute(update(socket, :base, &(&1 + 1)))}
-  end
-
-  defp recompute(socket) do
-    base = socket.assigns.base
-    doubled = base * 2
-    quadrupled = doubled * 2
-    octupled = quadrupled * 2
-
-    assign(socket,
-      doubled: doubled,
-      quadrupled: quadrupled,
-      octupled: octupled
-    )
+    {:noreply, put_state(socket, :base, &(&1 + 1))}
   end
 
   @impl Phoenix.LiveView

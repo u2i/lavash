@@ -1,15 +1,16 @@
 defmodule Lavash.Test.Explicit.ChainedDerivedLive do
   @moduledoc """
-  Plain Phoenix.LiveView counterpart to Lavash.Test.Magic.ChainedDerivedLive.
-  Same chain: count → doubled → quadrupled → octupled. No DSL — derived
-  values are recomputed in a private helper that fires after every state
-  mutation.
+  Counterpart to Lavash.Test.Magic.ChainedDerivedLive using
+  Lavash.LiveView.Explicit. The reactive engine handles the chain;
+  no manual recompute helpers needed.
   """
-  use Phoenix.LiveView
+  use Lavash.LiveView.Explicit
 
-  @impl Phoenix.LiveView
-  def mount(_params, _session, socket) do
-    {:ok, socket}
+  reactive do
+    state :count, 1
+    derive :doubled, rx(@count * 2)
+    derive :quadrupled, rx(@doubled * 2)
+    derive :octupled, rx(@quadrupled * 2)
   end
 
   @impl Phoenix.LiveView
@@ -20,29 +21,16 @@ defmodule Lavash.Test.Explicit.ChainedDerivedLive do
         _ -> 1
       end
 
-    {:noreply, recompute(assign(socket, count: count))}
+    {:noreply, put_state(socket, :count, count)}
   end
 
   @impl Phoenix.LiveView
   def handle_event("increment", _, socket) do
-    {:noreply, recompute(update(socket, :count, &(&1 + 1)))}
+    {:noreply, put_state(socket, :count, &(&1 + 1))}
   end
 
   def handle_event("set_count", %{"value" => v}, socket) do
-    {:noreply, recompute(assign(socket, count: String.to_integer(v)))}
-  end
-
-  defp recompute(socket) do
-    count = socket.assigns.count
-    doubled = count * 2
-    quadrupled = doubled * 2
-    octupled = quadrupled * 2
-
-    assign(socket,
-      doubled: doubled,
-      quadrupled: quadrupled,
-      octupled: octupled
-    )
+    {:noreply, put_state(socket, :count, String.to_integer(v))}
   end
 
   @impl Phoenix.LiveView

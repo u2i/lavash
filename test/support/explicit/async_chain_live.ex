@@ -1,14 +1,21 @@
 defmodule Lavash.Test.Explicit.AsyncChainLive do
   @moduledoc """
-  Plain Phoenix.LiveView counterpart to Lavash.Test.Magic.AsyncChainLive.
-  Uses assign_async/3 for the slow_double step instead of
-  `calculate :doubled, rx(...), async: true`.
+  Counterpart to Lavash.Test.Magic.AsyncChainLive using
+  Lavash.LiveView.Explicit. Demonstrates async derives without the DSL —
+  same `Lavash.Reactive.handle_async/2` dispatch the magic path uses,
+  wired up by the `use` macro.
   """
-  use Phoenix.LiveView
+  use Lavash.LiveView.Explicit
 
-  @impl Phoenix.LiveView
-  def mount(_params, _session, socket) do
-    {:ok, socket}
+  reactive do
+    state :count, 1
+    derive(:doubled, rx(slow_double(@count)), async: true)
+    derive :quadrupled, rx(@doubled * 2)
+  end
+
+  def slow_double(c) do
+    Process.sleep(50)
+    c * 2
   end
 
   @impl Phoenix.LiveView
@@ -19,43 +26,31 @@ defmodule Lavash.Test.Explicit.AsyncChainLive do
         _ -> 1
       end
 
-    {:noreply, recompute(assign(socket, count: count))}
+    {:noreply, put_state(socket, :count, count)}
   end
 
   @impl Phoenix.LiveView
   def handle_event("increment", _, socket) do
-    {:noreply, recompute(update(socket, :count, &(&1 + 1)))}
+    {:noreply, put_state(socket, :count, &(&1 + 1))}
   end
-
-  defp recompute(socket) do
-    count = socket.assigns.count
-
-    socket
-    |> Phoenix.LiveView.assign_async(:doubled, fn ->
-      {:ok, %{doubled: slow_double(count)}}
-    end)
-    |> assign(quadrupled_pending: count)
-  end
-
-  def slow_double(c) do
-    Process.sleep(50)
-    c * 2
-  end
-
-  @impl Phoenix.LiveView
-  def handle_async(:doubled, {:ok, %{doubled: val}}, socket) do
-    {:noreply, assign(socket, doubled_value: val, quadrupled: val * 2)}
-  end
-
-  def handle_async(_, _, socket), do: {:noreply, socket}
 
   @impl Phoenix.LiveView
   def render(assigns) do
     ~H"""
     <div>
       <span id="count">{@count}</span>
-      <span id="doubled">{assigns[:doubled_value]}</span>
-      <span id="quadrupled">{assigns[:quadrupled]}</span>
+      <span id="doubled">
+        <%= case @doubled do %>
+          <% %Phoenix.LiveView.AsyncResult{ok?: true, result: val} -> %>{val}
+          <% _ -> %>loading
+        <% end %>
+      </span>
+      <span id="quadrupled">
+        <%= case @quadrupled do %>
+          <% %Phoenix.LiveView.AsyncResult{ok?: true, result: val} -> %>{val}
+          <% _ -> %>loading
+        <% end %>
+      </span>
       <button id="inc" phx-click="increment">+</button>
     </div>
     """
