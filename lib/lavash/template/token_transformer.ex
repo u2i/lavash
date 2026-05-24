@@ -95,34 +95,39 @@ defmodule Lavash.Template.TokenTransformer do
     calculations = metadata[:calculations] || %{}
     all_optimistic = Map.merge(optimistic_fields, Map.merge(optimistic_derives, calculations))
 
-    if map_size(all_optimistic) == 0 do
-      tokens
-    else
-      wrap_display_exprs(tokens, all_optimistic, [])
-    end
+    # Always walk for diagnostics, even when there's nothing to wrap — a
+    # declared-but-non-optimistic bare-ref is still worth warning about.
+    wrap_display_exprs(tokens, all_optimistic, metadata, [])
   end
 
-  defp wrap_display_exprs([], _fields, acc), do: Enum.reverse(acc)
+  defp wrap_display_exprs([], _fields, _metadata, acc), do: Enum.reverse(acc)
 
   # `inside_display_element?/1` walks the accumulator to decide whether a
   # body_expr is already inside a wrapper, so tags themselves just pass through.
-  defp wrap_display_exprs([{:tag, _name, _attrs, _meta} = tag | rest], fields, acc) do
-    wrap_display_exprs(rest, fields, [tag | acc])
+  defp wrap_display_exprs(
+         [{:tag, _name, _attrs, _meta} = tag | rest],
+         fields,
+         metadata,
+         acc
+       ) do
+    wrap_display_exprs(rest, fields, metadata, [tag | acc])
   end
 
   defp wrap_display_exprs(
          [{:body_expr, expr, expr_meta} | rest],
          fields,
+         metadata,
          acc
        ) do
     case extract_optimistic_field_ref(expr, fields) do
       nil ->
-        wrap_display_exprs(rest, fields, [{:body_expr, expr, expr_meta} | acc])
+        warn_if_non_optimistic_bare_ref(expr, expr_meta, metadata)
+        wrap_display_exprs(rest, fields, metadata, [{:body_expr, expr, expr_meta} | acc])
 
       field_name ->
         # Check if we're already inside an element with data-lavash-display
         if inside_display_element?(acc) do
-          wrap_display_exprs(rest, fields, [{:body_expr, expr, expr_meta} | acc])
+          wrap_display_exprs(rest, fields, metadata, [{:body_expr, expr, expr_meta} | acc])
         else
           # Wrap: <span data-lavash-display="field">{@field}</span>
           span_meta = %{
@@ -149,13 +154,45 @@ defmodule Lavash.Template.TokenTransformer do
             {:tag, "span", [display_attr], span_meta}
           ]
 
-          wrap_display_exprs(rest, fields, tokens ++ acc)
+          wrap_display_exprs(rest, fields, metadata, tokens ++ acc)
         end
     end
   end
 
-  defp wrap_display_exprs([token | rest], fields, acc) do
-    wrap_display_exprs(rest, fields, [token | acc])
+  defp wrap_display_exprs([token | rest], fields, metadata, acc) do
+    wrap_display_exprs(rest, fields, metadata, [token | acc])
+  end
+
+  # Diagnostic: if the user wrote a bare {@field} where :field is a declared
+  # state field but isn't optimistic, the template renders as plain text — the
+  # JS hook won't pick it up. Most likely a missing `optimistic: true`.
+  # Silent for non-bare expressions and for fields we don't know about.
+  defp warn_if_non_optimistic_bare_ref(expr, expr_meta, metadata) do
+    all_state = metadata[:all_state_fields] || %{}
+    optimistic = metadata[:optimistic_fields] || %{}
+
+    with [_, field_str] <- Regex.run(~r/^@(\w+)$/, String.trim(expr)),
+         field_atom = safe_existing_atom(field_str),
+         true <- not is_nil(field_atom),
+         true <- is_map_key(all_state, field_atom),
+         false <- is_map_key(optimistic, field_atom) do
+      require Logger
+
+      Logger.warning(
+        "[lavash] {@#{field_str}} in #{metadata[:caller_file] || "template"}:" <>
+          "#{expr_meta[:line] || "?"} renders as plain text — :#{field_str} is " <>
+          "declared but not optimistic. Add `optimistic: true` to enable " <>
+          "client-side updates."
+      )
+    end
+
+    :ok
+  end
+
+  defp safe_existing_atom(str) do
+    String.to_existing_atom(str)
+  rescue
+    ArgumentError -> nil
   end
 
   # Check if the accumulator's most recent unclosed tag has data-lavash-display.
@@ -233,7 +270,7 @@ defmodule Lavash.Template.TokenTransformer do
     if name in @lavash_components do
       attrs
       |> maybe_inject_client_bindings(meta, metadata[:context])
-      |> maybe_inject_bound_field_values(meta)
+      |> maybe_inject_bound_field_values(meta, metadata)
     else
       attrs
     end
@@ -252,11 +289,13 @@ defmodule Lavash.Template.TokenTransformer do
 
   defp maybe_inject_client_bindings(attrs, _meta, _context), do: attrs
 
-  defp maybe_inject_bound_field_values(attrs, meta) do
+  defp maybe_inject_bound_field_values(attrs, meta, metadata) do
     case get_attr_value(attrs, "bind") do
-      {:expr, source, _expr_meta} ->
+      {:expr, source, expr_meta} ->
         case parse_bind_pairs(source) do
           {:ok, pairs} ->
+            warn_if_bind_targets_unknown(pairs, expr_meta, metadata)
+
             Enum.reduce(pairs, attrs, fn {child_field, parent_field}, acc ->
               child_attr_name = Atom.to_string(child_field)
 
@@ -277,6 +316,31 @@ defmodule Lavash.Template.TokenTransformer do
       _ ->
         attrs
     end
+  end
+
+  # Diagnostic: `bind={[child: :parent]}` where :parent isn't declared on the
+  # host module would silently produce a write-only binding (parent's value
+  # never flows down into the child because there is no such field).
+  defp warn_if_bind_targets_unknown(pairs, expr_meta, metadata) do
+    all_state = metadata[:all_state_fields] || %{}
+
+    # Empty all_state means we're being called from a context that didn't
+    # provide it (older callers / tests). Skip to avoid false positives.
+    if map_size(all_state) > 0 do
+      for {child, parent} <- pairs, not is_map_key(all_state, parent) do
+        require Logger
+
+        Logger.warning(
+          "[lavash] bind=#{inspect([{child, parent}])} in " <>
+            "#{metadata[:caller_file] || "template"}:#{expr_meta[:line] || "?"} " <>
+            "— :#{parent} is not a declared state field on " <>
+            "#{inspect(metadata[:caller_module])}. The child won't receive " <>
+            "parent updates."
+        )
+      end
+    end
+
+    :ok
   end
 
   # Best-effort parser for `bind={[child: :parent, ...]}` source strings.

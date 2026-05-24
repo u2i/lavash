@@ -584,4 +584,125 @@ defmodule Lavash.Template.TokenTransformerTest do
       refute has_display_span?(result, "roast")
     end
   end
+
+  # ============================================
+  # Compile-time diagnostics
+  # ============================================
+
+  defp metadata_with_state(opts) do
+    fields = Keyword.get(opts, :fields, [])
+    optimistic = Keyword.get(opts, :optimistic, [])
+
+    all_state =
+      Enum.map(fields, fn name ->
+        {name, %{name: name, type: :any, optimistic: name in optimistic, from: :ephemeral}}
+      end)
+      |> Map.new()
+
+    optimistic_metadata(optimistic)
+    |> Map.put(:all_state_fields, all_state)
+    |> Map.put(:caller_module, __MODULE__)
+    |> Map.put(:caller_file, "test.exs")
+  end
+
+  describe "diagnostics: non-optimistic bare-ref" do
+    test "warns when bare {@field} references a declared-but-not-optimistic state" do
+      tokens = [body_expr("@count")]
+      metadata = metadata_with_state(fields: [:count], optimistic: [])
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          transform(tokens, metadata)
+        end)
+
+      assert log =~ "renders as plain text"
+      assert log =~ ":count is"
+    end
+
+    test "stays silent when bare {@field} is optimistic" do
+      tokens = [body_expr("@count")]
+      metadata = metadata_with_state(fields: [:count], optimistic: [:count])
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          transform(tokens, metadata)
+        end)
+
+      refute log =~ "plain text"
+    end
+
+    test "stays silent when @ref isn't a declared state field" do
+      # {@some_helper_value} is fine — could be a calculated value, an
+      # imported helper, etc. Not worth warning about.
+      tokens = [body_expr("@some_helper_value")]
+      metadata = metadata_with_state(fields: [:count], optimistic: [:count])
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          transform(tokens, metadata)
+        end)
+
+      refute log =~ "plain text"
+    end
+
+    test "stays silent for non-bare expressions" do
+      tokens = [body_expr("inspect(@count)")]
+      metadata = metadata_with_state(fields: [:count], optimistic: [])
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          transform(tokens, metadata)
+        end)
+
+      refute log =~ "plain text"
+    end
+  end
+
+  defp local_component(name, attrs) do
+    {:local_component, name, attrs, meta(tag_name: name)}
+  end
+
+  describe "diagnostics: bind to undeclared parent" do
+    test "warns when bind targets a parent field that isn't declared" do
+      tokens = [
+        local_component("lavash_component", [
+          string_attr("module", "Child"),
+          string_attr("id", "x"),
+          expr_attr("bind", "[n: :missing]")
+        ])
+      ]
+
+      metadata =
+        metadata_with_state(fields: [:count, :other])
+        |> Map.put(:context, :live_view)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          transform(tokens, metadata)
+        end)
+
+      assert log =~ ":missing is not a declared state field"
+    end
+
+    test "stays silent when bind targets a real state field" do
+      tokens = [
+        local_component("lavash_component", [
+          string_attr("module", "Child"),
+          string_attr("id", "x"),
+          expr_attr("bind", "[n: :count]")
+        ])
+      ]
+
+      metadata =
+        metadata_with_state(fields: [:count])
+        |> Map.put(:context, :live_view)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          transform(tokens, metadata)
+        end)
+
+      refute log =~ "not a declared state field"
+    end
+  end
 end

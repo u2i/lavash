@@ -246,6 +246,18 @@ defmodule Lavash.Component.Transformers.CompileComponent do
 
     optimistic_fields = Map.merge(optimistic_fields, implicit_form_fields)
 
+    # All declared state fields (including non-optimistic ones). Used by the
+    # token transformer to diagnose `{@field}` references in `~L` where the
+    # field is declared but not optimistic — likely a user mistake.
+    all_state_fields =
+      states
+      |> Enum.map(fn
+        %Lavash.State.Field{name: name} = field -> {name, field}
+        other -> {Map.get(other, :name), other}
+      end)
+      |> Enum.reject(fn {name, _} -> is_nil(name) end)
+      |> Map.new()
+
     forms_map =
       forms
       |> Enum.map(fn form ->
@@ -291,13 +303,15 @@ defmodule Lavash.Component.Transformers.CompileComponent do
     %{
       context: context,
       optimistic_fields: optimistic_fields,
+      all_state_fields: all_state_fields,
       optimistic_derives: form_derives,
       calculations: calc_map,
       forms: forms_map,
       actions: actions_map,
       optimistic_actions: optimistic_actions_map,
       attr_derives: attr_derives,
-      caller_module: env.module
+      caller_module: env.module,
+      caller_file: env.file
     }
   end
 
