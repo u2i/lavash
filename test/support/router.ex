@@ -31,4 +31,17 @@ defmodule Lavash.TestRouter do
     live("/arrays", ArraysLive)
     live("/form", FormLive)
   end
+
+  # Parallel "explicit" path: plain Phoenix.LiveView, no Lavash DSL.
+  # Only the features that meaningfully translate without the DSL are
+  # mirrored — bindings, optimistic state, DOM directives, forms, and
+  # overlays are intentionally absent because they ARE the DSL.
+  scope "/explicit", Lavash.Test.Explicit do
+    pipe_through(:browser)
+
+    live("/counter", CounterLive)
+    live("/chained", ChainedDerivedLive)
+    live("/chained-ephemeral", ChainedEphemeralLive)
+    live("/async-chain", AsyncChainLive)
+  end
 end
