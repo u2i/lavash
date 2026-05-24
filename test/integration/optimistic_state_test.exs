@@ -11,14 +11,14 @@ defmodule Lavash.Integration.OptimisticStateTest do
   test "optimistic scalar updates reach the server and re-render", %{session: session} do
     # TestDomDirectivesLive has state :n, :integer, ..., optimistic: true.
     session
-    |> visit("/dom-directives")
+    |> visit("/magic/dom-directives")
     |> click(css("#bump"))
     |> assert_has(css("p", text: "Count: 1"))
   end
 
   test "optimistic boolean toggles re-render correctly", %{session: session} do
     session
-    |> visit("/dom-directives")
+    |> visit("/magic/dom-directives")
     |> click(css("#toggle-flag"))
     |> assert_has(css("#toggle-target.on-class"))
   end
@@ -27,23 +27,23 @@ defmodule Lavash.Integration.OptimisticStateTest do
     # TestCounterLive's :count is from: :url. Survives reload (no reconnect
     # mid-test, but the next visit is a fresh page load).
     session
-    |> visit("/counter?count=42")
+    |> visit("/magic/counter?count=42")
     |> assert_has(css("#count", text: "42"))
   end
 
   test "ephemeral state resets across full page reloads", %{session: session} do
     # bump increments :n. Reload should reset because :n is ephemeral.
     session
-    |> visit("/dom-directives")
+    |> visit("/magic/dom-directives")
     |> click(css("#bump"))
     |> assert_has(css("p", text: "Count: 1"))
-    |> visit("/dom-directives")
+    |> visit("/magic/dom-directives")
     |> assert_has(css("p", text: "Count: 0"))
   end
 
   test "multi-field optimistic updates apply together", %{session: session} do
     session
-    |> visit("/dom-directives")
+    |> visit("/magic/dom-directives")
     |> click(css("#bump"))
     |> click(css("#toggle-flag"))
     |> click(css("#toggle-three"))

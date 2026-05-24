@@ -1,4 +1,4 @@
-defmodule Lavash.TestCounterLive do
+defmodule Lavash.Test.Magic.CounterLive do
   @moduledoc """
   Test fixture: Simple counter with URL state.
   """
@@ -40,7 +40,7 @@ defmodule Lavash.TestCounterLive do
   end
 end
 
-defmodule Lavash.TestChainedDerivedLive do
+defmodule Lavash.Test.Magic.ChainedDerivedLive do
   @moduledoc """
   Test fixture: Derived fields that depend on other derived fields.
   count → doubled → quadrupled
@@ -76,7 +76,7 @@ defmodule Lavash.TestChainedDerivedLive do
   end
 end
 
-defmodule Lavash.TestChainedEphemeralLive do
+defmodule Lavash.Test.Magic.ChainedEphemeralLive do
   @moduledoc """
   Test fixture: Chained derived fields from ephemeral state.
   This tests recompute_dirty (not recompute_all) since ephemeral
@@ -109,7 +109,7 @@ defmodule Lavash.TestChainedEphemeralLive do
   end
 end
 
-defmodule Lavash.TestAsyncChainLive do
+defmodule Lavash.Test.Magic.AsyncChainLive do
   @moduledoc """
   Test fixture: Async derived fields in a chain.
   count → async_doubled → sync_quadrupled
@@ -156,7 +156,7 @@ defmodule Lavash.TestAsyncChainLive do
   end
 end
 
-defmodule Lavash.TestPathParamLive do
+defmodule Lavash.Test.Magic.PathParamLive do
   @moduledoc """
   Test fixture: LiveView with path parameter as URL state.
   Used to test updating path params via push_patch.
@@ -192,7 +192,7 @@ defmodule Lavash.TestPathParamLive do
   end
 end
 
-defmodule Lavash.TestTypedLive do
+defmodule Lavash.Test.Magic.TypedLive do
   @moduledoc """
   Test fixture: LiveView with various typed URL fields.
   """
@@ -231,7 +231,7 @@ defmodule Lavash.TestTypedLive do
   end
 end
 
-defmodule Lavash.TestGuardedActionsLive do
+defmodule Lavash.Test.Magic.GuardedActionsLive do
   @moduledoc """
   Test fixture: LiveView with guarded actions (when clause).
   """

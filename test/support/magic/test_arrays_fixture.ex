@@ -1,4 +1,4 @@
-defmodule Lavash.TestArraysLive do
+defmodule Lavash.Test.Magic.ArraysLive do
   @moduledoc """
   Fixture for array-state mutation tests. Renders the list as flat text and
   per-item presence flags rather than :for so the tests don't depend on the

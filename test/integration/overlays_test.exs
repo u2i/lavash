@@ -9,7 +9,7 @@ defmodule Lavash.Integration.OverlaysTest do
 
   test "modal opens when the host's open action fires", %{session: session} do
     session
-    |> visit("/modal-host")
+    |> visit("/magic/modal-host")
     |> assert_has(css("#open-modal"))
     |> click(css("#open-modal"))
     |> assert_has(css("#modal-content"))
@@ -20,7 +20,7 @@ defmodule Lavash.Integration.OverlaysTest do
     # The action :open_modal takes [:id] from phx-value-id="123" and invokes
     # the modal component with that id. The fixture renders "Editing item 123".
     session
-    |> visit("/modal-host")
+    |> visit("/magic/modal-host")
     |> click(css("#open-modal"))
     |> assert_has(css("#modal-content h2", text: "Editing item 123"))
   end
@@ -30,7 +30,7 @@ defmodule Lavash.Integration.OverlaysTest do
     # not be rendered. Phase machine: idle -> entering -> visible. At idle the
     # render hasn't been called yet.
     session
-    |> visit("/modal-host")
+    |> visit("/magic/modal-host")
     |> assert_has(css("#open-modal"))
 
     refute Wallabidi.Browser.has?(session, Wallabidi.Query.css("#modal-content"))
@@ -38,7 +38,7 @@ defmodule Lavash.Integration.OverlaysTest do
 
   test "modal close button removes the modal content", %{session: session} do
     session
-    |> visit("/modal-host")
+    |> visit("/magic/modal-host")
     |> click(css("#open-modal"))
     |> assert_has(css("#modal-content"))
     |> click(css("#modal-content button"))
@@ -48,7 +48,7 @@ defmodule Lavash.Integration.OverlaysTest do
 
   test "re-opening after close renders again", %{session: session} do
     session
-    |> visit("/modal-host")
+    |> visit("/magic/modal-host")
     |> click(css("#open-modal"))
     |> assert_has(css("#modal-content"))
     |> click(css("#modal-content button"))

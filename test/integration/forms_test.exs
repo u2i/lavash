@@ -3,7 +3,7 @@ defmodule Lavash.Integration.FormsTest do
   Ash-backed forms — `form :name, Resource do create ... end` auto-generates
   per-field validity, error lists, and submission via Ash.
 
-  Fixture: test/support/test_forms_fixture.ex defines TestForms.Signup with
+  Fixture: test/support/magic/test_forms_fixture.ex defines Test.Magic.Forms.Signup with
   name (min_length 2, required) and age (min 18, required).
 
   These tests exercise the server-side validation path (errors arrive after
@@ -15,7 +15,7 @@ defmodule Lavash.Integration.FormsTest do
 
   test "form mounts with empty params and not-submitted", %{session: session} do
     session
-    |> visit("/form")
+    |> visit("/magic/form")
     |> assert_has(css("#submitted", text: "false"))
     |> assert_has(css("#signup-name"))
     |> assert_has(css("#signup-age"))
@@ -23,7 +23,7 @@ defmodule Lavash.Integration.FormsTest do
 
   test "name shorter than min_length produces an error after blur", %{session: session} do
     session
-    |> visit("/form")
+    |> visit("/magic/form")
     |> fill_in(css("#signup-name"), with: "x")
 
     # phx-change fires on blur via phx-change form-level binding. Wait for
@@ -33,14 +33,14 @@ defmodule Lavash.Integration.FormsTest do
 
   test "valid name passes the constraint check", %{session: session} do
     session
-    |> visit("/form")
+    |> visit("/magic/form")
     |> fill_in(css("#signup-name"), with: "Valid Name")
     |> assert_has(css("#signup-name"))
   end
 
   test "form_valid flips when all fields are valid", %{session: session} do
     session
-    |> visit("/form")
+    |> visit("/magic/form")
     |> fill_in(css("#signup-name"), with: "Alice")
     |> fill_in(css("#signup-age"), with: "30")
     |> assert_has(css("#signup-valid"))
@@ -48,7 +48,7 @@ defmodule Lavash.Integration.FormsTest do
 
   test "submitting a valid form fires on_success", %{session: session} do
     session
-    |> visit("/form")
+    |> visit("/magic/form")
     |> fill_in(css("#signup-name"), with: "Alice")
     |> fill_in(css("#signup-age"), with: "30")
     |> click(css("#signup-submit"))
@@ -57,7 +57,7 @@ defmodule Lavash.Integration.FormsTest do
 
   test "submitting an invalid form does not fire on_success", %{session: session} do
     session
-    |> visit("/form")
+    |> visit("/magic/form")
     |> fill_in(css("#signup-name"), with: "x")
     |> fill_in(css("#signup-age"), with: "10")
     |> click(css("#signup-submit"))
@@ -66,7 +66,7 @@ defmodule Lavash.Integration.FormsTest do
 
   test "errors clear when input becomes valid", %{session: session} do
     session
-    |> visit("/form")
+    |> visit("/magic/form")
     |> fill_in(css("#signup-name"), with: "x")
     |> fill_in(css("#signup-name"), with: "Alice")
     |> assert_has(css("#signup-name"))

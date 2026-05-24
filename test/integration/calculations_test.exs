@@ -7,7 +7,7 @@ defmodule Lavash.Integration.CalculationsTest do
 
   test "downstream calculations update when their dependency changes", %{session: session} do
     session
-    |> visit("/chained")
+    |> visit("/magic/chained")
     |> assert_has(css("#count", text: "1"))
     |> assert_has(css("#doubled", text: "2"))
     |> assert_has(css("#quadrupled", text: "4"))
@@ -27,7 +27,7 @@ defmodule Lavash.Integration.CalculationsTest do
     # @quadrupled was recomputing — the assert_has waits and re-checks, so a
     # transient inconsistency would manifest as a stable mismatch.
     session
-    |> visit("/chained")
+    |> visit("/magic/chained")
     |> click(css("#inc"))
     |> click(css("#inc"))
     |> click(css("#inc"))
@@ -41,7 +41,7 @@ defmodule Lavash.Integration.CalculationsTest do
     # TestAsyncChainLive has calculate :doubled, rx(slow_double(@count)), async: true
     # The async result lands via send_update; eventually #doubled shows the resolved value.
     session
-    |> visit("/async-chain")
+    |> visit("/magic/async-chain")
     |> assert_has(css("#count", text: "1"))
     # async slow_double(1) → 2; sync quadrupled = 4
     |> assert_has(css("#doubled", text: "2"))
@@ -53,7 +53,7 @@ defmodule Lavash.Integration.CalculationsTest do
     # base and propagates through the chain — verifies server-driven recompute
     # without optimistic JS paths.
     session
-    |> visit("/chained-ephemeral")
+    |> visit("/magic/chained-ephemeral")
     |> assert_has(css("#base", text: "1"))
     |> assert_has(css("#octupled", text: "8"))
     |> click(css("#inc"))

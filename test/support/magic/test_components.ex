@@ -1,4 +1,4 @@
-defmodule Lavash.TestCounterComponent do
+defmodule Lavash.Test.Magic.CounterComponent do
   @moduledoc """
   Test fixture: Simple counter component with props and state.
   """
@@ -45,7 +45,7 @@ defmodule Lavash.TestCounterComponent do
   end
 end
 
-defmodule Lavash.TestDerivedPropsComponent do
+defmodule Lavash.Test.Magic.DerivedPropsComponent do
   @moduledoc """
   Test fixture: Component with derived state from props.
   """
@@ -67,7 +67,7 @@ defmodule Lavash.TestDerivedPropsComponent do
   end
 end
 
-defmodule Lavash.TestComponentHostLive do
+defmodule Lavash.Test.Magic.ComponentHostLive do
   @moduledoc """
   Test fixture: LiveView that hosts test components.
   """
@@ -85,12 +85,12 @@ defmodule Lavash.TestComponentHostLive do
     ~H"""
     <div>
       <.live_component
-        module={Lavash.TestCounterComponent}
+        module={Lavash.Test.Magic.CounterComponent}
         id="counter"
         initial_count={@counter_value}
       />
       <.live_component
-        module={Lavash.TestDerivedPropsComponent}
+        module={Lavash.Test.Magic.DerivedPropsComponent}
         id="derived"
         value={@counter_value}
       />
@@ -100,7 +100,7 @@ defmodule Lavash.TestComponentHostLive do
   end
 end
 
-defmodule Lavash.TestModalComponent do
+defmodule Lavash.Test.Magic.ModalComponent do
   @moduledoc """
   Test fixture: Modal component that tracks render calls.
 
@@ -135,7 +135,7 @@ defmodule Lavash.TestModalComponent do
   end
 end
 
-defmodule Lavash.TestModalHostLive do
+defmodule Lavash.Test.Magic.ModalHostLive do
   @moduledoc """
   Test fixture: LiveView that hosts the test modal component.
   """
@@ -144,7 +144,7 @@ defmodule Lavash.TestModalHostLive do
   actions do
     action :open_modal, [:id] do
       invoke "test-modal", :open,
-        module: Lavash.TestModalComponent,
+        module: Lavash.Test.Magic.ModalComponent,
         params: [id: {:param, :id}]
     end
   end
@@ -154,7 +154,7 @@ defmodule Lavash.TestModalHostLive do
     <div>
       <button id="open-modal" phx-click="open_modal" phx-value-id="123">Open Modal</button>
       <.live_component
-        module={Lavash.TestModalComponent}
+        module={Lavash.Test.Magic.ModalComponent}
         id="test-modal"
       />
     </div>

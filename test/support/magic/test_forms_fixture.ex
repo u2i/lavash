@@ -1,20 +1,20 @@
-defmodule Lavash.TestForms do
+defmodule Lavash.Test.Magic.Forms do
   @moduledoc "Test Ash domain for the forms integration tests."
   use Ash.Domain, validate_config_inclusion?: false
 
   resources do
-    resource(Lavash.TestForms.Signup)
+    resource(Lavash.Test.Magic.Forms.Signup)
   end
 end
 
-defmodule Lavash.TestForms.Signup do
+defmodule Lavash.Test.Magic.Forms.Signup do
   @moduledoc """
   Test fixture resource exercising the form DSL: required attributes with
   length / numeric constraints. Backed by a non-persistent ETS table so the
   test suite doesn't need a database.
   """
   use Ash.Resource,
-    domain: Lavash.TestForms,
+    domain: Lavash.Test.Magic.Forms,
     data_layer: Ash.DataLayer.Ets
 
   ets do
@@ -46,7 +46,7 @@ defmodule Lavash.TestForms.Signup do
   end
 end
 
-defmodule Lavash.TestFormLive do
+defmodule Lavash.Test.Magic.FormLive do
   @moduledoc """
   Fixture for forms tests. Uses ~H (not ~L) and explicit phx-change/phx-submit
   binding so the test runs without the LavashOptimistic JS hook.
@@ -56,7 +56,7 @@ defmodule Lavash.TestFormLive do
   state :signup_params, :map, from: :ephemeral, default: %{}
   state :submitted, :boolean, from: :ephemeral, default: false
 
-  form :signup, Lavash.TestForms.Signup do
+  form :signup, Lavash.Test.Magic.Forms.Signup do
     create :signup
   end
 

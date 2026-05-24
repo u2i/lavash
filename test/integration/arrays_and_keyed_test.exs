@@ -6,7 +6,7 @@ defmodule Lavash.Integration.ArraysAndKeyedTest do
 
   test "appending adds a DOM node for the new item", %{session: session} do
     session
-    |> visit("/arrays")
+    |> visit("/magic/arrays")
     |> assert_has(css("#item-a"))
     |> assert_has(css("#item-b"))
     |> refute_has_item("c")
@@ -16,7 +16,7 @@ defmodule Lavash.Integration.ArraysAndKeyedTest do
 
   test "removing drops the matching DOM node", %{session: session} do
     session
-    |> visit("/arrays")
+    |> visit("/magic/arrays")
     |> assert_has(css("#item-a"))
     |> click(css("#remove-a"))
     |> refute_has_item("a")
@@ -25,7 +25,7 @@ defmodule Lavash.Integration.ArraysAndKeyedTest do
 
   test "clearing removes all items", %{session: session} do
     session
-    |> visit("/arrays")
+    |> visit("/magic/arrays")
     |> click(css("#clear"))
     |> assert_has(css("#count", text: "0"))
     |> assert_has(css("#joined", text: ""))
@@ -33,7 +33,7 @@ defmodule Lavash.Integration.ArraysAndKeyedTest do
 
   test "calculations on length stay in sync after structural changes", %{session: session} do
     session
-    |> visit("/arrays")
+    |> visit("/magic/arrays")
     |> assert_has(css("#count", text: "2"))
     |> click(css("#add-c"))
     |> assert_has(css("#count", text: "3"))
@@ -45,7 +45,7 @@ defmodule Lavash.Integration.ArraysAndKeyedTest do
 
   test "calculations on derived strings reflect array mutations", %{session: session} do
     session
-    |> visit("/arrays")
+    |> visit("/magic/arrays")
     |> assert_has(css("#joined", text: "a,b"))
     |> click(css("#add-c"))
     |> assert_has(css("#joined", text: "a,b,c"))

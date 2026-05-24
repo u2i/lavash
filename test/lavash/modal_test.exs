@@ -18,14 +18,14 @@ defmodule Lavash.ModalTest do
     end
 
     test "does not call render function when modal is closed on mount", %{conn: conn} do
-      {:ok, _view, _html} = live(conn, "/modal-host")
+      {:ok, _view, _html} = live(conn, "/magic/modal-host")
 
       # Give a moment for any potential render calls
       refute_receive {:modal_rendered, _}, 100
     end
 
     test "calls render function when modal is opened", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/modal-host")
+      {:ok, view, _html} = live(conn, "/magic/modal-host")
 
       # Open the modal
       view |> element("#open-modal") |> render_click()
@@ -35,7 +35,7 @@ defmodule Lavash.ModalTest do
     end
 
     test "does not call render function after modal is closed", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/modal-host")
+      {:ok, view, _html} = live(conn, "/magic/modal-host")
 
       # Open the modal first
       view |> element("#open-modal") |> render_click()

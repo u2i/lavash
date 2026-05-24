@@ -11,20 +11,20 @@ defmodule Lavash.Integration.ReconnectTest do
 
   test "url-backed state survives a reload (it's in the URL)", %{session: session} do
     session
-    |> visit("/counter?count=15")
+    |> visit("/magic/counter?count=15")
     |> assert_has(css("#count", text: "15"))
-    |> visit("/counter?count=15")
+    |> visit("/magic/counter?count=15")
     |> assert_has(css("#count", text: "15"))
   end
 
   test "ephemeral state resets on reload", %{session: session} do
     # TestDomDirectivesLive's :n is ephemeral.
     session
-    |> visit("/dom-directives")
+    |> visit("/magic/dom-directives")
     |> click(css("#bump"))
     |> click(css("#bump"))
     |> assert_has(css("p", text: "Count: 2"))
-    |> visit("/dom-directives")
+    |> visit("/magic/dom-directives")
     |> assert_has(css("p", text: "Count: 0"))
   end
 
@@ -32,10 +32,10 @@ defmodule Lavash.Integration.ReconnectTest do
     # Visit with a count, then re-visit. With url state, the count param
     # value should round-trip.
     session
-    |> visit("/counter?count=0")
+    |> visit("/magic/counter?count=0")
     |> click(css("#inc"))
     |> assert_has(css("#count", text: "1"))
-    |> visit("/counter?count=1")
+    |> visit("/magic/counter?count=1")
     |> assert_has(css("#count", text: "1"))
   end
 
@@ -43,10 +43,10 @@ defmodule Lavash.Integration.ReconnectTest do
     # The smoke test confirms a freshly-mounted page can drive clicks. Verify
     # the same is true after a reload — no stale-handler issues.
     session
-    |> visit("/counter")
+    |> visit("/magic/counter")
     |> click(css("#inc"))
     |> assert_has(css("#count", text: "1"))
-    |> visit("/counter")
+    |> visit("/magic/counter")
     |> click(css("#inc"))
     |> assert_has(css("#count", text: "1"))
   end

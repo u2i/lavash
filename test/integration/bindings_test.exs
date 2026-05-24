@@ -10,7 +10,7 @@ defmodule Lavash.Integration.BindingsTest do
 
   test "child component mutation updates the parent's DOM", %{session: session} do
     session
-    |> visit("/bindings-direct")
+    |> visit("/magic/bindings-direct")
     |> assert_has(css("#parent-count", text: "0"))
     |> assert_has(css("#child-direct-n", text: "0"))
     |> click(css("#child-direct-bump"))
@@ -20,7 +20,7 @@ defmodule Lavash.Integration.BindingsTest do
 
   test "multiple mutations keep parent and child in sync", %{session: session} do
     session
-    |> visit("/bindings-direct")
+    |> visit("/magic/bindings-direct")
     |> click(css("#child-direct-bump"))
     |> click(css("#child-direct-bump"))
     |> click(css("#child-direct-bump"))
@@ -32,7 +32,7 @@ defmodule Lavash.Integration.BindingsTest do
     # LiveView (root_count) -> middle (m) -> grandchild (n). Writing the
     # grandchild's bump should propagate two hops up to root_count.
     session
-    |> visit("/bindings-nested")
+    |> visit("/magic/bindings-nested")
     |> assert_has(css("#root-count", text: "0"))
     |> assert_has(css("#middle-middle-m", text: "0"))
     |> assert_has(css("#child-middle-grandchild-n", text: "0"))
@@ -48,7 +48,7 @@ defmodule Lavash.Integration.BindingsTest do
     #   2. Re-render both children with the new shared value
     # so subsequent bumps from either child see the up-to-date value.
     session
-    |> visit("/bindings-siblings")
+    |> visit("/magic/bindings-siblings")
     |> assert_has(css("#shared", text: "0"))
     |> assert_has(css("#child-a-n", text: "0"))
     |> assert_has(css("#child-b-n", text: "0"))
@@ -66,7 +66,7 @@ defmodule Lavash.Integration.BindingsTest do
     # After a parent state mutation, the binding map should still be in
     # place when the next child action fires.
     session
-    |> visit("/bindings-direct")
+    |> visit("/magic/bindings-direct")
     |> click(css("#child-direct-bump"))
     |> click(css("#child-direct-bump"))
     |> assert_has(css("#parent-count", text: "2"))

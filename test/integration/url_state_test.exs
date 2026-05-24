@@ -7,7 +7,7 @@ defmodule Lavash.Integration.UrlStateTest do
 
   test "mutating a url-backed field updates the address bar", %{session: session} do
     session
-    |> visit("/counter")
+    |> visit("/magic/counter")
     |> assert_has(css("#count", text: "0"))
     |> click(css("#inc"))
     |> assert_has(css("#count", text: "1"))
@@ -22,13 +22,13 @@ defmodule Lavash.Integration.UrlStateTest do
 
   test "deep-linking a URL hydrates state on mount", %{session: session} do
     session
-    |> visit("/counter?count=7")
+    |> visit("/magic/counter?count=7")
     |> assert_has(css("#count", text: "7"))
   end
 
   test "deep link with both URL param and default uses the URL value", %{session: session} do
     session
-    |> visit("/counter?count=42")
+    |> visit("/magic/counter?count=42")
     |> assert_has(css("#count", text: "42"))
     |> click(css("#inc"))
     |> assert_has(css("#count", text: "43"))
@@ -36,9 +36,9 @@ defmodule Lavash.Integration.UrlStateTest do
 
   test "navigating to a new path with different URL params reflects them", %{session: session} do
     session
-    |> visit("/counter?count=10")
+    |> visit("/magic/counter?count=10")
     |> assert_has(css("#count", text: "10"))
-    |> visit("/counter?count=20")
+    |> visit("/magic/counter?count=20")
     |> assert_has(css("#count", text: "20"))
   end
 end

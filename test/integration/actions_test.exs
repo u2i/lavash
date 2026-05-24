@@ -11,7 +11,7 @@ defmodule Lavash.Integration.ActionsTest do
 
   test "phx-click fires the matching action by name", %{session: session} do
     session
-    |> visit("/counter")
+    |> visit("/magic/counter")
     |> assert_has(css("#count", text: "0"))
     |> click(css("#inc"))
     |> assert_has(css("#count", text: "1"))
@@ -26,7 +26,7 @@ defmodule Lavash.Integration.ActionsTest do
     # parameters: open the counter, click inc (no params), then reset, then
     # set via URL deep link (which tests path-param-to-state hydration).
     session
-    |> visit("/counter")
+    |> visit("/magic/counter")
     |> click(css("#inc"))
     |> click(css("#inc"))
     |> assert_has(css("#count", text: "2"))
@@ -37,7 +37,7 @@ defmodule Lavash.Integration.ActionsTest do
   test "guarded actions only fire when their when-clause passes", %{session: session} do
     # TestGuardedActionsLive: guarded_increment requires :enabled = true.
     session
-    |> visit("/guarded")
+    |> visit("/magic/guarded")
     |> assert_has(css("#enabled", text: "false"))
     |> assert_has(css("#count", text: "0"))
 
@@ -67,7 +67,7 @@ defmodule Lavash.Integration.ActionsTest do
     # run wouldn't affect this assertion, so the effect is mostly tested
     # in the unit suite — here we just verify the action's main body fires).
     session
-    |> visit("/guarded")
+    |> visit("/magic/guarded")
     |> click(css("#inc-with-effect"))
     |> assert_has(css("#count", text: "1"))
     |> click(css("#inc-with-effect"))
@@ -76,7 +76,7 @@ defmodule Lavash.Integration.ActionsTest do
 
   test "multiple actions on the same field accumulate correctly", %{session: session} do
     session
-    |> visit("/counter")
+    |> visit("/magic/counter")
     |> click(css("#inc"))
     |> click(css("#inc"))
     |> click(css("#inc"))

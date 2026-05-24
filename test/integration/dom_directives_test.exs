@@ -10,7 +10,7 @@ defmodule Lavash.Integration.DomDirectivesTest do
 
   test "data-lavash-display: bare @field interpolation renders the value", %{session: session} do
     session
-    |> visit("/dom-directives")
+    |> visit("/magic/dom-directives")
     |> assert_has(css("p", text: "Count: 0"))
     |> click(css("#bump"))
     |> assert_has(css("p", text: "Count: 1"))
@@ -18,7 +18,7 @@ defmodule Lavash.Integration.DomDirectivesTest do
 
   test "data-lavash-toggle: class set flips with boolean field", %{session: session} do
     session
-    |> visit("/dom-directives")
+    |> visit("/magic/dom-directives")
     |> assert_has(css("#toggle-target.off-class"))
     |> click(css("#toggle-flag"))
     |> assert_has(css("#toggle-target.on-class"))
@@ -28,7 +28,7 @@ defmodule Lavash.Integration.DomDirectivesTest do
 
   test "data-lavash-visible: shows/hides via hidden class", %{session: session} do
     session
-    |> visit("/dom-directives")
+    |> visit("/magic/dom-directives")
     |> assert_has(css("#hidden-section.hidden"))
     |> click(css("#toggle-hidden"))
 
@@ -38,7 +38,7 @@ defmodule Lavash.Integration.DomDirectivesTest do
   test "data-lavash-enabled: disables/enables buttons", %{session: session} do
     # enabled_flag starts true → button should not have disabled attr.
     session
-    |> visit("/dom-directives")
+    |> visit("/magic/dom-directives")
 
     refute Wallabidi.Browser.has?(session, Wallabidi.Query.css("#enabled-button[disabled]"))
 
@@ -50,7 +50,7 @@ defmodule Lavash.Integration.DomDirectivesTest do
   test "data-lavash-member: class toggles based on array membership", %{session: session} do
     # items starts as ["one", "two"]; chip-three should be unselected.
     session
-    |> visit("/dom-directives")
+    |> visit("/magic/dom-directives")
     |> assert_has(css("#chip-one.selected"))
     |> assert_has(css("#chip-two.selected"))
     |> assert_has(css("#chip-three.unselected"))
@@ -64,7 +64,7 @@ defmodule Lavash.Integration.DomDirectivesTest do
 
   test "directives stay consistent across multiple state changes", %{session: session} do
     session
-    |> visit("/dom-directives")
+    |> visit("/magic/dom-directives")
     |> click(css("#bump"))
     |> click(css("#toggle-flag"))
     |> click(css("#toggle-hidden"))

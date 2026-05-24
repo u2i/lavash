@@ -10,13 +10,13 @@ defmodule Lavash.Integration.SmokeTest do
 
   test "loads a fixture LiveView", %{session: session} do
     session
-    |> visit("/counter")
+    |> visit("/magic/counter")
     |> assert_has(css("#count", text: "0"))
   end
 
   test "clicking the increment button updates the count", %{session: session} do
     session
-    |> visit("/counter")
+    |> visit("/magic/counter")
     |> click(css("#inc"))
     |> assert_has(css("#count", text: "1"))
   end

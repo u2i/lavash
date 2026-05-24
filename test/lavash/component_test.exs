@@ -3,14 +3,14 @@ defmodule Lavash.ComponentTest do
 
   describe "component mount" do
     test "renders initial state from props", %{conn: conn} do
-      {:ok, view, html} = live(conn, "/component-host")
+      {:ok, view, html} = live(conn, "/magic/component-host")
       # The counter component should render with initial count from props (5)
       assert html =~ ~s(id="counter-count">)
       assert has_element?(view, "#counter-count")
     end
 
     test "computes derived state on mount", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/component-host")
+      {:ok, view, _html} = live(conn, "/magic/component-host")
       # doubled = count * 2, where count starts at default 0 from ephemeral state
       # The initial_count prop is 5 but ephemeral state starts at default
       assert has_element?(view, "#counter-doubled")
@@ -19,7 +19,7 @@ defmodule Lavash.ComponentTest do
 
   describe "component actions" do
     test "increment updates ephemeral state", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/component-host")
+      {:ok, view, _html} = live(conn, "/magic/component-host")
 
       # Get initial value
       initial_html = element(view, "#counter-count") |> render()
@@ -33,7 +33,7 @@ defmodule Lavash.ComponentTest do
     end
 
     test "decrement updates ephemeral state", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/component-host")
+      {:ok, view, _html} = live(conn, "/magic/component-host")
 
       # First increment to have a non-zero value
       view |> element("#counter-inc") |> render_click()
@@ -47,7 +47,7 @@ defmodule Lavash.ComponentTest do
     end
 
     test "reset sets count to zero", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/component-host")
+      {:ok, view, _html} = live(conn, "/magic/component-host")
 
       # Increment a few times
       view |> element("#counter-inc") |> render_click()
@@ -63,7 +63,7 @@ defmodule Lavash.ComponentTest do
 
   describe "derived state from props" do
     test "computes derived from prop value", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/component-host")
+      {:ok, view, _html} = live(conn, "/magic/component-host")
       # The derived component gets value from counter_value (5)
       # computed = value * multiplier = 5 * 2 = 10
       assert element(view, "#derived-value") |> render() =~ "5"
@@ -71,7 +71,7 @@ defmodule Lavash.ComponentTest do
     end
 
     test "derived recomputes when parent changes prop", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/component-host")
+      {:ok, view, _html} = live(conn, "/magic/component-host")
 
       # Initial value = 5, computed = 10
       assert element(view, "#derived-value") |> render() =~ "5"
@@ -88,7 +88,7 @@ defmodule Lavash.ComponentTest do
 
   describe "derived chain" do
     test "derived updates when ephemeral state changes", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/component-host")
+      {:ok, view, _html} = live(conn, "/magic/component-host")
 
       # Initial: count = 0, doubled = 0
       assert element(view, "#counter-count") |> render() =~ "0"

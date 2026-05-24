@@ -11,24 +11,24 @@ defmodule Lavash.TestRouter do
     plug(:put_secure_browser_headers)
   end
 
-  scope "/", Lavash do
+  scope "/magic", Lavash.Test.Magic do
     pipe_through(:browser)
 
-    live("/counter", TestCounterLive)
-    live("/typed", TestTypedLive)
-    live("/chained", TestChainedDerivedLive)
-    live("/chained-ephemeral", TestChainedEphemeralLive)
-    live("/async-chain", TestAsyncChainLive)
-    live("/products/:product_id/counter", TestCounterLive)
-    live("/products/:product_id", TestPathParamLive)
-    live("/component-host", TestComponentHostLive)
-    live("/guarded", TestGuardedActionsLive)
-    live("/modal-host", TestModalHostLive)
-    live("/bindings-direct", TestBindingDirectHostLive)
-    live("/bindings-nested", TestBindingNestedHostLive)
-    live("/bindings-siblings", TestBindingSiblingsHostLive)
-    live("/dom-directives", TestDomDirectivesLive)
-    live("/arrays", TestArraysLive)
-    live("/form", TestFormLive)
+    live("/counter", CounterLive)
+    live("/typed", TypedLive)
+    live("/chained", ChainedDerivedLive)
+    live("/chained-ephemeral", ChainedEphemeralLive)
+    live("/async-chain", AsyncChainLive)
+    live("/products/:product_id/counter", CounterLive)
+    live("/products/:product_id", PathParamLive)
+    live("/component-host", ComponentHostLive)
+    live("/guarded", GuardedActionsLive)
+    live("/modal-host", ModalHostLive)
+    live("/bindings-direct", BindingDirectHostLive)
+    live("/bindings-nested", BindingNestedHostLive)
+    live("/bindings-siblings", BindingSiblingsHostLive)
+    live("/dom-directives", DomDirectivesLive)
+    live("/arrays", ArraysLive)
+    live("/form", FormLive)
   end
 end

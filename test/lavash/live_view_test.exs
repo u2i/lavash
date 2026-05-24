@@ -3,18 +3,18 @@ defmodule Lavash.LiveViewTest do
 
   describe "URL state" do
     test "renders initial count from default", %{conn: conn} do
-      {:ok, view, html} = live(conn, "/counter")
+      {:ok, view, html} = live(conn, "/magic/counter")
       assert html =~ ~s(id="count">0</span>)
       assert has_element?(view, "#count", "0")
     end
 
     test "renders initial count from URL param", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/counter?count=5")
+      {:ok, view, _html} = live(conn, "/magic/counter?count=5")
       assert has_element?(view, "#count", "5")
     end
 
     test "increment updates count", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/counter")
+      {:ok, view, _html} = live(conn, "/magic/counter")
 
       view |> element("#inc") |> render_click()
 
@@ -22,7 +22,7 @@ defmodule Lavash.LiveViewTest do
     end
 
     test "decrement updates count", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/counter?count=5")
+      {:ok, view, _html} = live(conn, "/magic/counter?count=5")
 
       view |> element("#dec") |> render_click()
 
@@ -30,7 +30,7 @@ defmodule Lavash.LiveViewTest do
     end
 
     test "increment updates state", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/counter")
+      {:ok, view, _html} = live(conn, "/magic/counter")
 
       view |> element("#inc") |> render_click()
 
@@ -38,7 +38,7 @@ defmodule Lavash.LiveViewTest do
     end
 
     test "reset clears count", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/counter?count=10")
+      {:ok, view, _html} = live(conn, "/magic/counter?count=10")
 
       view |> element("#reset") |> render_click()
 
@@ -47,7 +47,7 @@ defmodule Lavash.LiveViewTest do
 
     test "works with path parameters in route", %{conn: conn} do
       # Route: /products/:product_id/counter
-      {:ok, view, _html} = live(conn, "/products/123/counter")
+      {:ok, view, _html} = live(conn, "/magic/products/123/counter")
 
       assert has_element?(view, "#count", "0")
 
@@ -57,7 +57,7 @@ defmodule Lavash.LiveViewTest do
     end
 
     test "works with path parameters and initial query params", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/products/456/counter?count=5")
+      {:ok, view, _html} = live(conn, "/magic/products/456/counter?count=5")
 
       assert has_element?(view, "#count", "5")
 
@@ -69,13 +69,13 @@ defmodule Lavash.LiveViewTest do
 
   describe "path parameter updates" do
     test "renders initial product_id from path", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/products/123")
+      {:ok, view, _html} = live(conn, "/magic/products/123")
       assert has_element?(view, "#product-id", "123")
       assert has_element?(view, "#tab", "details")
     end
 
     test "updates path param via action", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/products/100")
+      {:ok, view, _html} = live(conn, "/magic/products/100")
 
       assert has_element?(view, "#product-id", "100")
 
@@ -85,7 +85,7 @@ defmodule Lavash.LiveViewTest do
     end
 
     test "updates both path param and query param", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/products/50")
+      {:ok, view, _html} = live(conn, "/magic/products/50")
 
       # Update the tab (query param)
       view |> element("#set-reviews") |> render_click()
@@ -100,7 +100,7 @@ defmodule Lavash.LiveViewTest do
     end
 
     test "path param changes trigger handle_params", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/products/10")
+      {:ok, view, _html} = live(conn, "/magic/products/10")
 
       # Navigate to a different product
       view |> element("#next-product") |> render_click()
@@ -112,14 +112,14 @@ defmodule Lavash.LiveViewTest do
 
   describe "derived state" do
     test "computes doubled from count and multiplier", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/counter?count=5")
+      {:ok, view, _html} = live(conn, "/magic/counter?count=5")
 
       # Default multiplier is 2, so doubled = 5 * 2 = 10
       assert has_element?(view, "#doubled", "10")
     end
 
     test "derived updates when dependency changes", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/counter?count=3")
+      {:ok, view, _html} = live(conn, "/magic/counter?count=3")
 
       # Initial: 3 * 2 = 6
       assert has_element?(view, "#doubled", "6")
@@ -133,7 +133,7 @@ defmodule Lavash.LiveViewTest do
   describe "chained derived fields" do
     test "computes initial chain on mount", %{conn: conn} do
       # count=3 → doubled=6 → quadrupled=12 → octupled=24
-      {:ok, view, _html} = live(conn, "/chained?count=3")
+      {:ok, view, _html} = live(conn, "/magic/chained?count=3")
 
       assert has_element?(view, "#count", "3")
       assert has_element?(view, "#doubled", "6")
@@ -143,7 +143,7 @@ defmodule Lavash.LiveViewTest do
 
     test "propagates changes through derived chain", %{conn: conn} do
       # Start with count=1 → doubled=2 → quadrupled=4 → octupled=8
-      {:ok, view, _html} = live(conn, "/chained")
+      {:ok, view, _html} = live(conn, "/magic/chained")
 
       assert has_element?(view, "#count", "1")
       assert has_element?(view, "#doubled", "2")
@@ -160,7 +160,7 @@ defmodule Lavash.LiveViewTest do
     end
 
     test "handles multiple increments through chain", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/chained?count=1")
+      {:ok, view, _html} = live(conn, "/magic/chained?count=1")
 
       # Increment twice
       view |> element("#inc") |> render_click()
@@ -180,7 +180,7 @@ defmodule Lavash.LiveViewTest do
 
     test "computes initial chain on mount", %{conn: conn} do
       # base=1 → doubled=2 → quadrupled=4 → octupled=8
-      {:ok, view, _html} = live(conn, "/chained-ephemeral")
+      {:ok, view, _html} = live(conn, "/magic/chained-ephemeral")
 
       assert has_element?(view, "#base", "1")
       assert has_element?(view, "#doubled", "2")
@@ -189,7 +189,7 @@ defmodule Lavash.LiveViewTest do
     end
 
     test "propagates ephemeral state change through derived chain", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/chained-ephemeral")
+      {:ok, view, _html} = live(conn, "/magic/chained-ephemeral")
 
       # Increment: base=2 → doubled=4 → quadrupled=8 → octupled=16
       view |> element("#inc") |> render_click()
@@ -203,7 +203,7 @@ defmodule Lavash.LiveViewTest do
 
   describe "async derived chain" do
     test "shows loading state initially, then computes chain", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/async-chain")
+      {:ok, view, _html} = live(conn, "/magic/async-chain")
 
       # Initially both should be loading (doubled is async, quadrupled depends on it)
       assert has_element?(view, "#doubled", "loading")
@@ -220,7 +220,7 @@ defmodule Lavash.LiveViewTest do
     end
 
     test "propagates through chain when async completes after action", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/async-chain")
+      {:ok, view, _html} = live(conn, "/magic/async-chain")
 
       # Wait for initial async to complete
       Process.sleep(100)
@@ -243,27 +243,27 @@ defmodule Lavash.LiveViewTest do
 
   describe "typed URL fields" do
     test "parses integer from URL", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/typed?page=42")
+      {:ok, view, _html} = live(conn, "/magic/typed?page=42")
       assert has_element?(view, "#page", "42")
     end
 
     test "parses boolean from URL", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/typed?active=true")
+      {:ok, view, _html} = live(conn, "/magic/typed?active=true")
       assert has_element?(view, "#active", "true")
     end
 
     test "parses string from URL", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/typed?query=hello")
+      {:ok, view, _html} = live(conn, "/magic/typed?query=hello")
       assert has_element?(view, "#query", "hello")
     end
 
     test "parses array from URL", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/typed?tags=a,b,c")
+      {:ok, view, _html} = live(conn, "/magic/typed?tags=a,b,c")
       assert has_element?(view, "#tags", "a,b,c")
     end
 
     test "uses defaults when params missing", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/typed")
+      {:ok, view, _html} = live(conn, "/magic/typed")
       assert has_element?(view, "#page", "1")
       assert has_element?(view, "#active", "false")
       assert has_element?(view, "#query", "")
@@ -271,7 +271,7 @@ defmodule Lavash.LiveViewTest do
     end
 
     test "toggle updates boolean", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/typed")
+      {:ok, view, _html} = live(conn, "/magic/typed")
 
       view |> element("#toggle") |> render_click()
 
@@ -279,7 +279,7 @@ defmodule Lavash.LiveViewTest do
     end
 
     test "next page updates integer", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/typed?page=5")
+      {:ok, view, _html} = live(conn, "/magic/typed?page=5")
 
       view |> element("#next-page") |> render_click()
 
@@ -289,7 +289,7 @@ defmodule Lavash.LiveViewTest do
 
   describe "guarded actions" do
     test "guarded action does not execute when guard is false", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/guarded")
+      {:ok, view, _html} = live(conn, "/magic/guarded")
 
       # Initially enabled is false, count is 0
       assert has_element?(view, "#enabled", "false")
@@ -303,7 +303,7 @@ defmodule Lavash.LiveViewTest do
     end
 
     test "guarded action executes when guard is true", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/guarded")
+      {:ok, view, _html} = live(conn, "/magic/guarded")
 
       # Enable first
       view |> element("#enable") |> render_click()
@@ -321,7 +321,7 @@ defmodule Lavash.LiveViewTest do
     end
 
     test "guarded action stops working when guard becomes false", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/guarded")
+      {:ok, view, _html} = live(conn, "/magic/guarded")
 
       # Enable and increment
       view |> element("#enable") |> render_click()
@@ -342,7 +342,7 @@ defmodule Lavash.LiveViewTest do
 
   describe "action effects" do
     test "effect runs after state update", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/guarded")
+      {:ok, view, _html} = live(conn, "/magic/guarded")
 
       # Click the button that has an effect
       view |> element("#inc-with-effect") |> render_click()
@@ -357,7 +357,7 @@ defmodule Lavash.LiveViewTest do
 
   describe "unknown events" do
     test "unknown event is handled gracefully", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/counter")
+      {:ok, view, _html} = live(conn, "/magic/counter")
 
       # Send an unknown event - should not crash
       render_click(view, "unknown_event", %{})

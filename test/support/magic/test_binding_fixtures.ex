@@ -1,4 +1,4 @@
-defmodule Lavash.TestBindingChildComponent do
+defmodule Lavash.Test.Magic.BindingChildComponent do
   @moduledoc """
   Test fixture: child component that reads and writes a field bound from its
   parent. Used by Lavash.Integration.BindingsTest.
@@ -23,7 +23,7 @@ defmodule Lavash.TestBindingChildComponent do
   end
 end
 
-defmodule Lavash.TestBindingMiddleComponent do
+defmodule Lavash.Test.Magic.BindingMiddleComponent do
   @moduledoc """
   Middle component for testing 3-level binding chains.
 
@@ -40,7 +40,7 @@ defmodule Lavash.TestBindingMiddleComponent do
     <div id={"middle-" <> @id}>
       <span id={"middle-#{@id}-m"}>{@m}</span>
       <.lavash_component
-        module={Lavash.TestBindingChildComponent}
+        module={Lavash.Test.Magic.BindingChildComponent}
         id={"#{@id}-grandchild"}
         bind={[n: :m]}
         myself={@myself}
@@ -50,7 +50,7 @@ defmodule Lavash.TestBindingMiddleComponent do
   end
 end
 
-defmodule Lavash.TestBindingDirectHostLive do
+defmodule Lavash.Test.Magic.BindingDirectHostLive do
   @moduledoc """
   LiveView -> child binding. Parent owns :parent_count; child reads/writes it
   via bind=[n: :parent_count].
@@ -65,7 +65,7 @@ defmodule Lavash.TestBindingDirectHostLive do
     <div>
       <span id="parent-count">{@parent_count}</span>
       <.lavash_component
-        module={Lavash.TestBindingChildComponent}
+        module={Lavash.Test.Magic.BindingChildComponent}
         id="direct"
         bind={[n: :parent_count]}
       />
@@ -74,7 +74,7 @@ defmodule Lavash.TestBindingDirectHostLive do
   end
 end
 
-defmodule Lavash.TestBindingNestedHostLive do
+defmodule Lavash.Test.Magic.BindingNestedHostLive do
   @moduledoc """
   LiveView -> middle -> grandchild binding chain. Verifies a write at the
   grandchild propagates through the middle component up to the LiveView.
@@ -89,7 +89,7 @@ defmodule Lavash.TestBindingNestedHostLive do
     <div>
       <span id="root-count">{@root_count}</span>
       <.lavash_component
-        module={Lavash.TestBindingMiddleComponent}
+        module={Lavash.Test.Magic.BindingMiddleComponent}
         id="middle"
         bind={[m: :root_count]}
       />
@@ -98,7 +98,7 @@ defmodule Lavash.TestBindingNestedHostLive do
   end
 end
 
-defmodule Lavash.TestBindingSiblingsHostLive do
+defmodule Lavash.Test.Magic.BindingSiblingsHostLive do
   @moduledoc """
   Two children bound to the same parent field. Each child's write should be
   reflected in the other.
@@ -113,12 +113,12 @@ defmodule Lavash.TestBindingSiblingsHostLive do
     <div>
       <span id="shared">{@shared}</span>
       <.lavash_component
-        module={Lavash.TestBindingChildComponent}
+        module={Lavash.Test.Magic.BindingChildComponent}
         id="a"
         bind={[n: :shared]}
       />
       <.lavash_component
-        module={Lavash.TestBindingChildComponent}
+        module={Lavash.Test.Magic.BindingChildComponent}
         id="b"
         bind={[n: :shared]}
       />
