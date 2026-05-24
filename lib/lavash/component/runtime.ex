@@ -21,9 +21,9 @@ defmodule Lavash.Component.Runtime do
 
   def update(module, assigns, socket) do
     cond do
-      match?({_, _, _}, Map.get(assigns, :__lavash_binding_update__)) ->
-        {action, field, value} = assigns.__lavash_binding_update__
-        handle_binding_update(module, action, field, value, socket)
+      match?({:lavash_field_op, _, _, _}, Map.get(assigns, :__lavash_binding_update__)) ->
+        {:lavash_field_op, op, field, value} = assigns.__lavash_binding_update__
+        handle_binding_update(module, op, field, value, socket)
 
       match?({_, _}, Map.get(assigns, :__lavash_invoke__)) ->
         {action_name, params} = assigns.__lavash_invoke__
@@ -114,7 +114,7 @@ defmodule Lavash.Component.Runtime do
     end
   end
 
-  defp handle_binding_update(module, action, field, value, socket) do
+  defp handle_binding_update(module, op, field, value, socket) do
     # Handle binding update from a child component
     # The child has modified a bound field and is notifying us
 
@@ -136,19 +136,19 @@ defmodule Lavash.Component.Runtime do
     case Map.get(binding_map, field) do
       nil ->
         # Not bound upward - we're the owner, send to LiveView
-        send(self(), {action, field, parsed_value})
+        send(self(), {:lavash_field_op, op, field, parsed_value})
 
       parent_field ->
         # Bound upward - propagate to our parent
         case socket.assigns[:__lavash_parent_cid__] do
           nil ->
             # No parent CID - send to LiveView
-            send(self(), {action, parent_field, parsed_value})
+            send(self(), {:lavash_field_op, op, parent_field, parsed_value})
 
           parent_cid ->
             # Parent is a Lavash.Component - use send_update
             Phoenix.LiveView.send_update(parent_cid,
-              __lavash_binding_update__: {action, parent_field, parsed_value}
+              __lavash_binding_update__: {:lavash_field_op, op, parent_field, parsed_value}
             )
         end
     end
@@ -750,12 +750,12 @@ defmodule Lavash.Component.Runtime do
         case socket.assigns[:__lavash_parent_cid__] do
           nil ->
             # Parent is LiveView - send message directly
-            send(self(), {:lavash_component_set, parent_field, new_value})
+            send(self(), {:lavash_field_op, :set, parent_field, new_value})
 
           parent_cid ->
             # Parent is another Lavash.Component - use send_update
             Phoenix.LiveView.send_update(parent_cid,
-              __lavash_binding_update__: {:lavash_component_set, parent_field, new_value}
+              __lavash_binding_update__: {:lavash_field_op, :set, parent_field, new_value}
             )
         end
       end

@@ -565,129 +565,16 @@ defmodule Lavash.LiveView.Runtime do
     handle_event(module, event, params, socket)
   end
 
-  def handle_info(module, {:lavash_component_delta, field, value}, socket) do
-    # Handle state deltas from child Lavash components with bindings
-    # This directly updates the parent's state and recomputes dependents
-    socket =
-      socket
-      |> LSocket.put_state(field, value)
-      |> maybe_push_patch(module)
-      |> Reactive.recompute()
-      |> Assigns.project(module)
-
-    {:noreply, socket}
-  end
-
-  def handle_info(module, {:lavash_component_toggle, field, value}, socket) do
-    # Handle toggle operations from child Lavash components.
-    # Two modes:
-    # 1. Boolean toggle (value is nil): simply negate the current boolean
-    # 2. List toggle (value is not nil): add/remove value from the list
-    current = LSocket.get_state(socket, field)
-
-    new_value =
-      case {current, value} do
-        # Boolean toggle - negate the value
-        {bool, nil} when is_boolean(bool) ->
-          !bool
-
-        # Boolean toggle with nil/missing current - start as true
-        {nil, nil} ->
-          true
-
-        # List toggle - add or remove value
-        {list, val} when is_list(list) ->
-          if val in list do
-            List.delete(list, val)
-          else
-            [val | list]
-          end
-
-        # List toggle with nil current - start new list
-        {nil, val} ->
-          [val]
-
-        # Fallback for any other case
-        _ ->
-          !current
-      end
-
+  # Field operations from child Lavash components. The op atom selects how
+  # `value` is applied to the named field. Adding a new op means one extra
+  # `apply_field_op/4` clause and an extra atom in the guard — no new
+  # top-level handle_info clause.
+  def handle_info(module, {:lavash_field_op, op, field, value}, socket)
+      when op in [:set] do
     socket =
       socket
       |> LSocket.bump_optimistic_version()
-      |> LSocket.put_state(field, new_value)
-      |> maybe_push_patch(module)
-      |> Reactive.recompute()
-      |> Assigns.project(module)
-
-    {:noreply, socket}
-  end
-
-  def handle_info(module, {:lavash_component_add, field, value}, socket) do
-    # Handle add operations from child Lavash components.
-    # Adds a value to an array field, with duplicate prevention.
-    current = LSocket.get_state(socket, field) || []
-
-    new_value =
-      if value in current do
-        current
-      else
-        current ++ [value]
-      end
-
-    socket =
-      socket
-      |> LSocket.bump_optimistic_version()
-      |> LSocket.put_state(field, new_value)
-      |> maybe_push_patch(module)
-      |> Reactive.recompute()
-      |> Assigns.project(module)
-
-    {:noreply, socket}
-  end
-
-  def handle_info(module, {:lavash_component_remove, field, value}, socket) do
-    # Handle remove operations from child Lavash components.
-    # Removes a value from an array field.
-    current = LSocket.get_state(socket, field) || []
-    new_value = Enum.reject(current, &(&1 == value))
-
-    socket =
-      socket
-      |> LSocket.bump_optimistic_version()
-      |> LSocket.put_state(field, new_value)
-      |> maybe_push_patch(module)
-      |> Reactive.recompute()
-      |> Assigns.project(module)
-
-    {:noreply, socket}
-  end
-
-  def handle_info(module, {:lavash_component_close, field, value}, socket) do
-    # Handle close operations from child Lavash components.
-    # Sets a field to the provided value (typically false for closing overlays).
-    parsed_value = Lavash.Type.decode_wire(value)
-
-    socket =
-      socket
-      |> LSocket.bump_optimistic_version()
-      |> LSocket.put_state(field, parsed_value)
-      |> maybe_push_patch(module)
-      |> Reactive.recompute()
-      |> Assigns.project(module)
-
-    {:noreply, socket}
-  end
-
-  def handle_info(module, {:lavash_component_set, field, value}, socket) do
-    # Handle set operations from child Lavash components.
-    # Sets a field to the provided value directly.
-    parsed_value = Lavash.Type.decode_wire(value)
-
-    socket =
-      socket
-      |> LSocket.bump_optimistic_version()
-      |> LSocket.put_state(field, parsed_value)
+      |> apply_field_op(op, field, value)
       |> maybe_push_patch(module)
       |> Reactive.recompute()
       |> Assigns.project(module)
@@ -736,6 +623,10 @@ defmodule Lavash.LiveView.Runtime do
 
   def handle_info(_module, _msg, socket) do
     {:noreply, socket}
+  end
+
+  defp apply_field_op(socket, :set, field, value) do
+    LSocket.put_state(socket, field, Lavash.Type.decode_wire(value))
   end
 
   defp invalidate_resource(module, resource, socket) do
