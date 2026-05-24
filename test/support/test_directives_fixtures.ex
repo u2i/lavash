@@ -71,14 +71,17 @@ defmodule Lavash.TestDomDirectivesLive do
       <!-- data-lavash-member: classes per array membership -->
       <div id="chip-one"
         data-lavash-member={"items|selected|unselected"}
+        data-lavash-member-value="one"
         class={if "one" in @items, do: "selected", else: "unselected"}
       >one</div>
       <div id="chip-two"
         data-lavash-member={"items|selected|unselected"}
+        data-lavash-member-value="two"
         class={if "two" in @items, do: "selected", else: "unselected"}
       >two</div>
       <div id="chip-three"
         data-lavash-member={"items|selected|unselected"}
+        data-lavash-member-value="three"
         class={if "three" in @items, do: "selected", else: "unselected"}
       >three</div>
       <button id="toggle-three" phx-click="toggle_item" phx-value-name="three">Toggle 3</button>

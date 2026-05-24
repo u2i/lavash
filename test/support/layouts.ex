@@ -12,18 +12,26 @@ defmodule Lavash.TestLayouts do
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="csrf-token" content={@csrf_token} />
         <title>Lavash Test</title>
-        <script src="/assets/phoenix/phoenix.min.js"></script>
-        <script src="/assets/phoenix_live_view/phoenix_live_view.min.js"></script>
-        <script>
-          (function() {
-            var meta = document.querySelector("meta[name=csrf-token]");
-            var token = meta && meta.getAttribute("content");
-            var liveSocket = new LiveView.LiveSocket("/live", Phoenix.Socket, {
-              params: { _csrf_token: token }
-            });
-            liveSocket.connect();
-            window.liveSocket = liveSocket;
-          })();
+        <script type="module">
+          import { Socket } from "/assets/phoenix/phoenix.mjs";
+          import { LiveSocket } from "/assets/phoenix_live_view/phoenix_live_view.esm.js";
+          import { LavashOptimistic, SyncedVar, OverlayAnimator } from "/assets/lavash/index.js";
+
+          // Lavash's colocated hooks register on window.Lavash.
+          window.Lavash = window.Lavash || {};
+          window.Lavash.SyncedVar = SyncedVar;
+          window.Lavash.OverlayAnimator = OverlayAnimator;
+          window.Lavash.optimistic = window.Lavash.optimistic || {};
+
+          const meta = document.querySelector("meta[name=csrf-token]");
+          const token = meta && meta.getAttribute("content");
+
+          const liveSocket = new LiveSocket("/live", Socket, {
+            params: { _csrf_token: token },
+            hooks: { LavashOptimistic }
+          });
+          liveSocket.connect();
+          window.liveSocket = liveSocket;
         </script>
       </head>
       <body>

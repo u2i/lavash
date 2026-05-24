@@ -19,7 +19,7 @@ defmodule Lavash.TestEndpoint do
     at: "/assets/phoenix",
     from: {:phoenix, "priv/static"},
     gzip: false,
-    only: ~w(phoenix.js phoenix.min.js)
+    only: ~w(phoenix.js phoenix.min.js phoenix.mjs)
   )
 
   plug(Plug.Static,
@@ -27,6 +27,14 @@ defmodule Lavash.TestEndpoint do
     from: {:phoenix_live_view, "priv/static"},
     gzip: false,
     only: ~w(phoenix_live_view.js phoenix_live_view.esm.js phoenix_live_view.min.js)
+  )
+
+  # Lavash's own JS modules — served as native ES modules so the test layout
+  # can <script type="module" import="...">. No bundler needed.
+  plug(Plug.Static,
+    at: "/assets/lavash",
+    from: {:lavash, "priv/static"},
+    gzip: false
   )
 
   plug(Plug.Session, @session_options)
