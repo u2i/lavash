@@ -221,6 +221,39 @@ defmodule Lavash.Template.TokenTransformerTest do
       refute has_display_span?(result, "count")
     end
 
+    test "void elements (e.g. <input>) inside a display-wrapped parent don't break detection" do
+      # <div data-lavash-display="count"><input/>{@count}</div>
+      # The void <input> previously consumed the depth-0 slot during the
+      # inside_display_element? walk, causing it to return false and the
+      # body_expr to be re-wrapped.
+      tokens = [
+        tag("div", [string_attr("data-lavash-display", "count")]),
+        tag("input", [], closing: :void),
+        body_expr("@count"),
+        close_tag("div")
+      ]
+
+      metadata = optimistic_metadata([:count])
+      result = transform(tokens, metadata)
+
+      # The div is already a display wrapper; no additional <span> should be injected.
+      assert count_display_spans(result, "count") == 0
+    end
+
+    test "self-closing tags also pass-through without consuming the depth slot" do
+      tokens = [
+        tag("div", [string_attr("data-lavash-display", "count")]),
+        tag("br", [], closing: :self),
+        body_expr("@count"),
+        close_tag("div")
+      ]
+
+      metadata = optimistic_metadata([:count])
+      result = transform(tokens, metadata)
+
+      assert count_display_spans(result, "count") == 0
+    end
+
     test "passes through with empty metadata" do
       tokens = [body_expr("@count")]
       result = transform(tokens, %{})

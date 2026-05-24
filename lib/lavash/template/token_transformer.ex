@@ -160,10 +160,19 @@ defmodule Lavash.Template.TokenTransformer do
 
   # Check if the accumulator's most recent unclosed tag has data-lavash-display.
   # This prevents double-wrapping when someone manually adds the attribute.
+  #
+  # The accumulator is in reverse order — head is the most recent token. We
+  # walk it counting close/open pairs. Tokens with `closing: :void` or
+  # `closing: :self` in meta (e.g. `<input>`, `<br/>`) never have a matching
+  # `:close` token, so they must not consume an open-slot when we're at
+  # depth 0 — skip them.
   defp inside_display_element?(acc) do
     Enum.reduce_while(acc, 0, fn
       {:close, :tag, _name, _meta}, depth ->
         {:cont, depth + 1}
+
+      {:tag, _name, _attrs, %{closing: closing}}, depth when closing in [:void, :self] ->
+        {:cont, depth}
 
       {:tag, _name, attrs, _meta}, 0 ->
         if has_attr?(attrs, "data-lavash-display") || has_attr?(attrs, "data-lavash-manual") do

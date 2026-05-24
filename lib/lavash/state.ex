@@ -1,3 +1,18 @@
+defmodule Lavash.State.MissingRequiredFieldError do
+  @moduledoc """
+  Raised when a `from: :url, required: true` state field is absent from the URL
+  on mount or handle_params. Carries the offending field name so callers
+  (error pages, telemetry, etc.) can pattern-match.
+  """
+  defexception [:field, :message]
+
+  @impl true
+  def exception(opts) do
+    field = Keyword.fetch!(opts, :field)
+    %__MODULE__{field: field, message: "required URL field #{inspect(field)} not present"}
+  end
+end
+
 defmodule Lavash.State do
   @moduledoc """
   State hydration and management.
@@ -90,7 +105,7 @@ defmodule Lavash.State do
 
     cond do
       is_nil(raw) and field.required ->
-        raise "Required URL field #{field.name} not present"
+        raise Lavash.State.MissingRequiredFieldError, field: field.name
 
       is_nil(raw) ->
         field.default
