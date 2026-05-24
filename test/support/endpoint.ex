@@ -13,6 +13,22 @@ defmodule Lavash.TestEndpoint do
     longpoll: false
   )
 
+  # Serve phoenix.js / phoenix_live_view.js straight from the deps so
+  # integration tests have a working LiveSocket without a build step.
+  plug(Plug.Static,
+    at: "/assets/phoenix",
+    from: {:phoenix, "priv/static"},
+    gzip: false,
+    only: ~w(phoenix.js phoenix.min.js)
+  )
+
+  plug(Plug.Static,
+    at: "/assets/phoenix_live_view",
+    from: {:phoenix_live_view, "priv/static"},
+    gzip: false,
+    only: ~w(phoenix_live_view.js phoenix_live_view.esm.js phoenix_live_view.min.js)
+  )
+
   plug(Plug.Session, @session_options)
 
   plug(Plug.Parsers,

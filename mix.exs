@@ -64,6 +64,12 @@ defmodule Lavash.MixProject do
       {:jason, "~> 1.2"},
       {:bandit, "~> 1.5", only: :test},
       {:deno_rider, "~> 0.2", only: :test},
+      # Browser-driven integration tests. Wallabidi is started manually in
+      # test_helper.exs only for e2e runs because its Application.start raises
+      # if Chrome isn't installed (we use Lightpanda, which gets configured
+      # before Wallabidi starts).
+      {:wallabidi, "0.4.0-rc.1", only: :test, runtime: false},
+      {:lightpanda, "~> 0.3", only: :test, runtime: false},
       # Code quality
       {:excoveralls, "~> 0.18", only: :test},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
