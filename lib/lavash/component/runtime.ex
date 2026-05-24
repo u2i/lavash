@@ -119,7 +119,7 @@ defmodule Lavash.Component.Runtime do
     # The child has modified a bound field and is notifying us
 
     # Parse the value if it's a string representation
-    parsed_value = parse_binding_value(value)
+    parsed_value = Lavash.Type.decode_wire(value)
 
     # Update our state with the new value
     socket =
@@ -155,26 +155,6 @@ defmodule Lavash.Component.Runtime do
 
     {:ok, socket}
   end
-
-  defp parse_binding_value("true"), do: true
-  defp parse_binding_value("false"), do: false
-  defp parse_binding_value(nil), do: nil
-  defp parse_binding_value(%{key: key, arg: arg}), do: %{key: key, arg: arg}
-
-  defp parse_binding_value(value) when is_binary(value) do
-    case Integer.parse(value) do
-      {int, ""} ->
-        int
-
-      _ ->
-        case Float.parse(value) do
-          {float, ""} -> float
-          _ -> value
-        end
-    end
-  end
-
-  defp parse_binding_value(value), do: value
 
   # Resolve bindings from the bind prop - sets up binding map and parent CID
   defp resolve_bindings(socket, module, assigns) do
@@ -697,7 +677,7 @@ defmodule Lavash.Component.Runtime do
 
       {:error, form_with_errors} ->
         # Extract per-field errors from the submit failure and store in server_errors
-        server_errors = extract_submit_errors(form_with_errors)
+        server_errors = FormRuntime.extract_submit_errors(form_with_errors)
         server_errors_field = :"#{submit.field}_server_errors"
 
         socket =
@@ -747,31 +727,6 @@ defmodule Lavash.Component.Runtime do
   defp decode_type(value, :boolean) when is_boolean(value), do: value
   defp decode_type(value, :boolean), do: !!value
   defp decode_type(value, _type), do: value
-
-  # Extract per-field errors from Ash submit failure for storage in server_errors state.
-  # Returns a map of %{"field_name" => ["error message", ...]}
-  defp extract_submit_errors(%Ash.Error.Invalid{errors: errors}) do
-    Enum.reduce(errors, %{}, fn error, acc ->
-      case error do
-        %{field: field, message: msg} when not is_nil(field) ->
-          field_str = to_string(field)
-
-          message =
-            case msg do
-              {m, _opts} -> m
-              m when is_binary(m) -> m
-              _ -> "Invalid value"
-            end
-
-          Map.update(acc, field_str, [message], &[message | &1])
-
-        _ ->
-          acc
-      end
-    end)
-  end
-
-  defp extract_submit_errors(_), do: %{}
 
   # Capture bound field state before action execution for change detection
   defp capture_bound_field_state(socket, binding_map) do

@@ -10,6 +10,7 @@ defmodule Lavash.Transformers.ExpandFields do
   """
 
   use Spark.Dsl.Transformer
+  alias Lavash.Component.CompilerHelpers
   alias Spark.Dsl.Transformer
 
   def after?(Lavash.Optimistic.Transformers.ExpandDefrx), do: true
@@ -243,7 +244,7 @@ defmodule Lavash.Transformers.ExpandFields do
     form_name = form.name
     create_action = form.create
 
-    if resource_available?(resource) do
+    if CompilerHelpers.resource_available?(resource) do
       validations = Lavash.Form.ConstraintTranspiler.extract_validations(resource)
 
       ash_validations =
@@ -984,10 +985,5 @@ defmodule Lavash.Transformers.ExpandFields do
       _ ->
         false
     end
-  end
-
-  defp resource_available?(resource) do
-    match?({:module, _}, Code.ensure_compiled(resource)) and
-      function_exported?(resource, :spark_dsl_config, 0)
   end
 end

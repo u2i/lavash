@@ -530,7 +530,7 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
         create_action = form.create || :create
         skip_constraints = form.skip_constraints || []
 
-        if resource_available?(resource) do
+        if CompilerHelpers.resource_available?(resource) do
           action = Ash.Resource.Info.action(resource, create_action)
           accepted = if action, do: action.accept || [], else: []
 
@@ -698,7 +698,7 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
         params_field = "#{form_name}_params"
         resource = form.resource
 
-        if resource_available?(resource) do
+        if CompilerHelpers.resource_available?(resource) do
           validations = Lavash.Form.ConstraintTranspiler.extract_validations(resource)
           field_names = Enum.map(validations, & &1.field)
 
@@ -753,13 +753,4 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
   end
 
   defp normalize_dep_to_string(dep), do: ActionJs.normalize_dep_to_string(dep)
-
-  # Block until the resource module is compiled, avoiding compilation order races.
-  # Code.ensure_compiled/1 waits for compilation to finish (unlike ensure_loaded?
-  # which only checks if already loaded). Safe because Ash resources never depend
-  # on Lavash LiveViews/Components, so no circular dependency risk.
-  defp resource_available?(resource) do
-    match?({:module, _}, Code.ensure_compiled(resource)) and
-      function_exported?(resource, :spark_dsl_config, 0)
-  end
 end

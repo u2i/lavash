@@ -265,6 +265,49 @@ defmodule Lavash.Type do
   end
 
   @doc """
+  Decode a value coming off the JS wire into the closest Elixir type without
+  a declared schema to consult.
+
+  Used by binding propagation and the `set_<field>` event path where we
+  receive a string from the client but the receiver doesn't know the field's
+  declared type at the dispatch point. Tries integer, then float, then leaves
+  the value as a string.
+
+  ## Examples
+
+      iex> Lavash.Type.decode_wire("true")
+      true
+
+      iex> Lavash.Type.decode_wire("42")
+      42
+
+      iex> Lavash.Type.decode_wire("3.14")
+      3.14
+
+      iex> Lavash.Type.decode_wire("hello")
+      "hello"
+  """
+  def decode_wire("true"), do: true
+  def decode_wire("false"), do: false
+  def decode_wire(nil), do: nil
+  def decode_wire(%{key: key, arg: arg}), do: %{key: key, arg: arg}
+
+  def decode_wire(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {int, ""} ->
+        int
+
+      _ ->
+        case Float.parse(value) do
+          {float, ""} -> float
+          _ -> value
+        end
+    end
+  end
+
+  def decode_wire(value), do: value
+
+  @doc """
   Serializes a typed Elixir value to a URL-safe string.
 
   ## Examples

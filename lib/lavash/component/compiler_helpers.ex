@@ -90,4 +90,17 @@ defmodule Lavash.Component.CompilerHelpers do
     |> String.replace(item_str, "item")
     |> String.replace(arg_str, "arg")
   end
+
+  @doc """
+  Whether an Ash resource module is compiled and available.
+
+  Uses `Code.ensure_compiled/1` (which waits for parallel compilation to
+  finish) rather than `Code.ensure_loaded?/1`. Safe for use from transformers
+  because Ash resources never depend on Lavash LiveViews/Components — no
+  circular-dependency risk.
+  """
+  def resource_available?(resource) do
+    match?({:module, _}, Code.ensure_compiled(resource)) and
+      function_exported?(resource, :spark_dsl_config, 0)
+  end
 end

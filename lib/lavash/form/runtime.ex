@@ -5,6 +5,7 @@ defmodule Lavash.Form.Runtime do
   This module contains the common logic for form operations:
   - `extract_resource/1` - Extract Ash resource from various form types
   - `extract_changeset/1` - Extract Ash changeset from various form types
+  - `extract_submit_errors/1` - Turn an Ash submit failure into a per-field error map
   - `broadcast_mutation/1` - Broadcast mutation events for PubSub invalidation
   """
 
@@ -22,6 +23,34 @@ defmodule Lavash.Form.Runtime do
   def extract_resource(%AshPhoenix.Form{resource: resource}), do: resource
   def extract_resource(%Phoenix.HTML.Form{source: source}), do: extract_resource(source)
   def extract_resource(_), do: nil
+
+  @doc """
+  Extract per-field errors from an Ash submit failure for storage in `_server_errors` state.
+
+  Returns a map of `%{"field_name" => ["error message", ...]}`.
+  """
+  def extract_submit_errors(%Ash.Error.Invalid{errors: errors}) do
+    Enum.reduce(errors, %{}, fn error, acc ->
+      case error do
+        %{field: field, message: msg} when not is_nil(field) ->
+          field_str = to_string(field)
+
+          message =
+            case msg do
+              {m, _opts} -> m
+              m when is_binary(m) -> m
+              _ -> "Invalid value"
+            end
+
+          Map.update(acc, field_str, [message], &[message | &1])
+
+        _ ->
+          acc
+      end
+    end)
+  end
+
+  def extract_submit_errors(_), do: %{}
 
   @doc """
   Extract the Ash changeset from various form types.

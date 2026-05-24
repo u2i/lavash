@@ -536,26 +536,6 @@ defmodule Lavash.LiveView.Runtime do
     end)
   end
 
-  # Parse string values from client into Elixir types
-  defp parse_value("true"), do: true
-  defp parse_value("false"), do: false
-  defp parse_value(nil), do: nil
-
-  defp parse_value(value) when is_binary(value) do
-    case Integer.parse(value) do
-      {int, ""} ->
-        int
-
-      _ ->
-        case Float.parse(value) do
-          {float, ""} -> float
-          _ -> value
-        end
-    end
-  end
-
-  defp parse_value(value), do: value
-
   def handle_info(module, {:lavash_reactive, field, {:ok, result}}, socket) do
     socket =
       socket
@@ -686,7 +666,7 @@ defmodule Lavash.LiveView.Runtime do
   def handle_info(module, {:lavash_component_close, field, value}, socket) do
     # Handle close operations from child Lavash components.
     # Sets a field to the provided value (typically false for closing overlays).
-    parsed_value = parse_value(value)
+    parsed_value = Lavash.Type.decode_wire(value)
 
     socket =
       socket
@@ -702,7 +682,7 @@ defmodule Lavash.LiveView.Runtime do
   def handle_info(module, {:lavash_component_set, field, value}, socket) do
     # Handle set operations from child Lavash components.
     # Sets a field to the provided value directly.
-    parsed_value = parse_value(value)
+    parsed_value = Lavash.Type.decode_wire(value)
 
     socket =
       socket
@@ -921,7 +901,7 @@ defmodule Lavash.LiveView.Runtime do
 
       {:error, form_with_errors} ->
         # Extract per-field errors from the submit failure and store in server_errors
-        server_errors = extract_submit_errors(form_with_errors)
+        server_errors = FormRuntime.extract_submit_errors(form_with_errors)
         server_errors_field = :"#{submit.field}_server_errors"
 
         socket =
@@ -988,29 +968,4 @@ defmodule Lavash.LiveView.Runtime do
       socket
     end
   end
-
-  # Extract per-field errors from Ash submit failure for storage in server_errors state.
-  # Returns a map of %{"field_name" => ["error message", ...]}
-  defp extract_submit_errors(%Ash.Error.Invalid{errors: errors}) do
-    Enum.reduce(errors, %{}, fn error, acc ->
-      case error do
-        %{field: field, message: msg} when not is_nil(field) ->
-          field_str = to_string(field)
-
-          message =
-            case msg do
-              {m, _opts} -> m
-              m when is_binary(m) -> m
-              _ -> "Invalid value"
-            end
-
-          Map.update(acc, field_str, [message], &[message | &1])
-
-        _ ->
-          acc
-      end
-    end)
-  end
-
-  defp extract_submit_errors(_), do: %{}
 end
