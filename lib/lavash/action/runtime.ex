@@ -90,7 +90,10 @@ defmodule Lavash.Action.Runtime do
       # Extract changed fields and apply them to socket
       changed = Map.get(updated_assigns, :__changed__, %{})
 
-      Enum.reduce(changed, sock, fn {field, true}, acc_sock ->
+      # Phoenix.Component.assign stores either `true` (initial render) or the
+      # old value (subsequent change) under each changed key, so we accept
+      # any value here.
+      Enum.reduce(changed, sock, fn {field, _change_marker}, acc_sock ->
         value = Map.get(updated_assigns, field)
         LSocket.put_state(acc_sock, field, value)
       end)

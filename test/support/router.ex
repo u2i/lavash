@@ -24,5 +24,10 @@ defmodule Lavash.TestRouter do
     live("/component-host", TestComponentHostLive)
     live("/guarded", TestGuardedActionsLive)
     live("/modal-host", TestModalHostLive)
+    live("/bindings-direct", TestBindingDirectHostLive)
+    live("/bindings-nested", TestBindingNestedHostLive)
+    live("/bindings-siblings", TestBindingSiblingsHostLive)
+    live("/dom-directives", TestDomDirectivesLive)
+    live("/arrays", TestArraysLive)
   end
 end

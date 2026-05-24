@@ -1,39 +1,60 @@
 defmodule Lavash.Integration.ArraysAndKeyedTest do
   @moduledoc """
-  Structural updates to collections — adding, removing, and mutating items
-  in array-valued state, including keyed mutations via `map_by`.
+  Array state mutations — appending, removing, deriving from list state.
   """
-  use ExUnit.Case, async: true
+  use Lavash.IntegrationCase, async: false
 
-  @moduletag :e2e
-
-  test "appending to an array adds a DOM node optimistically" do
-    # The new item should appear in the `:for` region immediately, before
-    # the server confirms.
-    assert true
+  test "appending adds a DOM node for the new item", %{session: session} do
+    session
+    |> visit("/arrays")
+    |> assert_has(css("#item-a"))
+    |> assert_has(css("#item-b"))
+    |> refute_has_item("c")
+    |> click(css("#add-c"))
+    |> assert_has(css("#item-c"))
   end
 
-  test "removing an item drops the corresponding DOM node" do
-    # `Enum.reject(&(&1 == val))` (or equivalent) should update the
-    # rendered list with no flash of the old node.
-    assert true
+  test "removing drops the matching DOM node", %{session: session} do
+    session
+    |> visit("/arrays")
+    |> assert_has(css("#item-a"))
+    |> click(css("#remove-a"))
+    |> refute_has_item("a")
+    |> assert_has(css("#item-b"))
   end
 
-  test "map_by updates a single keyed item in place" do
-    # `map_by :items, :id, "fn item, _id -> ... end"` should mutate only
-    # the matching item; siblings should not re-render.
-    assert true
+  test "clearing removes all items", %{session: session} do
+    session
+    |> visit("/arrays")
+    |> click(css("#clear"))
+    |> assert_has(css("#count", text: "0"))
+    |> assert_has(css("#joined", text: ""))
   end
 
-  test "morphdom preserves DOM identity for unchanged items" do
-    # Items that didn't change should retain focus, scroll position, and
-    # form input state across a structural update.
-    assert true
+  test "calculations on length stay in sync after structural changes", %{session: session} do
+    session
+    |> visit("/arrays")
+    |> assert_has(css("#count", text: "2"))
+    |> click(css("#add-c"))
+    |> assert_has(css("#count", text: "3"))
+    |> click(css("#remove-a"))
+    |> assert_has(css("#count", text: "2"))
+    |> click(css("#clear"))
+    |> assert_has(css("#count", text: "0"))
   end
 
-  test "calculations on array length stay in sync after structural changes" do
-    # `calculate :count, rx(length(@items))` should reflect the new size
-    # in the same frame as the structural update.
-    assert true
+  test "calculations on derived strings reflect array mutations", %{session: session} do
+    session
+    |> visit("/arrays")
+    |> assert_has(css("#joined", text: "a,b"))
+    |> click(css("#add-c"))
+    |> assert_has(css("#joined", text: "a,b,c"))
+    |> click(css("#remove-a"))
+    |> assert_has(css("#joined", text: "b,c"))
+  end
+
+  defp refute_has_item(session, name) do
+    refute Wallabidi.Browser.has?(session, Wallabidi.Query.css("#item-#{name}"))
+    session
   end
 end

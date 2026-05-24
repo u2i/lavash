@@ -1,52 +1,58 @@
 defmodule Lavash.Integration.OverlaysTest do
   @moduledoc """
-  Modals and flyovers — overlays driven by the Lavash phase machine
-  (idle → entering → [loading] → visible → exiting → idle) with optimistic
-  open/close and CSS-based transitions.
+  Modals — overlays driven by the Lavash phase machine. These tests cover the
+  server-observable aspects (open via invoke, close, content rendered while
+  open). Animation phases (entering/exiting transition timing) require the
+  optimistic JS hook and live in a separate suite.
   """
-  use ExUnit.Case, async: true
+  use Lavash.IntegrationCase, async: false
 
-  @moduletag :e2e
-
-  test "modal opens optimistically before the server confirms" do
-    # The entering phase should apply immediately on click, not after the
-    # server reply.
-    assert true
+  test "modal opens when the host's open action fires", %{session: session} do
+    session
+    |> visit("/modal-host")
+    |> assert_has(css("#open-modal"))
+    |> click(css("#open-modal"))
+    |> assert_has(css("#modal-content"))
+    |> assert_has(css("#modal-content h2", text: "Editing item 123"))
   end
 
-  test "modal close runs the exit transition before unmounting" do
-    # The exiting phase should hold the modal in the DOM long enough for
-    # the transition to play, then unmount.
-    assert true
+  test "modal renders the item id passed via phx-value-id", %{session: session} do
+    # The action :open_modal takes [:id] from phx-value-id="123" and invokes
+    # the modal component with that id. The fixture renders "Editing item 123".
+    session
+    |> visit("/modal-host")
+    |> click(css("#open-modal"))
+    |> assert_has(css("#modal-content h2", text: "Editing item 123"))
   end
 
-  test "loading phase appears when an async open action is pending" do
-    # Actions that fetch data before showing content should pause the
-    # phase machine at `loading`.
-    assert true
+  test "modal is not in the DOM before it has been opened", %{session: session} do
+    # When open_field's value is nil (initial state), the modal body should
+    # not be rendered. Phase machine: idle -> entering -> visible. At idle the
+    # render hasn't been called yet.
+    session
+    |> visit("/modal-host")
+    |> assert_has(css("#open-modal"))
+
+    refute Wallabidi.Browser.has?(session, Wallabidi.Query.css("#modal-content"))
   end
 
-  test "clicking the backdrop closes the modal" do
-    # Default dismiss behavior should set the bound open field to false
-    # and trigger the exit transition.
-    assert true
+  test "modal close button removes the modal content", %{session: session} do
+    session
+    |> visit("/modal-host")
+    |> click(css("#open-modal"))
+    |> assert_has(css("#modal-content"))
+    |> click(css("#modal-content button"))
+
+    refute Wallabidi.Browser.has?(session, Wallabidi.Query.css("#modal-content"))
   end
 
-  test "Escape key closes the topmost overlay" do
-    # Keyboard dismiss should match the backdrop click behavior and only
-    # affect the front-most overlay if multiple are open.
-    assert true
-  end
-
-  test "flyover slides in from the configured edge" do
-    # `slide_from: :left|:right|:top|:bottom` should produce the matching
-    # initial transform and animate to rest.
-    assert true
-  end
-
-  test "nested overlays stack and dismiss in reverse order" do
-    # Opening a modal from within a flyover (or vice versa) should not
-    # collapse the outer overlay when the inner one closes.
-    assert true
+  test "re-opening after close renders again", %{session: session} do
+    session
+    |> visit("/modal-host")
+    |> click(css("#open-modal"))
+    |> assert_has(css("#modal-content"))
+    |> click(css("#modal-content button"))
+    |> click(css("#open-modal"))
+    |> assert_has(css("#modal-content"))
   end
 end
