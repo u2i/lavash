@@ -291,9 +291,7 @@ defmodule Lavash.Template.TokenTransformerTest do
     # body content as the submitted value (not as rendered DOM).
     test "skips when inside <textarea> (body content is the form value)" do
       tokens = [
-        tag("textarea", [string_attr("name", "notes")],
-          children: [body_expr("@notes")]
-        )
+        tag("textarea", [string_attr("name", "notes")], children: [body_expr("@notes")])
       ]
 
       metadata = optimistic_metadata([:notes])
@@ -310,9 +308,7 @@ defmodule Lavash.Template.TokenTransformerTest do
 
     test "skips when inside <option> (body content is the displayed label)" do
       tokens = [
-        tag("option", [string_attr("value", "a")],
-          children: [body_expr("@label")]
-        )
+        tag("option", [string_attr("value", "a")], children: [body_expr("@label")])
       ]
 
       metadata = optimistic_metadata([:label])

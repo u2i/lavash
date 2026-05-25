@@ -107,7 +107,7 @@ defmodule Lavash.LiveView.Transformers.CompileLiveView do
             @doc false
             def __lavash_run__(unquote(name), unquote(idx), var!(assigns)) do
               import Phoenix.Component, only: [assign: 3]
-              (unquote(run.fun)).(var!(assigns))
+              unquote(run.fun).(var!(assigns))
             end
           end
         end)
@@ -118,7 +118,7 @@ defmodule Lavash.LiveView.Transformers.CompileLiveView do
       end
     else
       quote do
-        unquote_splicing(clauses)
+        (unquote_splicing(clauses))
       end
     end
   end

@@ -62,7 +62,12 @@ defmodule Lavash.Template.TokenTransformer do
   # body_expr expands to [span_open?, ...] — though with the tree shape we
   # collapse the open/close pair into a single synthesized block).
 
-  defp walk_node({:block, :tag, name, attrs, children, open_meta, close_meta}, metadata, state, _parent) do
+  defp walk_node(
+         {:block, :tag, name, attrs, children, open_meta, close_meta},
+         metadata,
+         state,
+         _parent
+       ) do
     {new_attrs, manual?} = transform_tag_attrs(name, attrs, open_meta, metadata)
 
     new_children =
@@ -76,14 +81,24 @@ defmodule Lavash.Template.TokenTransformer do
     [{:block, :tag, name, new_attrs, new_children, open_meta, close_meta}]
   end
 
-  defp walk_node({:block, comp_type, name, attrs, children, open_meta, close_meta}, metadata, state, _parent)
+  defp walk_node(
+         {:block, comp_type, name, attrs, children, open_meta, close_meta},
+         metadata,
+         state,
+         _parent
+       )
        when comp_type in [:local_component, :remote_component] do
     new_attrs = maybe_inject_component_attrs(name, attrs, open_meta, metadata, state)
     new_children = walk_nodes(children, metadata, state, nil)
     [{:block, comp_type, name, new_attrs, new_children, open_meta, close_meta}]
   end
 
-  defp walk_node({:block, :slot, name, attrs, children, open_meta, close_meta}, metadata, state, _parent) do
+  defp walk_node(
+         {:block, :slot, name, attrs, children, open_meta, close_meta},
+         metadata,
+         state,
+         _parent
+       ) do
     new_children = walk_nodes(children, metadata, state, nil)
     [{:block, :slot, name, attrs, new_children, open_meta, close_meta}]
   end
@@ -202,12 +217,10 @@ defmodule Lavash.Template.TokenTransformer do
     }
 
     display_attr =
-      {"data-lavash-display",
-       {:string, field_name, %{delimiter: ?", line: line, column: column}},
+      {"data-lavash-display", {:string, field_name, %{delimiter: ?", line: line, column: column}},
        %{line: line, column: column}}
 
-    {:block, :tag, "span", [display_attr], [{:body_expr, expr, expr_meta}], open_meta,
-     close_meta}
+    {:block, :tag, "span", [display_attr], [{:body_expr, expr, expr_meta}], open_meta, close_meta}
   end
 
   # Diagnostic: bare {@field} for a declared-but-non-optimistic field

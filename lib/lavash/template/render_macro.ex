@@ -106,7 +106,7 @@ defmodule Lavash.Template.RenderMacro do
           file: __ENV__.file,
           line: __ENV__.line,
           description:
-            "Cannot use both `template do ~H\"...\" end` and `render fn assigns -> ~L\"...\" end` " <>
+            ~s(Cannot use both `template do ~H"..." end` and `render fn assigns -> ~L"..." end` ) <>
               "in the same module. Pick one template-declaration shape."
       end
 

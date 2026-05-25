@@ -45,5 +45,4 @@ defmodule Lavash.Rx.CacheTest do
       refute :persistent_term.get(key, :missing) == :missing
     end
   end
-
 end

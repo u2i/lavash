@@ -55,9 +55,9 @@ issues opened against the repo were closed.
 
 ### Internal
 
-- `Lavash.Action.Runtime.apply_runs/4` becomes `apply_runs/5` (takes
+- Lavash.Action.Runtime.apply_runs/4 becomes apply_runs/5 (takes
   the action name). The runtime no longer uses
-  `Lavash.Rx.Cache.compile_run_fun/2`; that function and its test are
+  Lavash.Rx.Cache.compile_run_fun/2; that function and its test are
   removed.
 
 ## [0.3.0-rc.1] — 2026-05-25

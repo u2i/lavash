@@ -70,4 +70,3 @@ defmodule Lavash.Components.TagEditor do
     """
   end
 end
-
