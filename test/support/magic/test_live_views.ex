@@ -278,3 +278,38 @@ defmodule Lavash.Test.Magic.GuardedActionsLive do
     """
   end
 end
+
+defmodule Lavash.Test.Magic.CustomMountLive do
+  @moduledoc """
+  Test fixture: LiveView with a user-defined `mount/3` that chains into
+  `Lavash.LiveView.Runtime.mount/4` and adds its own assign.
+
+  Exercises Issue #1 (mount/3 must be overridable so users can do their own
+  per-route setup without losing the reactive graph init).
+  """
+  use Lavash.LiveView
+
+  state :count, :integer, from: :url, default: 0
+
+  actions do
+    action :increment do
+      set :count, rx(@count + 1)
+    end
+  end
+
+  @impl Phoenix.LiveView
+  def mount(params, session, socket) do
+    {:ok, socket} = Lavash.LiveView.Runtime.mount(__MODULE__, params, session, socket)
+    {:ok, Phoenix.Component.assign(socket, :greeting, "hello from custom mount")}
+  end
+
+  def render(assigns) do
+    ~H"""
+    <div>
+      <span id="greeting">{@greeting}</span>
+      <span id="count">{@count}</span>
+      <button id="inc" phx-click="increment">+</button>
+    </div>
+    """
+  end
+end

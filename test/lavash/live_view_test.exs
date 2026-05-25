@@ -355,6 +355,23 @@ defmodule Lavash.LiveViewTest do
     end
   end
 
+  describe "custom mount/3" do
+    test "user can define their own mount and chain into Runtime.mount/4", %{conn: conn} do
+      {:ok, view, html} = live(conn, "/magic/custom-mount?count=3")
+
+      # The user's custom assign is set
+      assert html =~ "hello from custom mount"
+      assert has_element?(view, "#greeting", "hello from custom mount")
+
+      # The framework's reactive state initialised from the URL param
+      assert has_element?(view, "#count", "3")
+
+      # Actions still work — reactive graph is wired up correctly
+      view |> element("#inc") |> render_click()
+      assert has_element?(view, "#count", "4")
+    end
+  end
+
   describe "unknown events" do
     test "unknown event is handled gracefully", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/magic/counter")

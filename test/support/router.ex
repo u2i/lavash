@@ -30,6 +30,7 @@ defmodule Lavash.TestRouter do
     live("/dom-directives", DomDirectivesLive)
     live("/arrays", ArraysLive)
     live("/form", FormLive)
+    live("/custom-mount", CustomMountLive)
   end
 
   # Parallel "explicit" path: plain Phoenix.LiveView, no Lavash DSL.

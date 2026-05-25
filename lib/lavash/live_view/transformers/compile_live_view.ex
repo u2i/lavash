@@ -182,6 +182,8 @@ defmodule Lavash.LiveView.Transformers.CompileLiveView do
           {:ok, socket} = Lavash.LiveView.Runtime.mount(__MODULE__, params, session, socket)
           on_mount(socket)
         end
+
+        defoverridable mount: 3
       end
     else
       quote do
@@ -189,6 +191,8 @@ defmodule Lavash.LiveView.Transformers.CompileLiveView do
         def mount(params, session, socket) do
           Lavash.LiveView.Runtime.mount(__MODULE__, params, session, socket)
         end
+
+        defoverridable mount: 3
       end
     end
   end

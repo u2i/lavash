@@ -84,6 +84,27 @@ Bare `{@count}` is wrapped in `<span data-lavash-display="count">` at compile
 time. When the user clicks `+`, the JS hook updates the span text
 instantly; the server reply arrives later and reconciles.
 
+### Custom `mount/3`
+
+Lavash generates a `mount/3` that initialises the reactive graph (state
+hydration, dependency graph, PubSub subscriptions). The generated `mount/3`
+is `defoverridable`, so you can define your own when you need extra per-route
+setup — just chain into `Lavash.LiveView.Runtime.mount/4` first so the
+reactive graph gets attached to the socket:
+
+```elixir
+def mount(params, session, socket) do
+  {:ok, socket} = Lavash.LiveView.Runtime.mount(__MODULE__, params, session, socket)
+
+  # ...your per-route setup
+  {:ok, Phoenix.Component.assign(socket, :greeting, lookup_greeting(params))}
+end
+```
+
+If you skip the `Runtime.mount/4` call, the first `handle_params/3` will
+crash with `Reactive graph not found on socket` — the reactive layer relies
+on graph state being initialised at mount time.
+
 To enable the JS hook in `app.js`:
 
 ```javascript
