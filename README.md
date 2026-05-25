@@ -457,7 +457,10 @@ A few things to notice, because they're easy to miss:
   what you reach for when seeding Lavash state from inside a custom
   mount. It registers the field with the reactive graph and tracks
   url/socket changes, so downstream `calculate`s and PubSub
-  invalidations see the value.
+  invalidations see the value. (Action `run fn` bodies can also read
+  raw socket assigns like `@current_user` directly, but lifting the
+  value into Lavash state keeps the auth library's shape out of
+  business logic and makes the field observable to the reactive graph.)
 - `action :submit, [:confirmed, :notes]` reads the live form payload
   rather than `@confirmed` / `@notes`. See
   [Forms vs. `data-lavash-bind` on submit](#forms-vs-data-lavash-bind-on-submit)

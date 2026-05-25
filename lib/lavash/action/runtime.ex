@@ -82,11 +82,20 @@ defmodule Lavash.Action.Runtime do
     (runs || [])
     |> Enum.with_index()
     |> Enum.reduce(socket, fn {_run, idx}, sock ->
-      # `assigns` includes calculated/derived values alongside state so
-      # `run fn` bodies can read `@some_calc` references listed in
-      # `reads [...]`. See u2i/lavash#12.
-      state = LSocket.full_state(sock)
-      assigns = Map.merge(state, params) |> Map.put(:__changed__, %{})
+      # Build the assigns map handed to the run body. Lavash state lives
+      # in `socket.assigns` already (with a side registry tracking which
+      # names are "state"), so the full socket.assigns map carries:
+      #   - declared state + calculated/derived values (#12)
+      #   - non-Lavash assigns from on_mount/plugs/custom mount (#13)
+      # Event params are layered on top so phx-value-* / form-submit
+      # payloads win over like-named socket assigns.
+      # `__changed__` is reset so Phoenix.Component.assign tracks only
+      # writes made inside this run body.
+      assigns =
+        sock.assigns
+        |> Map.drop([:__changed__])
+        |> Map.merge(params)
+        |> Map.put(:__changed__, %{})
 
       # The body was hoisted at compile time into a generated function on
       # the user's module (see `CompileLiveView.build_run_refs_ast/1` and

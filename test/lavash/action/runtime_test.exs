@@ -245,6 +245,52 @@ defmodule Lavash.Action.RuntimeTest do
 
       assert LSocket.get_state(result, :greeting) == "Hi, world"
     end
+
+    # Regression for u2i/lavash#13 — non-Lavash socket assigns (e.g.
+    # `:current_user` set by AshAuthentication.on_mount) are visible
+    # inside the run body without being re-declared as Lavash state.
+    defmodule SocketAssignsModule do
+      import Phoenix.Component, only: [assign: 3]
+
+      def __lavash_run__(:capture_user, 0, assigns) do
+        assign(assigns, :captured_email, assigns.current_user.email)
+      end
+
+      def __lavash__(:states), do: []
+    end
+
+    test "run fn body sees non-Lavash socket assigns" do
+      socket =
+        bare_socket()
+        |> LSocket.init()
+        |> Phoenix.Component.assign(:current_user, %{email: "alice@example.com"})
+
+      result =
+        Runtime.apply_runs(socket, :capture_user, [%{}], %{}, SocketAssignsModule)
+
+      assert LSocket.get_state(result, :captured_email) == "alice@example.com"
+    end
+
+    # Event params win over socket assigns. Makes `phx-value-amount`
+    # / form-submit payload override anything in socket.assigns of the
+    # same name, which keeps the action contract predictable.
+    defmodule ParamsWinModule do
+      import Phoenix.Component, only: [assign: 3]
+      def __lavash_run__(:sum, 0, assigns), do: assign(assigns, :sum, assigns.amount + 1)
+      def __lavash__(:states), do: []
+    end
+
+    test "event params win over like-named socket assigns" do
+      socket =
+        bare_socket()
+        |> LSocket.init()
+        |> Phoenix.Component.assign(:amount, 999)
+
+      result = Runtime.apply_runs(socket, :sum, [%{}], %{amount: 10}, ParamsWinModule)
+
+      # Params (10) won, not the stray socket assign (999)
+      assert LSocket.get_state(result, :sum) == 11
+    end
   end
 
   describe "build_params/2" do
