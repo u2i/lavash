@@ -137,6 +137,21 @@ state :expanded_ids, {:array, :uuid}, from: :socket, default: []
 state :hovering, :boolean, default: false
 ```
 
+`from: :url` looks up the query/path parameter under the field name by
+default. If the URL key needs to differ — typically because the query
+string uses a shorter name — set `url_name:`:
+
+```elixir
+# URL: /attest?subject=alice
+state :subject_handle, :string, from: :url, default: nil, url_name: "subject"
+```
+
+When a `from: :url` field falls back to its default and there's no
+matching key in the params (and the URL did have other params), Lavash
+logs a dev-only warning so a mismatched `url_name` doesn't silently
+hydrate to `nil`. Use `required: true` if missing the param should
+raise instead.
+
 ### Optimistic state
 
 Add `optimistic: true` to make a field part of the client-side state map. The

@@ -1,6 +1,8 @@
 defmodule Lavash.LiveViewTest do
   use Lavash.ConnCase, async: true
 
+  import ExUnit.CaptureLog
+
   describe "URL state" do
     test "renders initial count from default", %{conn: conn} do
       {:ok, view, html} = live(conn, "/magic/counter")
@@ -352,6 +354,41 @@ defmodule Lavash.LiveViewTest do
 
       # The effect should have sent a message (we can't easily test this in LiveView tests
       # without special infrastructure, but we verify the action ran)
+    end
+  end
+
+  describe "URL state with custom url_name" do
+    test "hydrates from query key configured via url_name", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/magic/url-name?subject=alice")
+      assert has_element?(view, "#handle", "alice")
+    end
+
+    test "falls back to default when neither field name nor url_name is present",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/magic/url-name?other=ignored")
+      assert has_element?(view, "#handle", "(none)")
+    end
+
+    test "warns when from: :url field falls back to default and key is absent",
+         %{conn: conn} do
+      log =
+        capture_log(fn ->
+          {:ok, _view, _html} = live(conn, "/magic/url-mismatch?subject=alice")
+        end)
+
+      assert log =~ "state :subject_handle"
+      assert log =~ ~s(looked for param "subject_handle")
+      assert log =~ ~s("subject")
+    end
+
+    test "does not warn when params are empty (likely no URL state intended)",
+         %{conn: conn} do
+      log =
+        capture_log(fn ->
+          {:ok, _view, _html} = live(conn, "/magic/url-mismatch")
+        end)
+
+      refute log =~ "[lavash]"
     end
   end
 

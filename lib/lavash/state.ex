@@ -18,6 +18,8 @@ defmodule Lavash.State do
   State hydration and management.
   """
 
+  require Logger
+
   alias Lavash.Socket, as: LSocket
   alias Lavash.Type
 
@@ -101,13 +103,15 @@ defmodule Lavash.State do
   end
 
   defp parse_url_field(field, params) do
-    raw = Map.get(params, to_string(field.name))
+    key = url_key(field)
+    raw = Map.get(params, key)
 
     cond do
       is_nil(raw) and field.required ->
         raise Lavash.State.MissingRequiredFieldError, field: field.name
 
       is_nil(raw) ->
+        maybe_warn_url_key_mismatch(field, key, params)
         field.default
 
       field.decode ->
@@ -116,6 +120,26 @@ defmodule Lavash.State do
       true ->
         decode_type(raw, field.type)
     end
+  end
+
+  defp url_key(%{url_name: name}) when is_binary(name), do: name
+  defp url_key(field), do: to_string(field.name)
+
+  # Dev-only nudge: when a `from: :url, required: false` field falls back to
+  # the default and there's no matching key in params at all, log a warning.
+  # This catches the common typo where the URL key differs from the field
+  # name (e.g. `?subject=alice` vs `state :subject_handle, from: :url`).
+  defp maybe_warn_url_key_mismatch(field, key, params) do
+    if field.from == :url and not field.required and not Map.has_key?(params, key) and
+         params != %{} do
+      Logger.warning(fn ->
+        "[lavash] state :#{field.name} (from: :url) looked for param #{inspect(key)} " <>
+          "but it was not present in the URL. Available keys: #{inspect(Map.keys(params))}. " <>
+          "If the URL key is different from the field name, set `url_name: \"...\"` on the state."
+      end)
+    end
+
+    :ok
   end
 
   defp decode_type(value, type) do

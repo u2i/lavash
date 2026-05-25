@@ -94,6 +94,17 @@ defmodule Lavash.Dsl do
                       default: false,
                       doc:
                         "Auto-generate a set_<name> action that sets this field from params.value"
+                    ],
+                    url_name: [
+                      type: :string,
+                      doc: """
+                      URL/query-string key for `from: :url` fields.
+
+                      Defaults to the field name as a string. Set this when the
+                      query-string key needs to differ from the field name —
+                      e.g. `state :subject_handle, :string, from: :url, url_name: "subject"`
+                      hydrates from `?subject=alice`.
+                      """
                     ]
                   ]
 

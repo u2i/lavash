@@ -313,3 +313,40 @@ defmodule Lavash.Test.Magic.CustomMountLive do
     """
   end
 end
+
+defmodule Lavash.Test.Magic.UrlNameLive do
+  @moduledoc """
+  Test fixture: state field whose URL query key differs from the field name.
+  Exercises Issue #4 (silent URL param name mismatch).
+  """
+  use Lavash.LiveView
+
+  state :subject_handle, :string, from: :url, default: nil, url_name: "subject"
+
+  def render(assigns) do
+    ~H"""
+    <div>
+      <span id="handle">{@subject_handle || "(none)"}</span>
+    </div>
+    """
+  end
+end
+
+defmodule Lavash.Test.Magic.UrlMismatchLive do
+  @moduledoc """
+  Test fixture: state field with no explicit url_name. Lavash falls back to
+  using the field name as the URL key. Used to assert the dev warning fires
+  when a different URL key is supplied.
+  """
+  use Lavash.LiveView
+
+  state :subject_handle, :string, from: :url, default: nil
+
+  def render(assigns) do
+    ~H"""
+    <div>
+      <span id="handle">{@subject_handle || "(none)"}</span>
+    </div>
+    """
+  end
+end
