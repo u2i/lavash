@@ -298,6 +298,7 @@ defmodule Lavash.Component.Transformers.CompileComponent do
     forms = Transformer.get_entities(dsl_state, [:forms]) || []
     actions = Transformer.get_entities(dsl_state, [:actions]) || []
     calculations = Transformer.get_entities(dsl_state, [:calculations]) || []
+    props = Transformer.get_entities(dsl_state, [:props]) || []
 
     optimistic_fields =
       states
@@ -322,17 +323,26 @@ defmodule Lavash.Component.Transformers.CompileComponent do
 
     optimistic_fields = Map.merge(optimistic_fields, implicit_form_fields)
 
-    # All declared state fields (including non-optimistic ones). Used by the
-    # token transformer to diagnose `{@field}` references in `~L` where the
-    # field is declared but not optimistic — likely a user mistake.
-    all_state_fields =
+    # All declared state fields (including non-optimistic ones), plus
+    # props (in components). Used by the token transformer to diagnose
+    # `{@field}` references where the field is declared but not optimistic,
+    # and to validate `bind={[child: :parent]}` targets. Props are valid
+    # targets for binding because the parent template can pass them through.
+    state_entries =
       states
       |> Enum.map(fn
         %Lavash.State.Field{name: name} = field -> {name, field}
         other -> {Map.get(other, :name), other}
       end)
       |> Enum.reject(fn {name, _} -> is_nil(name) end)
-      |> Map.new()
+
+    prop_entries =
+      props
+      |> Enum.map(fn p -> {Map.get(p, :name), p} end)
+      |> Enum.reject(fn {name, _} -> is_nil(name) end)
+
+    all_state_fields = Map.new(state_entries ++ prop_entries)
+    prop_field_names = MapSet.new(prop_entries, fn {name, _} -> name end)
 
     forms_map =
       forms
@@ -381,6 +391,7 @@ defmodule Lavash.Component.Transformers.CompileComponent do
       context: context,
       optimistic_fields: optimistic_fields,
       all_state_fields: all_state_fields,
+      prop_field_names: prop_field_names,
       calculations: calc_map,
       forms: forms_map,
       actions: actions_map,

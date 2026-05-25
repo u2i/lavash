@@ -228,12 +228,17 @@ defmodule Lavash.Template.TokenTransformer do
   defp warn_if_non_optimistic_bare_ref(expr, expr_meta, metadata) do
     all_state = metadata[:all_state_fields] || %{}
     optimistic = metadata[:optimistic_fields] || %{}
+    prop_field_names = metadata[:prop_field_names] || MapSet.new()
 
     with [_, field_str] <- Regex.run(~r/^@(\w+)$/, String.trim(expr)),
          field_atom = safe_existing_atom(field_str),
          true <- not is_nil(field_atom),
          true <- is_map_key(all_state, field_atom),
-         false <- is_map_key(optimistic, field_atom) do
+         false <- is_map_key(optimistic, field_atom),
+         # Props are constant for the component's lifetime — they don't
+         # have a notion of client-side optimistic update. A bare `{@prop}`
+         # is the correct way to render one.
+         false <- MapSet.member?(prop_field_names, field_atom) do
       require Logger
 
       Logger.warning(
