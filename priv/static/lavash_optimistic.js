@@ -50,7 +50,7 @@ import {
 } from "./concerns/utils.js";
 import { installGlobalDomCallback } from "./concerns/global_dom_callback.js";
 import { updateDOM as _updateDOM, notifyChildren as _notifyChildren } from "./concerns/dom_updater.js";
-import { refreshFromParent as _refreshFromParent, propagateBoundFieldsToParent as _propagateBoundFieldsToParent } from "./concerns/bindings.js";
+import * as bindings from "./concerns/bindings.js";
 import { handleClick as _handleClick, runOptimisticAction as _runOptimisticAction } from "./concerns/optimistic_actions.js";
 import { loadGeneratedFunctions as _loadGeneratedFunctions } from "./concerns/function_loader.js";
 import * as forms from "./concerns/forms.js";
@@ -85,10 +85,6 @@ const LavashOptimistic = {
     // URL fields that should be synced to the browser URL
     this.urlFields = JSON.parse(this.el.dataset.lavashUrlFields || "[]");
 
-    // Bindings map: local field -> parent field (for parent-to-child propagation)
-    // When parent state changes, we update our local state and animate
-    this.bindings = JSON.parse(this.el.dataset.lavashBindings || "{}");
-
     // Load generated functions from inline JSON script tag
     this.loadGeneratedFunctions();
 
@@ -113,13 +109,12 @@ const LavashOptimistic = {
     // Intercept clicks on elements with phx-click that match optimistic actions
     this.el.addEventListener("click", this.handleClick.bind(this), true);
 
-    // Handle lavash-set events from child ClientComponents
-    // This allows nested components to set bound state on parent components
-    // Use bubbling mode (not capture) so the closest ancestor hook handles it first
-    this.el.addEventListener("lavash-set", this.handleLavashSet.bind(this), false);
-
     // Install global DOM callback for input preservation (only once globally)
     this._installGlobalDomCallback();
+
+    // Bindings init: parse data-lavash-bindings map, install
+    // lavash-set listener for parent↔child state propagation.
+    bindings.mounted(this);
 
     // Forms init: per-field touched state, submitted-form tracking,
     // input/change/blur/submit listeners, validation-timer scratchpad.
@@ -166,71 +161,6 @@ const LavashOptimistic = {
     _handleClick(e, this);
   },
 
-  /**
-   * Handle lavash-set events from child ClientComponents.
-   * This allows nested components to set bound state on parent components.
-   * The event bubbles up from a ClientComponent that has a bound field.
-   *
-   * @param {CustomEvent} e - Event with detail: { field: string, value: any }
-   */
-  handleLavashSet(e) {
-    const { field, value, serverHandled } = e.detail;
-    if (!field) return;
-
-    console.warn(`[LO] handleLavashSet: field=${field}, value=${JSON.stringify(value)}, serverHandled=${serverHandled}`);
-
-    // Check if this field has an animated state (modal/flyover)
-    if (this.animatedStates?.[field]) {
-      e.stopPropagation();
-      const animValue = value ? value : null;
-      if (!serverHandled) {
-        const setterAction = `set_${field}`;
-        this.store.get(field).set(animValue, (payload, callback) => {
-          this.pushEventTo(this.el, setterAction, { ...payload, value: animValue }, callback);
-        });
-      } else {
-        this.store.get(field).setOptimistic(animValue);
-      }
-      return;
-    }
-
-    // Check if this field exists in our state (we own it)
-    if (field in this.state) {
-      // Stop propagation - we own this field
-      e.stopPropagation();
-
-      // Update client-side state
-      this.state[field] = value;
-
-      // Track in SyncedVarStore if available
-      if (this.store) {
-        const syncedVar = this.store.get(field, null);
-        syncedVar.setOptimistic(value);
-      }
-
-      // Bump client version
-      if (this.clientVersion !== undefined) {
-        this.clientVersion++;
-      }
-
-      // Recompute derives and update DOM
-      this.recomputeDerives([field]);
-      this.updateDOM();
-
-      // Only push to server if the originating component hasn't already
-      // pushed its own action event (which will propagate server-side)
-      if (!serverHandled) {
-        const setterAction = `set_${field}`;
-        this.pushEventTo(this.el, setterAction, { value }, () => {});
-      }
-      return;
-    }
-
-    // We don't own this field - let the event continue propagating
-    // (another hook up the tree may own it)
-    console.debug("[LavashOptimistic] Field", field, "not owned by this hook, letting event propagate");
-  },
-
   setStateAtPath(path, value) {
     _setStateAtPath(this.state, path, value);
   },
@@ -261,16 +191,17 @@ const LavashOptimistic = {
     _notifyChildren(this.el, this);
   },
 
+  // Bindings methods kept on the hook because external callers
+  // (parent hooks calling into this child, dom_updater calling out
+  // to the parent) reach for `hook.refreshFromParent(...)` /
+  // `hook.propagateBoundFieldsToParent(...)`. Delegate to the
+  // bindings module for the actual work.
   refreshFromParent(parentHook) {
-    const changedFields = _refreshFromParent(this.bindings, this.state, this.store, parentHook);
-    if (changedFields.length > 0) {
-      this.recomputeDerives(changedFields);
-      this.updateDOM();
-    }
+    bindings.refreshFromParent(this, parentHook);
   },
 
   propagateBoundFieldsToParent(changedFields, opts) {
-    _propagateBoundFieldsToParent(this.bindings, this.state, this.el, changedFields, opts);
+    bindings.propagateBoundFieldsToParent(this, changedFields, opts);
   },
 
   // Sync URL fields to browser URL without triggering navigation
@@ -518,19 +449,18 @@ const LavashOptimistic = {
 
   destroyed() {
     // Forms cleanup: stash fieldState/submittedForms for potential
-    // remount, remove input/change/blur/submit listeners using the
-    // same bound refs we installed in mounted().
+    // remount, remove input/change/blur/submit listeners.
     forms.destroyed(this);
 
-    // The click and lavash-set listeners use this.handleClick /
-    // this.handleLavashSet bound fresh on install. The old code
-    // bound fresh again here, which silently never matched. Leaving
-    // them as no-ops because the hook is being torn down — the
-    // element will be removed and GC'd.
-    //
-    // TODO: when click/lavash-set move into their own concerns
-    // (optimistic_actions, bindings), they'll get the same
-    // bound-ref-stash pattern as forms.
+    // Bindings cleanup: remove the lavash-set listener.
+    bindings.destroyed(this);
+
+    // The remaining click listener uses this.handleClick bound fresh
+    // on install. The old destroyed() bound it fresh again here,
+    // which silently never matched. Leaving as a no-op because the
+    // hook is being torn down — element will be removed and GC'd.
+    // Will get the same bound-ref-stash pattern when click moves
+    // into concerns/optimistic_actions.js.
 
     // Overlay cleanup: tear down animation delegates, remove modal
     // event listeners, prune the modal-content registry for this hook.
