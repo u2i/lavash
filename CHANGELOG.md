@@ -6,6 +6,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.0-rc.5] — 2026-05-25
+
+### Fixed
+
+- **#19** — `rx()` dep extraction loses `@field` references nested
+  inside the *key* of a bracket-access whose root isn't an @-ref.
+  Example: `rx(@a && (@b || @c)[@d])` lost `:d` from deps. The AST
+  rewrite was correct (the calc evaluated to the right value when
+  called fresh), but the reactive engine didn't track the missing
+  dep — so the calc never recomputed when that field changed, and
+  the cached value (often `nil`) leaked through.
+
+  Worse than the rc.3 → rc.4 fix-target: this same shape used to
+  raise a hard crash on Elixir 1.18, then rc.3 quieted the crash
+  without finishing the dep walk, producing a silent wrong-result.
+  rc.5 closes the loop.
+
 ## [0.3.0-rc.4] — 2026-05-25
 
 A round of compile-time validation to surface typos and stale
