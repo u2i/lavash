@@ -6,6 +6,44 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.0-rc.4] — 2026-05-25
+
+A round of compile-time validation to surface typos and stale
+references before they become runtime crashes or silent nil
+values. No runtime behaviour changes.
+
+### Added
+
+- **`Lavash.Transformers.ValidateDsl`** — a new transformer that
+  runs after entity expansion and before compilation, raising
+  `Spark.Error.DslError` with a clear hint when it spots:
+  - duplicate `state`, `calculate`, or `action` names
+  - a calculation whose name shadows a state of the same name
+  - `reads [:foo]` where `:foo` matches no state, calc, read, prop,
+    or form-derived field (previously a runtime `KeyError`)
+  - `set :foo, ...` where `:foo` isn't a declared state
+    (previously a silent socket-assign write)
+  - `set ..., rx(@field)` or `calculate :foo, rx(@field)` where
+    `@field` references an undeclared name (previously evaluated
+    to nil silently)
+  - action guards (`action :foo, [], [:guard]`) referencing names
+    that aren't a state or calculation
+- **`<input field={@form[:typo]}>` warning** — the template
+  transformer now logs a dev-only warning when the field name
+  isn't an attribute of the Ash resource behind the form,
+  listing the available attributes. Silent when the resource
+  couldn't be loaded at compile time.
+
+### Fixed
+
+- The bare-`{@field}` non-optimistic diagnostic no longer fires
+  for props in components. Props are constant for the
+  component's lifetime — they don't have an optimistic flavour,
+  and rendering them bare is the correct pattern.
+- `bind={[child: :parent]}` no longer warns when `:parent` is a
+  declared prop on the host. `all_state_fields` in template
+  metadata now includes prop entries alongside state.
+
 ## [0.3.0-rc.3] — 2026-05-25
 
 Two more adopter-feedback fixes, both real runtime crashes on
