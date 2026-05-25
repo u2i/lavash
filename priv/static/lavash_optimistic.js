@@ -61,14 +61,7 @@ import {
   handleInput as _handleInput,
   initializeFormParamsFromDOM as _initializeFormParamsFromDOM,
 } from "./concerns/form_handler.js";
-import {
-  initAnimatedFields as _initAnimatedFields,
-  captureBeforeUpdate,
-  notifyAsyncReady as _notifyAsyncReady,
-  notifyDelegatesUpdated,
-  detectAsyncFieldsReady as _detectAsyncFieldsReady,
-  destroyOverlays,
-} from "./concerns/overlay_manager.js";
+import * as overlays from "./concerns/overlays.js";
 
 // Registry for optimistic function modules (for custom overrides)
 window.Lavash = window.Lavash || {};
@@ -172,14 +165,8 @@ const LavashOptimistic = {
     // This ensures validation works correctly for fields with defaults
     this.initializeFormParamsFromDOM();
 
-    // Initialize animated state managers
-    this.initAnimatedFields();
-  },
-
-  initAnimatedFields() {
-    const result = _initAnimatedFields(this);
-    this.animatedStates = result.animatedStates;
-    this._modalEventListeners = result.modalEventListeners;
+    // Initialize animated state managers (modals, flyovers, etc.)
+    overlays.mounted(this);
   },
 
   getAnimatedState(field) {
@@ -321,14 +308,6 @@ const LavashOptimistic = {
     _runOptimisticAction(actionName, value, this);
   },
 
-  notifyAsyncReady(asyncField) {
-    _notifyAsyncReady(this.animatedStates, this.store, asyncField);
-  },
-
-  notifyAnimatedStatesDelegatesUpdated() {
-    notifyDelegatesUpdated(this.animatedStates, this.store);
-  },
-
   recomputeDerives(changedFields = null) {
     _recomputeGraph(this.graph, this.fns, this.state, changedFields);
   },
@@ -382,7 +361,7 @@ const LavashOptimistic = {
   },
 
   beforeUpdate() {
-    captureBeforeUpdate(this.animatedStates, this.store);
+    overlays.beforeUpdate(this);
   },
 
   updated() {
@@ -398,23 +377,12 @@ const LavashOptimistic = {
       }
     }
 
-    // Detect async fields that became ready (before store.serverUpdate overwrites old values)
-    const asyncFieldsReady = this.detectAsyncFieldsReady(serverState);
-
-    // Detect if any animated field is opening (for _params clearing in mergeServerState).
-    // Check phase rather than value — by the time updated() runs, refreshFromParent
-    // may have already set the value optimistically, so old/new comparison won't work.
-    // "entering" phase means the modal just opened this cycle.
-    let isModalOpening = false;
-    if (this.animatedStates) {
-      for (const field of Object.keys(this.animatedStates)) {
-        const sv = this.store.get(field);
-        const phase = sv.getPhase();
-        if (phase === "entering" || phase === "loading") {
-          isModalOpening = true;
-        }
-      }
-    }
+    // Detect async fields that became ready (before store.serverUpdate
+    // overwrites old values). Detect whether any animated field is
+    // entering/loading (for _params clearing in mergeServerState). Both
+    // detections read SyncedVar state BEFORE store.serverUpdate runs.
+    const asyncFieldsReady = overlays.detectAsyncFieldsReady(this, serverState);
+    const isModalOpening = overlays.detectModalOpening(this);
 
     // Capture pending paths BEFORE serverUpdate — serverUpdate may increment
     // confirmedVersion (clearing pending state) while still rejecting the server
@@ -454,13 +422,10 @@ const LavashOptimistic = {
       this.serverVersion = newServerVersion;
     }
 
-    // Notify animated states that async data is ready
-    for (const asyncField of asyncFieldsReady) {
-      this.notifyAsyncReady(asyncField);
-    }
-
-    // Let delegates handle post-update logic (e.g., modal FLIP animations)
-    this.notifyAnimatedStatesDelegatesUpdated();
+    // Notify animated states that async data is ready, then let
+    // delegates handle post-update logic (e.g., modal FLIP animations).
+    overlays.notifyAsyncReadyForFields(this, asyncFieldsReady);
+    overlays.notifyDelegatesUpdated(this);
 
     // Initialize form params from any newly-added inputs (e.g., async modal content)
     this.initializeFormParamsFromDOM();
@@ -481,10 +446,6 @@ const LavashOptimistic = {
     });
 
     this._clearedParamsFields = null;
-  },
-
-  detectAsyncFieldsReady(serverState) {
-    return _detectAsyncFieldsReady(this.animatedStates, this.state, serverState);
   },
 
   /**
@@ -647,19 +608,9 @@ const LavashOptimistic = {
     this.el.removeEventListener("blur", this.handleBlur.bind(this), true);
     this.el.removeEventListener("submit", this.handleFormSubmit.bind(this), true);
 
-    // Clean up overlay resources
-    destroyOverlays(this.animatedStates, this._modalEventListeners, this.store);
-    this._modalEventListeners = [];
-
-    // Clean up modal content registry entries for this hook
-    if (window.__lavashModalContentRegistry) {
-      for (const [contentId, entry] of Object.entries(window.__lavashModalContentRegistry)) {
-        if (entry.hook === this) {
-          delete window.__lavashModalContentRegistry[contentId];
-        }
-      }
-    }
-    this.animatedStates = {};
+    // Overlay cleanup: tear down animation delegates, remove modal
+    // event listeners, prune the modal-content registry for this hook.
+    overlays.destroyed(this);
   }
 };
 
