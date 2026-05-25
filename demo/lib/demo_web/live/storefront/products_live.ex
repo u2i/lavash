@@ -252,8 +252,8 @@ defmodule DemoWeb.Storefront.ProductsLive do
     end
   end
 
-  render fn assigns ->
-    ~L"""
+  template do
+    ~H"""
     <div class="space-y-6">
       <div class="flex items-center justify-between py-4">
         <div class="flex-1"></div>

@@ -308,8 +308,8 @@ defmodule DemoWeb.Storefront.CheckoutLive do
   # Template
   # ─────────────────────────────────────────────────────────────
 
-  render fn assigns ->
-    ~L"""
+  template do
+    ~H"""
     <div class="bg-base-200 min-h-screen">
       <main class="mx-auto max-w-6xl p-4 lg:p-8">
         <%= if @order_placed_id do %>

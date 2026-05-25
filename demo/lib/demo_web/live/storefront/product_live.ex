@@ -197,8 +197,8 @@ defmodule DemoWeb.Storefront.ProductLive do
     """
   end
 
-  render fn assigns ->
-    ~L"""
+  template do
+    ~H"""
     <div class="space-y-6">
       <div class="flex items-center justify-between">
         <a href={~p"/storefront/products"} class="btn btn-ghost btn-sm">

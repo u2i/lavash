@@ -57,8 +57,8 @@ defmodule DemoWeb.Components.CartItemList do
     end
   end
 
-  render fn assigns ->
-    ~L"""
+  template do
+    ~H"""
     <div class="flex-1 flex flex-col overflow-hidden">
       <div :if={@is_empty} class="flex flex-col items-center justify-center flex-1 text-base-content/50 p-8">
         <svg class="w-16 h-16 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
