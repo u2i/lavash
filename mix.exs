@@ -1,7 +1,7 @@
 defmodule Lavash.MixProject do
   use Mix.Project
 
-  @version "0.2.0"
+  @version "0.3.0-rc.0"
   @source_url "https://github.com/u2i/lavash"
 
   def project do
@@ -87,7 +87,7 @@ defmodule Lavash.MixProject do
       links: %{
         "GitHub" => @source_url
       },
-      files: ~w(lib .formatter.exs mix.exs README.md LICENSE)
+      files: ~w(lib priv .formatter.exs mix.exs README.md CHANGELOG.md LICENSE)
     ]
   end
 
@@ -96,7 +96,7 @@ defmodule Lavash.MixProject do
       main: "readme",
       source_ref: "v#{@version}",
       source_url: @source_url,
-      extras: ["README.md"],
+      extras: ["README.md", "CHANGELOG.md"],
       groups_for_modules: [
         Core: [
           Lavash.LiveView,
