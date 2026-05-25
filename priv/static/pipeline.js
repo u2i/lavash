@@ -10,16 +10,28 @@
  *
  * ## Usage
  *
- *     import { lavash } from "lavash/pipeline";
- *     import { decorate } from "lavash/decorators";
- *     import { forms, overlays, bindings, optimisticActions }
- *       from "lavash/concerns";
+ *     import { lavash, defaultConcerns, getHooks } from "lavash";
  *
- *     const lavashDecorator = lavash({
- *       concerns: [optimisticActions, bindings, forms, overlays]
+ *     const lavashDecorator = lavash({ concerns: defaultConcerns });
+ *
+ *     const liveSocket = new LiveSocket("/live", Socket, {
+ *       hooks: getHooks(lavashDecorator, MyAppHooks)
  *     });
  *
- *     const decoratedHooks = decorate(myHooks, [lavashDecorator]);
+ * ## Auto-activation
+ *
+ * The decorator can be applied to ANY user hook. At mount time it
+ * checks whether the hook's element has `data-lavash-state`:
+ *
+ *   - **Present** (the lavash server runtime emits this on every
+ *     lavash-managed element): the decorator runs the full pipeline
+ *     — core init, concerns mount, registers for update/destroy.
+ *
+ *   - **Absent** (a user hook on a non-lavash element): the decorator
+ *     no-ops. The user's hook runs normally; lavash adds zero cost.
+ *
+ * This means `getHooks(decorator, MyAppHooks)` is safe to use even
+ * when most of your hooks have nothing to do with lavash.
  *
  * ## Order
  *
@@ -32,8 +44,9 @@
  *
  * The decorator wraps the user's lifecycle methods. The user's
  * `mounted`/`updated`/`destroyed`/`beforeUpdate` run AFTER lavash's
- * pipeline at each phase. Wrapping (not replacing) means the user's
- * hook keeps doing whatever it does.
+ * pipeline at each phase (when active). Wrapping (not replacing)
+ * means the user's hook keeps doing whatever it does, AND can read
+ * lavash state (`this.state`, `this.store`, etc.) if it wants.
  */
 
 import { coreInit, coreCaptureBeforeUpdate, coreUpdated } from "./pipeline_core.js";
@@ -50,54 +63,69 @@ export function lavash({ concerns = [] } = {}) {
     ...hook,
 
     mounted() {
-      // Core init first (state, store, version, fns) — sets up the
-      // substrate everything else reads from.
-      coreInit(this);
+      // Activation gate: only run lavash if the element is
+      // lavash-managed. `data-lavash-state` is emitted by the server
+      // runtime on every lavash element (LiveView root, modal wrapper,
+      // flyover wrapper). On user-hook elements without it, lavash
+      // sits out completely — zero overhead.
+      this._lavashEnabled = this.el.hasAttribute("data-lavash-state");
 
-      // Each concern's mount-time setup runs in array order.
-      for (const concern of concerns) {
-        if (concern.mounted) concern.mounted(this, null);
+      if (this._lavashEnabled) {
+        // Core init first (state, store, version, fns) — sets up the
+        // substrate everything else reads from.
+        coreInit(this);
+
+        // Each concern's mount-time setup runs in array order.
+        for (const concern of concerns) {
+          if (concern.mounted) concern.mounted(this, null);
+        }
+
+        // Stash the concerns list on the hook so update/destroyed can
+        // access it without closing over the original array.
+        this._lavashConcerns = concerns;
       }
 
-      // Stash the concerns list on the hook so update/destroyed can
-      // access it without closing over the original array (avoids
-      // surprises if app.js shares concern arrays across decorators).
-      this._lavashConcerns = concerns;
-
-      // Finally call the wrapped hook's own mounted if any.
+      // Always call the wrapped hook's own mounted if any. User hook
+      // runs whether or not lavash activated — if lavash activated,
+      // the user hook can read this.state / this.store.
       hook.mounted?.call(this);
     },
 
     beforeUpdate() {
-      coreCaptureBeforeUpdate(this);
+      if (this._lavashEnabled) {
+        coreCaptureBeforeUpdate(this);
 
-      for (const concern of this._lavashConcerns || []) {
-        if (concern.beforeUpdate) concern.beforeUpdate(this, null);
+        for (const concern of this._lavashConcerns || []) {
+          if (concern.beforeUpdate) concern.beforeUpdate(this, null);
+        }
       }
 
       hook.beforeUpdate?.call(this);
     },
 
     updated() {
-      // The core update cycle handles all internal stages and walks
-      // the registered concerns at the appropriate stage points.
-      coreUpdated(this, this._lavashConcerns || []);
+      if (this._lavashEnabled) {
+        // The core update cycle handles all internal stages and walks
+        // the registered concerns at the appropriate stage points.
+        coreUpdated(this, this._lavashConcerns || []);
+      }
 
       hook.updated?.call(this);
     },
 
     destroyed() {
-      // Concerns tear down in REVERSE order — mirror of mounted.
-      // This way, if concern A was mounted "on top of" concern B,
-      // A tears down first and B's invariants still hold while A
-      // is cleaning up.
-      const concerns = this._lavashConcerns || [];
-      for (let i = concerns.length - 1; i >= 0; i--) {
-        const concern = concerns[i];
-        if (concern.destroyed) concern.destroyed(this, null);
-      }
+      if (this._lavashEnabled) {
+        // Concerns tear down in REVERSE order — mirror of mounted.
+        // If concern A was mounted "on top of" concern B, A tears
+        // down first so B's invariants still hold while A cleans up.
+        const concerns = this._lavashConcerns || [];
+        for (let i = concerns.length - 1; i >= 0; i--) {
+          const concern = concerns[i];
+          if (concern.destroyed) concern.destroyed(this, null);
+        }
 
-      this._lavashConcerns = null;
+        this._lavashConcerns = null;
+      }
 
       hook.destroyed?.call(this);
     }

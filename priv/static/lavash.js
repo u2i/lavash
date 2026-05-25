@@ -89,20 +89,30 @@ export function getState() {
 }
 
 /**
- * Convenience: builds a hooks dict combining the standard
- * `LavashOptimistic` hook (lavash decorator on `{}`) with any
- * user-provided hooks.
+ * Decorate every hook in the dict with the lavash pipeline.
+ *
+ * Lavash auto-activates only on elements with `data-lavash-state`
+ * (which the server runtime emits on lavash-managed elements). Hooks
+ * on non-lavash elements pass through with zero overhead — the
+ * decorator no-ops, the user's hook runs normally.
  *
  *     const decorator = lavash({ concerns: defaultConcerns });
  *     const liveSocket = new LiveSocket(..., {
  *       hooks: getHooks(decorator, { MyHook, OtherHook })
  *     });
+ *
+ * The `LavashOptimistic` name (which the server runtime emits in
+ * markup) is registered automatically — that's lavash wrapping the
+ * empty hook `{}`. User hooks get the same wrapping; if their
+ * element is lavash-managed, they get the full machinery + their own
+ * hook runs after. If not, they're untouched.
  */
 export function getHooks(decorator, userHooks = {}) {
-  return {
-    ...userHooks,
-    LavashOptimistic: decorator({})
-  };
+  const decorated = { LavashOptimistic: decorator({}) };
+  for (const [name, hook] of Object.entries(userHooks)) {
+    decorated[name] = decorator(hook);
+  }
+  return decorated;
 }
 
 export { SyncedVar, OverlayAnimator };
