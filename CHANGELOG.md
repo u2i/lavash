@@ -6,6 +6,41 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.0-rc.3] — 2026-05-25
+
+Two more adopter-feedback fixes, both real runtime crashes on
+recent Elixir versions and/or with idiomatic Elixir code.
+
+### Fixed
+
+- **#17** — `rx()` handles `@field` references nested inside path-access
+  keys and short-circuit operators. Two related bugs were fixed in one
+  pass:
+  - The walker rewrote `@params` in `rx(@params["x"])` but left a key
+    that was itself an @-ref (`rx(@params[@k])`) raw, so it survived
+    into the stored AST and crashed at eval time with
+    `Module.get_attribute against an already-compiled module`.
+  - `Kernel.&&/2`, `Kernel.||/2`, `Kernel.and/2`, `Kernel.or/2` expand
+    eagerly on some Elixir versions (notably 1.18.x), hiding inner
+    `@field` refs from the walker. Now pre-expanded only when needed
+    so the walker sees a canonical shape across versions.
+- **#18** — `calculate :foo, rx(local_helper(@x))` resolves unqualified
+  calls to local helpers — both `def` and `defp` — at runtime. Same
+  root cause and fix shape as rc.2's #15 for action `run fn` bodies:
+  each calculation's rx body is hoisted at compile time into a
+  generated `def __lavash_calc__/2` on the user's module, so local
+  resolution (which covers `defp`) takes over. Public functions
+  worked before via `module.fun(...)` qualification, but `defp`
+  wasn't remote-callable and crashed.
+
+### Tooling
+
+- `mix docs --warnings-as-errors` runs as the fifth step of the
+  optional pre-commit hook (`.githooks/pre-commit`). Catches
+  `Module.fun/n` references in moduledocs / CHANGELOG that point at
+  since-removed functions — those previously slipped through to
+  published docs because `mix docs` exits 0 even with warnings.
+
 ## [0.3.0-rc.2] — 2026-05-25
 
 Five fixes prompted by a second round of adopter feedback. All five
