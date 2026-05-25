@@ -3,7 +3,7 @@ defmodule Lavash.SparkHeex.Transformers.ValidateEvents do
   Cross-validates the tokenized HEEx template against declared `action`
   entities.
 
-  Walks the LV 1.2 node tree (from `Phoenix.LiveView.TagEngine.Parser`)
+  Walks the LV 1.2 node tree (from Phoenix.LiveView.TagEngine.Parser)
   looking for `phx-click` / `phx-submit` / `phx-change` / `phx-blur` /
   `phx-focus` / `phx-keydown` / `phx-keyup` attributes whose values are
   string literals, and checks each event name resolves to a declared

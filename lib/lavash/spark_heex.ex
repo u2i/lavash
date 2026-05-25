@@ -3,7 +3,7 @@ defmodule Lavash.SparkHeex do
   Spike: a Spark DSL extension that treats HEEx templates as a first-class
   DSL element, not as opaque sigil contents inside a function body.
 
-  See `Lavash.SparkHeex.Dsl` and `Lavash.SparkHeex.TemplateMacro` for the
+  See Lavash.SparkHeex.Dsl and `Lavash.SparkHeex.TemplateMacro` for the
   moving parts. The spike write-up lives at the top of this file:
 
   ## Why

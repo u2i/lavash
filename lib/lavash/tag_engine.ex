@@ -19,7 +19,7 @@ defmodule Lavash.TagEngine do
       (the transformer's `transform/2` now receives the node tree, not a
       flat token list)
     * `:lavash_metadata` — opaque metadata passed to the transformer
-    * everything else is forwarded to `Phoenix.LiveView.TagEngine.Compiler`
+    * everything else is forwarded to Phoenix.LiveView.TagEngine.Compiler
   """
 
   alias Phoenix.LiveView.TagEngine.{Parser, Compiler}
