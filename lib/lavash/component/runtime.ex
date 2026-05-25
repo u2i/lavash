@@ -263,13 +263,12 @@ defmodule Lavash.Component.Runtime do
         bound_state_before = capture_bound_field_state(socket, binding_map)
 
         case execute_action(socket, module, action, params) do
-          {:ok, socket, notify_events} ->
+          {:ok, socket} ->
             socket =
               socket
               |> maybe_sync_socket_state(module)
               |> Reactive.recompute()
               |> Assigns.project(module)
-              |> apply_notify_parents(notify_events)
               |> propagate_bound_field_changes(binding_map, bound_state_before)
 
             {:ok, socket}
@@ -282,7 +281,7 @@ defmodule Lavash.Component.Runtime do
             socket =
               if error_action do
                 case execute_action(socket, module, error_action, params) do
-                  {:ok, sock, _notify} -> sock
+                  {:ok, sock} -> sock
                   {:error, sock, _} -> sock
                 end
               else
@@ -328,13 +327,12 @@ defmodule Lavash.Component.Runtime do
         bound_state_before = capture_bound_field_state(socket, binding_map)
 
         case execute_action(socket, module, action, params) do
-          {:ok, socket, notify_events} ->
+          {:ok, socket} ->
             socket =
               socket
               |> maybe_sync_socket_state(module)
               |> Reactive.recompute()
               |> Assigns.project(module)
-              |> apply_notify_parents(notify_events)
               |> propagate_bound_field_changes(binding_map, bound_state_before)
 
             # Return reply so pushEventTo callbacks are triggered
@@ -348,7 +346,7 @@ defmodule Lavash.Component.Runtime do
             socket =
               if error_action do
                 case execute_action(socket, module, error_action, params) do
-                  {:ok, sock, _notify} -> sock
+                  {:ok, sock} -> sock
                   {:error, sock, _} -> sock
                 end
               else
@@ -556,60 +554,22 @@ defmodule Lavash.Component.Runtime do
     params = ActionRuntime.build_params(action.params, event_params)
 
     if ActionRuntime.guards_pass?(socket, module, action.when) do
-      socket =
-        socket
-        |> ActionRuntime.apply_sets(action.sets || [], params, module)
-        |> ActionRuntime.apply_runs(action.runs || [], params, module)
-        |> ActionRuntime.apply_updates(action.updates || [], params)
-        |> ActionRuntime.apply_effects(action.effects || [], params)
-
-      # Collect notify_parent events to execute after state updates
-      notify_events = collect_notify_events(socket, module, action.notify_parents || [])
-
-      # Handle submits - these can fail and trigger on_error
-      apply_submits(socket, module, action.submits || [], notify_events)
+      socket
+      |> ActionRuntime.apply_sets(action.sets || [], params, module)
+      |> ActionRuntime.apply_runs(action.runs || [], params, module)
+      |> ActionRuntime.apply_updates(action.updates || [], params)
+      |> ActionRuntime.apply_effects(action.effects || [], params)
+      |> apply_submits(module, action.submits || [])
     else
-      {:ok, socket, []}
+      {:ok, socket}
     end
   end
 
-  defp collect_notify_events(socket, _module, notify_parents) do
-    props = LSocket.get(socket, :props) || %{}
-
-    Enum.map(notify_parents, fn notify ->
-      # The event can be a prop name (atom) that references the event name stored in props,
-      # or a literal string event name
-      case notify.event do
-        name when is_binary(name) ->
-          # Literal string event name
-          name
-
-        prop_name when is_atom(prop_name) ->
-          # Reference to a prop that holds the event name
-          Map.get(props, prop_name)
-      end
-    end)
-    |> Enum.reject(&is_nil/1)
+  defp apply_submits(socket, _module, []) do
+    {:ok, socket}
   end
 
-  defp apply_notify_parents(socket, []) do
-    socket
-  end
-
-  defp apply_notify_parents(socket, [event | rest]) do
-    # Send event to parent LiveView by sending a message to self()
-    # Since the LiveComponent runs in the same process as the parent LiveView,
-    # this will be handled by the parent's handle_info callback
-    send(self(), {:lavash_component_event, event, %{}})
-
-    apply_notify_parents(socket, rest)
-  end
-
-  defp apply_submits(socket, _module, [], notify_events) do
-    {:ok, socket, notify_events}
-  end
-
-  defp apply_submits(socket, module, [submit | rest], notify_events) do
+  defp apply_submits(socket, module, [submit | rest]) do
     # Recompute derived state to get the latest form
     socket = Reactive.recompute(socket)
 
@@ -644,12 +604,8 @@ defmodule Lavash.Component.Runtime do
 
             if success_action do
               case execute_action(socket, module, success_action, %{}) do
-                {:ok, sock, more_notify} ->
-                  # Accumulate notify events from success action
-                  apply_notify_parents(sock, more_notify)
-
-                {:error, sock, _err} ->
-                  sock
+                {:ok, sock} -> sock
+                {:error, sock, _err} -> sock
               end
             else
               socket
@@ -664,7 +620,7 @@ defmodule Lavash.Component.Runtime do
           FormRuntime.broadcast_mutation(form)
         end
 
-        apply_submits(socket, module, rest, notify_events)
+        apply_submits(socket, module, rest)
 
       {:error, :loading} ->
         # Form is still loading - this shouldn't happen if UI is correct
@@ -672,7 +628,7 @@ defmodule Lavash.Component.Runtime do
         if submit.on_error do
           {:error, socket, submit.on_error}
         else
-          {:ok, socket, notify_events}
+          {:ok, socket}
         end
 
       {:error, form_with_errors} ->
@@ -690,7 +646,7 @@ defmodule Lavash.Component.Runtime do
         if submit.on_error do
           {:error, socket, submit.on_error}
         else
-          {:ok, socket, notify_events}
+          {:ok, socket}
         end
     end
   end

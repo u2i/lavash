@@ -13,7 +13,6 @@ defmodule Lavash.Component do
         use Lavash.Component
 
         prop :product, :map, required: true
-        prop :on_select, :atom
 
         state :expanded, :boolean, from: :socket, default: false, optimistic: true
         state :hovered, :boolean, default: false, optimistic: true
@@ -24,10 +23,6 @@ defmodule Lavash.Component do
           action :toggle_expand do
             set :expanded, rx(not @expanded)
           end
-
-          action :select do
-            notify_parent :on_select
-          end
         end
 
         render fn assigns ->
@@ -35,7 +30,6 @@ defmodule Lavash.Component do
           <div phx-click="toggle_expand">
             <h3>{@product.name}</h3>
             <div :if={@show_actions}>...</div>
-            <button phx-click="select">Select</button>
           </div>
           \"\"\"
         end

@@ -560,11 +560,6 @@ defmodule Lavash.LiveView.Runtime do
     {:noreply, socket}
   end
 
-  def handle_info(module, {:lavash_component_event, event, params}, socket) do
-    # Handle events sent from child Lavash components via notify_parent
-    handle_event(module, event, params, socket)
-  end
-
   # Field operations from child Lavash components. The op atom selects how
   # `value` is applied to the named field. Adding a new op means one extra
   # `apply_field_op/4` clause and an extra atom in the guard — no new

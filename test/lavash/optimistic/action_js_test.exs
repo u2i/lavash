@@ -17,7 +17,6 @@ defmodule Lavash.Optimistic.ActionJsTest do
       navigates: Keyword.get(opts, :navigates, []),
       flashes: Keyword.get(opts, :flashes, []),
       invokes: Keyword.get(opts, :invokes, []),
-      notify_parents: Keyword.get(opts, :notify_parents, []),
       map_bys: Keyword.get(opts, :map_bys, [])
     }
   end

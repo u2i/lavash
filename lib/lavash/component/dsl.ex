@@ -7,8 +7,8 @@ defmodule Lavash.Component.Dsl do
   - `state` - internal state (socket or ephemeral)
   - `read` - async load an Ash resource by ID
   - `form` - create an AshPhoenix.Form from a resource
-  - `derive` - computed from props, state, and results
-  - `actions` - state transformers with submit and notify_parent
+  - `calculate` - reactive computed value via rx()
+  - `actions` - state transformers (set, run, update, effect, submit)
 
   All declared fields are automatically projected as assigns.
 
@@ -18,20 +18,14 @@ defmodule Lavash.Component.Dsl do
 
         alias MyApp.Catalog.Product
 
-        # Props from parent
         prop :product_id, :integer
-        prop :on_close, :string, required: true
-        prop :on_saved, :string, required: true
 
-        # Internal state
-        state :submitting, :boolean, from: :ephemeral, default: false
+        state :submitting, :boolean, default: false
 
-        # Load the product when product_id is set
         read :product, Product do
           id prop(:product_id)
         end
 
-        # Form for editing
         form :edit_form, Product do
           data result(:product)
         end
@@ -44,7 +38,6 @@ defmodule Lavash.Component.Dsl do
 
           action :save_success do
             set :submitting, false
-            notify_parent :on_saved
           end
 
           action :save_failed do
@@ -242,19 +235,6 @@ defmodule Lavash.Component.Dsl do
   @effect_entity CommonEntities.effect_entity()
   @submit_entity CommonEntities.submit_entity()
 
-  @notify_parent_entity %Spark.Dsl.Entity{
-    name: :notify_parent,
-    target: Lavash.Actions.NotifyParent,
-    args: [:event],
-    schema: [
-      event: [
-        type: :any,
-        required: true,
-        doc: "The event to send to parent - can be a string (prop name) or atom (literal event)"
-      ]
-    ]
-  }
-
   @action_entity %Spark.Dsl.Entity{
     name: :action,
     target: Lavash.Actions.Action,
@@ -265,8 +245,7 @@ defmodule Lavash.Component.Dsl do
       updates: [@update_entity],
       map_bys: [@map_by_entity],
       effects: [@effect_entity],
-      submits: [@submit_entity],
-      notify_parents: [@notify_parent_entity]
+      submits: [@submit_entity]
     ],
     schema: CommonEntities.base_action_schema()
   }

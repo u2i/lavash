@@ -10,7 +10,7 @@ defmodule Lavash.Action.Runtime do
   - `apply_effects/3` - Execute side effect functions
   - `coerce_value/2` - Coerce values to declared types
 
-  Runtime-specific operations (invoke, notify_parent, navigate, flash) remain
+  Runtime-specific operations (invoke, navigate, flash) remain
   in their respective runtime modules.
   """
 

@@ -25,7 +25,6 @@ defmodule Lavash.Actions.Action do
     :submits,
     :navigates,
     :flashes,
-    :notify_parents,
     :invokes,
     __spark_metadata__: nil
   ]

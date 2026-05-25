@@ -134,8 +134,7 @@ defmodule Lavash.Overlay.Modal.Transformers.InjectState do
         submits: [],
         navigates: [],
         flashes: [],
-        invokes: [],
-        notify_parents: []
+        invokes: []
       }
 
       Transformer.add_entity(dsl_state, [:actions], close_action)
@@ -159,8 +158,7 @@ defmodule Lavash.Overlay.Modal.Transformers.InjectState do
         submits: [],
         navigates: [],
         flashes: [],
-        invokes: [],
-        notify_parents: []
+        invokes: []
       }
 
       Transformer.add_entity(dsl_state, [:actions], noop_action)

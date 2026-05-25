@@ -378,10 +378,6 @@ defmodule MyAppWeb.ProductCard do
     action :toggle do
       set :expanded, rx(not @expanded)
     end
-
-    action :select do
-      notify_parent :on_select
-    end
   end
 
   render fn assigns ->
@@ -389,7 +385,6 @@ defmodule MyAppWeb.ProductCard do
     <div phx-click="toggle">
       <h3>{@title}</h3>
       <div :if={@expanded}>Details...</div>
-      <button phx-click="select">Select</button>
     </div>
     """
   end
