@@ -1,115 +1,108 @@
 defmodule Lavash.Template do
   @moduledoc """
-  Utilities for parsing HEEx templates into tree structures.
+  Utilities for parsing HEEx templates into a small `:element` tree.
 
-  Provides `tokenize/1` and `parse/1` for converting HEEx source into
-  a tree of nodes that can be analyzed for subtree derive extraction
-  and other compile-time transformations.
+  Provides `tokenize/2` (parses to the new LV 1.2 Parser node tree) and
+  `parse/1` (converts that tree into a simpler `{:element, tag, attrs,
+  children, meta}` form that the rest of lavash's compile-time analysis
+  pipeline consumes).
   """
 
-  alias Phoenix.LiveView.Tokenizer
+  alias Phoenix.LiveView.TagEngine.Parser
 
   @doc """
-  Tokenizes HEEx source into a list of tokens.
+  Parses HEEx `source` to the LV 1.2 node tree (`%Parser{}` or just the
+  `nodes` list, depending on `:return`).
 
   Options:
     * `:line` - starting line number (default 1)
     * `:file` - source file path for error messages (default "nofile")
     * `:indentation` - indentation level (default 0)
+    * `:return` - `:nodes` (default) returns the bare node list,
+      `:parser` returns the full `%Parser{}` struct
   """
   def tokenize(source, opts \\ []) do
-    line = Keyword.get(opts, :line, 1)
-    file = Keyword.get(opts, :file, "nofile")
-    indentation = Keyword.get(opts, :indentation, 0)
-    state = Tokenizer.init(indentation, file, source, Phoenix.LiveView.HTMLEngine)
+    parser_opts =
+      opts
+      |> Keyword.take([:line, :file, :indentation, :caller])
+      |> Keyword.put_new(:tag_handler, Phoenix.LiveView.HTMLEngine)
 
-    case Tokenizer.tokenize(source, [line: line, column: 1], [], {:text, :enabled}, state) do
-      {tokens, _cont} ->
-        Tokenizer.finalize(tokens, file, {:text, :enabled}, source)
+    case Parser.parse(source, parser_opts) do
+      {:ok, %Parser{} = parsed} ->
+        case Keyword.get(opts, :return, :nodes) do
+          :parser -> parsed
+          :nodes -> parsed.nodes
+        end
+
+      {:error, line, column, message} ->
+        raise Phoenix.LiveView.TagEngine.Tokenizer.ParseError,
+          line: line,
+          column: column,
+          file: Keyword.get(opts, :file, "nofile"),
+          description: message
     end
   end
 
   @doc """
-  Parses tokens into a tree structure.
+  Converts a LV 1.2 node tree (or `%Parser{}`) into the legacy `:element`
+  tree shape:
 
-  Each node is:
   - `{:element, tag, attrs, children, meta}` for HTML elements
   - `{:text, content}` for text nodes
   - `{:expr, code, meta}` for Elixir expressions
+
+  Components and slots are skipped (they aren't consumed downstream).
   """
-  def parse(tokens) do
-    {tree, []} = parse_children(tokens, [])
-    tree
+  def parse(%Parser{nodes: nodes}), do: parse(nodes)
+
+  def parse(nodes) when is_list(nodes) do
+    Enum.flat_map(nodes, &node_to_element/1)
   end
 
-  defp parse_children([], acc), do: {Enum.reverse(acc), []}
-
-  defp parse_children([{:close, :tag, _name, _meta} | _rest] = tokens, acc) do
-    {Enum.reverse(acc), tokens}
+  defp node_to_element({:block, :tag, name, attrs, children, open_meta, _close_meta}) do
+    [{:element, name, parse_attrs(attrs), parse(children), open_meta}]
   end
 
-  defp parse_children([{:tag, name, attrs, meta} | rest], acc) do
-    case meta[:closing] do
-      closing when closing in [:self, :void] ->
-        node = {:element, name, parse_attrs(attrs), [], meta}
-        parse_children(rest, [node | acc])
-
-      _ ->
-        {children, rest2} = parse_children(rest, [])
-
-        rest3 =
-          case rest2 do
-            [{:close, :tag, ^name, _} | r] -> r
-            _ -> rest2
-          end
-
-        node = {:element, name, parse_attrs(attrs), children, meta}
-        parse_children(rest3, [node | acc])
-    end
+  defp node_to_element({:self_close, :tag, name, attrs, meta}) do
+    [{:element, name, parse_attrs(attrs), [], meta}]
   end
 
-  defp parse_children([{:text, content, _meta} | rest], acc) do
-    parse_children(rest, [{:text, content} | acc])
+  defp node_to_element({:text, content, _meta}) do
+    [{:text, content}]
   end
 
-  defp parse_children([{:expr, code, meta} | rest], acc) do
-    parse_children(rest, [{:expr, code, meta} | acc])
+  defp node_to_element({:body_expr, code, meta}) do
+    [{:expr, code, meta}]
   end
 
-  defp parse_children([{:body_expr, code, meta} | rest], acc) do
-    parse_children(rest, [{:expr, code, meta} | acc])
+  defp node_to_element({:eex, code, meta}) do
+    [{:expr, code, meta}]
   end
 
-  defp parse_children([{:special_attr, type, name, value, meta} | rest], acc) do
-    parse_children(rest, [{:special_attr, type, name, value, meta} | acc])
+  defp node_to_element({:eex_block, _code, clauses, _meta}) do
+    Enum.flat_map(clauses, fn {clause_nodes, _end_code, _meta} -> parse(clause_nodes) end)
   end
 
-  defp parse_children([_unknown | rest], acc) do
-    parse_children(rest, acc)
-  end
+  # Components, slots, eex_comment etc. are not interesting to downstream
+  # consumers (AnalyzeTemplate looks at HTML tags and bare exprs).
+  defp node_to_element(_node), do: []
 
   defp parse_attrs(attrs) do
-    Enum.map(attrs, fn
+    Enum.flat_map(attrs, fn
+      {:root, _value, _attr_meta} ->
+        []
+
       {name, {:expr, code, expr_meta}, _attr_meta} ->
-        {name, {:expr, code, expr_meta}}
+        [{name, {:expr, code, expr_meta}}]
 
       {name, {:string, value, _str_meta}, _attr_meta} ->
-        {name, {:string, value}}
+        [{name, {:string, value}}]
 
       {name, nil, _attr_meta} ->
-        {name, {:boolean, true}}
+        [{name, {:boolean, true}}]
 
-      {name, {:expr, code, meta}} ->
-        {name, {:expr, code, meta}}
-
-      {name, {:string, value, _meta}} ->
-        {name, {:string, value}}
-
-      {name, nil} ->
-        {name, {:boolean, true}}
-
-      other ->
-        other
+      _other ->
+        []
     end)
   end
 end

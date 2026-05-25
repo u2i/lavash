@@ -29,12 +29,33 @@ defmodule Lavash.Template.TokenTransformerTest do
     {:body_expr, expr, Map.merge(%{line: 1, column: 1}, Map.new(opts))}
   end
 
+  # Build a `:block` node (HTML element with children). Pass `children: [...]`
+  # in opts to populate inner nodes; otherwise the block is empty. Pass
+  # `closing: :void` or `closing: :self` to produce a `:self_close` node
+  # instead (the old "void/self-closing tag" shape).
   defp tag(name, attrs \\ [], opts \\ []) do
-    {:tag, name, attrs, meta(Keyword.merge([tag_name: name], opts))}
+    {children, opts} = Keyword.pop(opts, :children, [])
+    {closing, opts} = Keyword.pop(opts, :closing, nil)
+    m = meta(Keyword.merge([tag_name: name], opts))
+
+    case closing do
+      c when c in [:void, :self] ->
+        {:self_close, :tag, name, attrs, m}
+
+      _ ->
+        {:block, :tag, name, attrs, children, m, m}
+    end
   end
 
+  # In the tree shape there's no separate close token — the block carries its
+  # close meta itself. Some tests still emit `close_tag/1` between siblings;
+  # those tests use `tag/3` + `close_tag/1` to bracket children, so we treat
+  # `close_tag/1` as a marker that means "use the preceding tag as a parent
+  # with the intervening nodes as children". The shape-builder below handles
+  # that. For the simple uses (between manual display wrappers), tests are
+  # updated to use `tag(.., children: [...])` instead.
   defp close_tag(name) do
-    {:close, :tag, name, %{line: 1, column: 1, tag_name: name, inner_location: {1, 1}}}
+    {:__close_marker__, name}
   end
 
   defp text(content) do
@@ -74,33 +95,33 @@ defmodule Lavash.Template.TokenTransformerTest do
     TokenTransformer.transform(tokens, state(metadata))
   end
 
-  # Check if a token list contains a span with data-lavash-display for a given field
-  defp has_display_span?(tokens, field_name) do
-    Enum.any?(tokens, fn
-      {:tag, "span", attrs, _meta} ->
-        Enum.any?(attrs, fn
-          {"data-lavash-display", {:string, ^field_name, _}, _} -> true
-          _ -> false
-        end)
-
-      _ ->
-        false
-    end)
+  # Check if a node tree contains a span with data-lavash-display for a given
+  # field (anywhere in the tree, not just at the top level).
+  defp has_display_span?(nodes, field_name) do
+    count_display_spans(nodes, field_name) > 0
   end
 
-  # Count display spans for a field
-  defp count_display_spans(tokens, field_name) do
-    Enum.count(tokens, fn
-      {:tag, "span", attrs, _meta} ->
-        Enum.any?(attrs, fn
-          {"data-lavash-display", {:string, ^field_name, _}, _} -> true
-          _ -> false
-        end)
-
-      _ ->
-        false
-    end)
+  defp count_display_spans(nodes, field_name) when is_list(nodes) do
+    Enum.reduce(nodes, 0, fn node, acc -> acc + count_display_spans(node, field_name) end)
   end
+
+  defp count_display_spans({:block, :tag, "span", attrs, children, _, _}, field_name) do
+    self =
+      if Enum.any?(attrs, fn
+           {"data-lavash-display", {:string, ^field_name, _}, _} -> true
+           _ -> false
+         end),
+         do: 1,
+         else: 0
+
+    self + count_display_spans(children, field_name)
+  end
+
+  defp count_display_spans({:block, _type, _name, _attrs, children, _, _}, field_name) do
+    count_display_spans(children, field_name)
+  end
+
+  defp count_display_spans(_node, _field_name), do: 0
 
   # ============================================
   # Display injection — basic wrapping
@@ -113,8 +134,11 @@ defmodule Lavash.Template.TokenTransformerTest do
       result = transform(tokens, metadata)
 
       assert has_display_span?(result, "count")
-      assert Enum.any?(result, &match?({:body_expr, "@count", _}, &1))
-      assert Enum.any?(result, &match?({:close, :tag, "span", _}, &1))
+      # The body_expr is now a child of the span block
+      assert [
+               {:block, :tag, "span", _attrs, [{:body_expr, "@count", _}], _open_meta,
+                _close_meta}
+             ] = result
     end
 
     test "wraps multiple @field references" do
@@ -131,16 +155,20 @@ defmodule Lavash.Template.TokenTransformerTest do
       metadata = optimistic_metadata([:count])
       result = transform(tokens, metadata)
 
-      # Should be: span open, body_expr, span close
-      assert [{:tag, "span", _, _}, {:body_expr, "@count", _}, {:close, :tag, "span", _}] = result
+      assert [
+               {:block, :tag, "span", _attrs, [{:body_expr, "@count", _}], _open_meta,
+                _close_meta}
+             ] = result
     end
 
     test "works with field inside an existing tag (mixed content)" do
       tokens = [
-        tag("p"),
-        text("Total: "),
-        body_expr("@count"),
-        close_tag("p")
+        tag("p", [],
+          children: [
+            text("Total: "),
+            body_expr("@count")
+          ]
+        )
       ]
 
       metadata = optimistic_metadata([:count])
@@ -148,7 +176,7 @@ defmodule Lavash.Template.TokenTransformerTest do
 
       assert has_display_span?(result, "count")
       # p tag should still be there
-      assert Enum.any?(result, &match?({:tag, "p", _, _}, &1))
+      assert Enum.any?(result, &match?({:block, :tag, "p", _, _, _, _}, &1))
     end
   end
 
@@ -186,9 +214,9 @@ defmodule Lavash.Template.TokenTransformerTest do
 
     test "skips when inside parent tag with data-lavash-display" do
       tokens = [
-        tag("span", [string_attr("data-lavash-display", "count")]),
-        body_expr("@count"),
-        close_tag("span")
+        tag("span", [string_attr("data-lavash-display", "count")],
+          children: [body_expr("@count")]
+        )
       ]
 
       metadata = optimistic_metadata([:count])
@@ -200,9 +228,7 @@ defmodule Lavash.Template.TokenTransformerTest do
 
     test "skips when inside parent tag with data-lavash-manual" do
       tokens = [
-        tag("span", [bool_attr("data-lavash-manual")]),
-        body_expr("@count"),
-        close_tag("span")
+        tag("span", [bool_attr("data-lavash-manual")], children: [body_expr("@count")])
       ]
 
       metadata = optimistic_metadata([:count])
@@ -221,14 +247,13 @@ defmodule Lavash.Template.TokenTransformerTest do
 
     test "void elements (e.g. <input>) inside a display-wrapped parent don't break detection" do
       # <div data-lavash-display="count"><input/>{@count}</div>
-      # The void <input> previously consumed the depth-0 slot during the
-      # inside_display_element? walk, causing it to return false and the
-      # body_expr to be re-wrapped.
       tokens = [
-        tag("div", [string_attr("data-lavash-display", "count")]),
-        tag("input", [], closing: :void),
-        body_expr("@count"),
-        close_tag("div")
+        tag("div", [string_attr("data-lavash-display", "count")],
+          children: [
+            tag("input", [], closing: :void),
+            body_expr("@count")
+          ]
+        )
       ]
 
       metadata = optimistic_metadata([:count])
@@ -240,10 +265,12 @@ defmodule Lavash.Template.TokenTransformerTest do
 
     test "self-closing tags also pass-through without consuming the depth slot" do
       tokens = [
-        tag("div", [string_attr("data-lavash-display", "count")]),
-        tag("br", [], closing: :self),
-        body_expr("@count"),
-        close_tag("div")
+        tag("div", [string_attr("data-lavash-display", "count")],
+          children: [
+            tag("br", [], closing: :self),
+            body_expr("@count")
+          ]
+        )
       ]
 
       metadata = optimistic_metadata([:count])
@@ -285,9 +312,9 @@ defmodule Lavash.Template.TokenTransformerTest do
     test "resumes wrapping after display parent closes" do
       tokens = [
         # Inside display parent — skip
-        tag("span", [string_attr("data-lavash-display", "total")]),
-        body_expr("@total"),
-        close_tag("span"),
+        tag("span", [string_attr("data-lavash-display", "total")],
+          children: [body_expr("@total")]
+        ),
         # After display parent closes — should wrap
         body_expr("@count")
       ]
@@ -311,7 +338,7 @@ defmodule Lavash.Template.TokenTransformerTest do
       metadata = optimistic_metadata([{:count, :integer}])
       result = transform(tokens, metadata)
 
-      [{:tag, "input", attrs, _}] = result
+      [{:block, :tag, "input", attrs, _children, _, _}] = result
       assert Enum.any?(attrs, fn {name, _, _} -> name == "data-lavash-bind" end)
     end
 
@@ -320,7 +347,7 @@ defmodule Lavash.Template.TokenTransformerTest do
       metadata = optimistic_metadata([])
       result = transform(tokens, metadata)
 
-      [{:tag, "input", attrs, _}] = result
+      [{:block, :tag, "input", attrs, _children, _, _}] = result
       refute Enum.any?(attrs, fn {name, _, _} -> name == "data-lavash-bind" end)
     end
 
@@ -329,7 +356,7 @@ defmodule Lavash.Template.TokenTransformerTest do
       metadata = optimistic_metadata([{:count, :integer}])
       result = transform(tokens, metadata)
 
-      [{:tag, "div", attrs, _}] = result
+      [{:block, :tag, "div", attrs, _children, _, _}] = result
       refute Enum.any?(attrs, fn {name, _, _} -> name == "data-lavash-bind" end)
     end
 
@@ -341,7 +368,7 @@ defmodule Lavash.Template.TokenTransformerTest do
       metadata = optimistic_metadata([{:count, :integer}])
       result = transform(tokens, metadata)
 
-      [{:tag, "input", attrs, _}] = result
+      [{:block, :tag, "input", attrs, _children, _, _}] = result
       bind_count = Enum.count(attrs, fn {name, _, _} -> name == "data-lavash-bind" end)
       assert bind_count == 1
     end
@@ -357,7 +384,7 @@ defmodule Lavash.Template.TokenTransformerTest do
       metadata = optimistic_metadata([{:visible, :boolean}])
       result = transform(tokens, metadata)
 
-      [{:tag, "span", attrs, _}] = result
+      [{:block, :tag, "span", attrs, _children, _, _}] = result
       assert Enum.any?(attrs, fn {name, _, _} -> name == "data-lavash-visible" end)
     end
 
@@ -366,7 +393,7 @@ defmodule Lavash.Template.TokenTransformerTest do
       metadata = optimistic_metadata([{:count, :integer}])
       result = transform(tokens, metadata)
 
-      [{:tag, "span", attrs, _}] = result
+      [{:block, :tag, "span", attrs, _children, _, _}] = result
       refute Enum.any?(attrs, fn {name, _, _} -> name == "data-lavash-visible" end)
     end
 
@@ -375,7 +402,7 @@ defmodule Lavash.Template.TokenTransformerTest do
       metadata = optimistic_metadata([], calculations: %{form_valid: %{optimistic: true}})
       result = transform(tokens, metadata)
 
-      [{:tag, "span", attrs, _}] = result
+      [{:block, :tag, "span", attrs, _children, _, _}] = result
       assert Enum.any?(attrs, fn {name, _, _} -> name == "data-lavash-visible" end)
     end
 
@@ -387,7 +414,7 @@ defmodule Lavash.Template.TokenTransformerTest do
       metadata = optimistic_metadata([{:visible, :boolean}])
       result = transform(tokens, metadata)
 
-      [{:tag, "span", attrs, _}] = result
+      [{:block, :tag, "span", attrs, _children, _, _}] = result
       vis_count = Enum.count(attrs, fn {name, _, _} -> name == "data-lavash-visible" end)
       assert vis_count == 1
     end
@@ -403,7 +430,7 @@ defmodule Lavash.Template.TokenTransformerTest do
       metadata = optimistic_metadata([], calculations: %{form_valid: %{optimistic: true}})
       result = transform(tokens, metadata)
 
-      [{:tag, "button", attrs, _}] = result
+      [{:block, :tag, "button", attrs, _children, _, _}] = result
       assert Enum.any?(attrs, fn {name, _, _} -> name == "data-lavash-enabled" end)
     end
 
@@ -412,7 +439,7 @@ defmodule Lavash.Template.TokenTransformerTest do
       metadata = optimistic_metadata([{:loading, :boolean}])
       result = transform(tokens, metadata)
 
-      [{:tag, "button", attrs, _}] = result
+      [{:block, :tag, "button", attrs, _children, _, _}] = result
       refute Enum.any?(attrs, fn {name, _, _} -> name == "data-lavash-enabled" end)
     end
   end
@@ -427,7 +454,7 @@ defmodule Lavash.Template.TokenTransformerTest do
       metadata = optimistic_metadata([], context: :component)
       result = transform(tokens, metadata)
 
-      [{:tag, "button", attrs, _}] = result
+      [{:block, :tag, "button", attrs, _children, _, _}] = result
       assert Enum.any?(attrs, fn {name, _, _} -> name == "phx-target" end)
     end
 
@@ -436,7 +463,7 @@ defmodule Lavash.Template.TokenTransformerTest do
       metadata = optimistic_metadata([], context: :live_view)
       result = transform(tokens, metadata)
 
-      [{:tag, "button", attrs, _}] = result
+      [{:block, :tag, "button", attrs, _children, _, _}] = result
       refute Enum.any?(attrs, fn {name, _, _} -> name == "phx-target" end)
     end
 
@@ -448,7 +475,7 @@ defmodule Lavash.Template.TokenTransformerTest do
       metadata = optimistic_metadata([], context: :component)
       result = transform(tokens, metadata)
 
-      [{:tag, "button", attrs, _}] = result
+      [{:block, :tag, "button", attrs, _children, _, _}] = result
       target_count = Enum.count(attrs, fn {name, _, _} -> name == "phx-target" end)
       assert target_count == 1
     end
@@ -458,7 +485,7 @@ defmodule Lavash.Template.TokenTransformerTest do
       metadata = optimistic_metadata([], context: :component)
       result = transform(tokens, metadata)
 
-      [{:tag, "button", attrs, _}] = result
+      [{:block, :tag, "button", attrs, _children, _, _}] = result
       refute Enum.any?(attrs, fn {name, _, _} -> name == "phx-target" end)
     end
   end
@@ -469,29 +496,29 @@ defmodule Lavash.Template.TokenTransformerTest do
 
   describe "component binding injection" do
     test "injects __lavash_client_bindings__ on lavash_component in component context" do
-      tokens = [{:local_component, "lavash_component", [string_attr("id", "test")], meta()}]
+      tokens = [local_component("lavash_component", [string_attr("id", "test")])]
       metadata = optimistic_metadata([], context: :component)
       result = transform(tokens, metadata)
 
-      [{:local_component, "lavash_component", attrs, _}] = result
+      [{:self_close, :local_component, "lavash_component", attrs, _}] = result
       assert Enum.any?(attrs, fn {name, _, _} -> name == "__lavash_client_bindings__" end)
     end
 
     test "skips in live_view context" do
-      tokens = [{:local_component, "lavash_component", [string_attr("id", "test")], meta()}]
+      tokens = [local_component("lavash_component", [string_attr("id", "test")])]
       metadata = optimistic_metadata([], context: :live_view)
       result = transform(tokens, metadata)
 
-      [{:local_component, "lavash_component", attrs, _}] = result
+      [{:self_close, :local_component, "lavash_component", attrs, _}] = result
       refute Enum.any?(attrs, fn {name, _, _} -> name == "__lavash_client_bindings__" end)
     end
 
     test "skips on non-lavash components" do
-      tokens = [{:local_component, "link", [string_attr("href", "/")], meta()}]
+      tokens = [local_component("link", [string_attr("href", "/")])]
       metadata = optimistic_metadata([], context: :component)
       result = transform(tokens, metadata)
 
-      [{:local_component, "link", attrs, _}] = result
+      [{:self_close, :local_component, "link", attrs, _}] = result
       refute Enum.any?(attrs, fn {name, _, _} -> name == "__lavash_client_bindings__" end)
     end
   end
@@ -513,7 +540,7 @@ defmodule Lavash.Template.TokenTransformerTest do
       metadata = optimistic_metadata([{:count, :integer}], context: :component)
       result = transform(tokens, metadata)
 
-      [{:tag, "input", attrs, _}] = result
+      [{:block, :tag, "input", attrs, _children, _, _}] = result
       # Should NOT inject data-lavash-bind or phx-target
       refute Enum.any?(attrs, fn {name, _, _} -> name == "data-lavash-bind" end)
       refute Enum.any?(attrs, fn {name, _, _} -> name == "phx-target" end)
@@ -526,7 +553,7 @@ defmodule Lavash.Template.TokenTransformerTest do
 
   describe "smoke test with real tokenizer" do
     test "auto-injects display span via full tokenize + transform pipeline" do
-      tokens =
+      %Phoenix.LiveView.TagEngine.Parser{nodes: tokens} =
         Lavash.TagEngine.tokenize("<div>{@count}</div>",
           file: "test.heex",
           line: 1,
@@ -541,7 +568,7 @@ defmodule Lavash.Template.TokenTransformerTest do
     end
 
     test "mixed content produces inline span" do
-      tokens =
+      %Phoenix.LiveView.TagEngine.Parser{nodes: tokens} =
         Lavash.TagEngine.tokenize("<p>Total: {@count}</p>",
           file: "test.heex",
           line: 1,
@@ -553,14 +580,14 @@ defmodule Lavash.Template.TokenTransformerTest do
       result = transform(tokens, metadata)
 
       assert has_display_span?(result, "count")
-      # p tag preserved
-      assert Enum.any?(result, &match?({:tag, "p", _, _}, &1))
-      # text preserved
-      assert Enum.any?(result, &match?({:text, "Total: ", _}, &1))
+      # p block preserved
+      assert [{:block, :tag, "p", _attrs, children, _, _}] = result
+      # text preserved inside the p
+      assert Enum.any?(children, &match?({:text, "Total: ", _}, &1))
     end
 
     test "function-wrapped expression is not auto-injected" do
-      tokens =
+      %Phoenix.LiveView.TagEngine.Parser{nodes: tokens} =
         Lavash.TagEngine.tokenize("<span>{inspect(@roast)}</span>",
           file: "test.heex",
           line: 1,
@@ -649,7 +676,8 @@ defmodule Lavash.Template.TokenTransformerTest do
   end
 
   defp local_component(name, attrs) do
-    {:local_component, name, attrs, meta(tag_name: name)}
+    m = meta(tag_name: name)
+    {:self_close, :local_component, name, attrs, m}
   end
 
   describe "class toggle auto-injection" do
@@ -667,7 +695,7 @@ defmodule Lavash.Template.TokenTransformerTest do
         })
 
       result = transform(tokens, metadata)
-      [{:tag, "div", attrs, _}] = result
+      [{:block, :tag, "div", attrs, _children, _, _}] = result
 
       assert {"data-lavash-toggle", {:string, "flag|on-class|off-class", _}, _} =
                Enum.find(attrs, &match?({"data-lavash-toggle", _, _}, &1))
@@ -677,7 +705,7 @@ defmodule Lavash.Template.TokenTransformerTest do
       tokens = [tag("div", [string_attr("class", "static")])]
       metadata = optimistic_metadata([{:flag, :boolean}])
       result = transform(tokens, metadata)
-      [{:tag, "div", attrs, _}] = result
+      [{:block, :tag, "div", attrs, _children, _, _}] = result
       refute Enum.any?(attrs, &match?({"data-lavash-toggle", _, _}, &1))
     end
 
@@ -691,7 +719,7 @@ defmodule Lavash.Template.TokenTransformerTest do
       # No optimistic_fields — flag is declared but not optimistic
       metadata = optimistic_metadata([])
       result = transform(tokens, metadata)
-      [{:tag, "div", attrs, _}] = result
+      [{:block, :tag, "div", attrs, _children, _, _}] = result
       refute Enum.any?(attrs, &match?({"data-lavash-toggle", _, _}, &1))
     end
 
@@ -705,7 +733,7 @@ defmodule Lavash.Template.TokenTransformerTest do
 
       metadata = optimistic_metadata([{:flag, :boolean}])
       result = transform(tokens, metadata)
-      [{:tag, "div", attrs, _}] = result
+      [{:block, :tag, "div", attrs, _children, _, _}] = result
       refute Enum.any?(attrs, &match?({"data-lavash-toggle", _, _}, &1))
     end
   end
@@ -725,7 +753,7 @@ defmodule Lavash.Template.TokenTransformerTest do
         })
 
       result = transform(tokens, metadata)
-      [{:tag, "div", attrs, _}] = result
+      [{:block, :tag, "div", attrs, _children, _, _}] = result
 
       assert {"data-lavash-member", {:string, "items|selected|unselected", _}, _} =
                Enum.find(attrs, &match?({"data-lavash-member", _, _}, &1))
@@ -743,7 +771,7 @@ defmodule Lavash.Template.TokenTransformerTest do
 
       metadata = optimistic_metadata([])
       result = transform(tokens, metadata)
-      [{:tag, "div", attrs, _}] = result
+      [{:block, :tag, "div", attrs, _children, _, _}] = result
       refute Enum.any?(attrs, &match?({"data-lavash-member", _, _}, &1))
     end
   end

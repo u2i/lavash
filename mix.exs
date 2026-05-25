@@ -55,7 +55,7 @@ defmodule Lavash.MixProject do
   defp deps do
     [
       {:spark, "~> 2.0"},
-      {:phoenix_live_view, "~> 1.1"},
+      {:phoenix_live_view, "~> 1.2-rc"},
       {:ash, "~> 3.0"},
       {:ash_phoenix, "~> 2.0"},
       {:typeid_elixir, "~> 1.1"},

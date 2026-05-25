@@ -1,37 +1,37 @@
 defmodule Lavash.Template.TokenTransformer do
   @moduledoc """
-  Unified token transformer for Lavash templates.
+  Unified token-tree transformer for Lavash templates.
 
   This module implements `Lavash.TokenTransformer` to handle all compile-time
-  template transformations at the token level:
+  template transformations at the tree level:
 
   1. **`data-lavash-*` attributes** on HTML elements (for JS hooks/optimistic updates)
   2. **`__lavash_client_bindings__`** on component calls (for binding chain propagation)
+  3. **`<span data-lavash-display>` wrapping** of bare `{@field}` expressions
 
-  ## Token Structure
+  ## Tree shape (LV 1.2)
 
-  Tokens from Phoenix.LiveView.Tokenizer:
+  Nodes:
 
-  - `{:tag, name, attrs, meta}` - HTML elements
-  - `{:remote_component, name, attrs, meta}` - `<Foo.bar>` components
-  - `{:local_component, name, attrs, meta}` - `<.foo>` components
-  - `{:slot, name, attrs, meta}` - `<:header>` slots
-  - `{:close, type, name, meta}` - Closing tags
-  - `{:text, content, meta}` - Text content
-  - `{:expr, marker, content}` - `{...}` expressions
+  - `{:block, type, name, attrs, children, open_meta, close_meta}` —
+    `type` is `:tag` | `:local_component` | `:remote_component` | `:slot`
+  - `{:self_close, type, name, attrs, meta}` — void/self-closing tags
+  - `{:text, content, meta}`
+  - `{:body_expr, code, meta}` — `{...}` inline expression
+  - `{:eex, code, meta}` — `<%= ... %>` expression
+  - `{:eex_block, code, clauses, meta}` — `<%= if x do %>...<% end %>`
+    where each clause is `{children, end_code, meta}`
+  - `{:eex_comment, content, meta}`
 
-  Attributes are `{name, value, attr_meta}` where value is:
-  - `{:string, content, str_meta}` - `"literal"`
-  - `{:expr, content, expr_meta}` - `{@foo}`
-  - `nil` - Boolean attribute
+  Attributes (per node):
+
+  - `{name, attr_value, meta}` where `attr_value` is
+    `{:expr, code, meta}` | `{:string, content, meta}` | `nil`
+  - or `{:root, {:expr, code, meta}, meta}` for `<div {@spread}>`
 
   ## Usage
 
-  Pass this module as `:token_transformer` to `Lavash.TagEngine`:
-
-      EEx.compile_string(source,
-        engine: Lavash.TagEngine,
-        tag_handler: Phoenix.LiveView.HTMLEngine,
+      Lavash.TagEngine.compile_from_tokens(parsed,
         token_transformer: Lavash.Template.TokenTransformer,
         lavash_metadata: %{...}
       )
@@ -40,132 +40,155 @@ defmodule Lavash.Template.TokenTransformer do
   @behaviour Lavash.TokenTransformer
 
   @impl true
-  def transform(tokens, state) do
+  def transform(nodes, state) when is_list(nodes) do
     metadata = state[:lavash_metadata] || %{}
-
-    # Note: subtree derive injection (data-lavash-html) is handled upstream
-    # by AnalyzeTemplate, which injects directly onto pre-tokenized tokens.
-    # The token transformer handles all other injections.
-    tokens
-    |> Enum.map(&transform_token(&1, metadata, state))
-    |> maybe_inject_display_attrs(metadata)
+    walk_nodes(nodes, metadata, state, _parent = nil)
   end
 
-  # Transform individual tokens
-  defp transform_token({:tag, name, attrs, meta}, metadata, _state) do
-    if has_attr?(attrs, "data-lavash-manual") do
-      {:tag, name, attrs, meta}
-    else
-      new_attrs = maybe_inject_tag_attrs(name, attrs, meta, metadata)
-      {:tag, name, new_attrs, meta}
-    end
+  # ---------------------------------------------------------------------------
+  # Tree walker
+  # ---------------------------------------------------------------------------
+
+  # parent is either nil (top-level) or {:tag, name, attrs} describing the
+  # immediately-enclosing block node. Used so display-wrapping can skip
+  # children that are already inside a `<span data-lavash-display>`.
+
+  defp walk_nodes(nodes, metadata, state, parent) do
+    nodes
+    |> Enum.flat_map(&walk_node(&1, metadata, state, parent))
   end
 
-  defp transform_token({:remote_component, name, attrs, meta}, metadata, state) do
+  # Returns a list of replacement nodes (usually one, sometimes more when a
+  # body_expr expands to [span_open?, ...] — though with the tree shape we
+  # collapse the open/close pair into a single synthesized block).
+
+  defp walk_node({:block, :tag, name, attrs, children, open_meta, close_meta}, metadata, state, _parent) do
+    {new_attrs, manual?} = transform_tag_attrs(name, attrs, open_meta, metadata)
+
+    new_children =
+      if manual? do
+        # data-lavash-manual means: do not transform children either.
+        children
+      else
+        walk_nodes(children, metadata, state, {:tag, name, new_attrs})
+      end
+
+    [{:block, :tag, name, new_attrs, new_children, open_meta, close_meta}]
+  end
+
+  defp walk_node({:block, comp_type, name, attrs, children, open_meta, close_meta}, metadata, state, _parent)
+       when comp_type in [:local_component, :remote_component] do
+    new_attrs = maybe_inject_component_attrs(name, attrs, open_meta, metadata, state)
+    new_children = walk_nodes(children, metadata, state, nil)
+    [{:block, comp_type, name, new_attrs, new_children, open_meta, close_meta}]
+  end
+
+  defp walk_node({:block, :slot, name, attrs, children, open_meta, close_meta}, metadata, state, _parent) do
+    new_children = walk_nodes(children, metadata, state, nil)
+    [{:block, :slot, name, attrs, new_children, open_meta, close_meta}]
+  end
+
+  defp walk_node({:self_close, :tag, name, attrs, meta}, metadata, _state, _parent) do
+    {new_attrs, _manual?} = transform_tag_attrs(name, attrs, meta, metadata)
+    [{:self_close, :tag, name, new_attrs, meta}]
+  end
+
+  defp walk_node({:self_close, comp_type, name, attrs, meta}, metadata, state, _parent)
+       when comp_type in [:local_component, :remote_component] do
     new_attrs = maybe_inject_component_attrs(name, attrs, meta, metadata, state)
-    {:remote_component, name, new_attrs, meta}
+    [{:self_close, comp_type, name, new_attrs, meta}]
   end
 
-  defp transform_token({:local_component, name, attrs, meta}, metadata, state) do
-    new_attrs = maybe_inject_component_attrs(name, attrs, meta, metadata, state)
-    {:local_component, name, new_attrs, meta}
+  defp walk_node({:self_close, :slot, _name, _attrs, _meta} = node, _metadata, _state, _parent) do
+    [node]
   end
 
-  defp transform_token(token, _metadata, _state), do: token
-
-  # ===========================================================================
-  # Display injection — auto-wrap {@field} in <span data-lavash-display>
-  # ===========================================================================
-
-  # Scans for {:body_expr, "@field", meta} tokens referencing optimistic fields.
-  # Wraps each in <span data-lavash-display="field">...</span> so the JS hook
-  # can update the value optimistically without a server round-trip.
-  #
-  # This fires for bare field references ({@count}) anywhere in the template —
-  # the field doesn't need to be the sole child of a tag. Mixed content like
-  # "Total: {@count}" produces "Total: <span data-lavash-display="count">5</span>".
-  #
-  # Does NOT fire for:
-  # - Function calls: {inspect(@count)} — not a bare @field
-  # - Already-wrapped: elements with data-lavash-display or data-lavash-manual
-  # - Attribute values: value={@count} — handled by other patterns
-  defp maybe_inject_display_attrs(tokens, metadata) do
+  defp walk_node({:body_expr, expr, expr_meta} = node, metadata, _state, parent) do
     optimistic_fields = metadata[:optimistic_fields] || %{}
     calculations = metadata[:calculations] || %{}
     all_optimistic = Map.merge(optimistic_fields, calculations)
 
-    # Always walk for diagnostics, even when there's nothing to wrap — a
-    # declared-but-non-optimistic bare-ref is still worth warning about.
-    wrap_display_exprs(tokens, all_optimistic, metadata, [])
-  end
-
-  defp wrap_display_exprs([], _fields, _metadata, acc), do: Enum.reverse(acc)
-
-  # `inside_display_element?/1` walks the accumulator to decide whether a
-  # body_expr is already inside a wrapper, so tags themselves just pass through.
-  defp wrap_display_exprs(
-         [{:tag, _name, _attrs, _meta} = tag | rest],
-         fields,
-         metadata,
-         acc
-       ) do
-    wrap_display_exprs(rest, fields, metadata, [tag | acc])
-  end
-
-  defp wrap_display_exprs(
-         [{:body_expr, expr, expr_meta} | rest],
-         fields,
-         metadata,
-         acc
-       ) do
-    case extract_optimistic_field_ref(expr, fields) do
+    case extract_optimistic_field_ref(expr, all_optimistic) do
       nil ->
         warn_if_non_optimistic_bare_ref(expr, expr_meta, metadata)
-        wrap_display_exprs(rest, fields, metadata, [{:body_expr, expr, expr_meta} | acc])
+        [node]
 
       field_name ->
-        # Check if we're already inside an element with data-lavash-display
-        if inside_display_element?(acc) do
-          wrap_display_exprs(rest, fields, metadata, [{:body_expr, expr, expr_meta} | acc])
+        if parent_is_display_wrapper?(parent) do
+          [node]
         else
-          # Wrap: <span data-lavash-display="field">{@field}</span>
-          span_meta = %{
-            line: expr_meta[:line] || 1,
-            column: expr_meta[:column] || 1,
-            tag_name: "span",
-            inner_location: {expr_meta[:line] || 1, (expr_meta[:column] || 1) + 6}
-          }
-
-          display_attr =
-            {"data-lavash-display", {:string, field_name, %{delimiter: ?", line: 1, column: 1}},
-             %{line: 1, column: 1}}
-
-          close_meta = %{
-            line: expr_meta[:line] || 1,
-            column: expr_meta[:column] || 1,
-            tag_name: "span",
-            inner_location: {expr_meta[:line] || 1, expr_meta[:column] || 1}
-          }
-
-          tokens = [
-            {:close, :tag, "span", close_meta},
-            {:body_expr, expr, expr_meta},
-            {:tag, "span", [display_attr], span_meta}
-          ]
-
-          wrap_display_exprs(rest, fields, metadata, tokens ++ acc)
+          [wrap_body_expr_in_display_span(field_name, expr, expr_meta)]
         end
     end
   end
 
-  defp wrap_display_exprs([token | rest], fields, metadata, acc) do
-    wrap_display_exprs(rest, fields, metadata, [token | acc])
+  defp walk_node({:eex_block, code, clauses, meta}, metadata, state, _parent) do
+    new_clauses =
+      Enum.map(clauses, fn {clause_nodes, end_code, clause_meta} ->
+        {walk_nodes(clause_nodes, metadata, state, nil), end_code, clause_meta}
+      end)
+
+    [{:eex_block, code, new_clauses, meta}]
   end
 
-  # Diagnostic: if the user wrote a bare {@field} where :field is a declared
-  # state field but isn't optimistic, the template renders as plain text — the
-  # JS hook won't pick it up. Most likely a missing `optimistic: true`.
-  # Silent for non-bare expressions and for fields we don't know about.
+  # Pass-through for everything else (`:text`, `:eex`, `:eex_comment`, unknown).
+  defp walk_node(node, _metadata, _state, _parent), do: [node]
+
+  # ---------------------------------------------------------------------------
+  # Tag attribute transformation
+  # ---------------------------------------------------------------------------
+
+  # Returns {new_attrs, manual?} — manual? short-circuits descent into children
+  # so user-managed subtrees are left untouched.
+  defp transform_tag_attrs(name, attrs, meta, metadata) do
+    manual? = has_attr?(attrs, "data-lavash-manual")
+
+    if manual? do
+      {attrs, true}
+    else
+      {maybe_inject_tag_attrs(name, attrs, meta, metadata), false}
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Display wrapping helpers
+  # ---------------------------------------------------------------------------
+
+  defp parent_is_display_wrapper?({:tag, _name, attrs}) do
+    has_attr?(attrs, "data-lavash-display") or has_attr?(attrs, "data-lavash-manual")
+  end
+
+  defp parent_is_display_wrapper?(_), do: false
+
+  defp wrap_body_expr_in_display_span(field_name, expr, expr_meta) do
+    line = expr_meta[:line] || 1
+    column = expr_meta[:column] || 1
+
+    open_meta = %{
+      line: line,
+      column: column,
+      tag_name: "span",
+      inner_location: {line, column + 6}
+    }
+
+    close_meta = %{
+      line: line,
+      column: column,
+      tag_name: "span",
+      inner_location: {line, column}
+    }
+
+    display_attr =
+      {"data-lavash-display",
+       {:string, field_name, %{delimiter: ?", line: line, column: column}},
+       %{line: line, column: column}}
+
+    {:block, :tag, "span", [display_attr], [{:body_expr, expr, expr_meta}], open_meta,
+     close_meta}
+  end
+
+  # Diagnostic: bare {@field} for a declared-but-non-optimistic field
+  # renders as plain text — the user probably meant `optimistic: true`.
   defp warn_if_non_optimistic_bare_ref(expr, expr_meta, metadata) do
     all_state = metadata[:all_state_fields] || %{}
     optimistic = metadata[:optimistic_fields] || %{}
@@ -194,42 +217,6 @@ defmodule Lavash.Template.TokenTransformer do
     ArgumentError -> nil
   end
 
-  # Check if the accumulator's most recent unclosed tag has data-lavash-display.
-  # This prevents double-wrapping when someone manually adds the attribute.
-  #
-  # The accumulator is in reverse order — head is the most recent token. We
-  # walk it counting close/open pairs. Tokens with `closing: :void` or
-  # `closing: :self` in meta (e.g. `<input>`, `<br/>`) never have a matching
-  # `:close` token, so they must not consume an open-slot when we're at
-  # depth 0 — skip them.
-  defp inside_display_element?(acc) do
-    Enum.reduce_while(acc, 0, fn
-      {:close, :tag, _name, _meta}, depth ->
-        {:cont, depth + 1}
-
-      {:tag, _name, _attrs, %{closing: closing}}, depth when closing in [:void, :self] ->
-        {:cont, depth}
-
-      {:tag, _name, attrs, _meta}, 0 ->
-        if has_attr?(attrs, "data-lavash-display") || has_attr?(attrs, "data-lavash-manual") do
-          {:halt, true}
-        else
-          {:halt, false}
-        end
-
-      {:tag, _name, _attrs, _meta}, depth ->
-        {:cont, depth - 1}
-
-      _, depth ->
-        {:cont, depth}
-    end)
-    |> case do
-      true -> true
-      _ -> false
-    end
-  end
-
-  # Extract field name from expression like "@count" (bare field reference only)
   defp extract_optimistic_field_ref(expr, fields) do
     trimmed = String.trim(expr)
 
@@ -249,22 +236,8 @@ defmodule Lavash.Template.TokenTransformer do
   # Component Transformations (__lavash_client_bindings__)
   # ===========================================================================
 
-  # Lavash component names that should receive __lavash_client_bindings__
   @lavash_components ~w(lavash_component)
 
-  # Two compile-time injections on <.lavash_component> calls inside Lavash
-  # templates:
-  #
-  # 1. `__lavash_client_bindings__={@__lavash_client_bindings__}` — only in
-  #    component context, propagates the resolved client-binding chain so a
-  #    grandchild can resolve its binding back to the root LiveView field.
-  #
-  # 2. For each `{child_field, parent_field}` pair in the `bind=[...]`
-  #    attribute, inject `child_field={@parent_field}` so the child's
-  #    `update/2` sees the parent's current value under the local name. Fires
-  #    in both :live_view and :component contexts because either kind of
-  #    template can host a <.lavash_component>. Without this injection, bind
-  #    is effectively write-only — see u2i/lavash#10.
   defp maybe_inject_component_attrs(name, attrs, meta, metadata, _state) do
     if name in @lavash_components do
       attrs
@@ -317,14 +290,9 @@ defmodule Lavash.Template.TokenTransformer do
     end
   end
 
-  # Diagnostic: `bind={[child: :parent]}` where :parent isn't declared on the
-  # host module would silently produce a write-only binding (parent's value
-  # never flows down into the child because there is no such field).
   defp warn_if_bind_targets_unknown(pairs, expr_meta, metadata) do
     all_state = metadata[:all_state_fields] || %{}
 
-    # Empty all_state means we're being called from a context that didn't
-    # provide it (older callers / tests). Skip to avoid false positives.
     if map_size(all_state) > 0 do
       for {child, parent} <- pairs, not is_map_key(all_state, parent) do
         require Logger
@@ -342,10 +310,6 @@ defmodule Lavash.Template.TokenTransformer do
     :ok
   end
 
-  # Best-effort parser for `bind={[child: :parent, ...]}` source strings.
-  # We only handle the keyword-list literal shape because that's the shape
-  # the helper documents — anything more dynamic is up to the user to wire
-  # the values manually.
   defp parse_bind_pairs(source) do
     case Code.string_to_quoted(source) do
       {:ok, list} when is_list(list) ->
@@ -380,9 +344,6 @@ defmodule Lavash.Template.TokenTransformer do
   end
 
   # Pattern 1: Form inputs
-  # Supports two patterns:
-  # a) Explicit: name={@form[:field].name} - injects data-lavash-* attributes
-  # b) Shorthand: field={@form[:field]} - injects name, value, and all data-lavash-*
   defp maybe_inject_form_input(attrs, name, metadata)
        when name in ["input", "textarea", "select"] do
     forms = metadata[:forms] || %{}
@@ -546,9 +507,7 @@ defmodule Lavash.Template.TokenTransformer do
     end
   end
 
-  # Pattern 6a: class={if @bool, do: A, else: B} on an optimistic boolean
-  # → inject data-lavash-toggle so the JS hook keeps the class set in sync
-  # with the field without the user typing the directive by hand.
+  # Pattern 6a: class={if @bool, do: A, else: B}
   defp maybe_inject_class_toggle(attrs, metadata) do
     if has_attr?(attrs, "data-lavash-toggle") do
       attrs
@@ -566,9 +525,7 @@ defmodule Lavash.Template.TokenTransformer do
     end
   end
 
-  # Pattern 6b: class={if val in @list, do: A, else: B} on an optimistic
-  # array → inject data-lavash-member + data-lavash-member-value so the JS
-  # hook keeps the chip-selection class set in sync.
+  # Pattern 6b: class={if val in @list, do: A, else: B}
   defp maybe_inject_class_member(attrs, metadata) do
     if has_attr?(attrs, "data-lavash-member") do
       attrs
@@ -590,7 +547,6 @@ defmodule Lavash.Template.TokenTransformer do
     end
   end
 
-  # Parse `if @field, do: "...", else: "..."` (only literal-string branches).
   defp parse_boolean_class_if(source) do
     case Code.string_to_quoted(source) do
       {:ok,
@@ -610,7 +566,6 @@ defmodule Lavash.Template.TokenTransformer do
     end
   end
 
-  # Parse `if value in @field, do: "...", else: "..."` (literal value, literal classes).
   defp parse_membership_class_if(source) do
     case Code.string_to_quoted(source) do
       {:ok,
@@ -631,26 +586,15 @@ defmodule Lavash.Template.TokenTransformer do
     end
   end
 
-  # The branch of the if needs to be a literal string (or nil, which we
-  # encode as empty string). Other shapes (function calls, list joins)
-  # mean the user is doing something more complex than a class flip; we
-  # leave it alone.
   defp as_class_string(s) when is_binary(s), do: {:ok, s}
   defp as_class_string(nil), do: {:ok, ""}
   defp as_class_string(_), do: :error
 
-  # The membership-value can be a literal string or a bare atom (then
-  # converted to string). We don't support runtime exprs — those would
-  # need to be passed dynamically and break the static directive shape.
   defp as_member_value(s) when is_binary(s), do: {:ok, s}
   defp as_member_value(a) when is_atom(a), do: {:ok, Atom.to_string(a)}
   defp as_member_value(_), do: :error
 
   # Pattern 7: General reactive attribute binding
-  # Looks up pre-computed attr derives (from AnalyzeTemplate transformer,
-  # persisted in DSL state and passed via sigil metadata) and injects
-  # data-lavash-attr-* annotations on matching elements.
-  # Only injects on elements whose attribute is an EXPRESSION referencing the derive's deps.
   defp maybe_inject_reactive_attrs(attrs, metadata) do
     attr_derives = metadata[:attr_derives] || []
 
@@ -660,10 +604,8 @@ defmodule Lavash.Template.TokenTransformer do
       if has_attr?(acc, lavash_attr) do
         acc
       else
-        # Only inject if this element has an expression attribute matching the derive's deps
         case get_attr_value(acc, derive.attr) do
           {:expr, expr, _meta} ->
-            # Check if the expression references any of the derive's deps
             deps = derive.deps
             has_dep = Enum.any?(deps, fn dep -> String.contains?(expr, "@#{dep}") end)
 
@@ -681,8 +623,6 @@ defmodule Lavash.Template.TokenTransformer do
   end
 
   # Pattern 6: Auto-inject phx-target={@myself} in component context
-  # In LiveComponents, phx-click events need phx-target to route to the
-  # component's handle_event instead of the parent LiveView.
   defp maybe_inject_phx_target(attrs, metadata) do
     if metadata[:context] == :component and has_phx_event?(attrs) do
       add_attr_if_missing(attrs, "phx-target", {:expr, "@myself"})
@@ -692,39 +632,53 @@ defmodule Lavash.Template.TokenTransformer do
   end
 
   @phx_events ~w(phx-click phx-change phx-submit phx-blur phx-focus phx-keydown phx-keyup phx-window-keydown phx-window-keyup)
-  defp has_phx_event?(attrs), do: Enum.any?(attrs, fn {name, _, _} -> name in @phx_events end)
+  defp has_phx_event?(attrs) do
+    Enum.any?(attrs, fn
+      {name, _, _} -> name in @phx_events
+      _ -> false
+    end)
+  end
 
   # ===========================================================================
   # Attribute Helpers
   # ===========================================================================
 
+  # Attrs may include `{:root, value, meta}` for `<div {@spread}>` — those
+  # spread attrs have no string name and are pass-through for all our checks.
   defp has_attr?(attrs, name) do
-    Enum.any?(attrs, fn {attr_name, _value, _meta} -> attr_name == name end)
+    Enum.any?(attrs, fn
+      {^name, _value, _meta} -> true
+      _ -> false
+    end)
   end
 
   defp get_attr_value(attrs, name) do
-    case Enum.find(attrs, fn {attr_name, _value, _meta} -> attr_name == name end) do
+    case Enum.find(attrs, fn
+           {^name, _value, _meta} -> true
+           _ -> false
+         end) do
       {_name, value, _meta} -> value
       nil -> nil
     end
   end
 
   defp reject_attr(attrs, name) do
-    Enum.reject(attrs, fn {attr_name, _value, _meta} -> attr_name == name end)
+    Enum.reject(attrs, fn
+      {^name, _value, _meta} -> true
+      _ -> false
+    end)
   end
 
   defp add_attr_if_missing(attrs, name, value) do
     if has_attr?(attrs, name) do
       attrs
     else
-      # Use meta with required fields for injected attributes
       attr_meta = %{line: 1, column: 1}
       value_with_meta = wrap_value_with_meta(value, attr_meta)
       attrs ++ [{name, value_with_meta, attr_meta}]
     end
   end
 
-  # String values need delimiter in meta for TagEngine's handle_tag_attrs
   defp wrap_value_with_meta({:string, value}, _meta) do
     {:string, value, %{delimiter: ?", line: 1, column: 1}}
   end
@@ -736,7 +690,6 @@ defmodule Lavash.Template.TokenTransformer do
   # Parsing Helpers
   # ===========================================================================
 
-  # Parse @form[:field].name pattern
   defp parse_form_field_expr(expr) do
     case Regex.run(~r/@(\w+)\[:(\w+)\]\.name/, expr) do
       [_, form, field] -> {:ok, String.to_atom(form), String.to_atom(field)}
@@ -744,7 +697,6 @@ defmodule Lavash.Template.TokenTransformer do
     end
   end
 
-  # Parse form[field] string pattern
   defp parse_form_field_string(name) do
     case Regex.run(~r/^(\w+)\[(\w+)\]$/, name) do
       [_, form, field] -> {:ok, form, field}
@@ -752,7 +704,6 @@ defmodule Lavash.Template.TokenTransformer do
     end
   end
 
-  # Parse @form[:field] pattern (shorthand)
   defp parse_form_field_access_expr(expr) do
     case Regex.run(~r/@(\w+)\[:(\w+)\]$/, String.trim(expr)) do
       [_, form, field] -> {:ok, String.to_atom(form), String.to_atom(field)}
@@ -760,7 +711,6 @@ defmodule Lavash.Template.TokenTransformer do
     end
   end
 
-  # Parse "not @field" pattern
   defp parse_negated_field(expr) do
     case Regex.run(~r/^not\s+@(\w+)$/, String.trim(expr)) do
       [_, field] -> {:ok, field}
@@ -768,7 +718,6 @@ defmodule Lavash.Template.TokenTransformer do
     end
   end
 
-  # Check if field is an optimistic boolean
   defp optimistic_boolean?(field_atom, metadata) do
     cond do
       is_map_key(metadata[:optimistic_fields] || %{}, field_atom) ->
@@ -782,8 +731,4 @@ defmodule Lavash.Template.TokenTransformer do
         false
     end
   end
-
-  # ===========================================================================
-  # Metadata Builder
-  # ===========================================================================
 end

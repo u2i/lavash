@@ -26,10 +26,10 @@ defmodule Lavash.Component.Transformers.AnalyzeTemplate do
   def before?(_), do: false
 
   def transform(dsl_state) do
-    tokens = Transformer.get_persisted(dsl_state, :lavash_template_tokens)
+    parsed = Transformer.get_persisted(dsl_state, :lavash_template_tokens)
     template_source = Transformer.get_persisted(dsl_state, :lavash_template_source)
 
-    if is_nil(tokens) do
+    if is_nil(parsed) do
       {:ok, dsl_state}
     else
       all_optimistic_names = build_optimistic_names(dsl_state)
@@ -37,12 +37,12 @@ defmodule Lavash.Component.Transformers.AnalyzeTemplate do
       # Extract attr derives from the raw source string
       dsl_state = maybe_extract_attr_derives(dsl_state, template_source, all_optimistic_names)
 
-      # Extract subtree derives and inject data-lavash-html onto tokens
-      {dsl_state, tokens} =
-        extract_and_inject_subtree_derives(dsl_state, tokens, all_optimistic_names)
+      # Extract subtree derives and inject data-lavash-html onto block nodes
+      {dsl_state, parsed} =
+        extract_and_inject_subtree_derives(dsl_state, parsed, all_optimistic_names)
 
-      # Persist updated tokens
-      dsl_state = Transformer.persist(dsl_state, :lavash_template_tokens, tokens)
+      # Persist updated parser tree
+      dsl_state = Transformer.persist(dsl_state, :lavash_template_tokens, parsed)
 
       {:ok, dsl_state}
     end
@@ -177,13 +177,13 @@ defmodule Lavash.Component.Transformers.AnalyzeTemplate do
   # Subtree derive extraction + token injection
   # ============================================
 
-  defp extract_and_inject_subtree_derives(dsl_state, tokens, all_optimistic_names) do
-    tree = Lavash.Template.parse(tokens)
+  defp extract_and_inject_subtree_derives(dsl_state, parsed, all_optimistic_names) do
+    tree = Lavash.Template.parse(parsed)
     {derives_with_positions, _index} = find_parent_subtrees(tree, all_optimistic_names, [], 0)
     derives_with_positions = Enum.reverse(derives_with_positions)
 
     if derives_with_positions == [] do
-      {dsl_state, tokens}
+      {dsl_state, parsed}
     else
       derives = Enum.map(derives_with_positions, &elem(&1, 0))
 
@@ -192,32 +192,70 @@ defmodule Lavash.Component.Transformers.AnalyzeTemplate do
         |> Enum.map(fn {derive, {line, col}} -> {{line, col}, derive.name} end)
         |> Map.new()
 
-      tokens =
-        Enum.map(tokens, fn
-          {:tag, name, attrs, meta} = _token ->
-            key = {meta[:line], meta[:column]}
-
-            case Map.get(position_to_derive, key) do
-              nil ->
-                {:tag, name, attrs, meta}
-
-              derive_name ->
-                attr_meta = %{line: meta[:line] || 1, column: meta[:column] || 1}
-
-                new_attr =
-                  {"data-lavash-html",
-                   {:string, derive_name,
-                    %{delimiter: ?", line: attr_meta.line, column: attr_meta.column}}, attr_meta}
-
-                {:tag, name, attrs ++ [new_attr], meta}
-            end
-
-          token ->
-            token
-        end)
+      new_nodes = inject_data_lavash_html(parsed.nodes, position_to_derive)
+      parsed = %{parsed | nodes: new_nodes}
 
       dsl_state = Transformer.persist(dsl_state, :lavash_subtree_derives, derives)
-      {dsl_state, tokens}
+      {dsl_state, parsed}
+    end
+  end
+
+  # Walk the Parser node tree and append `data-lavash-html` to any block/self_close
+  # tag node whose open meta matches a derive position.
+  defp inject_data_lavash_html(nodes, position_to_derive) when is_list(nodes) do
+    Enum.map(nodes, &inject_into_node(&1, position_to_derive))
+  end
+
+  defp inject_into_node(
+         {:block, :tag, name, attrs, children, open_meta, close_meta},
+         position_to_derive
+       ) do
+    new_attrs = maybe_add_lavash_html_attr(attrs, open_meta, position_to_derive)
+    new_children = inject_data_lavash_html(children, position_to_derive)
+    {:block, :tag, name, new_attrs, new_children, open_meta, close_meta}
+  end
+
+  defp inject_into_node(
+         {:block, type, name, attrs, children, open_meta, close_meta},
+         position_to_derive
+       ) do
+    new_children = inject_data_lavash_html(children, position_to_derive)
+    {:block, type, name, attrs, new_children, open_meta, close_meta}
+  end
+
+  defp inject_into_node({:self_close, :tag, name, attrs, meta}, position_to_derive) do
+    new_attrs = maybe_add_lavash_html_attr(attrs, meta, position_to_derive)
+    {:self_close, :tag, name, new_attrs, meta}
+  end
+
+  defp inject_into_node({:eex_block, code, clauses, meta}, position_to_derive) do
+    new_clauses =
+      Enum.map(clauses, fn {clause_nodes, end_code, clause_meta} ->
+        {inject_data_lavash_html(clause_nodes, position_to_derive), end_code, clause_meta}
+      end)
+
+    {:eex_block, code, new_clauses, meta}
+  end
+
+  defp inject_into_node(node, _position_to_derive), do: node
+
+  defp maybe_add_lavash_html_attr(attrs, meta, position_to_derive) do
+    key = {meta[:line], meta[:column]}
+
+    case Map.get(position_to_derive, key) do
+      nil ->
+        attrs
+
+      derive_name ->
+        line = meta[:line] || 1
+        column = meta[:column] || 1
+        attr_meta = %{line: line, column: column}
+
+        new_attr =
+          {"data-lavash-html",
+           {:string, derive_name, %{delimiter: ?", line: line, column: column}}, attr_meta}
+
+        attrs ++ [new_attr]
     end
   end
 
