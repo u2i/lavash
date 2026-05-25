@@ -25,11 +25,28 @@ defmodule Lavash.SparkHeex.Dsl do
     entities: [@state_entity]
   }
 
+  @action_entity %Spark.Dsl.Entity{
+    name: :action,
+    target: Lavash.SparkHeex.Action,
+    args: [:name],
+    schema: [
+      name: [type: :atom, required: true],
+      args: [type: {:list, :atom}, default: []]
+    ]
+  }
+
+  @actions_section %Spark.Dsl.Section{
+    name: :actions,
+    top_level?: true,
+    entities: [@action_entity]
+  }
+
   use Spark.Dsl.Extension,
-    sections: [@states_section],
+    sections: [@states_section, @actions_section],
     transformers: [
       Lavash.SparkHeex.Transformers.IngestTemplate,
       Lavash.SparkHeex.Transformers.ValidateTemplate,
+      Lavash.SparkHeex.Transformers.ValidateEvents,
       Lavash.SparkHeex.Transformers.CompileTemplate
     ],
     imports: [Lavash.SparkHeex.TemplateMacro]
@@ -38,4 +55,9 @@ end
 defmodule Lavash.SparkHeex.State do
   @moduledoc false
   defstruct [:name, :type, :default, __spark_metadata__: nil]
+end
+
+defmodule Lavash.SparkHeex.Action do
+  @moduledoc false
+  defstruct [:name, :args, __spark_metadata__: nil]
 end

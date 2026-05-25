@@ -10,6 +10,8 @@ defmodule Lavash.SparkHeexTest do
     state :count, :integer, default: 0
     state :label, :atom, default: "Count"
 
+    action :inc
+
     template do
       ~H"""
       <button phx-click="inc">{@label}: {@count}</button>
