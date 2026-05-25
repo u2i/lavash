@@ -48,8 +48,8 @@ defmodule DemoWeb.ValidationDemoLive do
     end
   end
 
-  render fn assigns ->
-    ~L"""
+  template do
+    ~H"""
     <div id="validation-demo" class="max-w-lg mx-auto mt-10 p-6 bg-white rounded-lg shadow-lg">
       <h1 class="text-2xl font-bold text-center mb-2">Client + Server Validation</h1>
       <p class="text-gray-500 text-center mb-6 text-sm">
