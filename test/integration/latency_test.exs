@@ -1,11 +1,11 @@
 defmodule Lavash.Integration.LatencyTest do
   @moduledoc """
-  Latency-aware tests for the LavashOptimistic JS hook.
+  Latency-aware tests for the lavash optimistic JS pipeline.
 
   Each action that touches `optimistic: true` state runs through two
   phases:
 
-    1. **Optimistic phase** — `LavashOptimistic` patches the DOM
+    1. **Optimistic phase** — the lavash JS pipeline patches the DOM
        client-side immediately on the user event. No server round-trip
        has occurred yet.
     2. **Reconciliation phase** — the server reply lands; the hook
@@ -17,16 +17,30 @@ defmodule Lavash.Integration.LatencyTest do
   observable, and bugs in the hook's pending-path / version-bump /
   reconciliation logic become catchable.
 
-  These tests are the safety net for the
-  `LavashOptimistic`-into-modules refactor (#67). They run on the
-  remote browser driver — `await: :defer` and latency simulation are
-  no-ops on the in-process LV driver.
+  ## Why each test uses `wallabidi_timeout: 100`
+
+  Wallabidi's `assert_has` polls until the assertion matches OR the
+  session-wide `max_wait_time` (default 5s) elapses. With 5s waits
+  AND 400ms latency, an assertion that *should* pass instantly via
+  the optimistic patch would also pass eventually via the server
+  reconciliation arriving at ~800ms. Both passes look identical.
+
+  Forcing the timeout to 100ms — under the round-trip latency —
+  means the assertion can only pass via the optimistic client-side
+  patch. If the optimistic JS pipeline silently breaks, these tests
+  fail; the prior 5s default would have masked the regression.
+
+  Post-`await_patch` assertions also use the same 100ms timeout
+  because by then the patch has already landed, so a tight wait is
+  fine and keeps the test fast.
   """
   use Lavash.IntegrationCase, async: false
 
   alias Wallabidi.LiveView, as: WLV
 
   @latency_ms 400
+
+  @moduletag wallabidi_timeout: 100
 
   describe "optimistic scalar" do
     test "client patch lands before server reply, then reconciles", %{session: session} do
@@ -36,6 +50,7 @@ defmodule Lavash.Integration.LatencyTest do
         s
         |> click(css("#bump"), await: :defer)
         # Optimistic phase: client-side incremented to 1 immediately.
+        # Must observe within 100ms — well under the 400ms latency.
         |> assert_has(css("p", text: "Count: 1"))
         |> WLV.await_patch()
         # Reconciliation phase: server reply lands, value stays at 1.
