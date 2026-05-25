@@ -6,6 +6,109 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.0-rc.3] — 2026-05-25
+
+The optimistic JS pipeline was broken in rc.1/rc.2 — lavash's
+client-side optimistic patches never reached the browser. The
+end-state-only browser tests masked it because server reconciliation
+arrives within the 5s default assertion timeout, indistinguishable
+from a working optimistic patch. This release fixes the pipeline,
+restores client-side optimistic behaviour, and reworks the test
+infrastructure so silent regressions of this class can't slip
+through again.
+
+### Fixed
+
+- **Colocated JS extraction silently deleted.** Lavash's
+  `ExtractColocatedJs` transformer was writing per-module
+  optimistic JS via raw `File.write!` and returning a 2-tuple from
+  `__phoenix_macro_components__/0`. Phoenix's
+  `ColocatedAssets.compile/0` pass expects `%Entry{}` structs;
+  finding none, it considered lavash's files orphaned and deleted
+  them on every compile. Net effect on rc.1/rc.2: optimistic action
+  fns and `calculate :foo, rx(...)` JS never reached the browser.
+  Every "optimistic" click was actually a server round-trip.
+
+  Fix: use `Phoenix.LiveView.ColocatedAssets.extract/5`, which
+  writes the file AND returns the proper `Entry`. The persisted
+  Entry flows through `__phoenix_macro_components__/0`; Phoenix
+  tracks it; file survives.
+
+- **`<input type="checkbox" data-lavash-bind="...">` wrote the
+  wrong value.** `form_handler.handleInput` unconditionally read
+  `target.value`, which for a checkbox is the static `value=""`
+  attribute regardless of checked-state. Ticking a checkbox with
+  `value="true"` wrote the string `"true"` to optimistic state on
+  both check AND uncheck — and downstream `data-lavash-enabled
+  === true` strict checks (and any boolean-typed reactive graph)
+  silently failed.
+
+  Fix: read `target.checked` for checkbox, `target.selectedOptions`
+  for `<select multiple>`, and skip change events on radios where
+  `target.checked === false` (so the unchecked sibling doesn't
+  overwrite the newly-selected radio's value).
+
+- **`[head | tail]` cons-prepend produced `[undefined]` in JS.**
+  Any `rx()` body using list-cons syntax (e.g.
+  `set :items, rx([@name | @items])`) emitted `[undefined]` in the
+  transpiled JS because the cons AST node fell through to the
+  untranspilable fallback. At runtime, the array became `[null]`
+  after JSON serialization.
+
+  Fix: detect cons nodes inside list literals and emit JS spread.
+  `[@name | @items]` becomes `[name, ...items]`; multi-head
+  `[a, b | c]` becomes `[a, b, ...c]`.
+
+- **Modal reopen during exit animation silently failed.** A user
+  closing a modal and immediately reopening it before the 200ms
+  exit animation completed left the modal closed. The SyncedVar's
+  `_closeProtection` flag was being re-armed in
+  `_serverSetAnimated` after `IdlePhase.onEnter` had cleared it,
+  causing the server's eventual reopen diff to be rejected as
+  "stale."
+
+  Fix: clear `_closeProtection` in `IdlePhase.onEnter` (the close
+  is fully done; future server values are fresh), and remove the
+  redundant re-set in `_serverSetAnimated`. The
+  setOptimistic+idle-clear pair already provides the bounce
+  protection.
+
+- **`?`-suffix field names produced invalid JS.** Elixir allows `?`
+  in atom names (idiomatic for booleans like `:is_admin?`), but JS
+  identifiers don't. The transpiler emitted
+  `state.is_admin?` and `{is_admin?: ...}`, both `SyntaxError`s.
+
+  Fix: new `Lavash.Rx.Transpiler.js_field_access/2` and
+  `js_field_key/1` helpers wrap unsafe names with bracket access /
+  string-key form. `state["is_admin?"]`, `{"is_admin?": ...}`.
+  Applied across the transpiler, action set deltas, map_by
+  transforms, calc emissions, attr/subtree derive emissions, and
+  action method declarations.
+
+### Added — test infrastructure
+
+- **Phoenix.LiveView.ColocatedJS wired into the lavash test app.**
+  `test/support/endpoint.ex` now serves the colocated manifest at
+  `/assets/phoenix-colocated/lavash`; the test layout imports the
+  `optimistic` export and assigns to `window.Lavash.optimistic` so
+  the JS pipeline's `loadGeneratedFunctions` can dispatch by module
+  name. Without this load, the e2e tests verified only server
+  reconciliation arrival, not the optimistic phase.
+
+- **Latency tests tightened to actually verify optimistic timing.**
+  `test/integration/latency_test.exs` now uses
+  `@moduletag wallabidi_timeout: 100` — under the 400ms latency
+  simulator, assertions can only pass via the client-side patch.
+  If the optimistic path silently breaks again (colocated JS
+  pipeline regression, transpiler bug, hook init failure), these
+  tests fail within 100ms instead of passing 800ms later via
+  server reconciliation.
+
+- **Regression test for the checkbox-bind value bug.**
+  `test/integration/checkbox_bind_test.exs` asserts the bind writes
+  the boolean `true` (not the string `"true"`) after a click. Uses
+  `Wallabidi.Remote.Protocol.eval` to inspect `hook.state` directly.
+
 ## [0.4.0-rc.2] — 2026-05-25
 
 ### Added
@@ -594,7 +697,8 @@ with reactive behavior wired in for free.
   `parse_value`/`parse_binding_value`, two of `resource_available?/1`.
 - The process-dictionary side channel for `component_states`.
 
-[Unreleased]: https://github.com/u2i/lavash/compare/v0.4.0-rc.2...HEAD
+[Unreleased]: https://github.com/u2i/lavash/compare/v0.4.0-rc.3...HEAD
+[0.4.0-rc.3]: https://github.com/u2i/lavash/compare/v0.4.0-rc.2...v0.4.0-rc.3
 [0.4.0-rc.2]: https://github.com/u2i/lavash/compare/v0.4.0-rc.1...v0.4.0-rc.2
 [0.4.0-rc.1]: https://github.com/u2i/lavash/compare/v0.3.0-rc.5...v0.4.0-rc.1
 [0.3.0-rc.0]: https://github.com/u2i/lavash/compare/v0.2.0...v0.3.0-rc.0

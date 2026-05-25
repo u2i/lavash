@@ -1,7 +1,7 @@
 defmodule Lavash.MixProject do
   use Mix.Project
 
-  @version "0.4.0-rc.2"
+  @version "0.4.0-rc.3"
   @source_url "https://github.com/u2i/lavash"
 
   def project do
