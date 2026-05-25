@@ -58,8 +58,8 @@ defmodule Lavash.ChipSet do
     end
   end
 
-  render fn assigns ->
-    ~L"""
+  template do
+    ~H"""
     <div class="flex flex-wrap gap-2">
       <button
         :for={value <- @values}

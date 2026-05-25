@@ -13,8 +13,8 @@ defmodule Lavash.Test.Magic.BindingChildComponent do
     end
   end
 
-  render fn assigns ->
-    ~L"""
+  template do
+    ~H"""
     <div id={"child-" <> @id}>
       <span id={"child-#{@id}-n"}>{@n}</span>
       <button id={"child-#{@id}-bump"} phx-click="bump" phx-target={@myself}>+</button>
@@ -35,8 +35,8 @@ defmodule Lavash.Test.Magic.BindingMiddleComponent do
 
   state :m, :integer, from: :ephemeral, default: 0, optimistic: true
 
-  render fn assigns ->
-    ~L"""
+  template do
+    ~H"""
     <div id={"middle-" <> @id}>
       <span id={"middle-#{@id}-m"}>{@m}</span>
       <.lavash_component
@@ -60,8 +60,8 @@ defmodule Lavash.Test.Magic.BindingDirectHostLive do
 
   state :parent_count, :integer, from: :ephemeral, default: 0, optimistic: true
 
-  render fn assigns ->
-    ~L"""
+  template do
+    ~H"""
     <div>
       <span id="parent-count">{@parent_count}</span>
       <.lavash_component
@@ -84,8 +84,8 @@ defmodule Lavash.Test.Magic.BindingNestedHostLive do
 
   state :root_count, :integer, from: :ephemeral, default: 0, optimistic: true
 
-  render fn assigns ->
-    ~L"""
+  template do
+    ~H"""
     <div>
       <span id="root-count">{@root_count}</span>
       <.lavash_component
@@ -108,8 +108,8 @@ defmodule Lavash.Test.Magic.BindingSiblingsHostLive do
 
   state :shared, :integer, from: :ephemeral, default: 0, optimistic: true
 
-  render fn assigns ->
-    ~L"""
+  template do
+    ~H"""
     <div>
       <span id="shared">{@shared}</span>
       <.lavash_component

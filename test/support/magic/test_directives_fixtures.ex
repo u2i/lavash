@@ -35,8 +35,8 @@ defmodule Lavash.Test.Magic.DomDirectivesLive do
     end
   end
 
-  render fn assigns ->
-    ~L"""
+  template do
+    ~H"""
     <div>
       <!-- {@n} auto-wraps in <span data-lavash-display="n"> -->
       <p>Count: {@n}</p>

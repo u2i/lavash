@@ -40,8 +40,8 @@ defmodule Lavash.Components.TagEditor do
     end
   end
 
-  render fn assigns ->
-    ~L"""
+  template do
+    ~H"""
     <div class="flex flex-wrap gap-2 items-center">
       <span
         :for={tag <- @tags}
@@ -70,3 +70,4 @@ defmodule Lavash.Components.TagEditor do
     """
   end
 end
+

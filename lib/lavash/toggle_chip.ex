@@ -39,8 +39,8 @@ defmodule Lavash.ToggleChip do
     end
   end
 
-  render fn assigns ->
-    ~L"""
+  template do
+    ~H"""
     <button
       type="button"
       class={if @active, do: @active_class, else: @inactive_class}

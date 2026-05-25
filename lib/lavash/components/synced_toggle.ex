@@ -41,8 +41,8 @@ defmodule Lavash.Components.SyncedToggle do
     end
   end
 
-  render fn assigns ->
-    ~L"""
+  template do
+    ~H"""
     <div class="inline-flex items-center gap-2">
       <button
         type="button"
