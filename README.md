@@ -87,10 +87,17 @@ instantly; the server reply arrives later and reconciles.
 ### Custom `mount/3`
 
 Lavash generates a `mount/3` that initialises the reactive graph (state
-hydration, dependency graph, PubSub subscriptions). The generated `mount/3`
-is `defoverridable`, so you can define your own when you need extra per-route
-setup — just chain into `Lavash.LiveView.Runtime.mount/4` first so the
-reactive graph gets attached to the socket:
+hydration, dependency graph, PubSub subscriptions). For most mount-time
+setup — firing async tasks, subscribing to PubSub, scheduling timers —
+the declarative `mount do ... end` block (see
+[Lifecycle blocks](#lifecycle-blocks)) is the better fit; it runs after
+the runtime mount and doesn't require chaining.
+
+When you need something the block doesn't cover — `temporary_assigns:`
+on the return tuple, code that has to run *before* the runtime mount,
+or assigns the runtime doesn't manage — the generated `mount/3` is
+`defoverridable`. Chain into `Lavash.LiveView.Runtime.mount/4` first so
+the reactive graph gets attached to the socket:
 
 ```elixir
 def mount(params, session, socket) do
@@ -105,13 +112,33 @@ If you skip the `Runtime.mount/4` call, the first `handle_params/3` will
 crash with `Reactive graph not found on socket` — the reactive layer relies
 on graph state being initialised at mount time.
 
-To enable the JS hook in `app.js`:
+To enable lavash on the client side in `app.js`:
 
 ```javascript
-import { LavashOptimistic } from "lavash";
+import { lavash, defaultConcerns, getHooks, getState } from "lavash";
 
-let liveSocket = new LiveSocket("/live", Socket, {
-  hooks: { LavashOptimistic, ...otherHooks }
+const lavashDecorator = lavash({ concerns: defaultConcerns });
+
+const liveSocket = new LiveSocket("/live", Socket, {
+  params: () => ({ _csrf_token: csrfToken, _lavash_state: getState() }),
+  hooks: getHooks(lavashDecorator, MyAppHooks)
+});
+```
+
+`lavash({ concerns })` returns a decorator that wraps every hook
+passed to `getHooks`. It auto-activates on elements that the server
+runtime marks with `data-lavash-state` (lavash LiveViews, components,
+overlays); on regular Phoenix hooks it passes through with zero cost.
+
+`defaultConcerns` is the standard bundle (`optimisticActions`,
+`bindings`, `forms`, `overlays`). To omit one — e.g. you never use
+modals — replace with an explicit array:
+
+```javascript
+import { lavash, optimisticActions, bindings, forms, getHooks } from "lavash";
+
+const lavashDecorator = lavash({
+  concerns: [optimisticActions, bindings, forms]   // no overlays
 });
 ```
 
@@ -155,8 +182,8 @@ raise instead.
 ### Optimistic state
 
 Add `optimistic: true` to make a field part of the client-side state map. The
-`LavashOptimistic` JS hook reads it from `data-lavash-state` and updates the
-DOM as transpiled actions fire — before the server reply arrives.
+lavash JS pipeline reads it from `data-lavash-state` and updates the DOM as
+transpiled actions fire — before the server reply arrives.
 
 ```elixir
 state :count, :integer, default: 0, optimistic: true
@@ -515,13 +542,88 @@ end
 | `set :field, value` | Set field to a literal value |
 | `update :field, fun` | Transform field with a function (server-only) |
 | `effect fn` | Execute side effects |
+| `run fn` | Run a function over `socket` (full LV API available) |
 | `submit :form` | Submit a form |
 | `navigate path` | Navigate to URL |
+| `push_patch to: path` | Patch the URL without remount |
+| `redirect to: path` | Hard redirect |
+| `push_event "name", payload` | Dispatch a JS event to the page |
 | `flash :level, msg` | Show flash message |
+| `fire :name` | Trigger an `async :name do ... end` declaration |
 | `invoke id, :action` | Invoke an action on a child component |
 
 `set :field, rx(...)` transpiles to JS for optimistic updates. `update`,
-`effect`, `submit`, etc. always go through the server.
+`effect`, `submit`, `run`, `push_patch`, `redirect`, `push_event`,
+`flash`, `fire`, `invoke` always go through the server.
+
+## Lifecycle blocks
+
+Beyond actions (which respond to events), lavash also has declarative
+blocks for the LiveView callback surface:
+
+### `messages do message :name do ... end end`
+
+`handle_info` as op-sequence — the same vocabulary as actions
+(`run`/`effect`/`set`/`fire`). For PubSub broadcasts, self-scheduled
+timers, monitor messages:
+
+```elixir
+messages do
+  message :tick do
+    set :ticks, rx(@ticks + 1)
+  end
+
+  message {:user_event, payload}, [:payload] do
+    run fn socket ->
+      assign(socket, :last_event, payload)
+    end
+  end
+end
+```
+
+### `async :name do run fn end end`
+
+Declares a triggerable async task — like vanilla LV's `assign_async`
+but invoked explicitly via `fire :name`:
+
+```elixir
+async :report do
+  run fn assigns ->
+    {:ok, generate_report(assigns.filters)}
+  end
+end
+
+actions do
+  action :refresh do
+    fire :report
+  end
+end
+```
+
+The field lands as `%Phoenix.LiveView.AsyncResult{}` on assigns,
+playable in `case @report do %AsyncResult{...}` patterns.
+
+### `mount do <ops> end`
+
+Op-sequence for mount-time setup. Symmetric with `messages do`:
+
+```elixir
+mount do
+  fire :report
+
+  when_connected do
+    run fn socket ->
+      Phoenix.PubSub.subscribe(MyApp.PubSub, "updates")
+      Process.send_after(self(), :tick, 1000)
+      socket
+    end
+  end
+end
+```
+
+`when_connected do ... end` is a guard for ops that should only run on
+the websocket mount (not the initial HTTP render) — replaces the
+ubiquitous `if connected?(socket) do ... end` pattern.
 
 ## Templates and auto-injection
 
