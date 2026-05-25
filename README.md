@@ -4,8 +4,8 @@ Declarative, reactive state for Phoenix LiveView. Lavash is two things in one
 package:
 
 - a **DSL** (`use Lavash.LiveView` / `use Lavash.Component`) that declares
-  state, computed values, actions, forms, and components, and a `~L` template
-  sigil that auto-injects the client-side machinery for optimistic updates.
+  state, computed values, actions, forms, and components, plus a template
+  block that auto-injects the client-side machinery for optimistic updates.
 - a **reactive engine** (`Lavash.Reactive` / `use Lavash.LiveView.Explicit`)
   that works without the DSL — you write a plain `Phoenix.LiveView` and use
   the dependency graph directly.
@@ -19,7 +19,7 @@ that can be transpiled.
 
 - **Reactive state**, not manual recompute. Declare a `calculate :doubled,
   rx(@count * 2)`; lavash recomputes it whenever its dependencies change.
-- **Optimistic UI by default**. The `~L` sigil auto-injects `data-lavash-*`
+- **Optimistic UI by default**. The template auto-injects `data-lavash-*`
   attributes so simple actions feel instant — the JS hook updates the DOM
   before the server reply lands.
 - **URL-backed state**. `state :search, :string, from: :url` makes the
@@ -34,7 +34,7 @@ that can be transpiled.
 ```elixir
 def deps do
   [
-    {:lavash, "~> 0.2"}
+    {:lavash, "~> 0.3.0-rc"}
   ]
 end
 ```
@@ -67,8 +67,8 @@ defmodule MyAppWeb.CounterLive do
     end
   end
 
-  render fn assigns ->
-    ~L"""
+  template do
+    ~H"""
     <div>
       <p>Count: {@count}</p>
       <p>Doubled: {@doubled}</p>
@@ -405,10 +405,10 @@ end
 `set :field, rx(...)` transpiles to JS for optimistic updates. `update`,
 `effect`, `submit`, etc. always go through the server.
 
-## The `~L` sigil and auto-injection
+## Templates and auto-injection
 
-Use `~L` (not `~H`) in render functions inside Lavash modules. The
-transformer rewrites the template at compile time, injecting:
+Lavash modules declare their template with a `template do ~H"..."end`
+block. The transformer rewrites the template at compile time, injecting:
 
 | You write | Becomes |
 |---|---|
@@ -423,6 +423,13 @@ transformer rewrites the template at compile time, injecting:
 You write normal Phoenix HEEx; lavash adds the wiring underneath. Hand-written
 `data-lavash-*` attributes still work for cases the inference can't reach
 (non-bare expressions, `unless`, complex class concatenation, etc.).
+
+### `~L` (legacy shape)
+
+`render fn assigns -> ~L"..." end` is still supported and produces the
+same compiled output as `template do ~H"..."end`. The `~L` shape predates
+the template block and is the only path that supports `render_loading fn`
+for animated overlays. New code should prefer `template do ~H`.
 
 ### Diagnostics
 
@@ -452,8 +459,8 @@ defmodule MyAppWeb.ProductCard do
     end
   end
 
-  render fn assigns ->
-    ~L"""
+  template do
+    ~H"""
     <div phx-click="toggle">
       <h3>{@title}</h3>
       <div :if={@expanded}>Details...</div>
@@ -577,7 +584,7 @@ mutated resource. LiveViews with subscribed reads auto-refresh.
 ## Using lavash without the DSL
 
 `Lavash.LiveView.Explicit` exposes the reactive engine without the Spark
-DSL, the `~L` transformer, the optimistic JS, or any of the overlay /
+DSL, the template transformer, the optimistic JS, or any of the overlay /
 form / binding machinery. You get the dependency graph and automatic
 recomputation; you write `mount/3`, `handle_event/3`, and `render/1` like
 any plain Phoenix LiveView.
