@@ -1,112 +1,108 @@
 /**
- * Lavash - Declarative state management for Phoenix LiveView
+ * Lavash JS entry point.
  *
- * This module provides a unified entry point for initializing Lavash in your Phoenix app.
+ * Provides the `lavash()` decorator factory and the concern objects.
+ * Also handles the global side-effects (window.Lavash namespace,
+ * lavashState for reconnect-survival via _lavash_state connect param,
+ * phx:_lavash_sync event listener).
  *
- * Usage:
+ * ## Usage in your app.js
  *
- *     import Lavash from "lavash"
+ *     import { lavash, concerns, getState, getHooks } from "lavash";
  *
+ *     const lavashDecorator = lavash({
+ *       concerns: [
+ *         concerns.optimisticActions,
+ *         concerns.bindings,
+ *         concerns.forms,
+ *         concerns.overlays
+ *       ]
+ *     });
+ *
+ *     // Lavash emits <div phx-hook="LavashOptimistic" ...> server-side.
+ *     // Register a hook by that name, decorated with the lavash pipeline.
  *     const liveSocket = new LiveSocket("/live", Socket, {
- *       hooks: Lavash.hooks,
- *       params: () => ({ _csrf_token: csrfToken, _lavash_state: Lavash.state })
- *     })
- *
- * This handles all the boilerplate for:
- * - Registering the LavashOptimistic hook
- * - Merging colocated hooks from your app and Lavash library
- * - Setting up the Lavash global namespace
- * - Managing Lavash state for reconnection
+ *       hooks: { LavashOptimistic: lavashDecorator({}) },
+ *       params: () => ({ _csrf_token: csrf, _lavash_state: getState() })
+ *     });
  */
 
 import { SyncedVar } from "./synced_var.js";
-import { LavashOptimistic } from "./lavash_optimistic.js";
 import { OverlayAnimator } from "./overlay_animator.js";
 
-// Lavash state - survives reconnects, lost on page refresh
+// ----- Global state: survives reconnects, lost on page refresh -----
+
 const lavashState = {
-  // Page-level state (LiveView)
-  // Component state is stored under _components keyed by component ID
   _components: {}
 };
 
-// Listen for LiveView state sync events
+// LiveView state sync events (page-level + component-level).
 window.addEventListener("phx:_lavash_sync", (e) => {
   Object.assign(lavashState, e.detail);
-  console.debug("[Lavash] LiveView state synced:", lavashState);
 });
 
-// Listen for component state sync events
 window.addEventListener("phx:_lavash_component_sync", (e) => {
   const { id, state } = e.detail;
   lavashState._components[id] = { ...lavashState._components[id], ...state };
-  console.debug(`[Lavash] Component ${id} state synced:`, lavashState._components[id]);
 });
 
-// Register Lavash on window for colocated hooks and generated optimistic functions
+// ----- Global namespace: colocated hooks + generated optimistic fns -----
+
 window.Lavash = window.Lavash || {};
 window.Lavash.SyncedVar = SyncedVar;
 window.Lavash.OverlayAnimator = OverlayAnimator;
 window.Lavash.optimistic = window.Lavash.optimistic || {};
 
-/**
- * Get merged hooks for LiveSocket.
- *
- * Merges Lavash core hooks with app-specific colocated hooks.
- *
- * @param {Object} appHooks - Your app's colocated hooks (optional)
- * @param {Object} lavashLibraryHooks - Lavash library colocated hooks (optional)
- * @returns {Object} Merged hooks object
- */
-function getHooks(appHooks = {}, lavashLibraryHooks = {}) {
-  return {
-    ...lavashLibraryHooks,
-    ...appHooks,
-    LavashOptimistic
-  };
-}
+window.Lavash.registerOptimistic = function(moduleName, fns) {
+  window.Lavash.optimistic[moduleName] = fns;
+};
+
+// ----- Public API -----
+
+export { lavash } from "./pipeline.js";
+
+export { optimisticActions } from "./concerns/optimistic_actions.js";
+export { bindings } from "./concerns/bindings.js";
+export { forms } from "./concerns/forms.js";
+export { overlays } from "./concerns/overlays.js";
+
+import { optimisticActions } from "./concerns/optimistic_actions.js";
+import { bindings } from "./concerns/bindings.js";
+import { forms } from "./concerns/forms.js";
+import { overlays } from "./concerns/overlays.js";
 
 /**
- * Get Lavash state for LiveSocket params.
- *
- * Returns the current Lavash state object that will be sent to the server
- * on mount and reconnect.
- *
- * @returns {Object} Current Lavash state
+ * Bundle of all standard lavash concerns. Use as the default for
+ * `lavash({ concerns: defaultConcerns })`.
  */
-function getState() {
+export const defaultConcerns = [optimisticActions, bindings, forms, overlays];
+
+/**
+ * Returns lavashState for the LiveSocket params callback.
+ *
+ *     new LiveSocket(..., {
+ *       params: () => ({ _csrf_token: csrf, _lavash_state: getState() })
+ *     });
+ */
+export function getState() {
   return lavashState;
 }
 
 /**
- * Register optimistic functions from your app.
+ * Convenience: builds a hooks dict combining the standard
+ * `LavashOptimistic` hook (lavash decorator on `{}`) with any
+ * user-provided hooks.
  *
- * Call this after importing your app's generated optimistic functions.
- *
- * @param {Object} optimisticFns - Generated optimistic functions
+ *     const decorator = lavash({ concerns: defaultConcerns });
+ *     const liveSocket = new LiveSocket(..., {
+ *       hooks: getHooks(decorator, { MyHook, OtherHook })
+ *     });
  */
-function registerOptimistic(optimisticFns) {
-  Object.assign(window.Lavash.optimistic, optimisticFns);
+export function getHooks(decorator, userHooks = {}) {
+  return {
+    ...userHooks,
+    LavashOptimistic: decorator({})
+  };
 }
 
-// Default export for convenient importing
-export default {
-  hooks: getHooks(),
-  state: lavashState,
-  getHooks,
-  getState,
-  registerOptimistic,
-  SyncedVar,
-  OverlayAnimator
-};
-
-// Named exports for flexibility
-export {
-  LavashOptimistic,
-  SyncedVar,
-  OverlayAnimator,
-  getHooks,
-  getState,
-  registerOptimistic,
-  lavashState
-};
+export { SyncedVar, OverlayAnimator };

@@ -1,33 +1,42 @@
 /**
  * Lavash - Optimistic UI primitives for Phoenix LiveView
  *
- * This module exports the core JavaScript classes needed for Lavash:
+ * Public exports:
  *
- * - SyncedVar: Optimistic state synchronization with version tracking and animation support
- * - SyncedVarStore: Collection of SyncedVars with dependency tracking
- * - OverlayAnimator: Unified animation delegate for modals and flyovers
- * - LavashOptimistic: Main Phoenix LiveView hook
+ *   - `lavash(opts)`        — decorator factory (returns a hook decorator)
+ *   - `defaultConcerns`     — the standard concern bundle
+ *   - `getState`, `getHooks` — wiring helpers for LiveSocket
+ *   - Individual concerns:  `optimisticActions`, `bindings`, `forms`, `overlays`
+ *   - Primitives:           `SyncedVar`, `OverlayAnimator`
  *
  * Usage in your app.js:
  *
- *   import { LavashOptimistic, SyncedVar, OverlayAnimator } from "lavash";
+ *     import { lavash, defaultConcerns, getHooks, getState } from "lavash";
  *
- *   // Register on window for colocated hooks
- *   window.Lavash = window.Lavash || {};
- *   window.Lavash.SyncedVar = SyncedVar;
- *   window.Lavash.OverlayAnimator = OverlayAnimator;
+ *     const decorator = lavash({ concerns: defaultConcerns });
  *
- *   // Add to LiveSocket hooks
- *   const liveSocket = new LiveSocket("/live", Socket, {
- *     hooks: { LavashOptimistic, ...otherHooks }
- *   });
+ *     const liveSocket = new LiveSocket("/live", Socket, {
+ *       hooks: getHooks(decorator, MyAppHooks),
+ *       params: () => ({ _csrf_token: csrfToken, _lavash_state: getState() })
+ *     });
  */
 
-export { SyncedVar, SyncedVarStore } from "./synced_var.js";
-export { ReactiveStore } from "./reactive_store.js";
-export { OverlayAnimator } from "./overlay_animator.js";
-export { LavashOptimistic } from "./lavash_optimistic.js";
+export {
+  lavash,
+  defaultConcerns,
+  optimisticActions,
+  bindings,
+  forms,
+  overlays,
+  getState,
+  getHooks,
+  SyncedVar,
+  OverlayAnimator
+} from "./lavash.js";
 
-// Backward compatibility aliases
+export { SyncedVar as SyncedVarClass, SyncedVarStore } from "./synced_var.js";
+export { ReactiveStore } from "./reactive_store.js";
+
+// Backward-compat aliases
 export { OverlayAnimator as ModalAnimator } from "./overlay_animator.js";
 export { OverlayAnimator as FlyoverAnimator } from "./overlay_animator.js";

@@ -1,149 +1,109 @@
 /**
- * Overlays concern — orchestration shim around overlay_manager.js
- * primitives for the LavashOptimistic hook.
+ * Overlays concern — owns the modal/flyover phase machine lifecycle.
  *
- * This module owns the lavash-overlay (modal/flyover) lifecycle
- * within the hook: animated-field initialisation at mount, FLIP
- * capture before each update, async-readiness + modal-opening
- * detection used by mergeServerState, post-update delegate
- * notifications, and cleanup at destroy.
+ * Conforms to the lavash concern interface (see PIPELINE.md):
  *
- * ## Why building blocks instead of `overlays.updated(hook)`
+ *   - mounted: init animated state managers
+ *   - destroyed: tear down delegates + modal-content registry
+ *   - observeBeforeMerge: write ctx.asyncFieldsReady, ctx.isModalOpening,
+ *     ctx.animatedPhaseFields BEFORE the store update mutates SyncedVars
+ *   - notifyAfterMerge: notify async-ready + delegates-updated
+ *   - mergeVisitors.animatedPhaseField: skip top-level phase fields
+ *     (managed client-side by the SyncedVar phase machine, server always
+ *     sends stale "idle")
  *
- * The main hook's `updated()` interleaves overlay work with
- * non-overlay work in a specific order (pending-paths capture,
- * store.serverUpdate, mergeServerState, version tracking,
- * recompute, DOM restoration). The overlay-related pieces sit
- * at known points in that flow:
- *
- *   1. detectAsyncFieldsReady — BEFORE store.serverUpdate (the
- *      store update mutates the values we compare against to
- *      detect "became ready this cycle").
- *   2. detectModalOpening — BEFORE store.serverUpdate (we look
- *      at SyncedVar phase, which serverUpdate may transition).
- *   3. notifyAsyncReadyForFields — AFTER store.serverUpdate +
- *      mergeServerState (the SyncedVars must already hold the
- *      new value when we notify).
- *   4. notifyDelegatesUpdated — AFTER recomputeDerives, so
- *      delegates see the post-recompute DOM.
- *
- * Bundling these into a single `overlays.updated(hook)` would
- * either require returning a "capture context" + a separate
- * "apply" call, or threading non-overlay state through this
- * module. Both leak the orchestration. Easier: the hook keeps
- * orchestration; overlays exports four narrow building blocks.
+ * Lower-level helpers live in overlay_manager.js. The merge walker's
+ * captureBeforeUpdate primitive is called by the pipeline's core
+ * coreCaptureBeforeUpdate — it lives in core (not as an overlays
+ * beforeUpdate stage) so the FLIP capture happens uniformly even when
+ * overlays isn't registered (it just no-ops on null animatedStates).
  */
 
 import {
   initAnimatedFields as _initAnimatedFields,
-  captureBeforeUpdate,
   notifyAsyncReady as _notifyAsyncReady,
   notifyDelegatesUpdated as _notifyDelegatesUpdated,
   detectAsyncFieldsReady as _detectAsyncFieldsReady,
   destroyOverlays
 } from "./overlay_manager.js";
 
-/**
- * Initialise animated-state managers for any `data-lavash-animated`
- * config on the hook root. Wires SyncedVar delegates, registers the
- * phase-change callback that surfaces `data-modal-phase` /
- * `data-flyover-phase` to DOM, sets up the modal-content registry
- * for FLIP animations.
- *
- * Writes to: `hook.animatedStates`, `hook._modalEventListeners`.
- */
-export function mounted(hook) {
-  const result = _initAnimatedFields(hook);
-  hook.animatedStates = result.animatedStates;
-  hook._modalEventListeners = result.modalEventListeners;
-}
+export const overlays = {
+  name: "overlays",
 
-/**
- * Capture DOM positions for FLIP animation BEFORE LiveView patches
- * the DOM. Called from the hook's `beforeUpdate()` lifecycle.
- *
- * Reads: `hook.animatedStates`, `hook.store`.
- */
-export function beforeUpdate(hook) {
-  captureBeforeUpdate(hook.animatedStates, hook.store);
-}
+  mounted(hook) {
+    const result = _initAnimatedFields(hook);
+    hook.animatedStates = result.animatedStates;
+    hook._modalEventListeners = result.modalEventListeners;
+  },
 
-/**
- * Detect which async fields just transitioned to a ready state in
- * the incoming `serverState`. Must be called BEFORE
- * `hook.store.serverUpdate(serverState)` — the store update will
- * mutate the SyncedVar values that this comparison reads from.
- *
- * Returns an array of field names.
- */
-export function detectAsyncFieldsReady(hook, serverState) {
-  return _detectAsyncFieldsReady(hook.animatedStates, hook.state, serverState);
-}
+  destroyed(hook) {
+    destroyOverlays(hook.animatedStates, hook._modalEventListeners, hook.store);
+    hook._modalEventListeners = [];
 
-/**
- * Detect whether any animated field's SyncedVar is in an opening
- * phase (entering or loading). Used by mergeServerState to decide
- * whether to clear pending `_params` on a modal-open cycle.
- *
- * Phase-based detection (not value-based) because by the time
- * `updated()` runs, `refreshFromParent` may have already set the
- * value optimistically — so old/new comparison wouldn't reflect
- * "this cycle opened the modal." The phase machine has the right
- * answer.
- */
-export function detectModalOpening(hook) {
-  if (!hook.animatedStates) return false;
-
-  for (const field of Object.keys(hook.animatedStates)) {
-    const syncedVar = hook.store.get(field);
-    const phase = syncedVar.getPhase();
-    if (phase === "entering" || phase === "loading") return true;
-  }
-
-  return false;
-}
-
-/**
- * Notify the animated states that the named fields' async data has
- * become ready. Called AFTER `store.serverUpdate` so the SyncedVars
- * hold the post-update values when their delegates run.
- */
-export function notifyAsyncReadyForFields(hook, asyncFieldsReady) {
-  for (const asyncField of asyncFieldsReady) {
-    _notifyAsyncReady(hook.animatedStates, hook.store, asyncField);
-  }
-}
-
-/**
- * Let animated-state delegates run post-update logic (FLIP-animation
- * commits, etc.). Called AFTER recomputeDerives so delegates see the
- * post-recompute DOM.
- */
-export function notifyDelegatesUpdated(hook) {
-  _notifyDelegatesUpdated(hook.animatedStates, hook.store);
-}
-
-/**
- * Cleanup at hook destroy: tear down overlay delegates, remove modal
- * event listeners, prune the modal-content registry for this hook.
- *
- * The empty-object assignment to `hook.animatedStates` matches the
- * original main-hook destroyed code — leaves the field truthy-but-
- * empty so `isAnyAnimating()` and similar return safely if called
- * during teardown.
- */
-export function destroyed(hook) {
-  destroyOverlays(hook.animatedStates, hook._modalEventListeners, hook.store);
-  hook._modalEventListeners = [];
-
-  // Clean up modal content registry entries for this hook
-  if (window.__lavashModalContentRegistry) {
-    for (const [contentId, entry] of Object.entries(window.__lavashModalContentRegistry)) {
-      if (entry.hook === hook) {
-        delete window.__lavashModalContentRegistry[contentId];
+    if (window.__lavashModalContentRegistry) {
+      for (const [contentId, entry] of Object.entries(window.__lavashModalContentRegistry)) {
+        if (entry.hook === hook) {
+          delete window.__lavashModalContentRegistry[contentId];
+        }
       }
     }
-  }
 
-  hook.animatedStates = {};
-}
+    hook.animatedStates = {};
+  },
+
+  /**
+   * Pre-merge observations (writes to ctx). Runs BEFORE
+   * store.serverUpdate so it can read SyncedVar values before they're
+   * mutated.
+   *
+   *   - ctx.asyncFieldsReady: fields that just transitioned to ok
+   *   - ctx.isModalOpening: any animated field in entering/loading
+   *   - ctx.animatedPhaseFields: phase fields to skip in merge
+   */
+  observeBeforeMerge(hook, ctx) {
+    if (!hook.animatedStates) return;
+
+    ctx.asyncFieldsReady = _detectAsyncFieldsReady(
+      hook.animatedStates, hook.state, ctx.serverState
+    );
+
+    for (const field of Object.keys(hook.animatedStates)) {
+      const syncedVar = hook.store.get(field);
+      const phase = syncedVar.getPhase();
+      if (phase === "entering" || phase === "loading") {
+        ctx.isModalOpening = true;
+        break;
+      }
+    }
+
+    for (const anim of Object.values(hook.animatedStates)) {
+      if (anim.config?.phaseField) {
+        ctx.animatedPhaseFields.add(anim.config.phaseField);
+      }
+    }
+  },
+
+  /**
+   * Post-merge notifications. SyncedVars now hold the new values; let
+   * delegates know which became ready (FLIP transitions, etc.).
+   */
+  notifyAfterMerge(hook, ctx) {
+    if (!hook.animatedStates) return;
+
+    for (const field of ctx.asyncFieldsReady) {
+      _notifyAsyncReady(hook.animatedStates, hook.store, field);
+    }
+    _notifyDelegatesUpdated(hook.animatedStates, hook.store);
+  },
+
+  mergeVisitors: {
+    /**
+     * Skip top-level phase fields (e.g. `:open_phase`). The server
+     * always sends stale "idle" — overwriting our client phase would
+     * undo the phase machine's transitions.
+     */
+    animatedPhaseField(hook, ctx, { key }) {
+      return ctx.animatedPhaseFields.has(key);
+    }
+  }
+};

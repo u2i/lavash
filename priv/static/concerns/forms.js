@@ -1,21 +1,17 @@
 /**
- * Forms concern — owns the forms-related lifecycle within the
- * LavashOptimistic hook: touched-field tracking, per-form submitted
- * state, input/change/blur/submit event listeners, server-side form
- * validation debouncing, and the touched/show_errors clearing that
- * happens when a modal opens.
+ * Forms concern — owns the forms-related lifecycle within a lavash-
+ * decorated hook: touched-field tracking, per-form submitted state,
+ * input/change/blur/submit listeners, server-side form validation
+ * debouncing, and touched/show_errors clearing on modal open.
  *
- * ## What lives on the hook
+ * Conforms to the lavash concern interface (see PIPELINE.md):
+ *   - mounted: install listeners + rehydrate preserved state
+ *   - destroyed: stash + remove listeners
+ *   - afterRecompute: re-seed form params from DOM
+ *   - mergeVisitors.emptyParams: clear fieldState when modal opens
  *
- *   - `hook.fieldState`      — per-field `{ touched: bool }` map
- *   - `hook.submittedForms`  — Set of form ids that have been submitted
- *   - `hook.validationTimers` — per-field-path debounce timers
- *   - `hook._formListeners`  — bound handler refs stashed for cleanup
- *
- * These are kept on the hook (not on the module) because today's main
- * hook reads them directly from other concerns (e.g. updateDOM's
- * isFormSubmitted check). When the refactor reaches a true decorator
- * boundary, namespace these under `hook._lavash_forms_*`.
+ * The clear-on-modal-open visitor reads `ctx.isModalOpening`, which
+ * is written by the overlays concern during observeBeforeMerge.
  *
  * ## Remount preservation
  *
@@ -24,9 +20,7 @@
  * `_preservedClientState` Map. LiveView patches can rip a hook
  * element out and re-create it; without this stash, the user would
  * see "touched"/"submitted" UI reset to clean on every patch.
- *
- * The stash is keyed by `hook.el.id` and self-evicts after 1s so a
- * truly destroyed hook doesn't leak.
+ * Stash self-evicts after 1s.
  */
 
 import {
@@ -41,107 +35,131 @@ import {
 // Keyed by element id. Values: { fieldState, submittedForms }.
 const _preservedClientState = new Map();
 
-/**
- * Init forms state at mount: rehydrate from preserved-client-state if
- * this is a remount, install the 4 input-related listeners, then
- * walk the DOM to seed form params from default input values.
- *
- * Stashes bound handler references on `hook._formListeners` so
- * destroyed() can remove the SAME refs (the old code bound fresh
- * functions in destroyed, which silently never matched).
- */
-export function mounted(hook) {
-  const preserved = _preservedClientState.get(hook.el.id);
+export const forms = {
+  name: "forms",
 
-  if (preserved) {
-    hook.fieldState = preserved.fieldState || {};
-    hook.submittedForms = preserved.submittedForms || new Set();
-    _preservedClientState.delete(hook.el.id);
-  } else {
-    hook.fieldState = {};
-    hook.submittedForms = new Set();
-  }
+  mounted(hook) {
+    const preserved = _preservedClientState.get(hook.el.id);
 
-  hook.validationTimers = {};
+    if (preserved) {
+      hook.fieldState = preserved.fieldState || {};
+      hook.submittedForms = preserved.submittedForms || new Set();
+      _preservedClientState.delete(hook.el.id);
+    } else {
+      hook.fieldState = {};
+      hook.submittedForms = new Set();
+    }
 
-  // Bind listener handlers once and stash refs so removeEventListener
-  // in destroyed() actually matches.
-  hook._formListeners = {
-    input: (e) => _handleInput(e, hook),
-    blur: (e) => _handleBlur(e, hook),
-    submit: (e) => _handleFormSubmit(e, hook)
-  };
+    hook.validationTimers = {};
 
-  // input fires on text keystroke; change fires on select/checkbox.
-  // We need both to cover all bound inputs.
-  hook.el.addEventListener("input", hook._formListeners.input, true);
-  hook.el.addEventListener("change", hook._formListeners.input, true);
-  hook.el.addEventListener("blur", hook._formListeners.blur, true);
-  hook.el.addEventListener("submit", hook._formListeners.submit, true);
+    hook._forms = {
+      listeners: {
+        input: (e) => _handleInput(e, hook),
+        blur: (e) => _handleBlur(e, hook),
+        submit: (e) => _handleFormSubmit(e, hook)
+      }
+    };
 
-  _initializeFormParamsFromDOM(hook);
-}
+    // input fires on text keystroke; change fires on select/checkbox.
+    hook.el.addEventListener("input", hook._forms.listeners.input, true);
+    hook.el.addEventListener("change", hook._forms.listeners.input, true);
+    hook.el.addEventListener("blur", hook._forms.listeners.blur, true);
+    hook.el.addEventListener("submit", hook._forms.listeners.submit, true);
 
-/**
- * Post-update step: re-seed form params from any newly-added inputs
- * (e.g. inputs inside async modal content that only just rendered).
- */
-export function updated(hook) {
-  _initializeFormParamsFromDOM(hook);
-}
+    // Expose form helpers to updateDOM via hooks the pipeline core
+    // reads (see attachHookMethods in pipeline_core.js — falls back to
+    // no-ops if forms isn't loaded).
+    hook._lavashFormsGetField = _getFormField;
+    hook._lavashFormsIsSubmitted = (formName) =>
+      _isFormSubmitted(hook.submittedForms, formName);
 
-/**
- * Cleanup at destroy: stash client-only state for potential remount,
- * remove the listeners we installed in mounted(). Same-reference
- * removal because we kept the bound refs on `hook._formListeners`.
- */
-export function destroyed(hook) {
-  if (hook.el.id) {
-    _preservedClientState.set(hook.el.id, {
-      fieldState: hook.fieldState,
-      submittedForms: hook.submittedForms
-    });
+    _initializeFormParamsFromDOM(hook);
+  },
 
-    // Self-evict if not reused — prevents leaks across full navigations.
-    setTimeout(() => _preservedClientState.delete(hook.el.id), 1000);
-  }
+  destroyed(hook) {
+    if (hook.el.id) {
+      _preservedClientState.set(hook.el.id, {
+        fieldState: hook.fieldState,
+        submittedForms: hook.submittedForms
+      });
+      setTimeout(() => _preservedClientState.delete(hook.el.id), 1000);
+    }
 
-  if (hook._formListeners) {
-    hook.el.removeEventListener("input", hook._formListeners.input, true);
-    hook.el.removeEventListener("change", hook._formListeners.input, true);
-    hook.el.removeEventListener("blur", hook._formListeners.blur, true);
-    hook.el.removeEventListener("submit", hook._formListeners.submit, true);
-    hook._formListeners = null;
-  }
-}
+    if (hook._forms?.listeners) {
+      hook.el.removeEventListener("input", hook._forms.listeners.input, true);
+      hook.el.removeEventListener("change", hook._forms.listeners.input, true);
+      hook.el.removeEventListener("blur", hook._forms.listeners.blur, true);
+      hook.el.removeEventListener("submit", hook._forms.listeners.submit, true);
+    }
+    hook._forms = null;
+    hook._lavashFormsGetField = null;
+    hook._lavashFormsIsSubmitted = null;
+  },
 
-/**
- * Clear `fieldState` entries under a given path prefix AND reset the
- * corresponding `_show_errors` state fields. Called from
- * mergeServerState when a modal opens with `{form}_params: {}` — the
- * server says "this form is fresh", so the touched-state and the
- * per-field error visibility should be wiped.
- *
- * Pure side-effect on hook.fieldState and hook.state.
- */
-export function clearFieldStateForPathPrefix(hook, pathPrefix, formName) {
-  for (const fieldPath of Object.keys(hook.fieldState)) {
-    if (fieldPath.startsWith(pathPrefix + ".")) {
-      delete hook.fieldState[fieldPath];
+  /**
+   * After hook.recomputeDerives() runs in the update cycle: re-seed
+   * form params from any newly-rendered inputs (e.g. inputs inside
+   * async modal content that just became visible).
+   */
+  afterRecompute(hook, _ctx) {
+    _initializeFormParamsFromDOM(hook);
+  },
 
-      const fieldName = fieldPath.substring(pathPrefix.length + 1);
-      const showErrorsKey = `${formName}_${fieldName}_show_errors`;
-      hook.state[showErrorsKey] = false;
+  mergeVisitors: {
+    /**
+     * When the merge walker hits `{form}_params: {}` at the top level
+     * AND a modal is opening this cycle, clear pending paths from the
+     * store and wipe the per-form fieldState + _show_errors fields.
+     */
+    emptyParams(hook, ctx, { path, formName, hasPendingChild }) {
+      if (!ctx.isModalOpening) return;
+
+      // Clear store pending paths under this prefix
+      if (hasPendingChild) {
+        for (const pendingPath of [...ctx.pendingPaths]) {
+          if (pendingPath.startsWith(path + ".")) {
+            hook.store.clearPending(pendingPath);
+            ctx.pendingPaths.delete(pendingPath);
+          }
+        }
+      }
+
+      // Wipe fieldState entries + reset _show_errors flags
+      for (const fieldPath of Object.keys(hook.fieldState)) {
+        if (fieldPath.startsWith(path + ".")) {
+          delete hook.fieldState[fieldPath];
+
+          const fieldName = fieldPath.substring(path.length + 1);
+          const showErrorsKey = `${formName}_${fieldName}_show_errors`;
+          hook.state[showErrorsKey] = false;
+        }
+      }
+    },
+
+    /**
+     * Don't clear `{form}_server_errors: {}` if the form has pending
+     * params — those errors might still be relevant once the params
+     * settle.
+     */
+    skipServerErrorClear(hook, ctx, { formName }) {
+      const paramsField = `${formName}_params`;
+      for (const p of ctx.pendingPaths) {
+        if (p.startsWith(paramsField + ".")) return true;
+      }
+      return false;
+    },
+
+    /**
+     * When a `_params` field is actually being cleared (server sent
+     * `{}` and the client had a non-empty value), wipe matching DOM
+     * inputs so stale values don't flash before the next render.
+     */
+    paramsCleared(hook, _ctx, { key }) {
+      const inputSelector = `[data-lavash-bind^="${key}."]`;
+      const inputs = hook.el.querySelectorAll(inputSelector);
+      inputs.forEach(input => {
+        if (input.value !== "") input.value = "";
+      });
     }
   }
-}
-
-/**
- * Re-exports so the main hook's updateDOM callback can pass these
- * to the DOM updater without holding hook-method shims.
- */
-export const getFormField = _getFormField;
-
-export function isFormSubmittedFor(hook, formName) {
-  return _isFormSubmitted(hook.submittedForms, formName);
-}
+};

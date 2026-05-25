@@ -1,21 +1,13 @@
 /**
- * Bindings concern — owns parent↔child component state propagation
- * within the LavashOptimistic hook.
+ * Bindings concern — owns parent↔child component state propagation.
  *
- * A child component declares a binding from one of its local fields
- * to a parent field via `data-lavash-bindings`. The hook then:
+ * Conforms to the lavash concern interface (see PIPELINE.md). The
+ * `lavash-set` event handler is purely listener-driven (no update-cycle
+ * stages); but mounted attaches two hook methods (`refreshFromParent`
+ * and `propagateBoundFieldsToParent`) because OTHER hooks reach for
+ * them on this one as an external API.
  *
- *   - hydrates `hook.bindings` from the dataset at mount
- *   - installs a `lavash-set` listener that catches state-change
- *     events bubbling up from descendant ClientComponents
- *   - exposes `refreshFromParent` (called from parent → this child
- *     when the parent's bound field changes) and
- *     `propagateBoundFieldsToParent` (called from this hook → its
- *     parent when a locally-owned bound field changes)
- *
- * The lower-level binding-resolution helpers live in
- * binding_helpers.js. This module is the lifecycle orchestrator
- * around them.
+ * Lower-level binding-resolution helpers live in binding_helpers.js.
  */
 
 import {
@@ -23,88 +15,54 @@ import {
   propagateBoundFieldsToParent as _propagateBoundFieldsToParent
 } from "./binding_helpers.js";
 
-/**
- * Init bindings state at mount: parse the `data-lavash-bindings`
- * JSON map (`{ local: "parent.field" }`) and install the
- * `lavash-set` listener.
- *
- * Uses bubble mode (not capture) so the closest ancestor hook handles
- * a given lavash-set event first — the field-ownership check inside
- * `onLavashSet` then decides whether to consume it or re-bubble.
- *
- * Stashes the bound listener ref on `hook._bindingsListener` for
- * cleanup in destroyed().
- */
-export function mounted(hook) {
-  hook.bindings = JSON.parse(hook.el.dataset.lavashBindings || "{}");
+export const bindings = {
+  name: "bindings",
 
-  hook._bindingsListener = (e) => onLavashSet(e, hook);
-  hook.el.addEventListener("lavash-set", hook._bindingsListener, false);
-}
+  mounted(hook) {
+    hook.bindings = JSON.parse(hook.el.dataset.lavashBindings || "{}");
 
-/**
- * Cleanup at destroy: remove the lavash-set listener using the same
- * bound ref we stashed at mount.
- */
-export function destroyed(hook) {
-  if (hook._bindingsListener) {
-    hook.el.removeEventListener("lavash-set", hook._bindingsListener, false);
-    hook._bindingsListener = null;
+    hook._bindings = {
+      listener: (e) => onLavashSet(e, hook)
+    };
+    hook.el.addEventListener("lavash-set", hook._bindings.listener, false);
+
+    // External API — parent hooks call these on their children, and
+    // optimistic_actions calls propagateBoundFieldsToParent after
+    // applying a state delta.
+    hook.refreshFromParent = function(parentHook) {
+      const changedFields = _refreshFromParent(
+        this.bindings, this.state, this.store, parentHook
+      );
+      if (changedFields.length > 0) {
+        this.recomputeDerives(changedFields);
+        this.updateDOM();
+      }
+    };
+
+    hook.propagateBoundFieldsToParent = function(changedFields, opts) {
+      _propagateBoundFieldsToParent(
+        this.bindings, this.state, this.el, changedFields, opts
+      );
+    };
+  },
+
+  destroyed(hook) {
+    if (hook._bindings?.listener) {
+      hook.el.removeEventListener("lavash-set", hook._bindings.listener, false);
+    }
+    hook._bindings = null;
+    hook.refreshFromParent = null;
+    hook.propagateBoundFieldsToParent = null;
   }
-}
-
-/**
- * Refresh this hook from a parent's bound fields. Called by the
- * parent hook when its state changes, walks `hook.bindings` and
- * pulls the new values from `parentHook` into this hook's state.
- *
- * If any fields changed, runs recompute + DOM update.
- */
-export function refreshFromParent(hook, parentHook) {
-  const changedFields = _refreshFromParent(
-    hook.bindings,
-    hook.state,
-    hook.store,
-    parentHook
-  );
-
-  if (changedFields.length > 0) {
-    hook.recomputeDerives(changedFields);
-    hook.updateDOM();
-  }
-}
-
-/**
- * Propagate bound fields from this hook UP to the parent: dispatches
- * `lavash-set` events for each bound field that just changed.
- */
-export function propagateBoundFieldsToParent(hook, changedFields, opts) {
-  _propagateBoundFieldsToParent(
-    hook.bindings,
-    hook.state,
-    hook.el,
-    changedFields,
-    opts
-  );
-}
+};
 
 /**
  * Handler for `lavash-set` events. Three cases:
  *
- *   1. Field has animated state (modal/flyover open_field) — route
- *      through the SyncedVar so the phase machine engages.
- *      Stops propagation; this hook owns the field.
- *
- *   2. Field exists on `hook.state` — this hook owns it. Update
- *      state directly, mark version dirty, recompute + push to
- *      server (unless serverHandled, meaning the originating
- *      component already pushed its own action).
- *      Stops propagation.
- *
- *   3. Neither — this hook doesn't own the field. Let the event
- *      keep bubbling so an ancestor hook can claim it.
- *
- * Internal — not exported. Wired in mounted().
+ *   1. Field has animated state — route through SyncedVar (phase
+ *      machine engages). Stops propagation.
+ *   2. Field is on hook.state — owned. Update + push. Stops propagation.
+ *   3. Not owned — keep bubbling so an ancestor hook can claim it.
  */
 function onLavashSet(e, hook) {
   const { field, value, serverHandled } = e.detail;
@@ -114,7 +72,6 @@ function onLavashSet(e, hook) {
     `[LO] handleLavashSet: field=${field}, value=${JSON.stringify(value)}, serverHandled=${serverHandled}`
   );
 
-  // Case 1: animated state — route through SyncedVar.
   if (hook.animatedStates?.[field]) {
     e.stopPropagation();
     const animValue = value ? value : null;
@@ -127,14 +84,11 @@ function onLavashSet(e, hook) {
     } else {
       hook.store.get(field).setOptimistic(animValue);
     }
-
     return;
   }
 
-  // Case 2: plain owned field.
   if (field in hook.state) {
     e.stopPropagation();
-
     hook.state[field] = value;
 
     if (hook.store) {
@@ -142,9 +96,7 @@ function onLavashSet(e, hook) {
       syncedVar.setOptimistic(value);
     }
 
-    if (hook.clientVersion !== undefined) {
-      hook.clientVersion++;
-    }
+    if (hook.clientVersion !== undefined) hook.clientVersion++;
 
     hook.recomputeDerives([field]);
     hook.updateDOM();
@@ -153,10 +105,8 @@ function onLavashSet(e, hook) {
       const setterAction = `set_${field}`;
       hook.pushEventTo(hook.el, setterAction, { value }, () => {});
     }
-
     return;
   }
 
-  // Case 3: not our field, keep bubbling.
   console.debug("[LavashOptimistic] Field", field, "not owned by this hook, letting event propagate");
 }
