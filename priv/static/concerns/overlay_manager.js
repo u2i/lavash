@@ -38,6 +38,14 @@ export function initAnimatedFields(hook) {
           hook.recomputeDerives?.([config.phaseField]);
           hook.updateDOM?.();
         }
+        // Surface the current phase on the hook root so tests (and CSS
+        // selectors) can observe transitions directly. `data-modal-phase`
+        // matches the server-rendered attribute name (see
+        // Lavash.Overlay.Modal.RenderGenerator), so it transitions
+        // server→client→client as the phase machine drives it.
+        if (config.type === "modal" || config.type === "flyover") {
+          hook.el.setAttribute(`data-${config.type}-phase`, phase);
+        }
       },
     });
 

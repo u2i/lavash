@@ -159,3 +159,74 @@ defmodule Lavash.Test.Magic.ModalHostLive do
     """
   end
 end
+
+defmodule Lavash.Test.Magic.ModalAsyncComponent do
+  @moduledoc """
+  Test fixture: modal whose content depends on an async derived value.
+
+  Used to exercise the SyncedVar phase machine's loading branch —
+  entering -> loading (async not ready) -> visible (async resolved).
+  The async calc sleeps 200ms which is longer than the modal's 200ms
+  entering animation, so we reliably hit the loading phase between
+  the entering animation completing and the async data arriving.
+  """
+  use Lavash.Component, extensions: [Lavash.Overlay.Modal.Dsl]
+
+  modal do
+    open_field :item_id
+    async_assign :item
+  end
+
+  calculate :item, rx(slow_load(@item_id)), async: true
+
+  def slow_load(nil), do: nil
+
+  def slow_load(id) do
+    Process.sleep(200)
+    "Loaded item #{id}"
+  end
+
+  actions do
+    action :open, [:id] do
+      set :item_id, & &1.params.id
+    end
+  end
+
+  render fn assigns ->
+    ~H"""
+    <div id="modal-async-content">
+      <p id="modal-async-body">{@item}</p>
+      <button phx-click="close" phx-target={@myself}>Close</button>
+    </div>
+    """
+  end
+end
+
+defmodule Lavash.Test.Magic.ModalAsyncHostLive do
+  @moduledoc """
+  Test fixture: LiveView that hosts the async-content modal. Used to
+  observe the modal phase machine's loading-phase branch under
+  simulated latency.
+  """
+  use Lavash.LiveView
+
+  actions do
+    action :open_modal, [:id] do
+      invoke "test-async-modal", :open,
+        module: Lavash.Test.Magic.ModalAsyncComponent,
+        params: [id: {:param, :id}]
+    end
+  end
+
+  def render(assigns) do
+    ~H"""
+    <div>
+      <button id="open-modal" phx-click="open_modal" phx-value-id="42">Open Modal</button>
+      <.live_component
+        module={Lavash.Test.Magic.ModalAsyncComponent}
+        id="test-async-modal"
+      />
+    </div>
+    """
+  end
+end
