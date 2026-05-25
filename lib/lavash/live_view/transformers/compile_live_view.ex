@@ -248,6 +248,10 @@ defmodule Lavash.LiveView.Transformers.CompileLiveView do
         __lavash__(:states) |> Enum.filter(&(&1.from == :socket))
       end
 
+      def __lavash__(:session_fields) do
+        __lavash__(:states) |> Enum.filter(&(&1.from == :session))
+      end
+
       def __lavash__(:ephemeral_fields) do
         __lavash__(:states) |> Enum.filter(&(is_nil(&1.from) || &1.from == :ephemeral))
       end

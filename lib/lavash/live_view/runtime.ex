@@ -99,7 +99,7 @@ defmodule Lavash.LiveView.Runtime do
     end
   end
 
-  def mount(module, _params, _session, socket) do
+  def mount(module, _params, session, socket) do
     # Get connect params if available (contains client-synced socket state)
     connect_params =
       if Phoenix.LiveView.connected?(socket) do
@@ -136,6 +136,7 @@ defmodule Lavash.LiveView.Runtime do
       })
       |> Phoenix.Component.assign(:__lavash_component_states__, component_states)
       |> State.hydrate_socket(module, connect_params)
+      |> State.hydrate_session(module, session || %{})
       |> State.hydrate_ephemeral(module)
       |> State.hydrate_forms(module)
 

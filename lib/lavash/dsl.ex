@@ -71,10 +71,10 @@ defmodule Lavash.Dsl do
   @state_schema CommonEntities.base_state_schema() ++
                   [
                     from: [
-                      type: {:in, [:url, :socket, :ephemeral]},
+                      type: {:in, [:url, :socket, :session, :ephemeral]},
                       default: :ephemeral,
                       doc:
-                        "Storage location: :url (synced with URL), :socket (survives reconnects), :ephemeral (default)"
+                        "Storage location: :url (synced with URL), :socket (survives reconnects), :session (hydrated once from the Plug session at mount), :ephemeral (default)"
                     ],
                     required: [
                       type: :boolean,
@@ -104,6 +104,21 @@ defmodule Lavash.Dsl do
                       query-string key needs to differ from the field name —
                       e.g. `state :subject_handle, :string, from: :url, url_name: "subject"`
                       hydrates from `?subject=alice`.
+                      """
+                    ],
+                    session_key: [
+                      type: :string,
+                      doc: """
+                      Session map key for `from: :session` fields.
+
+                      Defaults to the field name as a string. Set this when the
+                      session key needs to differ from the field name —
+                      e.g. `state :handle, :string, from: :session, session_key: "user_handle"`
+                      hydrates from `session["user_handle"]`.
+
+                      Session fields are read once at mount and then behave
+                      like ephemeral state for the rest of the LiveView's
+                      life — the Plug session isn't reread.
                       """
                     ]
                   ]
