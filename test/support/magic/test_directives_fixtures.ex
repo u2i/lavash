@@ -38,52 +38,35 @@ defmodule Lavash.Test.Magic.DomDirectivesLive do
   render fn assigns ->
     ~L"""
     <div>
-      <!-- data-lavash-display: bare {@n} should be auto-wrapped -->
+      <!-- {@n} auto-wraps in <span data-lavash-display="n"> -->
       <p>Count: {@n}</p>
       <button id="bump" phx-click="bump">+</button>
 
-      <!-- data-lavash-toggle for boolean field -->
+      <!-- class={if @bool, do: A, else: B} auto-injects data-lavash-toggle -->
       <div
         id="toggle-target"
-        data-lavash-toggle={"flag|on-class|off-class"}
         class={if @flag, do: "on-class", else: "off-class"}
       >
         {if @flag, do: "ON", else: "OFF"}
       </div>
       <button id="toggle-flag" phx-click="toggle_flag">Toggle</button>
 
-      <!-- data-lavash-visible -->
-      <div id="hidden-section" data-lavash-visible="hidden_flag" class={if @hidden_flag, do: nil, else: "hidden"}>
+      <!-- :if={@bool} auto-injects data-lavash-visible -->
+      <div id="hidden-section" :if={@hidden_flag}>
         Sometimes visible
       </div>
       <button id="toggle-hidden" phx-click="toggle_hidden">Toggle Hidden</button>
 
-      <!-- data-lavash-enabled -->
-      <button
-        id="enabled-button"
-        data-lavash-enabled="enabled_flag"
-        disabled={not @enabled_flag}
-      >
+      <!-- disabled={not @bool} auto-injects data-lavash-enabled -->
+      <button id="enabled-button" disabled={not @enabled_flag}>
         Maybe Enabled
       </button>
       <button id="toggle-enabled" phx-click="toggle_enabled">Toggle Enabled</button>
 
-      <!-- data-lavash-member: classes per array membership -->
-      <div id="chip-one"
-        data-lavash-member={"items|selected|unselected"}
-        data-lavash-member-value="one"
-        class={if "one" in @items, do: "selected", else: "unselected"}
-      >one</div>
-      <div id="chip-two"
-        data-lavash-member={"items|selected|unselected"}
-        data-lavash-member-value="two"
-        class={if "two" in @items, do: "selected", else: "unselected"}
-      >two</div>
-      <div id="chip-three"
-        data-lavash-member={"items|selected|unselected"}
-        data-lavash-member-value="three"
-        class={if "three" in @items, do: "selected", else: "unselected"}
-      >three</div>
+      <!-- class={if val in @list, do: A, else: B} auto-injects data-lavash-member -->
+      <div id="chip-one" class={if "one" in @items, do: "selected", else: "unselected"}>one</div>
+      <div id="chip-two" class={if "two" in @items, do: "selected", else: "unselected"}>two</div>
+      <div id="chip-three" class={if "three" in @items, do: "selected", else: "unselected"}>three</div>
       <button id="toggle-three" phx-click="toggle_item" phx-value-name="three">Toggle 3</button>
       <button id="toggle-one" phx-click="toggle_item" phx-value-name="one">Toggle 1</button>
     </div>

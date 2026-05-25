@@ -662,6 +662,102 @@ defmodule Lavash.Template.TokenTransformerTest do
     {:local_component, name, attrs, meta(tag_name: name)}
   end
 
+  describe "class toggle auto-injection" do
+    test "class={if @bool, do: A, else: B} on optimistic boolean → data-lavash-toggle" do
+      tokens = [
+        tag("div", [
+          expr_attr("class", ~s|if @flag, do: "on-class", else: "off-class"|)
+        ])
+      ]
+
+      metadata =
+        optimistic_metadata([{:flag, :boolean}])
+        |> Map.put(:all_state_fields, %{
+          flag: %{name: :flag, type: :boolean, optimistic: true, from: :ephemeral}
+        })
+
+      result = transform(tokens, metadata)
+      [{:tag, "div", attrs, _}] = result
+
+      assert {"data-lavash-toggle", {:string, "flag|on-class|off-class", _}, _} =
+               Enum.find(attrs, &match?({"data-lavash-toggle", _, _}, &1))
+    end
+
+    test "skipped when class is a plain string" do
+      tokens = [tag("div", [string_attr("class", "static")])]
+      metadata = optimistic_metadata([{:flag, :boolean}])
+      result = transform(tokens, metadata)
+      [{:tag, "div", attrs, _}] = result
+      refute Enum.any?(attrs, &match?({"data-lavash-toggle", _, _}, &1))
+    end
+
+    test "skipped when field isn't optimistic" do
+      tokens = [
+        tag("div", [
+          expr_attr("class", ~s|if @flag, do: "a", else: "b"|)
+        ])
+      ]
+
+      # No optimistic_fields — flag is declared but not optimistic
+      metadata = optimistic_metadata([])
+      result = transform(tokens, metadata)
+      [{:tag, "div", attrs, _}] = result
+      refute Enum.any?(attrs, &match?({"data-lavash-toggle", _, _}, &1))
+    end
+
+    test "skipped when class expression is more complex than a literal if-else" do
+      # function call branch — leave alone
+      tokens = [
+        tag("div", [
+          expr_attr("class", ~s|if @flag, do: my_class(@flag), else: "off"|)
+        ])
+      ]
+
+      metadata = optimistic_metadata([{:flag, :boolean}])
+      result = transform(tokens, metadata)
+      [{:tag, "div", attrs, _}] = result
+      refute Enum.any?(attrs, &match?({"data-lavash-toggle", _, _}, &1))
+    end
+  end
+
+  describe "class member auto-injection" do
+    test "class={if val in @list, do: A, else: B} → data-lavash-member" do
+      tokens = [
+        tag("div", [
+          expr_attr("class", ~s|if "x" in @items, do: "selected", else: "unselected"|)
+        ])
+      ]
+
+      metadata =
+        optimistic_metadata([:items])
+        |> Map.put(:all_state_fields, %{
+          items: %{name: :items, type: {:array, :string}, optimistic: true, from: :ephemeral}
+        })
+
+      result = transform(tokens, metadata)
+      [{:tag, "div", attrs, _}] = result
+
+      assert {"data-lavash-member", {:string, "items|selected|unselected", _}, _} =
+               Enum.find(attrs, &match?({"data-lavash-member", _, _}, &1))
+
+      assert {"data-lavash-member-value", {:string, "x", _}, _} =
+               Enum.find(attrs, &match?({"data-lavash-member-value", _, _}, &1))
+    end
+
+    test "skipped when field isn't optimistic" do
+      tokens = [
+        tag("div", [
+          expr_attr("class", ~s|if "x" in @items, do: "a", else: "b"|)
+        ])
+      ]
+
+      metadata = optimistic_metadata([])
+      result = transform(tokens, metadata)
+      [{:tag, "div", attrs, _}] = result
+      refute Enum.any?(attrs, &match?({"data-lavash-member", _, _}, &1))
+    end
+  end
+
   describe "diagnostics: bind to undeclared parent" do
     test "warns when bind targets a parent field that isn't declared" do
       tokens = [

@@ -27,12 +27,14 @@ defmodule Lavash.Integration.DomDirectivesTest do
   end
 
   test "data-lavash-visible: shows/hides via hidden class", %{session: session} do
-    session
-    |> visit("/magic/dom-directives")
-    |> assert_has(css("#hidden-section.hidden"))
-    |> click(css("#toggle-hidden"))
+    # Fixture uses `:if={@hidden_flag}` so when the flag is false the
+    # element isn't in the DOM at all. After the toggle, it appears.
+    session = visit(session, "/magic/dom-directives")
+    refute Wallabidi.Browser.has?(session, Wallabidi.Query.css("#hidden-section"))
 
-    refute Wallabidi.Browser.has?(session, Wallabidi.Query.css("#hidden-section.hidden"))
+    session
+    |> click(css("#toggle-hidden"))
+    |> assert_has(css("#hidden-section"))
   end
 
   test "data-lavash-enabled: disables/enables buttons", %{session: session} do

@@ -374,6 +374,8 @@ defmodule Lavash.Template.TokenTransformer do
     |> maybe_inject_state_binding(name, metadata)
     |> maybe_inject_visibility(metadata)
     |> maybe_inject_enabled(metadata)
+    |> maybe_inject_class_toggle(metadata)
+    |> maybe_inject_class_member(metadata)
     |> maybe_inject_reactive_attrs(metadata)
     |> maybe_inject_phx_target(metadata)
   end
@@ -544,6 +546,106 @@ defmodule Lavash.Template.TokenTransformer do
       end
     end
   end
+
+  # Pattern 6a: class={if @bool, do: A, else: B} on an optimistic boolean
+  # → inject data-lavash-toggle so the JS hook keeps the class set in sync
+  # with the field without the user typing the directive by hand.
+  defp maybe_inject_class_toggle(attrs, metadata) do
+    if has_attr?(attrs, "data-lavash-toggle") do
+      attrs
+    else
+      with {:expr, expr, _meta} <- get_attr_value(attrs, "class"),
+           {:ok, field_name, true_str, false_str} <- parse_boolean_class_if(expr),
+           field_atom = safe_existing_atom(field_name),
+           true <- not is_nil(field_atom),
+           true <- optimistic_boolean?(field_atom, metadata) do
+        value = "#{field_name}|#{true_str}|#{false_str}"
+        add_attr_if_missing(attrs, "data-lavash-toggle", {:string, value})
+      else
+        _ -> attrs
+      end
+    end
+  end
+
+  # Pattern 6b: class={if val in @list, do: A, else: B} on an optimistic
+  # array → inject data-lavash-member + data-lavash-member-value so the JS
+  # hook keeps the chip-selection class set in sync.
+  defp maybe_inject_class_member(attrs, metadata) do
+    if has_attr?(attrs, "data-lavash-member") do
+      attrs
+    else
+      with {:expr, expr, _meta} <- get_attr_value(attrs, "class"),
+           {:ok, value_str, field_name, true_str, false_str} <-
+             parse_membership_class_if(expr),
+           field_atom = safe_existing_atom(field_name),
+           true <- not is_nil(field_atom),
+           true <- is_map_key(metadata[:optimistic_fields] || %{}, field_atom) do
+        directive = "#{field_name}|#{true_str}|#{false_str}"
+
+        attrs
+        |> add_attr_if_missing("data-lavash-member", {:string, directive})
+        |> add_attr_if_missing("data-lavash-member-value", {:string, value_str})
+      else
+        _ -> attrs
+      end
+    end
+  end
+
+  # Parse `if @field, do: "...", else: "..."` (only literal-string branches).
+  defp parse_boolean_class_if(source) do
+    case Code.string_to_quoted(source) do
+      {:ok,
+       {:if, _,
+        [
+          {:@, _, [{field, _, ctx}]},
+          [do: true_branch, else: false_branch]
+        ]}}
+      when is_atom(field) and is_atom(ctx) ->
+        with {:ok, t} <- as_class_string(true_branch),
+             {:ok, f} <- as_class_string(false_branch) do
+          {:ok, Atom.to_string(field), t, f}
+        end
+
+      _ ->
+        :error
+    end
+  end
+
+  # Parse `if value in @field, do: "...", else: "..."` (literal value, literal classes).
+  defp parse_membership_class_if(source) do
+    case Code.string_to_quoted(source) do
+      {:ok,
+       {:if, _,
+        [
+          {:in, _, [value_ast, {:@, _, [{field, _, ctx}]}]},
+          [do: true_branch, else: false_branch]
+        ]}}
+      when is_atom(field) and is_atom(ctx) ->
+        with {:ok, val} <- as_member_value(value_ast),
+             {:ok, t} <- as_class_string(true_branch),
+             {:ok, f} <- as_class_string(false_branch) do
+          {:ok, val, Atom.to_string(field), t, f}
+        end
+
+      _ ->
+        :error
+    end
+  end
+
+  # The branch of the if needs to be a literal string (or nil, which we
+  # encode as empty string). Other shapes (function calls, list joins)
+  # mean the user is doing something more complex than a class flip; we
+  # leave it alone.
+  defp as_class_string(s) when is_binary(s), do: {:ok, s}
+  defp as_class_string(nil), do: {:ok, ""}
+  defp as_class_string(_), do: :error
+
+  # The membership-value can be a literal string or a bare atom (then
+  # converted to string). We don't support runtime exprs — those would
+  # need to be passed dynamically and break the static directive shape.
+  defp as_member_value(s) when is_binary(s), do: {:ok, s}
+  defp as_member_value(a) when is_atom(a), do: {:ok, Atom.to_string(a)}
+  defp as_member_value(_), do: :error
 
   # Pattern 7: General reactive attribute binding
   # Looks up pre-computed attr derives (from AnalyzeTemplate transformer,
