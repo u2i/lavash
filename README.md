@@ -320,6 +320,42 @@ Hook a form into your template:
 `<input field={...}>` auto-injects `name`, `value`, and the right
 `data-lavash-*` attrs so validation errors render instantly client-side.
 
+### Forms vs. `data-lavash-bind` on submit
+
+`data-lavash-bind` (the attribute the auto-injector adds to `<input
+field={...}>`) syncs through Lavash's own channel events, not through
+`phx-change`. The flow is async: typing into a bound input fires a
+client-only optimistic update plus a debounced server push.
+
+For inputs hooked up via `<input field={@form[...]}>` this is fine —
+`phx-submit` re-reads `@form` from the AshPhoenix.Form params, which
+are kept in dedicated ephemeral state (`<form_name>_params`).
+
+For bound state on a hand-rolled form (`data-lavash-bind="confirmed"`
+on a checkbox, etc.) submit can race the bind sync. If the user ticks
+the box and immediately clicks submit, the `phx-submit` request can
+arrive at the server before the bind has propagated, and the action
+body sees the not-yet-synced value of `@confirmed`.
+
+Two safe patterns until this gap closes:
+
+- Prefer the `<.form for={@some_form}>` / `field={...}` flow for any
+  submit-style interaction.
+- For hand-rolled forms, read the form params directly inside the
+  action body (via the action's `params [...]` list) instead of
+  through `@field` — `phx-submit` always carries the live form values.
+  ```elixir
+  action :submit, [:confirmed, :notes] do
+    run fn %{confirmed: confirmed, notes: notes} = assigns ->
+      # use confirmed/notes from the submitted form, not @confirmed
+      ...
+    end
+  end
+  ```
+
+A future release will sync bound state through the submit payload so
+the `@field` read works on submit too.
+
 ## Actions
 
 Declarative event handlers triggered by `phx-click`, `phx-change`, etc.
