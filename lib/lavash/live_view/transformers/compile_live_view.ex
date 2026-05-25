@@ -65,6 +65,7 @@ defmodule Lavash.LiveView.Transformers.CompileLiveView do
     cache_invalidation_ast = build_cache_invalidation_ast()
     run_refs_ast = build_run_refs_ast(dsl_state)
     calc_refs_ast = build_calc_refs_ast(dsl_state)
+    handle_info_ast = build_handle_info_ast(dsl_state)
 
     Transformer.eval(
       dsl_state,
@@ -72,6 +73,7 @@ defmodule Lavash.LiveView.Transformers.CompileLiveView do
       quote do
         unquote(mount_ast)
         unquote(render_ast)
+        unquote(handle_info_ast)
         unquote(callbacks_ast)
         unquote(lavash_introspection_ast)
         unquote(cache_invalidation_ast)
@@ -80,6 +82,62 @@ defmodule Lavash.LiveView.Transformers.CompileLiveView do
         unquote(calc_refs_ast)
       end
     )
+  end
+
+  # Emit declarative `handle_info do on <pattern> do ... end end`
+  # clauses as real `def handle_info/2` heads. Each clause's body
+  # runs through `Lavash.Lifecycle.Runtime.dispatch_handle_info/3`,
+  # which evaluates the user's body (a `run fn` returning updated
+  # assigns) and then wraps with recompute/project so reactive
+  # calculations downstream of the touched state stay consistent.
+  #
+  # Layer 1: no `rx`, no JS transpile. The body is plain Elixir
+  # via `run fn assigns -> ... end`.
+  defp build_handle_info_ast(dsl_state) do
+    module = Transformer.get_persisted(dsl_state, :module)
+
+    clauses = Module.get_attribute(module, :__lavash_handle_info__) || []
+
+    if clauses == [] do
+      quote do
+      end
+    else
+      # Each clause is {:__on__, pattern_ast, bind_atoms, body_ast}.
+      # Emit a `def handle_info(<pattern>, socket)` per clause.
+      heads =
+        Enum.map(clauses, fn {:__on__, pattern_ast, bind, body_ast} ->
+          build_handle_info_clause(pattern_ast, bind, body_ast)
+        end)
+
+      quote do
+        @impl Phoenix.LiveView
+        unquote_splicing(heads)
+      end
+    end
+  end
+
+  defp build_handle_info_clause(pattern_ast, _bind, body_ast) do
+    # The user's body references `assigns` directly. We bind it to
+    # `socket.assigns` (with __changed__ reset so Phoenix.Component.
+    # assign tracks only writes in this body), evaluate the body,
+    # then hand the result + socket to the lifecycle dispatcher.
+    #
+    # Pattern vars (per the `on <pattern>, [:msg] do` bind list)
+    # are already in scope inside the head — the pattern itself
+    # binds them, and they're visible to the body as ordinary
+    # local Elixir variables. We don't need to re-thread them
+    # through a map.
+
+    quote do
+      def handle_info(unquote(pattern_ast), socket) do
+        import Phoenix.Component, only: [assign: 3]
+
+        var!(assigns) = Map.put(socket.assigns, :__changed__, %{})
+        updated_assigns = unquote(body_ast)
+
+        Lavash.Lifecycle.Runtime.dispatch(__MODULE__, socket, updated_assigns)
+      end
+    end
   end
 
   # Emit one `__lavash_calc__/2` clause per `calculate :name, rx(...)` so the

@@ -3,31 +3,15 @@ defmodule Lavash.Parity.Lavash.HandleInfoLive do
   Lavash DSL expression of the handle_info parity suite — paired
   with `Lavash.Parity.Vanilla.HandleInfoLive`.
 
-  Coverage vs vanilla:
+  Uses the new `handle_info do on <pattern> do ... end end` block
+  (introduced on this branch) for receive-side message dispatch.
+  The body is plain Elixir; `assigns` is in scope; return the
+  updated assigns and the runtime takes care of the recompute +
+  project chain.
 
-    * `:ticks`, `:last_msg`, `:broadcasts` — plain `state` fields.
-    * The action that schedules a tick, sends a self-message, and
-      broadcasts via PubSub all live in `effect fn` bodies — they
-      perform side effects but return the socket unchanged.
-    * The receive side (handle_info clauses for :tick, :custom_msg,
-      :pinged) requires a custom `handle_info/2` override. The DSL
-      doesn't have a `handle_info do ... end` block today; this is
-      a documented gap.
-
-  When the gap closes, the shape will likely be:
-
-      handle_info do
-        on :tick do
-          set :ticks, rx(@ticks + 1)
-        end
-
-        on {:custom_msg, msg}, [:msg] do
-          set :last_msg, rx(@msg)
-        end
-      end
-
-  Until then, the escape hatch (this file) is how parity is
-  achieved.
+  The mount-level PubSub subscription still uses a custom
+  `mount/3` — subscribing isn't yet declarative (will likely
+  become a `connected do subscribe \"...\" end` block).
   """
   use Lavash.LiveView
 
@@ -51,6 +35,20 @@ defmodule Lavash.Parity.Lavash.HandleInfoLive do
     end
   end
 
+  handle_info do
+    on :tick do
+      assign(assigns, :ticks, assigns.ticks + 1)
+    end
+
+    on {:custom_msg, msg}, [:msg] do
+      assign(assigns, :last_msg, msg)
+    end
+
+    on :pinged do
+      assign(assigns, :broadcasts, assigns.broadcasts + 1)
+    end
+  end
+
   template do
     ~H"""
     <div id="handle-info-lavash">
@@ -65,8 +63,8 @@ defmodule Lavash.Parity.Lavash.HandleInfoLive do
     """
   end
 
-  # Escape hatch: custom mount to subscribe + custom handle_info to
-  # dispatch. Both are documented gaps the DSL doesn't cover yet.
+  # Subscribe at mount. `connected do ... end` will eventually
+  # absorb this; for now, the custom mount is the escape hatch.
   @impl Phoenix.LiveView
   def mount(params, session, socket) do
     {:ok, socket} = Lavash.LiveView.Runtime.mount(__MODULE__, params, session, socket)
@@ -76,36 +74,5 @@ defmodule Lavash.Parity.Lavash.HandleInfoLive do
     end
 
     {:ok, socket}
-  end
-
-  @impl Phoenix.LiveView
-  def handle_info(:tick, socket) do
-    {:noreply, bump_state(socket, :ticks, socket.assigns.ticks + 1)}
-  end
-
-  def handle_info({:custom_msg, msg}, socket) do
-    {:noreply, bump_state(socket, :last_msg, msg)}
-  end
-
-  def handle_info(:pinged, socket) do
-    {:noreply, bump_state(socket, :broadcasts, socket.assigns.broadcasts + 1)}
-  end
-
-  # Fall through to the runtime's handle_info for anything we
-  # don't pattern-match (e.g. lavash internal PubSub messages).
-  def handle_info(msg, socket) do
-    Lavash.LiveView.Runtime.handle_info(__MODULE__, msg, socket)
-  end
-
-  # Helper: put_state + recompute + project, mirroring what the
-  # action runtime does at the end of handle_event. This is the
-  # same boilerplate you'd write today for any custom handle_info.
-  # The future `handle_info do on :foo do set ... end end` DSL
-  # block would absorb this.
-  defp bump_state(socket, field, value) do
-    socket
-    |> Lavash.Socket.put_state(field, value)
-    |> Lavash.Reactive.recompute()
-    |> Lavash.Assigns.project(__MODULE__)
   end
 end

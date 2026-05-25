@@ -518,6 +518,7 @@ defmodule Lavash.Dsl do
       Lavash.DslHelpers,
       Lavash.Rx,
       Lavash.Sigil,
-      Lavash.Template.RenderMacro
+      Lavash.Template.RenderMacro,
+      Lavash.Lifecycle.HandleInfoMacro
     ]
 end
