@@ -1,5 +1,12 @@
 import Config
 
+# Use an isolated on-disk SQLite database per test process so the schema
+# from migrations can be initialized once and reused.
+config :demo, Demo.Repo,
+  database: Path.expand("../demo_test.db", __DIR__),
+  pool_size: 5,
+  pool: Ecto.Adapters.SQL.Sandbox
+
 # We don't run a server during test. If one is required,
 # you can enable the server option below.
 config :demo, DemoWeb.Endpoint,
