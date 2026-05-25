@@ -58,6 +58,7 @@ defmodule Lavash.TestRouter do
     live("/handle_event", HandleEventLive)
     live("/handle_event_landing", HandleEventLandingLive)
     live("/mount", MountLive)
+    live("/handle_params", HandleParamsLive)
   end
 
   scope "/parity/lavash", Lavash.Parity.Lavash do
@@ -66,5 +67,6 @@ defmodule Lavash.TestRouter do
     live("/handle_event", HandleEventLive)
     live("/handle_event_landing", HandleEventLandingLive)
     live("/mount", MountLive)
+    live("/handle_params", HandleParamsLive)
   end
 end
