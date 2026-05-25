@@ -61,6 +61,7 @@ defmodule Lavash.TestRouter do
     live("/handle_params", HandleParamsLive)
     live("/handle_info", HandleInfoLive)
     live("/render_slots", RenderSlotsLive)
+    live("/on_mount", OnMountLive)
   end
 
   scope "/parity/lavash", Lavash.Parity.Lavash do
@@ -72,5 +73,14 @@ defmodule Lavash.TestRouter do
     live("/handle_params", HandleParamsLive)
     live("/handle_info", HandleInfoLive)
     live("/render_slots", RenderSlotsLive)
+    live("/on_mount", OnMountLive)
+  end
+
+  # Shared login destination both parity sides redirect to when
+  # the require_user hook halts an unauthenticated mount.
+  scope "/parity" do
+    pipe_through(:browser)
+
+    live("/login", Lavash.Parity.Vanilla.LoginLive)
   end
 end
