@@ -188,8 +188,17 @@ defmodule Lavash.Rx do
 
     source = Macro.to_string(expanded_body)
 
+    # u2i/lavash#TBD — `Kernel.&&/2`, `Kernel.||/2`, `and/2`, `or/2` are
+    # macros that some Elixir versions expand eagerly during outer-macro
+    # expansion. If they expand before `transform_at_refs` runs, the
+    # inner `@field` references get processed by `Kernel.@/1` against an
+    # already-compiled module and raise. Pre-expand just those four
+    # forms ourselves so the walker sees a stable shape (case-based)
+    # across Elixir versions; @-refs remain untouched until the walker
+    # rewrites them to `Map.get(state, :name)`.
     ast =
       expanded_body
+      |> pre_expand_short_circuits(__CALLER__)
       |> transform_at_refs()
       |> qualify_local_calls(caller_module, import_map)
 
@@ -284,6 +293,27 @@ defmodule Lavash.Rx do
 
   defp substitute_vars(other, _substitutions), do: other
 
+  # Pre-expand `Kernel.&&/2`, `Kernel.||/2`, `Kernel.and/2`, `Kernel.or/2`.
+  # These macros expand to `case` blocks (with hygienic variable
+  # bindings) that hide nested `@field` references from the simple
+  # macro walker. Without pre-expansion, some Elixir versions (notably
+  # 1.18.x) evaluate the inner `@` references via `Kernel.@/1` against
+  # an already-compiled module and crash.
+  #
+  # We expand *only* these four forms — anything else (including `@`
+  # itself, `if`, `case`, etc.) is left alone so it can either stay as
+  # idiomatic AST for `transform_at_refs` or hit Elixir's normal
+  # expansion path at eval time.
+  defp pre_expand_short_circuits(ast, caller) do
+    Macro.prewalk(ast, fn
+      {op, _, [_, _]} = node when op in [:&&, :||, :and, :or] ->
+        Macro.expand(node, caller)
+
+      node ->
+        node
+    end)
+  end
+
   # Transform @var references to Map.get(state, :var) for runtime evaluation
   # Use Macro.var with nil context to create an unhygienic variable reference
   # that can be bound in the target context (the generated code)
@@ -292,6 +322,8 @@ defmodule Lavash.Rx do
   defp transform_at_refs({{:., _, [Access, :get]}, _, [{:@, _, [{var_name, _, _}]}, key]})
        when is_atom(var_name) do
     state_var = Macro.var(:state, nil)
+    # The key itself may contain @-refs (`@params[@field]`) — walk it.
+    key = transform_at_refs(key)
     quote do: get_in(unquote(state_var), [unquote(var_name), unquote(key)])
   end
 
@@ -300,12 +332,16 @@ defmodule Lavash.Rx do
     case extract_path_for_transform(inner, [key]) do
       {:ok, var_name, path} ->
         state_var = Macro.var(:state, nil)
+        # Each key in the path may itself contain @-refs
+        # (`@doc["by_person"][@handle]`) — walk them.
+        path = Enum.map(path, &transform_at_refs/1)
         quote do: get_in(unquote(state_var), [unquote(var_name) | unquote(path)])
 
       :not_a_path ->
         # Not a path rooted at @var, transform normally
         transformed_inner = transform_at_refs(inner)
-        quote do: Access.get(unquote(transformed_inner), unquote(key))
+        transformed_key = transform_at_refs(key)
+        quote do: Access.get(unquote(transformed_inner), unquote(transformed_key))
     end
   end
 
@@ -372,6 +408,8 @@ defmodule Lavash.Rx do
          acc
        )
        when is_atom(var_name) do
+    # The key itself may contain @-refs (`@params[@field]`) — walk it.
+    acc = find_at_refs(key, acc)
     [{:path, var_name, [key]} | acc]
   end
 
@@ -382,8 +420,14 @@ defmodule Lavash.Rx do
          acc
        ) do
     case extract_path(inner, [key]) do
-      {:ok, var_name, path} -> [{:path, var_name, path} | acc]
-      :not_a_path -> find_at_refs(inner, acc)
+      {:ok, var_name, path} ->
+        # Each key in the path may itself contain @-refs
+        # (`@doc["by_person"][@handle]`) — walk them.
+        acc = Enum.reduce(path, acc, &find_at_refs/2)
+        [{:path, var_name, path} | acc]
+
+      :not_a_path ->
+        find_at_refs(inner, acc)
     end
   end
 
