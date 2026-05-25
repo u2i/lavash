@@ -6,6 +6,60 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.0-rc.2] — 2026-05-25
+
+Five fixes prompted by a second round of adopter feedback. All five
+issues opened against the repo were closed.
+
+### Fixed
+
+- **#12** — Action `reads [:some_calc]` now resolves correctly when
+  `:some_calc` is a `calculate :foo, rx(...)` field. The runtime built
+  the action's assigns map from declared state only, skipping derived
+  values. Switched to `LSocket.full_state/1` to match the rest of the
+  runtime (which already used `full_state`); the previous behaviour
+  was an inconsistency, not a deliberate restriction.
+- **#13** — `run fn` bodies can now read non-Lavash socket assigns
+  (`@current_user` set by `AshAuthentication.on_mount`, a tenant set
+  by a plug, etc.) without re-declaring them as Lavash state. The
+  assigns map is built from the full `socket.assigns`, with event
+  params layered on top so `phx-value-*` still wins over a stray
+  socket assign of the same name. Lifting auth-derived values into
+  Lavash state via `Lavash.Socket.put_state/3` remains the recommended
+  pattern but is no longer required.
+- **#15** — Unqualified calls to private helpers (`defp helper(...)`)
+  inside `run fn` bodies now resolve at runtime. The body was
+  previously evaluated via `Code.eval_quoted` + `:erl_eval`, which has
+  no local function table; calls raised `UndefinedFunctionError` even
+  though the compiler tracked the references (rc.1's #11 fix). Each
+  `run fn` body is now hoisted into a generated
+  `def __lavash_run__(action_name, idx, assigns)` on the user's
+  module, so local helpers, aliases, imports, and module attributes
+  are all in scope. The runtime invokes it via `apply/3`.
+- **#16** — The auto-injector no longer wraps `{@field}` body
+  expressions inside `<textarea>`, `<option>`, or `<title>`. Browsers
+  treat these elements' body content as a value (submitted form data,
+  displayed option label, page title), so the literal
+  `<span data-lavash-display="...">N</span>` HTML was corrupting the
+  form payload.
+
+### Added
+
+- **#14** — New "Cookbook: a full form-submission recipe" section in
+  the README. One end-to-end example showing `use Lavash.LiveView` +
+  AshAuthentication `on_mount` + URL state with `url_name:` + ephemeral
+  optimistic state bound to form inputs + `calculate` + custom
+  `mount/3` chaining into `Runtime.mount/4` + `Lavash.Socket.put_state/3`
+  for seeding from auth + `action :submit, [...]` to read submit
+  payload + a `run fn` calling a private helper.
+
+### Internal
+
+- `Lavash.Action.Runtime.apply_runs/4` becomes `apply_runs/5` (takes
+  the action name). The runtime no longer uses
+  `Lavash.Rx.Cache.compile_run_fun/2`; that function and its test are
+  removed.
+
 ## [0.3.0-rc.1] — 2026-05-25
 
 A follow-up to 0.3.0-rc.0 that bumps to Phoenix LiveView 1.2-rc, adds a
