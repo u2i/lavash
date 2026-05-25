@@ -75,4 +75,34 @@ defmodule Lavash.Rx.ShortCircuitTest do
       assert :handle in r.deps
     end
   end
+
+  # Originally hit in rc.3 / rc.4 — reported by a u2i-compliance-portal
+  # adopter. The bracket-access root is itself a parenthesised expression
+  # (`(@doc["by_person"] || %{})[@handle]`), so `extract_path` returns
+  # `:not_a_path`. The walker recursed into the LHS but lost the RHS key,
+  # which meant `:handle` was missing from deps even though it was clearly
+  # referenced. The calc never re-fired when `:handle` changed and the
+  # reactive engine returned a stale value (often nil).
+  describe "rx deps inside bracket-access not rooted at @" do
+    test "@-ref inside the KEY of a non-@-rooted bracket access is captured" do
+      r = rx(@a && (@b || @c)[@d])
+      assert Enum.sort(r.deps) == [:a, :b, :c, :d]
+    end
+
+    test "the original user shape" do
+      r = rx(@tasks_doc && (@tasks_doc["by_person"] || %{})[@handle])
+      assert :handle in r.deps
+      assert :tasks_doc in r.deps
+    end
+
+    test "user shape returns the looked-up value, not nil" do
+      r = rx(@tasks_doc && (@tasks_doc["by_person"] || %{})[@handle])
+      fun = compile(r)
+
+      doc = %{"by_person" => %{"tom.clarke" => %{"id" => 1}}}
+      assert fun.(%{tasks_doc: doc, handle: "tom.clarke"}) == %{"id" => 1}
+      assert fun.(%{tasks_doc: doc, handle: "missing"}) == nil
+      assert fun.(%{tasks_doc: nil, handle: "tom.clarke"}) == nil
+    end
+  end
 end

@@ -427,7 +427,11 @@ defmodule Lavash.Rx do
         [{:path, var_name, path} | acc]
 
       :not_a_path ->
-        find_at_refs(inner, acc)
+        # Not rooted at @var (e.g. `(@b || @c)[@d]`), so don't synthesize a
+        # path entry — but the key itself may carry @-refs that the engine
+        # still needs to track as deps. Walk BOTH sides.
+        acc = find_at_refs(inner, acc)
+        find_at_refs(key, acc)
     end
   end
 
