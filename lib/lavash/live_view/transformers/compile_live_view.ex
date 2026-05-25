@@ -67,6 +67,10 @@ defmodule Lavash.LiveView.Transformers.CompileLiveView do
     calc_refs_ast = build_calc_refs_ast(dsl_state)
     handle_info_ast = build_messages_ast(dsl_state)
 
+    # `components do component ... end end` emits its function
+    # defs directly at macro expansion time (see
+    # Lavash.Components.ComponentsMacro). Nothing to do here.
+
     Transformer.eval(
       dsl_state,
       [],
