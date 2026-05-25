@@ -233,28 +233,8 @@ export function coreUpdated(hook, concerns) {
   runStage("afterRecompute", concerns, hook, ctx);
 
   // ----- 9. afterRender (concerns) — after updateDOM -----
+  // Forms uses this to restore pending input values that updateDOM may
+  // have overwritten (the SyncedVar still holds the user's typed value).
   hook.updateDOM();
   runStage("afterRender", concerns, hook, ctx);
-
-  // Restore pending input values that updateDOM may have overwritten.
-  // (Core-owned because the store IS core.)
-  restorePendingInputs(hook);
-}
-
-/**
- * Re-apply pending values from the store to bound input elements after
- * `updateDOM` runs. If the server's echo overwrote our typed value, the
- * SyncedVar still holds the pending value; reflect that to DOM.
- */
-function restorePendingInputs(hook) {
-  const boundInputs = hook.el.querySelectorAll("[data-lavash-bind]");
-  boundInputs.forEach(input => {
-    const fieldPath = input.dataset.lavashBind;
-    if (fieldPath && hook.store.isPending(fieldPath)) {
-      const val = hook.store.getValue(fieldPath);
-      if (val !== undefined && input.value !== val) {
-        input.value = val;
-      }
-    }
-  });
 }

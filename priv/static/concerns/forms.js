@@ -105,6 +105,31 @@ export const forms = {
     _initializeFormParamsFromDOM(hook);
   },
 
+  /**
+   * After updateDOM(): if the server's echo overwrote a typed value
+   * for a `data-lavash-bind` input whose SyncedVar still holds the
+   * pending value, push the SyncedVar value back into the DOM input.
+   *
+   * Without this, the input would briefly show the stale server echo
+   * before the next user keystroke. The SyncedVar still has the right
+   * value; we just need to reflect it to the DOM.
+   *
+   * Lives in forms because `data-lavash-bind` is forms' domain — same
+   * inputs that handleInput / handleBlur / handleFormSubmit listen on.
+   */
+  afterRender(hook, _ctx) {
+    const boundInputs = hook.el.querySelectorAll("[data-lavash-bind]");
+    boundInputs.forEach(input => {
+      const fieldPath = input.dataset.lavashBind;
+      if (fieldPath && hook.store.isPending(fieldPath)) {
+        const val = hook.store.getValue(fieldPath);
+        if (val !== undefined && input.value !== val) {
+          input.value = val;
+        }
+      }
+    });
+  },
+
   mergeVisitors: {
     /**
      * When the merge walker hits `{form}_params: {}` at the top level
