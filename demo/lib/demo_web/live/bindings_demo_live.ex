@@ -36,8 +36,8 @@ defmodule DemoWeb.BindingsDemoLive do
               end
             )
 
-  render fn assigns ->
-    ~L"""
+  template do
+    ~H"""
     <div class="max-w-4xl mx-auto p-6">
       <div class="flex items-center justify-between mb-6">
         <div>
