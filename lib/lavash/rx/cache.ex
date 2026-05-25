@@ -53,27 +53,6 @@ defmodule Lavash.Rx.Cache do
   end
 
   @doc """
-  Compile an action `run` lambda AST (with `Phoenix.Component.assign/3`
-  imported) into a callable function. Cached under
-  `{Lavash.Rx.Cache, module, :run_fun, ast_hash}`.
-  """
-  @spec compile_run_fun(module(), Macro.t()) :: (map() -> map())
-  def compile_run_fun(module, fun_ast) do
-    key = {__MODULE__, module, :run_fun, :erlang.phash2(fun_ast)}
-
-    get_or_compile(key, fn ->
-      wrapped =
-        quote do
-          import Phoenix.Component, only: [assign: 3]
-          unquote(fun_ast)
-        end
-
-      {fun, _} = Code.eval_quoted(wrapped, [], %{__ENV__ | module: module})
-      fun
-    end)
-  end
-
-  @doc """
   Drops all cached entries for `module`. Wired into Lavash modules'
   `@after_compile` so dev recompiles rebuild the cache from the new AST
   instead of returning stale fns.

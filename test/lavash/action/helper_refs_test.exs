@@ -83,4 +83,56 @@ defmodule Lavash.Action.HelperRefsTest do
     :code.purge(Lavash.Action.HelperRefsTest.MultipleHelpers)
     :code.delete(Lavash.Action.HelperRefsTest.MultipleHelpers)
   end
+
+  # Issue #15 regression: unqualified calls to local helpers inside a
+  # `run fn` body must *resolve at runtime*, not just compile cleanly.
+  # The pre-fix runtime used `:erl_eval`, which has no local function
+  # table; the body raised UndefinedFunctionError on `helper(...)` even
+  # though the compiler saw the reference.
+  defmodule LocalHelperRuntime do
+    use Lavash.LiveView
+
+    state :doubled, :integer, default: 0
+
+    actions do
+      action :compute, [:n] do
+        run fn assigns ->
+          n =
+            case assigns[:n] do
+              s when is_binary(s) -> String.to_integer(s)
+              n when is_integer(n) -> n
+            end
+
+          Phoenix.Component.assign(assigns, :doubled, double(n))
+        end
+      end
+    end
+
+    defp double(n), do: n * 2
+
+    def render(assigns) do
+      ~H"<div>{@doubled}</div>"
+    end
+  end
+
+  test "run fn calls an unqualified local helper at runtime without UndefinedFunctionError" do
+    # Drive the action runtime directly with the generated __lavash_run__/3.
+    socket =
+      %Phoenix.LiveView.Socket{assigns: %{__changed__: %{}}, private: %{}}
+      |> Lavash.Socket.init()
+
+    [run_entity] =
+      Enum.find(LocalHelperRuntime.__lavash__(:actions), &(&1.name == :compute)).runs
+
+    socket =
+      Lavash.Action.Runtime.apply_runs(
+        socket,
+        :compute,
+        [run_entity],
+        %{n: 21},
+        LocalHelperRuntime
+      )
+
+    assert Lavash.Socket.get_state(socket, :doubled) == 42
+  end
 end

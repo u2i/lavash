@@ -46,16 +46,4 @@ defmodule Lavash.Rx.CacheTest do
     end
   end
 
-  describe "compile_run_fun/2" do
-    test "evaluates a lambda AST with Phoenix.Component.assign/3 imported" do
-      fun_ast =
-        quote do
-          fn assigns -> assign(assigns, :doubled, assigns.n * 2) end
-        end
-
-      fun = Cache.compile_run_fun(Sample, fun_ast)
-      result = fun.(%{n: 5, __changed__: %{}})
-      assert result.doubled == 10
-    end
-  end
 end

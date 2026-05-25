@@ -556,7 +556,7 @@ defmodule Lavash.Component.Runtime do
     if ActionRuntime.guards_pass?(socket, module, action.when) do
       socket
       |> ActionRuntime.apply_sets(action.sets || [], params, module)
-      |> ActionRuntime.apply_runs(action.runs || [], params, module)
+      |> ActionRuntime.apply_runs(action.name, action.runs || [], params, module)
       |> ActionRuntime.apply_effects(action.effects || [], params)
       |> apply_submits(module, action.submits || [])
     else

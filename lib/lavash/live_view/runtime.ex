@@ -670,7 +670,7 @@ defmodule Lavash.LiveView.Runtime do
       socket =
         socket
         |> ActionRuntime.apply_sets(action.sets || [], params, module)
-        |> ActionRuntime.apply_runs(action.runs || [], params, module)
+        |> ActionRuntime.apply_runs(action.name, action.runs || [], params, module)
         |> ActionRuntime.apply_effects(action.effects || [], params)
         |> apply_invokes(action.invokes || [], params)
 

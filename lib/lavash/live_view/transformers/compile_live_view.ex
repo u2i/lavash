@@ -80,32 +80,45 @@ defmodule Lavash.LiveView.Transformers.CompileLiveView do
     )
   end
 
-  # Emit a single zero-arity function that contains every action `run` body
-  # in a list, so the compiler tracks helper-function references inside
-  # those bodies. Without this, `run fn assigns -> helper(assigns) end`
-  # captures the body as `:quoted` AST and the compiler never sees the call
-  # to `helper/1`, generating spurious "unused function" warnings (which
-  # break builds running with `--warnings-as-errors`).
+  # Emit one `__lavash_run__/3` clause per (action, run-index) pair so the
+  # `run fn assigns -> ... end` body executes in the user module's scope.
+  # The body is spliced into a real def, which means:
   #
-  # The function is intentionally public-but-undocumented and unreferenced
-  # by runtime code; it exists purely as a compile-time reference target.
+  # 1. The compiler tracks every helper-function call inside the body
+  #    (no more spurious "unused function" warnings — see u2i/lavash#11).
+  # 2. Local function calls resolve at runtime (no more
+  #    UndefinedFunctionError on unqualified `helper(assigns)` — see #15).
+  # 3. Module attributes, aliases, and imports inside the user's module
+  #    are in scope, just like any other function in that module.
+  #
+  # The runtime calls `module.__lavash_run__(action_name, idx, assigns)`
+  # via `apply/3` (see `Lavash.Action.Runtime.apply_runs/5`).
   defp build_run_refs_ast(dsl_state) do
     actions = Transformer.get_entities(dsl_state, [:actions]) || []
 
-    fun_asts =
+    clauses =
       Enum.flat_map(actions, fn action ->
-        Enum.map(action.runs || [], & &1.fun)
+        (action.runs || [])
+        |> Enum.with_index()
+        |> Enum.map(fn {run, idx} ->
+          name = action.name
+
+          quote do
+            @doc false
+            def __lavash_run__(unquote(name), unquote(idx), var!(assigns)) do
+              import Phoenix.Component, only: [assign: 3]
+              (unquote(run.fun)).(var!(assigns))
+            end
+          end
+        end)
       end)
 
-    if fun_asts == [] do
+    if clauses == [] do
       quote do
       end
     else
       quote do
-        @doc false
-        def __lavash_run_refs__ do
-          [unquote_splicing(fun_asts)]
-        end
+        unquote_splicing(clauses)
       end
     end
   end

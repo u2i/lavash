@@ -93,25 +93,35 @@ defmodule Lavash.Component.Transformers.CompileComponent do
   end
 
   # See `Lavash.LiveView.Transformers.CompileLiveView.build_run_refs_ast/1`
-  # for the rationale: surface action `run` AST bodies so the compiler
-  # tracks helper-function references inside them.
+  # for the rationale: emit a `__lavash_run__/3` clause per (action, run-index)
+  # pair so the body executes in the user's module scope (helpers visible,
+  # compiler tracks references, no `:erl_eval`).
   defp build_run_refs_ast(dsl_state) do
     actions = Transformer.get_entities(dsl_state, [:actions]) || []
 
-    fun_asts =
+    clauses =
       Enum.flat_map(actions, fn action ->
-        Enum.map(action.runs || [], & &1.fun)
+        (action.runs || [])
+        |> Enum.with_index()
+        |> Enum.map(fn {run, idx} ->
+          name = action.name
+
+          quote do
+            @doc false
+            def __lavash_run__(unquote(name), unquote(idx), var!(assigns)) do
+              import Phoenix.Component, only: [assign: 3]
+              (unquote(run.fun)).(var!(assigns))
+            end
+          end
+        end)
       end)
 
-    if fun_asts == [] do
+    if clauses == [] do
       quote do
       end
     else
       quote do
-        @doc false
-        def __lavash_run_refs__ do
-          [unquote_splicing(fun_asts)]
-        end
+        unquote_splicing(clauses)
       end
     end
   end

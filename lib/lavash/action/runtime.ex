@@ -78,24 +78,29 @@ defmodule Lavash.Action.Runtime do
 
   This enables proper change tracking via the assigns mechanism.
   """
-  def apply_runs(socket, runs, params, module) do
-    Enum.reduce(runs || [], socket, fn run, sock ->
-      # Include calculated/derived values alongside state so `run fn` bodies
-      # can read `@some_calc` references listed in `reads [...]`. Without
-      # this, a `reads [:some_calc]` where :some_calc is `calculate :foo,
-      # rx(...)` crashed at runtime with KeyError. See u2i/lavash#12.
+  def apply_runs(socket, action_name, runs, params, module) do
+    (runs || [])
+    |> Enum.with_index()
+    |> Enum.reduce(socket, fn {_run, idx}, sock ->
+      # `assigns` includes calculated/derived values alongside state so
+      # `run fn` bodies can read `@some_calc` references listed in
+      # `reads [...]`. See u2i/lavash#12.
       state = LSocket.full_state(sock)
       assigns = Map.merge(state, params) |> Map.put(:__changed__, %{})
 
-      fun = Lavash.Rx.Cache.compile_run_fun(module, run.fun)
-      updated_assigns = fun.(assigns)
+      # The body was hoisted at compile time into a generated function on
+      # the user's module (see `CompileLiveView.build_run_refs_ast/1` and
+      # the equivalent for components). Calling it via apply/3 means local
+      # helpers, aliases, and imports inside the user's module resolve
+      # normally — no `:erl_eval` involved. Closes u2i/lavash#15.
+      updated_assigns = apply(module, :__lavash_run__, [action_name, idx, assigns])
 
-      # Extract changed fields and apply them to socket
+      # Extract changed fields and apply them to socket.
+      # Phoenix.Component.assign stores either `true` (initial render) or
+      # the old value (subsequent change) under each changed key, so we
+      # accept any value here.
       changed = Map.get(updated_assigns, :__changed__, %{})
 
-      # Phoenix.Component.assign stores either `true` (initial render) or the
-      # old value (subsequent change) under each changed key, so we accept
-      # any value here.
       Enum.reduce(changed, sock, fn {field, _change_marker}, acc_sock ->
         value = Map.get(updated_assigns, field)
         LSocket.put_state(acc_sock, field, value)
