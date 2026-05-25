@@ -193,7 +193,7 @@ defmodule DemoWeb.ProductEditLive do
   defp translate_error(msg) when is_binary(msg), do: msg
 
   defp error(assigns) do
-    ~L"""
+    ~H"""
     <p class="text-error text-sm mt-1">{render_slot(@inner_block)}</p>
     """
   end
