@@ -15,8 +15,8 @@ defmodule DemoWeb.Components.DoubleWrapper do
   # State that gets bound both upward (to parent) and downward (to CounterWrapper)
   state :count, :integer, from: :ephemeral, default: 0, optimistic: true
 
-  render fn assigns ->
-    ~L"""
+  template do
+    ~H"""
     <div class="p-4 border-2 border-dashed border-secondary/30 rounded-lg bg-secondary/5">
       <div class="text-xs text-secondary/70 mb-2 font-semibold">
         Double Wrapper (Level 2)

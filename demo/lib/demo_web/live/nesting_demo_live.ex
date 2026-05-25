@@ -24,8 +24,8 @@ defmodule DemoWeb.NestingDemoLive do
   calculate :wrapped_doubled, rx(@wrapped_count * 2)
   calculate :deep_doubled, rx(@deep_count * 2)
 
-  render fn assigns ->
-    ~L"""
+  template do
+    ~H"""
     <div class="max-w-4xl mx-auto p-6">
       <div class="flex items-center justify-between mb-6">
         <div>

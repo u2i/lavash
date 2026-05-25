@@ -18,8 +18,8 @@ defmodule DemoWeb.Components.CounterWrapper do
   # State that gets bound both upward (to parent) and downward (to child)
   state :count, :integer, from: :ephemeral, default: 0, optimistic: true
 
-  render fn assigns ->
-    ~L"""
+  template do
+    ~H"""
     <div class="p-4 border border-dashed border-primary/30 rounded-lg bg-primary/5">
       <div class="text-xs text-primary/70 mb-2 font-semibold">
         Lavash.Component Wrapper

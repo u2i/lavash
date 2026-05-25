@@ -17,8 +17,8 @@ defmodule DemoWeb.Components.CounterControls do
     end
   end
 
-  render fn assigns ->
-    ~L"""
+  template do
+    ~H"""
     <div class="flex items-center gap-3">
       <button
         type="button"
