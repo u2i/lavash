@@ -439,6 +439,9 @@ defmodule Lavash.LiveView.Runtime do
                   socket
                   |> apply_flashes(action.flashes || [])
                   |> apply_navigates(action.navigates || [])
+                  |> apply_push_patches(action.push_patches || [])
+                  |> apply_redirects(action.redirects || [])
+                  |> apply_push_events(action.push_events || [], module, params)
                   |> maybe_push_patch(module)
                   |> maybe_sync_socket_state(module)
                   |> Reactive.recompute()
@@ -821,6 +824,48 @@ defmodule Lavash.LiveView.Runtime do
     # Only apply the first navigate (can't navigate twice)
     Phoenix.LiveView.push_navigate(socket, to: nav.to)
   end
+
+  defp apply_push_patches(socket, []), do: socket
+
+  defp apply_push_patches(socket, [patch | _rest]) do
+    # Same one-per-action rule as navigate.
+    Phoenix.LiveView.push_patch(socket, to: patch.to)
+  end
+
+  defp apply_redirects(socket, []), do: socket
+
+  defp apply_redirects(socket, [redir | _rest]) do
+    Phoenix.LiveView.redirect(socket, to: redir.to)
+  end
+
+  defp apply_push_events(socket, [], _module, _params), do: socket
+
+  defp apply_push_events(socket, events, module, params) do
+    # Resolve rx() values in the payload against the action's effective
+    # state at fire time. Literal values pass through unchanged.
+    state = Map.merge(LSocket.full_state(socket), params)
+
+    Enum.reduce(events, socket, fn event, sock ->
+      resolved_payload = resolve_push_event_payload(event.payload, module, state)
+      Phoenix.LiveView.push_event(sock, event.name, resolved_payload)
+    end)
+  end
+
+  defp resolve_push_event_payload(%Lavash.Rx{} = rx, module, state) do
+    Lavash.Rx.Cache.compile_rx(module, rx.ast).(state)
+  end
+
+  defp resolve_push_event_payload(map, module, state) when is_map(map) do
+    Map.new(map, fn {k, v} ->
+      {k, resolve_push_event_payload(v, module, state)}
+    end)
+  end
+
+  defp resolve_push_event_payload(list, module, state) when is_list(list) do
+    Enum.map(list, &resolve_push_event_payload(&1, module, state))
+  end
+
+  defp resolve_push_event_payload(other, _module, _state), do: other
 
   defp maybe_push_patch(socket, _module) do
     # URL sync is now handled client-side via history.replaceState in the

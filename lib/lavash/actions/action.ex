@@ -22,6 +22,9 @@ defmodule Lavash.Actions.Action do
     :effects,
     :submits,
     :navigates,
+    :push_patches,
+    :redirects,
+    :push_events,
     :flashes,
     :invokes,
     __spark_metadata__: nil

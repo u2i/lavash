@@ -47,4 +47,22 @@ defmodule Lavash.TestRouter do
     live("/chained-ephemeral", ChainedEphemeralLive)
     live("/async-chain", AsyncChainLive)
   end
+
+  # Parity suite: vanilla Phoenix.LiveView reference + the lavash
+  # DSL expression of the same behaviour. Each feature has both
+  # routes; tests in test/lavash/parity/<feature>_test.exs run the
+  # same assertions against both and fail if they diverge.
+  scope "/parity/vanilla", Lavash.Parity.Vanilla do
+    pipe_through(:browser)
+
+    live("/handle_event", HandleEventLive)
+    live("/handle_event_landing", HandleEventLandingLive)
+  end
+
+  scope "/parity/lavash", Lavash.Parity.Lavash do
+    pipe_through(:browser)
+
+    live("/handle_event", HandleEventLive)
+    live("/handle_event_landing", HandleEventLandingLive)
+  end
 end
