@@ -21,8 +21,8 @@ defmodule DemoWeb.ComponentsDemoLive do
     Enum.take(products, 6)
   end
 
-  render fn assigns ->
-    ~L"""
+  template do
+    ~H"""
     <div class="max-w-6xl mx-auto p-6">
       <div class="flex items-center justify-between mb-6">
         <div>
