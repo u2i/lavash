@@ -30,8 +30,8 @@ defmodule DemoWeb.Admin.CategoriesLive do
     end
   end
 
-  render fn assigns ->
-    ~L"""
+  template do
+    ~H"""
     <div class="space-y-6">
       <div class="flex items-center justify-between">
         <h1 class="text-2xl font-bold">Categories</h1>
