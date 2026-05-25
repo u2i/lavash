@@ -1,99 +1,55 @@
 /**
- * Optimistic action execution.
+ * Optimistic actions concern — owns click interception for
+ * `phx-click` actions that have a client-side optimistic
+ * implementation.
  *
- * Intercepts phx-click events, runs client-side action functions for
- * instant UI updates, and clears LiveView's element lock for rapid clicks.
+ * On a matching click, this module's handleClick runs the
+ * client-side action function BEFORE the LiveView event delegate
+ * fires, so the DOM updates immediately. The LV round-trip then
+ * runs server-side and the result reconciles in the hook's
+ * `updated()`.
+ *
+ * Lower-level click classification + state-delta application
+ * lives in optimistic_action_helpers.js. This module is the
+ * lifecycle orchestrator: capture-phase listener install at
+ * mount, listener removal at destroy.
  */
+
+import {
+  handleClick as _handleClick,
+  runOptimisticAction as _runOptimisticAction
+} from "./optimistic_action_helpers.js";
 
 /**
- * Handle a click event on a phx-click element.
- * Runs the optimistic action if the action name matches a known function.
+ * Install the capture-phase click listener.
  *
- * @param {Event} e - Click event
- * @param {Object} hook - The hook instance
+ * Capture phase (third arg `true`) so this runs BEFORE Phoenix's
+ * own click delegate — the optimistic patch lands first, the
+ * server-side push goes out, and the reconciliation happens later
+ * in updated().
+ *
+ * Stashes the bound listener ref on `hook._clickListener` so
+ * destroyed() can remove the same reference.
  */
-export function handleClick(e, hook) {
-  const target = e.target.closest("[phx-click]");
-  if (!target || !hook.el.contains(target)) return;
-
-  const actionName = target.getAttribute("phx-click");
-
-  // Only intercept if this is a known optimistic action
-  if (!hook.fns[actionName]) return;
-
-  // Extract value from first phx-value-* attribute
-  let value;
-  for (const attr of target.attributes) {
-    if (attr.name.startsWith("phx-value-")) {
-      value = attr.value;
-      break;
-    }
-  }
-
-  runOptimisticAction(actionName, value, hook);
-
-  // Clear LiveView's element lock so rapid clicks on the same element work.
-  target.removeAttribute("data-phx-ref-src");
-  target.removeAttribute("data-phx-ref-lock");
-  setTimeout(() => {
-    target.removeAttribute("data-phx-ref-src");
-    target.removeAttribute("data-phx-ref-lock");
-  }, 0);
+export function mounted(hook) {
+  hook._clickListener = (e) => _handleClick(e, hook);
+  hook.el.addEventListener("click", hook._clickListener, true);
 }
 
 /**
- * Run an optimistic action by name.
- * Looks up the function, applies the state delta, and triggers
- * derive recomputation, DOM update, and URL sync.
- *
- * @param {string} actionName
- * @param {any} value - The phx-value-* parameter
- * @param {Object} hook - The hook instance
+ * Remove the click listener using the stashed bound ref.
  */
-export function runOptimisticAction(actionName, value, hook) {
-  let fn = hook.fns[actionName];
-
-  // Check module registry for dynamically added component functions
-  if (!fn && hook.moduleName) {
-    const moduleFns = window.Lavash.optimistic[hook.moduleName];
-    if (moduleFns && moduleFns[actionName]) {
-      fn = moduleFns[actionName];
-      hook.fns[actionName] = fn;
-      if (moduleFns.__derives__) {
-        for (const d of moduleFns.__derives__) {
-          if (!hook.deriveNames.includes(d)) {
-            hook.deriveNames.push(d);
-          }
-          if (moduleFns[d] && !hook.fns[d]) {
-            hook.fns[d] = moduleFns[d];
-          }
-        }
-      }
-    }
-  }
-
-  if (!fn) return;
-
-  hook.clientVersion++;
-
-  try {
-    const delta = fn(hook.state, value);
-
-    const changedFields = [];
-    for (const [key, val] of Object.entries(delta)) {
-      hook.state[key] = val;
-      const syncedVar = hook.store.get(key, null, (newVal) => {
-        hook.state[key] = newVal;
-      });
-      syncedVar.setOptimistic(val);
-      changedFields.push(key);
-    }
-
-    hook.propagateBoundFieldsToParent(changedFields, { serverHandled: true });
-    hook.recomputeDerives(changedFields);
-    hook.updateDOM(true);
-    hook.syncUrl();
-  } catch (err) {
-    // Silently ignore client-side errors — server is source of truth
+export function destroyed(hook) {
+  if (hook._clickListener) {
+    hook.el.removeEventListener("click", hook._clickListener, true);
+    hook._clickListener = null;
   }
 }
+
+/**
+ * Re-exported so the hook's `runOptimisticAction(actionName, value)`
+ * delegator can call the helper. Inline component scripts call
+ * `hook.runOptimisticAction(...)` so the hook must keep that
+ * method.
+ */
+export const runOptimisticAction = _runOptimisticAction;

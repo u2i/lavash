@@ -51,7 +51,7 @@ import {
 import { installGlobalDomCallback } from "./concerns/global_dom_callback.js";
 import { updateDOM as _updateDOM, notifyChildren as _notifyChildren } from "./concerns/dom_updater.js";
 import * as bindings from "./concerns/bindings.js";
-import { handleClick as _handleClick, runOptimisticAction as _runOptimisticAction } from "./concerns/optimistic_actions.js";
+import * as optimisticActions from "./concerns/optimistic_actions.js";
 import { loadGeneratedFunctions as _loadGeneratedFunctions } from "./concerns/function_loader.js";
 import * as forms from "./concerns/forms.js";
 import * as overlays from "./concerns/overlays.js";
@@ -106,11 +106,12 @@ const LavashOptimistic = {
     // Check if this is a component
     this.isComponent = this.el.hasAttribute("data-lavash-component");
 
-    // Intercept clicks on elements with phx-click that match optimistic actions
-    this.el.addEventListener("click", this.handleClick.bind(this), true);
-
     // Install global DOM callback for input preservation (only once globally)
     this._installGlobalDomCallback();
+
+    // Optimistic actions: capture-phase click listener that runs the
+    // client-side optimistic patch before Phoenix's event delegate fires.
+    optimisticActions.mounted(this);
 
     // Bindings init: parse data-lavash-bindings map, install
     // lavash-set listener for parent↔child state propagation.
@@ -157,10 +158,6 @@ const LavashOptimistic = {
     this.graph = result.graph;
   },
 
-  handleClick(e) {
-    _handleClick(e, this);
-  },
-
   setStateAtPath(path, value) {
     _setStateAtPath(this.state, path, value);
   },
@@ -169,8 +166,11 @@ const LavashOptimistic = {
     return _getStateAtPath(this.state, path);
   },
 
+  // Inline component scripts (loaded from generated <script> tags
+  // by loadGeneratedFunctions) call hook.runOptimisticAction(...) to
+  // dispatch by name. Keep the method as a thin delegator.
   runOptimisticAction(actionName, value) {
-    _runOptimisticAction(actionName, value, this);
+    optimisticActions.runOptimisticAction(actionName, value, this);
   },
 
   recomputeDerives(changedFields = null) {
@@ -455,12 +455,8 @@ const LavashOptimistic = {
     // Bindings cleanup: remove the lavash-set listener.
     bindings.destroyed(this);
 
-    // The remaining click listener uses this.handleClick bound fresh
-    // on install. The old destroyed() bound it fresh again here,
-    // which silently never matched. Leaving as a no-op because the
-    // hook is being torn down — element will be removed and GC'd.
-    // Will get the same bound-ref-stash pattern when click moves
-    // into concerns/optimistic_actions.js.
+    // Optimistic actions cleanup: remove the capture-phase click listener.
+    optimisticActions.destroyed(this);
 
     // Overlay cleanup: tear down animation delegates, remove modal
     // event listeners, prune the modal-content registry for this hook.
