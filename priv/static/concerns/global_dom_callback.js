@@ -126,11 +126,11 @@ export function installGlobalDomCallback(liveSocket) {
           const toHasInner = toEl.querySelector(`#${innerId}`);
 
           if (fromHasInner && !toHasInner) {
-            console.warn(`[LavashOptimistic] onBeforeElUpdated: PRESERVING content for ${field} (phase=${phase}, stale server close)`);
+            console.debug(`[lavash:dom] preserving content for ${field} (phase=${phase}, stale server close)`);
             return false;
           }
 
-          console.warn(`[LavashOptimistic] onBeforeElUpdated: overlay ${field} (phase=${phase}): fromHasInner=${!!fromHasInner}, toHasInner=${!!toHasInner} → allowing update`);
+          console.debug(`[lavash:dom] overlay ${field} (phase=${phase}): fromHasInner=${!!fromHasInner}, toHasInner=${!!toHasInner} → allowing update`);
         }
       }
     }

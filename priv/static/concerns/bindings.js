@@ -68,8 +68,8 @@ function onLavashSet(e, hook) {
   const { field, value, serverHandled } = e.detail;
   if (!field) return;
 
-  console.warn(
-    `[LO] handleLavashSet: field=${field}, value=${JSON.stringify(value)}, serverHandled=${serverHandled}`
+  console.debug(
+    `[lavash:bindings] handleLavashSet: field=${field}, value=${JSON.stringify(value)}, serverHandled=${serverHandled}`
   );
 
   if (hook.animatedStates?.[field]) {
