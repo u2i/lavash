@@ -394,6 +394,7 @@ defmodule Lavash.Template.TokenTransformer do
         case parse_form_field_access_expr(expr) do
           {:ok, form, field} ->
             if is_map_key(forms, form) do
+              warn_if_form_field_unknown(form, field, forms, metadata)
               inject_full_form_attrs(attrs, form, field)
             else
               maybe_inject_form_input_explicit(attrs, metadata)
@@ -409,6 +410,30 @@ defmodule Lavash.Template.TokenTransformer do
   end
 
   defp maybe_inject_form_input(attrs, _name, _metadata), do: attrs
+
+  # Diagnostic: `<input field={@form[:typo]}>` where the Ash resource
+  # behind `:form` doesn't actually have a `:typo` attribute. Today this
+  # silently produces an input bound to a non-existent field. We can
+  # only check if the resource's attribute list is non-empty (we may
+  # have failed to load it at compile time; in that case we skip).
+  defp warn_if_form_field_unknown(form, field, forms, metadata) do
+    form_info = Map.get(forms, form, %{})
+    fields = Map.get(form_info, :fields, []) || []
+
+    if fields != [] and field not in fields do
+      require Logger
+
+      Logger.warning(
+        "[lavash] <input field={@#{form}[:#{field}]}> in " <>
+          "#{metadata[:caller_file] || "template"} — :#{field} is not an " <>
+          "attribute of #{inspect(form_info[:resource])}. The input will " <>
+          "bind to a non-existent field. Available: " <>
+          Enum.map_join(fields, ", ", &inspect/1)
+      )
+    end
+
+    :ok
+  end
 
   defp maybe_inject_form_input_explicit(attrs, metadata) do
     forms = metadata[:forms] || %{}

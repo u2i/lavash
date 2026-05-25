@@ -704,6 +704,72 @@ defmodule Lavash.Template.TokenTransformerTest do
 
       refute log =~ "plain text"
     end
+
+    test "warns on <input field={@form[:typo]}> when :typo is not an attribute of the resource" do
+      tokens = [
+        tag("input", [
+          expr_attr("field", "@user[:nope]")
+        ])
+      ]
+
+      metadata =
+        optimistic_metadata([])
+        |> Map.put(:forms, %{
+          user: %{resource: FakeUser, fields: [:name, :email, :age]}
+        })
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          transform(tokens, metadata)
+        end)
+
+      assert log =~ "field={@user[:nope]}"
+      assert log =~ ":nope is not an attribute"
+      assert log =~ ":name"
+      assert log =~ ":email"
+    end
+
+    test "stays silent when :field IS an attribute" do
+      tokens = [
+        tag("input", [
+          expr_attr("field", "@user[:email]")
+        ])
+      ]
+
+      metadata =
+        optimistic_metadata([])
+        |> Map.put(:forms, %{
+          user: %{resource: FakeUser, fields: [:name, :email, :age]}
+        })
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          transform(tokens, metadata)
+        end)
+
+      refute log =~ "is not an attribute"
+    end
+
+    test "stays silent when fields list is empty (resource couldn't be loaded)" do
+      tokens = [
+        tag("input", [
+          expr_attr("field", "@user[:nope]")
+        ])
+      ]
+
+      metadata =
+        optimistic_metadata([])
+        |> Map.put(:forms, %{
+          user: %{resource: FakeUser, fields: []}
+        })
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          transform(tokens, metadata)
+        end)
+
+      refute log =~ "is not an attribute"
+    end
   end
 
   defp local_component(name, attrs) do
