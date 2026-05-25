@@ -443,6 +443,7 @@ defmodule Lavash.Dsl do
       Lavash.Optimistic.Transformers.ExpandAnimatedStates,
       Lavash.Optimistic.Transformers.ExpandDefrx,
       Lavash.Transformers.ExpandFields,
+      Lavash.Transformers.ValidateDsl,
       Lavash.Component.Transformers.TokenizeTemplate,
       Lavash.Component.Transformers.AnalyzeTemplate,
       Lavash.Optimistic.Transformers.ExtractColocatedJs,
