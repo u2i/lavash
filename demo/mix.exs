@@ -81,6 +81,9 @@ defmodule Demo.MixProject do
       setup: ["deps.get", "ecto.setup", "assets.setup", "assets.build"],
       "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
+      # LV tests boot the catalog/storefront stack, which goes through Ash → SQLite.
+      # Make sure the test repo exists and is migrated before tests run.
+      test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
       "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
       "assets.build": ["tailwind demo", "esbuild demo"],
       "assets.deploy": [
