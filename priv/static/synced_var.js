@@ -50,6 +50,17 @@ class IdlePhase extends Phase {
   _name = "idle";
   onEnter() {
     this.sv._setPhase("idle");
+    // Close protection is set when an optimistic null lands while a
+    // value was visible — it shields the SyncedVar from late-arriving
+    // stale "open" diffs from the server. Once we reach idle, the
+    // close is fully done; any future non-null server value is a
+    // legitimate fresh state (e.g. user reopened the modal). Without
+    // this clear, a user-initiated reopen while the SyncedVar is
+    // still in `exiting` would set _closeProtection=true (close
+    // happens), exit completes → idle, then the server's diff for
+    // the new open arrives and is rejected as "stale." Modal stays
+    // closed despite the user explicitly opening it.
+    this.sv._closeProtection = false;
     this.sv._notifyDelegate("onIdle");
   }
   onOpen() {
@@ -320,9 +331,15 @@ export class SyncedVar {
         // or the next stale null would be accepted and trigger a close.
         this.confirmedVersion++;
         this.confirmedValue = newValue;
-        if (newValue == null && !this.isPending) {
-          this._closeProtection = true;
-        }
+        // Note: we do NOT re-set _closeProtection here even when newValue
+        // is null. setOptimistic already set it at close-click time, and
+        // IdlePhase.onEnter clears it when the exit animation finishes.
+        // Re-setting it here would defeat the idle-clear — by the time
+        // serverAnim confirms the close, the user might have already
+        // requested a reopen (via a non-optimistic action that the
+        // SyncedVar can't see), and the server's eventual reopen diff
+        // would be wrongly blocked. The setOptimistic+idle-clear pair
+        // already provides the bounce protection we need.
         console.debug(`[SV:${this.label}] serverAnim CONFIRMED (pending match, incremental): v=${this.version}, cv=${this.confirmedVersion}, value=${JSON.stringify(newValue)}, phase=${this.phase}, stillPending=${this.isPending}, closeProt=${!!this._closeProtection}`);
       } else {
         console.debug(`[SV:${this.label}] serverAnim REJECTED (pending, no match): v=${this.version}, cv=${this.confirmedVersion}, server=${JSON.stringify(newValue)}, client=${JSON.stringify(this.value)}, phase=${this.phase}, closeProt=${!!this._closeProtection}`);
