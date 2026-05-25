@@ -4,13 +4,10 @@ defmodule Lavash.Lifecycle.Runtime do
   end end` today; mount/handle_params/connected blocks if/when they
   land).
 
-  The compiled clause arrives here with the already-mutated socket
-  (the user's body returned it). We mark the dirty fields, recompute
-  the reactive graph, and project derived values into assigns.
-
-  The discipline matches what the action runtime does at the end of
-  every `handle_event` — putting all the post-handler bookkeeping
-  in one place so users don't have to remember it.
+  The compiled message clause arrives here with the user's module,
+  the post-body socket, and any state fields written via `set`. We
+  mark those fields dirty, recompute the reactive graph, and project
+  derived values — same discipline `handle_event` ends with.
   """
 
   alias Lavash.Assigns
@@ -18,28 +15,18 @@ defmodule Lavash.Lifecycle.Runtime do
   alias Lavash.Socket, as: LSocket
 
   @doc """
-  Dispatch a `message` clause result.
+  Finalises the socket after a `message` clause body has run.
 
-  Takes the user's module (for projection) and the socket their
-  body returned. Walks `socket.assigns.__changed__` to find which
-  state fields were touched, marks them dirty in the LSocket state
-  registry so the reactive graph notices, then recomputes and
-  projects.
-
-  Returns the standard `{:noreply, socket}` tuple Phoenix expects.
+  Marks any fields in `touched_state_fields` as dirty (so the
+  reactive graph notices), runs `Reactive.recompute/1`, then
+  `Assigns.project/2`. Returns the standard
+  `{:noreply, socket}` tuple Phoenix expects.
   """
-  def dispatch(module, socket) do
-    changed = Map.get(socket.assigns, :__changed__, %{})
-
-    # Re-mark dirty state fields so Lavash.Reactive picks them up
-    # for downstream calculation recompute. Touching `socket.assigns`
-    # directly via Phoenix.Component.assign already updated the
-    # assigns map, but the LSocket dirty-tracking lives separately
-    # and only `put_state` writes to it.
+  def finalize(module, socket, touched_state_fields) do
     state_field_names = LSocket.get(socket, :state_field_names) || MapSet.new()
 
     socket =
-      Enum.reduce(changed, socket, fn {field, _marker}, sock ->
+      Enum.reduce(touched_state_fields, socket, fn field, sock ->
         if MapSet.member?(state_field_names, field) do
           LSocket.put_state(sock, field, sock.assigns[field])
         else

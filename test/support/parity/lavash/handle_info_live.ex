@@ -3,11 +3,12 @@ defmodule Lavash.Parity.Lavash.HandleInfoLive do
   Lavash DSL expression of the handle_info parity suite — paired
   with `Lavash.Parity.Vanilla.HandleInfoLive`.
 
-  Uses the `messages do message <pattern> do ... end end` block
-  for receive-side message dispatch. The body is plain Elixir
-  with `socket` in scope (full Phoenix.LiveView API available);
-  return the updated socket and the runtime takes care of the
-  recompute + project chain.
+  Uses the `messages do message pattern do <ops> end end` block
+  for receive-side message dispatch. The body is a sequence of
+  ops (`run`/`effect`/`set`) drawn from the same vocabulary as
+  actions. `run fn socket -> ... end` takes the socket (full LV
+  API available); `set :field, rx(...)` is the layer-2 shortcut
+  for state-only mutations.
 
   Subscribe at mount via a custom `mount/3` chained to
   Runtime.mount — `connected do ... end` will eventually absorb
@@ -37,15 +38,17 @@ defmodule Lavash.Parity.Lavash.HandleInfoLive do
 
   messages do
     message :tick do
-      assign(socket, :ticks, socket.assigns.ticks + 1)
+      set :ticks, rx(@ticks + 1)
     end
 
     message {:custom_msg, msg}, [:msg] do
-      assign(socket, :last_msg, msg)
+      run fn socket ->
+        assign(socket, :last_msg, msg)
+      end
     end
 
     message :pinged do
-      assign(socket, :broadcasts, socket.assigns.broadcasts + 1)
+      set :broadcasts, rx(@broadcasts + 1)
     end
   end
 

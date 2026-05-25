@@ -84,15 +84,14 @@ defmodule Lavash.LiveView.Transformers.CompileLiveView do
     )
   end
 
-  # Emit declarative `messages do message <pattern> do ... end end`
-  # clauses as real `def handle_info/2` heads. The body has `socket`
-  # in scope and should return the (mutated) socket. The runtime
-  # dispatcher marks dirty state, recomputes the reactive graph,
-  # and projects derived values — same discipline `handle_event`
-  # ends with.
+  # Emit declarative `messages do message <pattern> do <ops> end end`
+  # clauses as real `def handle_info/2` heads. Each clause's body
+  # is a list of ops (`run`/`effect`/`set`) that the compiled
+  # def walks in order, threading the socket through.
   #
-  # Layer 1: the body is plain Elixir. No `rx`, no JS transpile.
-  # Reactive recompute happens AFTER the body via the dispatcher.
+  # Layer 1: the body is a sequence of declarative ops. `set ...,
+  # rx(...)` is layer 2 (reactive); `run` / `effect` are layer 1.
+  # Reactive recompute happens AFTER the ops via the finalizer.
   defp build_messages_ast(dsl_state) do
     module = Transformer.get_persisted(dsl_state, :module)
 
@@ -102,10 +101,10 @@ defmodule Lavash.LiveView.Transformers.CompileLiveView do
       quote do
       end
     else
-      # Each clause is {:__message__, pattern_ast, bind_atoms, body_ast}.
+      # Each clause is {:__message__, pattern_ast, bind_atoms, ops_list}.
       heads =
-        Enum.map(clauses, fn {:__message__, pattern_ast, bind, body_ast} ->
-          build_message_clause(pattern_ast, bind, body_ast)
+        Enum.map(clauses, fn {:__message__, pattern_ast, bind, ops} ->
+          build_message_clause(pattern_ast, bind, ops)
         end)
 
       quote do
@@ -115,17 +114,23 @@ defmodule Lavash.LiveView.Transformers.CompileLiveView do
     end
   end
 
-  defp build_message_clause(pattern_ast, _bind, body_ast) do
-    # User's body references `socket` directly. We bind it via
-    # var!/1 so the body (captured in a different hygiene context)
-    # sees the same variable as the def head. We also reset
-    # __changed__ so Phoenix.Component.assign calls inside the body
-    # track only the writes that happen there.
+  defp build_message_clause(pattern_ast, _bind, ops) do
+    # The clause walks ops sequentially. Each op either mutates
+    # `socket` (run, set) or runs a side effect (effect). After all
+    # ops, we hand the touched-state list to the finalizer for
+    # recompute + project.
     #
-    # Pattern vars (per the `message <pattern>, [:foo] do` bind
-    # list) are already in scope inside the head — the pattern
-    # binds them and they're visible to the body as ordinary local
-    # variables, no re-threading needed.
+    # Imports are scoped to the def body so user `run fn socket ->`
+    # bodies can call assign/3, push_event/3, etc. unqualified.
+
+    op_statements = Enum.map(ops, &build_op_ast/1)
+
+    touched =
+      ops
+      |> Enum.flat_map(fn
+        {:set, field, _value} -> [field]
+        _ -> []
+      end)
 
     quote do
       def handle_info(unquote(pattern_ast), socket) do
@@ -145,10 +150,40 @@ defmodule Lavash.LiveView.Transformers.CompileLiveView do
         import Phoenix.Component, only: [assign: 2, assign: 3, update: 3]
 
         var!(socket) = Phoenix.Component.assign(socket, :__changed__, %{})
-        var!(socket) = unquote(body_ast)
 
-        Lavash.Lifecycle.Runtime.dispatch(__MODULE__, var!(socket))
+        unquote_splicing(op_statements)
+
+        Lavash.Lifecycle.Runtime.finalize(__MODULE__, var!(socket), unquote(touched))
       end
+    end
+  end
+
+  # `run fn socket -> ... end` — apply the lambda to the current
+  # socket; the result becomes the new socket.
+  defp build_op_ast({:run, fn_ast}) do
+    quote do
+      var!(socket) = unquote(fn_ast).(var!(socket))
+    end
+  end
+
+  # `effect fn socket -> ... end` — call for side effects only.
+  defp build_op_ast({:effect, fn_ast}) do
+    quote do
+      _ = unquote(fn_ast).(var!(socket))
+    end
+  end
+
+  # `set :field, rx(...)` or `set :field, literal_value` — evaluate
+  # via the action runtime's set-application machinery so it goes
+  # through the same dirty/reactive-graph plumbing as inside an
+  # action. The set struct is built at compile time; the runtime
+  # call resolves rx values against current state.
+  defp build_op_ast({:set, field, value_ast}) do
+    quote do
+      set = %Lavash.Actions.Set{field: unquote(field), value: unquote(value_ast)}
+
+      var!(socket) =
+        Lavash.Action.Runtime.apply_sets(var!(socket), [set], %{}, __MODULE__)
     end
   end
 
