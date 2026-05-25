@@ -53,23 +53,12 @@ import { updateDOM as _updateDOM, notifyChildren as _notifyChildren } from "./co
 import { refreshFromParent as _refreshFromParent, propagateBoundFieldsToParent as _propagateBoundFieldsToParent } from "./concerns/bindings.js";
 import { handleClick as _handleClick, runOptimisticAction as _runOptimisticAction } from "./concerns/optimistic_actions.js";
 import { loadGeneratedFunctions as _loadGeneratedFunctions } from "./concerns/function_loader.js";
-import {
-  getFormField as _getFormField,
-  isFormSubmitted as _isFormSubmitted,
-  handleBlur as _handleBlur,
-  handleFormSubmit as _handleFormSubmit,
-  handleInput as _handleInput,
-  initializeFormParamsFromDOM as _initializeFormParamsFromDOM,
-} from "./concerns/form_handler.js";
+import * as forms from "./concerns/forms.js";
 import * as overlays from "./concerns/overlays.js";
 
 // Registry for optimistic function modules (for custom overrides)
 window.Lavash = window.Lavash || {};
 window.Lavash.optimistic = window.Lavash.optimistic || {};
-
-// Registry for preserving client-only state across hook remounts
-// Keys are element IDs, values contain fieldState and submittedForms
-const _preservedClientState = new Map();
 
 // Helper to register custom optimistic functions for a module
 window.Lavash.registerOptimistic = function(moduleName, fns) {
@@ -100,24 +89,6 @@ const LavashOptimistic = {
     // When parent state changes, we update our local state and animate
     this.bindings = JSON.parse(this.el.dataset.lavashBindings || "{}");
 
-    // Form field state tracking (client-side only)
-    // Maps field path -> { touched: boolean }
-    // Restore from preserved state if this is a remount
-    const preservedState = _preservedClientState.get(this.el.id);
-    if (preservedState) {
-      this.fieldState = preservedState.fieldState || {};
-      this.submittedForms = preservedState.submittedForms || new Set();
-      _preservedClientState.delete(this.el.id);
-    } else {
-      this.fieldState = {};
-      // Per-form submitted state: Set of form IDs that have been submitted
-      // This prevents a child component's form submit from affecting parent forms
-      this.submittedForms = new Set();
-    }
-
-    // Server validation debounce timers: field path -> timeout ID
-    this.validationTimers = {};
-
     // Load generated functions from inline JSON script tag
     this.loadGeneratedFunctions();
 
@@ -142,17 +113,6 @@ const LavashOptimistic = {
     // Intercept clicks on elements with phx-click that match optimistic actions
     this.el.addEventListener("click", this.handleClick.bind(this), true);
 
-    // Intercept input/change on elements with data-lavash-bind
-    // Listen for both: "input" fires on text keystroke, "change" fires on select/checkbox
-    this.el.addEventListener("input", this.handleInput.bind(this), true);
-    this.el.addEventListener("change", this.handleInput.bind(this), true);
-
-    // Track blur events for touched state
-    this.el.addEventListener("blur", this.handleBlur.bind(this), true);
-
-    // Track form submit for formSubmitted state
-    this.el.addEventListener("submit", this.handleFormSubmit.bind(this), true);
-
     // Handle lavash-set events from child ClientComponents
     // This allows nested components to set bound state on parent components
     // Use bubbling mode (not capture) so the closest ancestor hook handles it first
@@ -161,9 +121,9 @@ const LavashOptimistic = {
     // Install global DOM callback for input preservation (only once globally)
     this._installGlobalDomCallback();
 
-    // Initialize form params from DOM values (for prepopulated/default values)
-    // This ensures validation works correctly for fields with defaults
-    this.initializeFormParamsFromDOM();
+    // Forms init: per-field touched state, submitted-form tracking,
+    // input/change/blur/submit listeners, validation-timer scratchpad.
+    forms.mounted(this);
 
     // Initialize animated state managers (modals, flyovers, etc.)
     overlays.mounted(this);
@@ -179,11 +139,6 @@ const LavashOptimistic = {
       field => this.store.get(field).isAnimating()
     );
   },
-
-  initializeFormParamsFromDOM() {
-    _initializeFormParamsFromDOM(this);
-  },
-
 
   _installGlobalDomCallback() {
     installGlobalDomCallback(this.liveSocket);
@@ -209,18 +164,6 @@ const LavashOptimistic = {
 
   handleClick(e) {
     _handleClick(e, this);
-  },
-
-  handleBlur(e) {
-    _handleBlur(e, this);
-  },
-
-  getFormField(el, fieldPath) {
-    return _getFormField(el, fieldPath);
-  },
-
-  handleFormSubmit(e) {
-    _handleFormSubmit(e, this);
   },
 
   /**
@@ -288,14 +231,6 @@ const LavashOptimistic = {
     console.debug("[LavashOptimistic] Field", field, "not owned by this hook, letting event propagate");
   },
 
-  isFormSubmitted(formName) {
-    return _isFormSubmitted(this.submittedForms, formName);
-  },
-
-  handleInput(e) {
-    _handleInput(e, this);
-  },
-
   setStateAtPath(path, value) {
     _setStateAtPath(this.state, path, value);
   },
@@ -315,8 +250,8 @@ const LavashOptimistic = {
 
   updateDOM(isOptimistic = false) {
     _updateDOM(this.el, this.state, {
-      getFormField: this.getFormField.bind(this),
-      isFormSubmitted: this.isFormSubmitted.bind(this),
+      getFormField: forms.getFormField,
+      isFormSubmitted: (formName) => forms.isFormSubmittedFor(this, formName),
       isOptimistic,
     });
     this.notifyChildren();
@@ -427,8 +362,9 @@ const LavashOptimistic = {
     overlays.notifyAsyncReadyForFields(this, asyncFieldsReady);
     overlays.notifyDelegatesUpdated(this);
 
-    // Initialize form params from any newly-added inputs (e.g., async modal content)
-    this.initializeFormParamsFromDOM();
+    // Forms post-update: re-seed form params from any newly-added
+    // inputs (e.g., async modal content that just rendered).
+    forms.updated(this);
 
     this.recomputeDerives();
     this.updateDOM();
@@ -512,14 +448,7 @@ const LavashOptimistic = {
 
             // Clear touched/show_errors state only when modal is opening
             if (isModalOpening) {
-              for (const fieldPath of Object.keys(this.fieldState)) {
-                if (fieldPath.startsWith(path + ".")) {
-                  delete this.fieldState[fieldPath];
-                  const fieldName = fieldPath.substring(path.length + 1);
-                  const showErrorsKey = `${formName}_${fieldName}_show_errors`;
-                  this.state[showErrorsKey] = false;
-                }
-              }
+              forms.clearFieldStateForPathPrefix(this, path, formName);
             }
 
           }
@@ -588,25 +517,20 @@ const LavashOptimistic = {
 
 
   destroyed() {
-    // Preserve client-only state for potential remount
-    // This allows touched/submitted state to survive hook remounts during LiveView patches
-    if (this.el.id) {
-      _preservedClientState.set(this.el.id, {
-        fieldState: this.fieldState,
-        submittedForms: this.submittedForms
-      });
-      // Clear after a short delay if not reused (prevents memory leaks)
-      setTimeout(() => {
-        _preservedClientState.delete(this.el.id);
-      }, 1000);
-    }
+    // Forms cleanup: stash fieldState/submittedForms for potential
+    // remount, remove input/change/blur/submit listeners using the
+    // same bound refs we installed in mounted().
+    forms.destroyed(this);
 
-    // Remove event listeners (attached for both LiveViews and components)
-    this.el.removeEventListener("click", this.handleClick.bind(this), true);
-    this.el.removeEventListener("input", this.handleInput.bind(this), true);
-    this.el.removeEventListener("change", this.handleInput.bind(this), true);
-    this.el.removeEventListener("blur", this.handleBlur.bind(this), true);
-    this.el.removeEventListener("submit", this.handleFormSubmit.bind(this), true);
+    // The click and lavash-set listeners use this.handleClick /
+    // this.handleLavashSet bound fresh on install. The old code
+    // bound fresh again here, which silently never matched. Leaving
+    // them as no-ops because the hook is being torn down — the
+    // element will be removed and GC'd.
+    //
+    // TODO: when click/lavash-set move into their own concerns
+    // (optimistic_actions, bindings), they'll get the same
+    // bound-ref-stash pattern as forms.
 
     // Overlay cleanup: tear down animation delegates, remove modal
     // event listeners, prune the modal-content registry for this hook.
