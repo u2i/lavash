@@ -61,4 +61,89 @@ defmodule Lavash.Template.RenderMacro do
       @__lavash_renders__ {:__loading_fn__, unquote(escaped_ast)}
     end
   end
+
+  @doc """
+  Declares a component/LiveView template using a `do` block containing a `~H` sigil.
+
+  This is an alternative shape to `render fn assigns -> ~L\"\"\"...\"\"\" end`. Both
+  shapes feed into the same Lavash compile pipeline (`TokenizeTemplate` →
+  `AnalyzeTemplate` → `ExtractColocatedJs` → `CompileComponent/CompileLiveView`) and
+  produce the same compiled output for the same template body.
+
+  ## Example
+
+      template do
+        ~H\"\"\"
+        <button phx-click="inc">Count: {@count}</button>
+        \"\"\"
+      end
+
+  ## Limitations
+
+  - The `do` block must contain a single `~H` sigil literal. No interpolation in
+    the sigil delimiters, no surrounding code in the block.
+  - This shape does NOT support `render_loading` / `set_animated`. If you need
+    a loading-state render, use the `render fn assigns -> ~L\"\"\"...\"\"\" end` shape
+    alongside `render_loading fn assigns -> ~L\"\"\"...\"\"\" end`.
+  - A module must not declare both `template do ... end` and `render fn ... end`.
+    Doing so raises a compile error.
+  """
+  defmacro template(do: block) do
+    {source, line} = extract_heex_source!(block, __CALLER__)
+    __build_template_attr__(source, line)
+  end
+
+  @doc false
+  # Shared expansion used by both `Lavash.Template.RenderMacro.template/1`
+  # and the component-side re-export `Lavash.Component.RenderImport.template/1`.
+  def __build_template_attr__(source, line) do
+    # Register on the same `@__lavash_renders__` attribute so the downstream
+    # pipeline finds a `:__render_fn__` entry. We embed the source in a tagged
+    # tuple that `TokenizeTemplate.extract_compiled_source_and_line/1` recognizes.
+    quote do
+      if List.keymember?(@__lavash_renders__ || [], :__render_fn__, 0) do
+        raise CompileError,
+          file: __ENV__.file,
+          line: __ENV__.line,
+          description:
+            "Cannot use both `template do ~H\"...\" end` and `render fn assigns -> ~L\"...\" end` " <>
+              "in the same module. Pick one template-declaration shape."
+      end
+
+      @__lavash_renders__ {:__render_fn__,
+                           {:__lavash_template_source__, unquote(source), unquote(line)}}
+    end
+  end
+
+  @doc false
+  # Public so `Lavash.Component.RenderImport.template/1` can re-use the same
+  # ~H-extraction logic.
+  def __extract_heex_source__!(block, caller), do: extract_heex_source!(block, caller)
+
+  # Walks the AST of the `do` block looking for the first ~H sigil literal node.
+  defp extract_heex_source!(block, caller) do
+    found =
+      Macro.prewalk(block, nil, fn
+        {:sigil_H, meta, [{:<<>>, _, [source]}, _modifiers]} = node, nil
+        when is_binary(source) ->
+          {node, {source, meta[:line] || caller.line}}
+
+        node, acc ->
+          {node, acc}
+      end)
+
+    case found do
+      {_, {source, line}} ->
+        {source, line}
+
+      _ ->
+        raise CompileError,
+          file: caller.file,
+          line: caller.line,
+          description:
+            "`template do ... end` must contain a single ~H sigil literal " <>
+              "(no interpolation in the sigil delimiters). Got: " <>
+              Macro.to_string(block)
+    end
+  end
 end
