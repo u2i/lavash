@@ -267,8 +267,8 @@ defmodule DemoWeb.CheckoutDemoLive do
   # Template
   # ─────────────────────────────────────────────────────────────────
 
-  render fn assigns ->
-    ~L"""
+  template do
+    ~H"""
     <div id="checkout-demo" data-theme="shopify" class="bg-base-200 min-h-screen">
       <main class="mx-auto max-w-6xl p-4 lg:p-8">
         <%= if @submitted do %>
