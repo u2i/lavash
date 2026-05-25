@@ -34,7 +34,7 @@ that can be transpiled.
 ```elixir
 def deps do
   [
-    {:lavash, "~> 0.3.0-rc"}
+    {:lavash, "~> 0.4.0-rc"}
   ]
 end
 ```

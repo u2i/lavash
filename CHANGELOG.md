@@ -6,6 +6,176 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.0-rc.1] — 2026-05-25
+
+The 0.4 line starts here. Two big shifts since rc.5: lavash now has
+DSL coverage for the LiveView callback surface (parity work against
+vanilla LV), and the JS hook is replaced by a composable concern
+pipeline that auto-decorates user hooks.
+
+### Breaking
+
+- **`LavashOptimistic` JS hook removed.** It was a monolithic Phoenix
+  hook (~470 lines doing optimistic state, modal/flyover animation,
+  form input tracking, parent↔child component bindings, click
+  interception). Replaced by `lavash({ concerns: [...] })` — a
+  decorator factory built around a concern pipeline.
+
+  Migration in `app.js`:
+  ```js
+  // Before
+  import { LavashOptimistic, SyncedVar, OverlayAnimator } from "lavash";
+  window.Lavash = window.Lavash || {};
+  window.Lavash.SyncedVar = SyncedVar;
+  window.Lavash.OverlayAnimator = OverlayAnimator;
+  const liveSocket = new LiveSocket("/live", Socket, {
+    params: { _csrf_token: token },
+    hooks: { LavashOptimistic }
+  });
+
+  // After
+  import { lavash, defaultConcerns, getHooks, getState } from "lavash";
+  const lavashDecorator = lavash({ concerns: defaultConcerns });
+  const liveSocket = new LiveSocket("/live", Socket, {
+    params: () => ({ _csrf_token: token, _lavash_state: getState() }),
+    hooks: getHooks(lavashDecorator, MyAppHooks)
+  });
+  ```
+
+  The `LavashOptimistic` *hook name* still exists in markup (the
+  server runtime emits `phx-hook="LavashOptimistic"`); `getHooks()`
+  registers the decorator under that name. User hooks passed to
+  `getHooks` are auto-decorated — lavash activates only on elements
+  carrying `data-lavash-state` (zero cost on user hooks elsewhere).
+
+### Added — DSL capabilities
+
+- **`messages do message :name do ... end end`** — declarative
+  `handle_info` capability. Body is an op-sequence
+  (`run`/`effect`/`set`/`fire`) drawn from the same vocabulary as
+  action bodies. Replaces the escape hatch of custom
+  `handle_info/2` for PubSub broadcasts, self-scheduled timers,
+  monitor messages.
+
+- **`components do component :name do ... end end`** — block-structured
+  function-component DSL using `prop`/`slot`/`render fn`. Replaces
+  the positional `attr`/`slot` macros from Phoenix.Component, which
+  attach to the next-defined function (refactor-fragile). The block
+  form makes the function-to-schema relationship explicit.
+
+- **`async :foo do run fn assigns -> ... end end`** — declares a
+  triggerable async task. Lands as
+  `%Phoenix.LiveView.AsyncResult{}` on assigns. Routed through
+  `Phoenix.LiveView.start_async/3` so `render_async/2` in tests sees
+  it.
+
+- **`fire :foo` op** — triggers an `async` declaration. Available
+  inside action bodies, message bodies, and the new `mount do`
+  block. One declaration, multiple trigger paths.
+
+- **`mount do <ops> end`** — lifecycle block symmetric with
+  `messages do`. Op-sequence body. Replaces the implicit "auto-fire
+  at mount" default with explicit firing.
+
+- **`when_connected do <ops> end`** inside `mount` — guard for ops
+  that only run on the websocket mount (subscribe to PubSub,
+  schedule timers, etc.). Replaces inline
+  `if Phoenix.LiveView.connected?(socket) do ... end`.
+
+- **Action body ops** — `push_patch`, `redirect`, `push_event`
+  available alongside `set`/`run`/`effect`/`fire`/`navigate`/`emit`.
+
+### Added — LV callback parity coverage
+
+Paired test fixtures exercising each LiveView callback against both
+vanilla Phoenix.LiveView and lavash. Lavash DSL covers the
+callback's intent declaratively; the test asserts both expressions
+produce the same observable behaviour. Coverage:
+
+- `mount/3` + `state from: :session` + `temporary_assigns:`
+- `handle_event/3`
+- `handle_params/3`
+- `handle_info/2`
+- `render/1` + slots
+- `on_mount` chains
+- `assign_async/3` + `start_async/3` + `handle_async/3`
+- Cross-module functional components (the new `components do` block)
+- LiveComponents (stateful child views)
+
+Still pending: streams, uploads, `terminate/2`, `format_status/2`.
+
+### Added — JS pipeline architecture
+
+- **`lavash({ concerns })` factory** in `priv/static/lavash.js` —
+  returns a decorator that wraps any user hook. Auto-activates on
+  elements with `data-lavash-state`; no-ops on others.
+
+- **Four concern modules** at `priv/static/concerns/`:
+  `optimisticActions`, `bindings`, `forms`, `overlays`. Each is a
+  plain object with optional named stage handlers + optional merge
+  visitors. The user picks which to include.
+
+- **`defaultConcerns`** export — the standard bundle of all four.
+
+- **9-stage update pipeline** with documented `ctx` schema. See
+  `priv/static/PIPELINE.md` for the architecture: stage names,
+  ctx fields, concern interface, merge visitor protocol.
+
+- **Visitor-based merge walker** at `priv/static/merge_walker.js` —
+  replaces the inline `mergeServerState` method on the old hook.
+  Concerns register handlers keyed by path pattern
+  (`emptyParams`, `serverErrors`, `animatedPhaseField`,
+  `paramsCleared`, `skipServerErrorClear`).
+
+- **`data-modal-phase` / `data-flyover-phase` attributes** —
+  surfaced server-side and updated client-side from the SyncedVar
+  phase machine. Makes phase transitions directly observable in
+  the DOM for tests.
+
+### Added — Test infrastructure
+
+- **Latency-aware e2e safety net** — 10 tests under
+  `test/integration/{latency,panel_latency}_test.exs` exercising
+  optimistic UI under simulated latency. Uses LiveView's built-in
+  `enableLatencySim()` + wallabidi 0.4.0-rc.3's `with_latency` /
+  `click(q, await: :defer)` / `await_patch`. Covers the
+  scalar/boolean/array optimistic paths and 9 of 11 modal phase
+  machine transitions.
+
+- **`ModalAsyncComponent` fixture** at `/magic/modal-async-host` —
+  modal with `async_assign :item` for testing the entering →
+  loading → visible branch.
+
+### Changed
+
+- Default e2e driver switched from Lightpanda to Chrome CDP.
+  Lightpanda doesn't reliably fire `phx-hook` `mounted()` callbacks
+  in our test setup — the optimistic patch from `LavashOptimistic`
+  never ran, so latency tests silently observed only the
+  server-reconciled state. Chrome CDP works correctly.
+
+- Wallabidi upgraded to `0.4.0-rc.3`. Adds `with_latency/3`,
+  `await: :defer` on interaction primitives, and `await_patch/2`.
+
+- Mount lifecycle runs via a generated
+  `__lavash_mount_lifecycle__/1` hook called from inside
+  `Lavash.LiveView.Runtime.mount/4` — so a user-overridden
+  `mount/3` (still needed for things like `temporary_assigns:`)
+  still picks up `mount do ... end` block ops.
+
+### Fixed
+
+- `removeEventListener` in the old hook's `destroyed()` bound fresh
+  function references, so listeners were never actually removed —
+  they leaked across hook teardowns. The new concern modules stash
+  bound refs at mount and use the same refs at destroy.
+
+- Console clutter: 26 of 27 `console.warn` calls were diagnostic
+  state-machine breadcrumbs polluting normal dev tools output.
+  Downgraded to `console.debug`. The one genuine warning (the
+  `data-lavash-animated` parse-failure message) stays as
+  `console.warn`.
+
 ## [0.3.0-rc.5] — 2026-05-25
 
 ### Fixed
@@ -401,5 +571,6 @@ with reactive behavior wired in for free.
   `parse_value`/`parse_binding_value`, two of `resource_available?/1`.
 - The process-dictionary side channel for `component_states`.
 
-[Unreleased]: https://github.com/u2i/lavash/compare/v0.3.0-rc.0...HEAD
+[Unreleased]: https://github.com/u2i/lavash/compare/v0.4.0-rc.1...HEAD
+[0.4.0-rc.1]: https://github.com/u2i/lavash/compare/v0.3.0-rc.5...v0.4.0-rc.1
 [0.3.0-rc.0]: https://github.com/u2i/lavash/compare/v0.2.0...v0.3.0-rc.0
