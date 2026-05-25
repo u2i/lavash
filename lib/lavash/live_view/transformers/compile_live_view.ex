@@ -63,6 +63,7 @@ defmodule Lavash.LiveView.Transformers.CompileLiveView do
     callbacks_ast = build_callbacks_ast()
     lavash_introspection_ast = build_lavash_introspection_ast()
     cache_invalidation_ast = build_cache_invalidation_ast()
+    run_refs_ast = build_run_refs_ast(dsl_state)
 
     Transformer.eval(
       dsl_state,
@@ -74,8 +75,39 @@ defmodule Lavash.LiveView.Transformers.CompileLiveView do
         unquote(lavash_introspection_ast)
         unquote(cache_invalidation_ast)
         unquote(colocated_ast)
+        unquote(run_refs_ast)
       end
     )
+  end
+
+  # Emit a single zero-arity function that contains every action `run` body
+  # in a list, so the compiler tracks helper-function references inside
+  # those bodies. Without this, `run fn assigns -> helper(assigns) end`
+  # captures the body as `:quoted` AST and the compiler never sees the call
+  # to `helper/1`, generating spurious "unused function" warnings (which
+  # break builds running with `--warnings-as-errors`).
+  #
+  # The function is intentionally public-but-undocumented and unreferenced
+  # by runtime code; it exists purely as a compile-time reference target.
+  defp build_run_refs_ast(dsl_state) do
+    actions = Transformer.get_entities(dsl_state, [:actions]) || []
+
+    fun_asts =
+      Enum.flat_map(actions, fn action ->
+        Enum.map(action.runs || [], & &1.fun)
+      end)
+
+    if fun_asts == [] do
+      quote do
+      end
+    else
+      quote do
+        @doc false
+        def __lavash_run_refs__ do
+          [unquote_splicing(fun_asts)]
+        end
+      end
+    end
   end
 
   defp build_cache_invalidation_ast do

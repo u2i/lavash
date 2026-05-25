@@ -60,6 +60,7 @@ defmodule Lavash.Component.Transformers.CompileComponent do
     colocated_ast = build_colocated_ast(dsl_state)
 
     introspection_ast = build_lavash_introspection_ast()
+    run_refs_ast = build_run_refs_ast(dsl_state)
 
     Transformer.eval(
       dsl_state,
@@ -86,8 +87,33 @@ defmodule Lavash.Component.Transformers.CompileComponent do
         unquote(render_ast)
         unquote(introspection_ast)
         unquote(colocated_ast)
+        unquote(run_refs_ast)
       end
     )
+  end
+
+  # See `Lavash.LiveView.Transformers.CompileLiveView.build_run_refs_ast/1`
+  # for the rationale: surface action `run` AST bodies so the compiler
+  # tracks helper-function references inside them.
+  defp build_run_refs_ast(dsl_state) do
+    actions = Transformer.get_entities(dsl_state, [:actions]) || []
+
+    fun_asts =
+      Enum.flat_map(actions, fn action ->
+        Enum.map(action.runs || [], & &1.fun)
+      end)
+
+    if fun_asts == [] do
+      quote do
+      end
+    else
+      quote do
+        @doc false
+        def __lavash_run_refs__ do
+          [unquote_splicing(fun_asts)]
+        end
+      end
+    end
   end
 
   defp build_lavash_introspection_ast do
