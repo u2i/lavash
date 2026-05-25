@@ -10,7 +10,7 @@ defmodule Lavash.Template.TokenTransformer do
 
   ## Token Structure
 
-  Tokens from `Phoenix.LiveView.Tokenizer`:
+  Tokens from Phoenix.LiveView.Tokenizer:
 
   - `{:tag, name, attrs, meta}` - HTML elements
   - `{:remote_component, name, attrs, meta}` - `<Foo.bar>` components

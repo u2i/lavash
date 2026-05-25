@@ -72,7 +72,7 @@ defmodule Lavash.TagEngine do
   Compiles pre-tokenized HTML tokens directly into `%Rendered{}` AST.
 
   Bypasses the EEx → `handle_text` tokenization loop. The tokens must be
-  in the format produced by `Phoenix.LiveView.Tokenizer` (already finalized).
+  in the format produced by Phoenix.LiveView.Tokenizer (already finalized).
 
   Options are the same as `compile/2` plus:
     * `:token_transformer` - module implementing token transformation
