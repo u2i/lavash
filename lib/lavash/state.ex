@@ -32,6 +32,34 @@ defmodule Lavash.State do
     end)
   end
 
+  @doc """
+  Hydrates `from: :session` state from the Plug session map. Each
+  field's `:session_key` (defaults to the field name as a string)
+  is looked up; if absent, the field's `:default` is used. Session
+  state is read once at mount and isn't re-read on subsequent
+  events — like `from: :ephemeral` but seeded from the session at
+  mount time.
+  """
+  def hydrate_session(socket, module, session) do
+    session_fields = module.__lavash__(:session_fields)
+
+    Enum.reduce(session_fields, socket, fn field, sock ->
+      key = session_key(field)
+
+      value =
+        case Map.get(session, key) do
+          nil -> field.default
+          raw when is_binary(raw) and field.type != :string -> decode_type(raw, field.type)
+          raw -> raw
+        end
+
+      LSocket.put_state(sock, field.name, value)
+    end)
+  end
+
+  defp session_key(%{session_key: name}) when is_binary(name), do: name
+  defp session_key(field), do: to_string(field.name)
+
   def hydrate_ephemeral(socket, module) do
     ephemeral_fields = module.__lavash__(:ephemeral_fields)
     current_state = LSocket.state(socket)

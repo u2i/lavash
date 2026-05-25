@@ -148,12 +148,21 @@ defmodule Lavash.Overlay.Modal.RenderGenerator do
         client_bindings = Map.get(var!(assigns), :__lavash_client_bindings__) || %{}
         bindings_json = Lavash.JSON.encode!(client_bindings)
 
+        # Server-known phase from the auto-injected `{open_field}_phase` state.
+        # This lags the client's phase machine — server only knows idle vs
+        # whatever the client last synced. Useful as an end-of-transition
+        # observable for tests; intermediate animation frames live on the
+        # client and need DOM-shape probes (opacity, hidden, etc).
+        phase_field = :"#{unquote(open_field)}_phase"
+        modal_phase = Map.get(var!(assigns), phase_field) || "idle"
+
         var!(assigns) =
           var!(assigns)
           |> Phoenix.Component.assign(:__modal_id__, modal_id)
           |> Phoenix.Component.assign(:__modal_module__, __MODULE__)
           |> Phoenix.Component.assign(:on_close, on_close)
           |> Phoenix.Component.assign(:__modal_open__, open_value)
+          |> Phoenix.Component.assign(:__modal_phase__, modal_phase)
           |> Phoenix.Component.assign(:__modal_open_field__, unquote(open_field))
           |> Phoenix.Component.assign(:__modal_close_on_escape__, unquote(close_on_escape))
           |> Phoenix.Component.assign(:__modal_close_on_backdrop__, unquote(close_on_backdrop))
@@ -177,6 +186,7 @@ defmodule Lavash.Overlay.Modal.RenderGenerator do
           data-lavash-version={@__lavash_version__}
           data-lavash-animated={@__lavash_animated__}
           data-lavash-bindings={@__lavash_bindings__}
+          data-modal-phase={@__modal_phase__}
           class="contents"
         >
           <.modal_chrome

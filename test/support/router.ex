@@ -24,6 +24,7 @@ defmodule Lavash.TestRouter do
     live("/component-host", ComponentHostLive)
     live("/guarded", GuardedActionsLive)
     live("/modal-host", ModalHostLive)
+    live("/modal-async-host", ModalAsyncHostLive)
     live("/bindings-direct", BindingDirectHostLive)
     live("/bindings-nested", BindingNestedHostLive)
     live("/bindings-siblings", BindingSiblingsHostLive)
@@ -46,5 +47,47 @@ defmodule Lavash.TestRouter do
     live("/chained", ChainedDerivedLive)
     live("/chained-ephemeral", ChainedEphemeralLive)
     live("/async-chain", AsyncChainLive)
+  end
+
+  # Parity suite: vanilla Phoenix.LiveView reference + the lavash
+  # DSL expression of the same behaviour. Each feature has both
+  # routes; tests in test/lavash/parity/<feature>_test.exs run the
+  # same assertions against both and fail if they diverge.
+  scope "/parity/vanilla", Lavash.Parity.Vanilla do
+    pipe_through(:browser)
+
+    live("/handle_event", HandleEventLive)
+    live("/handle_event_landing", HandleEventLandingLive)
+    live("/mount", MountLive)
+    live("/handle_params", HandleParamsLive)
+    live("/handle_info", HandleInfoLive)
+    live("/render_slots", RenderSlotsLive)
+    live("/on_mount", OnMountLive)
+    live("/functional_components", FunctionalComponentsLive)
+    live("/live_component", LiveComponentLive)
+    live("/handle_async", HandleAsyncLive)
+  end
+
+  scope "/parity/lavash", Lavash.Parity.Lavash do
+    pipe_through(:browser)
+
+    live("/handle_event", HandleEventLive)
+    live("/handle_event_landing", HandleEventLandingLive)
+    live("/mount", MountLive)
+    live("/handle_params", HandleParamsLive)
+    live("/handle_info", HandleInfoLive)
+    live("/render_slots", RenderSlotsLive)
+    live("/on_mount", OnMountLive)
+    live("/functional_components", FunctionalComponentsLive)
+    live("/live_component", LiveComponentLive)
+    live("/handle_async", HandleAsyncLive)
+  end
+
+  # Shared login destination both parity sides redirect to when
+  # the require_user hook halts an unauthenticated mount.
+  scope "/parity" do
+    pipe_through(:browser)
+
+    live("/login", Lavash.Parity.Vanilla.LoginLive)
   end
 end

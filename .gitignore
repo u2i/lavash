@@ -24,3 +24,4 @@ lavash-*.tar
 
 # Generated lavash-optimistic JS (for library components compiled in isolation)
 /assets/
+.claude/

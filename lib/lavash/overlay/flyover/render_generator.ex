@@ -146,12 +146,17 @@ defmodule Lavash.Overlay.Flyover.RenderGenerator do
         client_bindings = Map.get(var!(assigns), :__lavash_client_bindings__) || %{}
         bindings_json = Lavash.JSON.encode!(client_bindings)
 
+        # Server-known phase (see modal render_generator for context).
+        phase_field = :"#{unquote(open_field)}_phase"
+        flyover_phase = Map.get(var!(assigns), phase_field) || "idle"
+
         var!(assigns) =
           var!(assigns)
           |> Phoenix.Component.assign(:__flyover_id__, flyover_id)
           |> Phoenix.Component.assign(:__flyover_module__, __MODULE__)
           |> Phoenix.Component.assign(:on_close, on_close)
           |> Phoenix.Component.assign(:__flyover_open__, open_value)
+          |> Phoenix.Component.assign(:__flyover_phase__, flyover_phase)
           |> Phoenix.Component.assign(:__flyover_open_field__, unquote(open_field))
           |> Phoenix.Component.assign(:__flyover_slide_from__, unquote(slide_from))
           |> Phoenix.Component.assign(:__flyover_close_on_escape__, unquote(close_on_escape))
@@ -177,6 +182,7 @@ defmodule Lavash.Overlay.Flyover.RenderGenerator do
           data-lavash-version={@__lavash_version__}
           data-lavash-animated={@__lavash_animated__}
           data-lavash-bindings={@__lavash_bindings__}
+          data-flyover-phase={@__flyover_phase__}
           class="contents"
         >
           <.flyover_chrome

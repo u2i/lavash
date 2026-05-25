@@ -10,6 +10,10 @@
     ".": {
       "import": "./index.js",
       "default": "./index.js"
+    },
+    "./decorators": {
+      "import": "./decorators/index.js",
+      "default": "./decorators/index.js"
     }
   },
   "repository": {

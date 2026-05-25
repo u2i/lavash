@@ -71,10 +71,10 @@ defmodule Lavash.Dsl do
   @state_schema CommonEntities.base_state_schema() ++
                   [
                     from: [
-                      type: {:in, [:url, :socket, :ephemeral]},
+                      type: {:in, [:url, :socket, :session, :ephemeral]},
                       default: :ephemeral,
                       doc:
-                        "Storage location: :url (synced with URL), :socket (survives reconnects), :ephemeral (default)"
+                        "Storage location: :url (synced with URL), :socket (survives reconnects), :session (hydrated once from the Plug session at mount), :ephemeral (default)"
                     ],
                     required: [
                       type: :boolean,
@@ -104,6 +104,21 @@ defmodule Lavash.Dsl do
                       query-string key needs to differ from the field name —
                       e.g. `state :subject_handle, :string, from: :url, url_name: "subject"`
                       hydrates from `?subject=alice`.
+                      """
+                    ],
+                    session_key: [
+                      type: :string,
+                      doc: """
+                      Session map key for `from: :session` fields.
+
+                      Defaults to the field name as a string. Set this when the
+                      session key needs to differ from the field name —
+                      e.g. `state :handle, :string, from: :session, session_key: "user_handle"`
+                      hydrates from `session["user_handle"]`.
+
+                      Session fields are read once at mount and then behave
+                      like ephemeral state for the rest of the LiveView's
+                      life — the Plug session isn't reread.
                       """
                     ]
                   ]
@@ -354,6 +369,52 @@ defmodule Lavash.Dsl do
     ]
   }
 
+  @push_patch_entity %Spark.Dsl.Entity{
+    name: :push_patch,
+    target: Lavash.Actions.PushPatch,
+    args: [:to],
+    schema: [
+      to: [
+        type: :string,
+        required: true,
+        doc: "The URL to patch to (no remount; handle_params re-runs)"
+      ]
+    ]
+  }
+
+  @redirect_entity %Spark.Dsl.Entity{
+    name: :redirect,
+    target: Lavash.Actions.Redirect,
+    args: [:to],
+    schema: [
+      to: [
+        type: :string,
+        required: true,
+        doc: "The URL to redirect to (full-page reload)"
+      ]
+    ]
+  }
+
+  @push_event_entity %Spark.Dsl.Entity{
+    name: :push_event,
+    target: Lavash.Actions.PushEvent,
+    args: [:name, :payload],
+    schema: [
+      name: [
+        type: :string,
+        required: true,
+        doc: "The client-side event name a JS hook will receive"
+      ],
+      payload: [
+        # Accept any term — literal maps OR maps containing rx(...) values.
+        # Validation of rx values happens at the per-key level at runtime.
+        type: :any,
+        required: true,
+        doc: "Payload sent to the client (literal map, may contain rx() values)"
+      ]
+    ]
+  }
+
   @flash_entity %Spark.Dsl.Entity{
     name: :flash,
     target: Lavash.Actions.Flash,
@@ -411,6 +472,9 @@ defmodule Lavash.Dsl do
       effects: [@effect_entity],
       submits: [@submit_entity],
       navigates: [@navigate_entity],
+      push_patches: [@push_patch_entity],
+      redirects: [@redirect_entity],
+      push_events: [@push_event_entity],
       flashes: [@flash_entity],
       invokes: [@invoke_entity]
     ],
@@ -454,6 +518,11 @@ defmodule Lavash.Dsl do
       Lavash.DslHelpers,
       Lavash.Rx,
       Lavash.Sigil,
-      Lavash.Template.RenderMacro
+      Lavash.Template.RenderMacro,
+      Lavash.Lifecycle.MessagesMacro,
+      Lavash.Lifecycle.AsyncMacro,
+      Lavash.Lifecycle.MountMacro,
+      Lavash.Lifecycle.OnMountImport,
+      Lavash.Components.ComponentsMacro
     ]
 end

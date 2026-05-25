@@ -210,7 +210,7 @@ export class SyncedVar {
     if (newValue == null && oldValue != null) {
       this._closeProtection = true;
     }
-    console.warn(`[SV:${this.label}] setOptimistic: ${JSON.stringify(oldValue)} → ${JSON.stringify(newValue)}, v=${this.version}, cv=${this.confirmedVersion}, closeProt=${!!this._closeProtection}`, new Error().stack?.split('\n').slice(1,4).join(' <- '));
+    console.debug(`[SV:${this.label}] setOptimistic: ${JSON.stringify(oldValue)} → ${JSON.stringify(newValue)}, v=${this.version}, cv=${this.confirmedVersion}, closeProt=${!!this._closeProtection}`, new Error().stack?.split('\n').slice(1,4).join(' <- '));
     this._handleValueChange(newValue, oldValue, "optimistic");
     return true;
   }
@@ -230,12 +230,12 @@ export class SyncedVar {
     if (newValue == null) {
       this._closeProtection = true;
     }
-    console.warn(`[SV:${this.label}] set+push: ${JSON.stringify(oldValue)} → ${JSON.stringify(newValue)}, v=${v}, cv=${this.confirmedVersion}, closeProt=${!!this._closeProtection}`);
+    console.debug(`[SV:${this.label}] set+push: ${JSON.stringify(oldValue)} → ${JSON.stringify(newValue)}, v=${v}, cv=${this.confirmedVersion}, closeProt=${!!this._closeProtection}`);
     this._handleValueChange(newValue, oldValue, "optimistic");
 
     pushFn?.({ ...extraParams, _version: v }, (reply) => {
       if (v !== this.version) {
-        console.warn(`[SV:${this.label}] set callback STALE: pushed v=${v}, current v=${this.version}`);
+        console.debug(`[SV:${this.label}] set callback STALE: pushed v=${v}, current v=${this.version}`);
         return;
       }
       this.confirmedVersion = v;
@@ -245,7 +245,7 @@ export class SyncedVar {
       if (newValue == null) {
         this._closeProtection = true;
       }
-      console.warn(`[SV:${this.label}] set callback CONFIRMED: v=${v}, closeProt=${!!this._closeProtection}`);
+      console.debug(`[SV:${this.label}] set callback CONFIRMED: v=${v}, closeProt=${!!this._closeProtection}`);
       this.onChange?.(newValue, oldValue, "confirmed");
     });
   }
@@ -280,9 +280,9 @@ export class SyncedVar {
         if (newValue == null && !this.isPending) {
           this._closeProtection = true;
         }
-        console.warn(`[SV:${this.label}] serverPlain CONFIRMED (pending match, incremental): v=${this.version}, cv=${this.confirmedVersion}, value=${JSON.stringify(newValue)}, stillPending=${this.isPending}, closeProt=${!!this._closeProtection}`);
+        console.debug(`[SV:${this.label}] serverPlain CONFIRMED (pending match, incremental): v=${this.version}, cv=${this.confirmedVersion}, value=${JSON.stringify(newValue)}, stillPending=${this.isPending}, closeProt=${!!this._closeProtection}`);
       } else {
-        console.warn(`[SV:${this.label}] serverPlain REJECTED (pending, no match): v=${this.version}, cv=${this.confirmedVersion}, server=${JSON.stringify(newValue)}, client=${JSON.stringify(this.value)}, closeProt=${!!this._closeProtection}`);
+        console.debug(`[SV:${this.label}] serverPlain REJECTED (pending, no match): v=${this.version}, cv=${this.confirmedVersion}, server=${JSON.stringify(newValue)}, client=${JSON.stringify(this.value)}, closeProt=${!!this._closeProtection}`);
       }
       this._lastServerValue = newValue;
       return false;
@@ -291,18 +291,18 @@ export class SyncedVar {
     const oldValue = this.value;
 
     if (deepEqual(newValue, oldValue)) {
-      console.warn(`[SV:${this.label}] serverPlain NO-OP (same value): ${JSON.stringify(newValue)}, closeProt=${!!this._closeProtection}`);
+      console.debug(`[SV:${this.label}] serverPlain NO-OP (same value): ${JSON.stringify(newValue)}, closeProt=${!!this._closeProtection}`);
       return false;
     }
 
     if (this._closeProtection && newValue != null) {
-      console.warn(`[SV:${this.label}] serverPlain BLOCKED (close protection): server=${JSON.stringify(newValue)}, client=${JSON.stringify(oldValue)}`);
+      console.debug(`[SV:${this.label}] serverPlain BLOCKED (close protection): server=${JSON.stringify(newValue)}, client=${JSON.stringify(oldValue)}`);
       return false;
     }
 
     this.value = newValue;
     this.confirmedValue = newValue;
-    console.warn(`[SV:${this.label}] serverPlain ACCEPTED: ${JSON.stringify(oldValue)} → ${JSON.stringify(newValue)}`);
+    console.debug(`[SV:${this.label}] serverPlain ACCEPTED: ${JSON.stringify(oldValue)} → ${JSON.stringify(newValue)}`);
     this._handleValueChange(newValue, oldValue, "server");
     return true;
   }
@@ -323,9 +323,9 @@ export class SyncedVar {
         if (newValue == null && !this.isPending) {
           this._closeProtection = true;
         }
-        console.warn(`[SV:${this.label}] serverAnim CONFIRMED (pending match, incremental): v=${this.version}, cv=${this.confirmedVersion}, value=${JSON.stringify(newValue)}, phase=${this.phase}, stillPending=${this.isPending}, closeProt=${!!this._closeProtection}`);
+        console.debug(`[SV:${this.label}] serverAnim CONFIRMED (pending match, incremental): v=${this.version}, cv=${this.confirmedVersion}, value=${JSON.stringify(newValue)}, phase=${this.phase}, stillPending=${this.isPending}, closeProt=${!!this._closeProtection}`);
       } else {
-        console.warn(`[SV:${this.label}] serverAnim REJECTED (pending, no match): v=${this.version}, cv=${this.confirmedVersion}, server=${JSON.stringify(newValue)}, client=${JSON.stringify(this.value)}, phase=${this.phase}, closeProt=${!!this._closeProtection}`);
+        console.debug(`[SV:${this.label}] serverAnim REJECTED (pending, no match): v=${this.version}, cv=${this.confirmedVersion}, server=${JSON.stringify(newValue)}, client=${JSON.stringify(this.value)}, phase=${this.phase}, closeProt=${!!this._closeProtection}`);
       }
       this._lastServerValue = newValue;
       return false;
@@ -336,12 +336,12 @@ export class SyncedVar {
     this.confirmedValue = newValue;
 
     if (deepEqual(newValue, oldValue)) {
-      console.warn(`[SV:${this.label}] serverAnim NO-OP (same value): ${JSON.stringify(newValue)}, phase=${this.phase}, closeProt=${!!this._closeProtection}`);
+      console.debug(`[SV:${this.label}] serverAnim NO-OP (same value): ${JSON.stringify(newValue)}, phase=${this.phase}, closeProt=${!!this._closeProtection}`);
       return false;
     }
 
     if (this._closeProtection && newValue != null) {
-      console.warn(`[SV:${this.label}] serverAnim BLOCKED (close protection): server=${JSON.stringify(newValue)}, client=${JSON.stringify(oldValue)}, phase=${this.phase}`);
+      console.debug(`[SV:${this.label}] serverAnim BLOCKED (close protection): server=${JSON.stringify(newValue)}, client=${JSON.stringify(oldValue)}, phase=${this.phase}`);
       return false;
     }
 
@@ -353,7 +353,7 @@ export class SyncedVar {
     }
 
     this.value = newValue;
-    console.warn(`[SV:${this.label}] serverAnim ACCEPTED: ${JSON.stringify(oldValue)} → ${JSON.stringify(newValue)}, phase=${this.phase}`);
+    console.debug(`[SV:${this.label}] serverAnim ACCEPTED: ${JSON.stringify(oldValue)} → ${JSON.stringify(newValue)}, phase=${this.phase}`);
     this._handleValueChange(newValue, oldValue, "server");
     return true;
   }
@@ -410,11 +410,11 @@ export class SyncedVar {
       const wasOpen = oldValue != null;
       const isOpen = newValue != null;
       if (isOpen && !wasOpen) {
-        console.warn(`[SV:${this.label}] _handleValueChange: OPENING (source=${source}), phase=${this.phase}`);
+        console.debug(`[SV:${this.label}] _handleValueChange: OPENING (source=${source}), phase=${this.phase}`);
         this.isAsyncReady = false;
         this._currentPhase?.onOpen();
       } else if (!isOpen && wasOpen) {
-        console.warn(`[SV:${this.label}] _handleValueChange: CLOSING (source=${source}), phase=${this.phase}`);
+        console.debug(`[SV:${this.label}] _handleValueChange: CLOSING (source=${source}), phase=${this.phase}`);
         this._currentPhase?.onClose();
       }
     }
@@ -423,7 +423,7 @@ export class SyncedVar {
   _transitionTo(newPhase) {
     if (!this.animated) return;
     const old = this._currentPhase ? this._currentPhase.name : "init";
-    console.warn(`[SV:${this.label}] PHASE: ${old} → ${newPhase.name}`);
+    console.debug(`[SV:${this.label}] PHASE: ${old} → ${newPhase.name}`);
     if (this._currentPhase) this._currentPhase.onExit();
     this._currentPhase = newPhase;
     this._currentPhase.onEnter();

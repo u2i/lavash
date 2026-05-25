@@ -1,73 +1,112 @@
 /**
- * Parent-child binding logic.
+ * Bindings concern — owns parent↔child component state propagation.
  *
- * Handles bidirectional state sync between parent and child hooks
- * via the bindings map (local field -> parent field).
+ * Conforms to the lavash concern interface (see PIPELINE.md). The
+ * `lavash-set` event handler is purely listener-driven (no update-cycle
+ * stages); but mounted attaches two hook methods (`refreshFromParent`
+ * and `propagateBoundFieldsToParent`) because OTHER hooks reach for
+ * them on this one as an external API.
+ *
+ * Lower-level binding-resolution helpers live in binding_helpers.js.
  */
+
+import {
+  refreshFromParent as _refreshFromParent,
+  propagateBoundFieldsToParent as _propagateBoundFieldsToParent
+} from "./binding_helpers.js";
+
+export const bindings = {
+  name: "bindings",
+
+  mounted(hook) {
+    hook.bindings = JSON.parse(hook.el.dataset.lavashBindings || "{}");
+
+    hook._bindings = {
+      listener: (e) => onLavashSet(e, hook)
+    };
+    hook.el.addEventListener("lavash-set", hook._bindings.listener, false);
+
+    // External API — parent hooks call these on their children, and
+    // optimistic_actions calls propagateBoundFieldsToParent after
+    // applying a state delta.
+    hook.refreshFromParent = function(parentHook) {
+      const changedFields = _refreshFromParent(
+        this.bindings, this.state, this.store, parentHook
+      );
+      if (changedFields.length > 0) {
+        this.recomputeDerives(changedFields);
+        this.updateDOM();
+      }
+    };
+
+    hook.propagateBoundFieldsToParent = function(changedFields, opts) {
+      _propagateBoundFieldsToParent(
+        this.bindings, this.state, this.el, changedFields, opts
+      );
+    };
+  },
+
+  destroyed(hook) {
+    if (hook._bindings?.listener) {
+      hook.el.removeEventListener("lavash-set", hook._bindings.listener, false);
+    }
+    hook._bindings = null;
+    hook.refreshFromParent = null;
+    hook.propagateBoundFieldsToParent = null;
+  }
+};
 
 /**
- * Refresh local state from a parent hook's state via bindings.
- * Called by parent's notifyChildren when parent state changes.
+ * Handler for `lavash-set` events. Three cases:
  *
- * @param {Object} bindings - Map of localField -> parentField
- * @param {Object} state - This hook's state object (mutated in place)
- * @param {Object} store - SyncedVarStore instance
- * @param {Object} parentHook - Parent hook instance
- * @returns {string[]} Array of changed local field names
+ *   1. Field has animated state — route through SyncedVar (phase
+ *      machine engages). Stops propagation.
+ *   2. Field is on hook.state — owned. Update + push. Stops propagation.
+ *   3. Not owned — keep bubbling so an ancestor hook can claim it.
  */
-export function refreshFromParent(bindings, state, store, parentHook) {
-  if (!bindings || Object.keys(bindings).length === 0) return [];
+function onLavashSet(e, hook) {
+  const { field, value, serverHandled } = e.detail;
+  if (!field) return;
 
-  const changedFields = [];
+  console.debug(
+    `[lavash:bindings] handleLavashSet: field=${field}, value=${JSON.stringify(value)}, serverHandled=${serverHandled}`
+  );
 
-  for (const [localField, parentField] of Object.entries(bindings)) {
-    const parentValue = parentHook.state[parentField];
-    // Skip if parent doesn't have this field — avoid clobbering local state
-    if (parentValue === undefined) continue;
-    const localValue = state[localField];
+  if (hook.animatedStates?.[field]) {
+    e.stopPropagation();
+    const animValue = value ? value : null;
 
-    if (parentValue !== localValue) {
-      state[localField] = parentValue;
-      changedFields.push(localField);
-
-      const syncedVar = store.get(localField, null, (newVal) => {
-        state[localField] = newVal;
+    if (!serverHandled) {
+      const setterAction = `set_${field}`;
+      hook.store.get(field).set(animValue, (payload, callback) => {
+        hook.pushEventTo(hook.el, setterAction, { ...payload, value: animValue }, callback);
       });
-      syncedVar.setOptimistic(parentValue);
+    } else {
+      hook.store.get(field).setOptimistic(animValue);
     }
+    return;
   }
 
-  return changedFields;
-}
+  if (field in hook.state) {
+    e.stopPropagation();
+    hook.state[field] = value;
 
-/**
- * Propagate bound field changes to the parent hook via lavash-set events.
- *
- * @param {Object} bindings - Map of localField -> parentField
- * @param {Object} state - This hook's state object
- * @param {HTMLElement} el - This hook's root element (event dispatch target)
- * @param {string[]} changedFields - Fields that changed
- */
-export function propagateBoundFieldsToParent(bindings, state, el, changedFields, opts = {}) {
-  if (!bindings || Object.keys(bindings).length === 0) return;
-  if (!changedFields || changedFields.length === 0) return;
-
-  for (const localField of changedFields) {
-    const parentField = bindings[localField];
-    if (parentField) {
-      const value = state[localField];
-      const event = new CustomEvent("lavash-set", {
-        bubbles: true,
-        detail: {
-          field: parentField,
-          value,
-          // When true, the server already has an event for this change
-          // (from the component's own action), so the parent should only
-          // update client-side state — not push a set_ event to the server.
-          serverHandled: opts.serverHandled || false
-        }
-      });
-      el.dispatchEvent(event);
+    if (hook.store) {
+      const syncedVar = hook.store.get(field, null);
+      syncedVar.setOptimistic(value);
     }
+
+    if (hook.clientVersion !== undefined) hook.clientVersion++;
+
+    hook.recomputeDerives([field]);
+    hook.updateDOM();
+
+    if (!serverHandled) {
+      const setterAction = `set_${field}`;
+      hook.pushEventTo(hook.el, setterAction, { value }, () => {});
+    }
+    return;
   }
+
+  console.debug("[LavashOptimistic] Field", field, "not owned by this hook, letting event propagate");
 }

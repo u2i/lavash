@@ -1,7 +1,7 @@
 defmodule Lavash.MixProject do
   use Mix.Project
 
-  @version "0.3.0-rc.5"
+  @version "0.4.0-rc.1"
   @source_url "https://github.com/u2i/lavash"
 
   def project do
@@ -68,7 +68,7 @@ defmodule Lavash.MixProject do
       # test_helper.exs only for e2e runs because its Application.start raises
       # if Chrome isn't installed (we use Lightpanda, which gets configured
       # before Wallabidi starts).
-      {:wallabidi, "0.4.0-rc.1", only: :test, runtime: false},
+      {:wallabidi, "0.4.0-rc.3", only: :test, runtime: false},
       {:lightpanda, "~> 0.3", only: :test, runtime: false},
       # Code quality
       {:excoveralls, "~> 0.18", only: :test},

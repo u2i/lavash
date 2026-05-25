@@ -25,7 +25,7 @@ Application.put_env(:phoenix, :json_library, Jason)
   )
 
 if e2e? do
-  Application.put_env(:wallabidi, :driver, :lightpanda)
+  Application.put_env(:wallabidi, :driver, :chrome_cdp)
   Application.put_env(:wallabidi, :base_url, "http://localhost:#{http_port}")
   Application.put_env(:wallabidi, :endpoint, Lavash.TestEndpoint)
 

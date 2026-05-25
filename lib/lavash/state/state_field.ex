@@ -37,6 +37,7 @@ defmodule Lavash.State.Field do
     :optimistic,
     :animated,
     :url_name,
+    :session_key,
     __spark_metadata__: nil
   ]
 

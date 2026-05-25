@@ -221,10 +221,10 @@ export class OverlayAnimator {
         alreadyVisible = currentTransform === "none" || currentTransform === this._openTransform ||
           currentTransform === "matrix(1, 0, 0, 1, 0, 0)";
       }
-      console.warn(
+      console.debug(
         `[OverlayAnimator:${this.type}] onEntering: alreadyVisible=${alreadyVisible}, transform=${getComputedStyle(this.panelContent).transform}`
       );
-      console.warn(
+      console.debug(
         `[OverlayAnimator:${this.type}] onEntering: wrapper.class="${this.el.className}"`
       );
 
@@ -462,7 +462,7 @@ export class OverlayAnimator {
       mainContent.style.transition = "none";
       mainContent.style.opacity = "0";
       mainContent.offsetHeight;
-      console.warn(
+      console.debug(
         `[OverlayAnimator:${this.type}] _transitionToContent step3: hidden=${mainContent.classList.contains('hidden')}, opacity=${mainContent.style.opacity}, offsetHeight=${mainContent.offsetHeight}, display=${getComputedStyle(mainContent).display}`
       );
     }
@@ -535,13 +535,13 @@ export class OverlayAnimator {
     }
     if (mainContent) {
       mainContent.style.opacity = "1";
-      console.warn(
+      console.debug(
         `[OverlayAnimator:${this.type}] _transitionToContent step6: mainContent opacity set to 1, transition=${mainContent.style.transition}`
       );
     }
     if (loadingContent) {
       loadingContent.style.opacity = "0";
-      console.warn(
+      console.debug(
         `[OverlayAnimator:${this.type}] _transitionToContent step6: loading opacity set to 0, shouldFade=${shouldFadeLoading}`
       );
       if (shouldFadeLoading) {
@@ -561,7 +561,7 @@ export class OverlayAnimator {
     setTimeout(() => {
       if (mainContent) {
         const cs = getComputedStyle(mainContent);
-        console.warn(
+        console.debug(
           `[OverlayAnimator:${self.type}] _transitionToContent VERIFY (after ${self.duration + 50}ms): ` +
           `hidden=${mainContent.classList.contains('hidden')}, ` +
           `computedOpacity=${cs.opacity}, ` +
