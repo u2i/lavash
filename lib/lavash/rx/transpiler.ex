@@ -620,9 +620,24 @@ defmodule Lavash.Rx.Transpiler do
     "[#{inspect(to_string(tag))}, #{ast_to_js(value)}]"
   end
 
-  # List literal
+  # List literal — handles both plain lists `[a, b, c]` and cons-prepend
+  # form `[a, b | tail]`. The cons operator parses to a `{:|, _, [head, tail]}`
+  # node nested as the LAST element of the parent list. JS equivalent of
+  # `[a, b | tail]` (Elixir prepend) is `[a, b, ...tail]`.
   def ast_to_js(list) when is_list(list) do
-    "[#{Enum.map_join(list, ", ", &ast_to_js/1)}]"
+    js_elements =
+      Enum.map(list, fn
+        {:|, _, [head, tail]} ->
+          # Cons spread: emit the head then `...tail`. (Multi-head form
+          # `[a, b | tail]` arrives here with only the final element as a
+          # `:|`; earlier heads are already rendered.)
+          "#{ast_to_js(head)}, ...#{ast_to_js(tail)}"
+
+        other ->
+          ast_to_js(other)
+      end)
+
+    "[#{Enum.join(js_elements, ", ")}]"
   end
 
   # Binary operators
