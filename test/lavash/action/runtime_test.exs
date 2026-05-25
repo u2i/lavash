@@ -118,32 +118,6 @@ defmodule Lavash.Action.RuntimeTest do
   end
 
   # ============================================
-  # apply_updates/3
-  # ============================================
-
-  describe "apply_updates/3" do
-    test "transforms current field value with function" do
-      socket = socket_with_state(count: 5)
-      update = %Lavash.Actions.Update{field: :count, fun: &(&1 * 2)}
-
-      result = Runtime.apply_updates(socket, [update], %{})
-      assert LSocket.get_state(result, :count) == 10
-    end
-
-    test "applies multiple updates sequentially" do
-      socket = socket_with_state(count: 1)
-
-      updates = [
-        %Lavash.Actions.Update{field: :count, fun: &(&1 + 10)},
-        %Lavash.Actions.Update{field: :count, fun: &(&1 * 2)}
-      ]
-
-      result = Runtime.apply_updates(socket, updates, %{})
-      assert LSocket.get_state(result, :count) == 22
-    end
-  end
-
-  # ============================================
   # apply_effects/3
   # ============================================
 

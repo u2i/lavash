@@ -304,16 +304,14 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
   defp generate_action_js(action) do
     name = action.name
     sets = action.sets || []
-    updates = action.updates || []
     map_bys = action.map_bys || []
     params = action.params || []
 
     # Generate JS expressions, filtering out non-transpilable ones
     set_exprs = sets |> Enum.map(&generate_set_js(&1, params)) |> Enum.filter(& &1)
-    update_exprs = updates |> Enum.map(&generate_update_js/1) |> Enum.filter(& &1)
     map_by_stmts = map_bys |> Enum.map(&generate_map_by_js/1) |> Enum.filter(& &1)
 
-    all_exprs = set_exprs ++ update_exprs
+    all_exprs = set_exprs
 
     if all_exprs == [] and map_by_stmts == [] do
       nil
@@ -403,8 +401,6 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
         nil
     end
   end
-
-  defp generate_update_js(update), do: ActionJs.generate_update_js(update)
 
   defp generate_attr_derive_js(%{name: name, js_expr: js_expr}) do
     """

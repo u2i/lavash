@@ -55,7 +55,6 @@ defmodule Lavash.LiveView.Compiler do
             value: setter_value(state.type)
           }
         ],
-        updates: [],
         effects: [],
         submits: [],
         navigates: [],
@@ -129,11 +128,11 @@ defmodule Lavash.LiveView.Compiler do
           name: name,
           params: [:value],
           when: [],
-          sets: [],
-          updates: [
-            %Lavash.Actions.Update{
+          sets: [
+            %Lavash.Actions.Set{
               field: field,
-              fun: fn current, context ->
+              value: fn context ->
+                current = Map.get(context.state, field)
                 value = Map.get(context.params, :value)
                 run_fn.(current, value)
               end

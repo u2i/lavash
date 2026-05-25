@@ -6,7 +6,6 @@ defmodule Lavash.Action.Runtime do
   - `guards_pass?/3` - Check if action guards are satisfied
   - `apply_sets/4` - Apply set operations to state
   - `apply_runs/4` - Apply run operations (fn assigns -> assigns end)
-  - `apply_updates/3` - Apply update operations to state (deprecated)
   - `apply_effects/3` - Execute side effect functions
   - `coerce_value/2` - Coerce values to declared types
 
@@ -121,19 +120,6 @@ defmodule Lavash.Action.Runtime do
   end
 
   def coerce_value(value, _state_field), do: value
-
-  @doc """
-  Apply update operations to state.
-
-  Each update has a field and a function that transforms the current value.
-  """
-  def apply_updates(socket, updates, _params) do
-    Enum.reduce(updates, socket, fn update, sock ->
-      current = LSocket.get_state(sock, update.field)
-      new_value = update.fun.(current)
-      LSocket.put_state(sock, update.field, new_value)
-    end)
-  end
 
   @doc """
   Execute side effect functions.

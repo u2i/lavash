@@ -11,11 +11,11 @@ defmodule Lavash.Test.Magic.CounterLive do
 
   actions do
     action :increment do
-      update :count, &(&1 + 1)
+      set :count, rx(@count + 1)
     end
 
     action :decrement do
-      update :count, &(&1 - 1)
+      set :count, rx(@count - 1)
     end
 
     action :set_count, [:value] do
@@ -55,7 +55,7 @@ defmodule Lavash.Test.Magic.ChainedDerivedLive do
 
   actions do
     action :increment do
-      update :count, &(&1 + 1)
+      set :count, rx(@count + 1)
     end
 
     action :set_count, [:value] do
@@ -92,7 +92,7 @@ defmodule Lavash.Test.Magic.ChainedEphemeralLive do
 
   actions do
     action :increment do
-      update :base, &(&1 + 1)
+      set :base, rx(@base + 1)
     end
   end
 
@@ -128,7 +128,7 @@ defmodule Lavash.Test.Magic.AsyncChainLive do
 
   actions do
     action :increment do
-      update :count, &(&1 + 1)
+      set :count, rx(@count + 1)
     end
   end
 
@@ -176,7 +176,7 @@ defmodule Lavash.Test.Magic.PathParamLive do
     end
 
     action :next_product do
-      update :product_id, &(&1 + 1)
+      set :product_id, rx(@product_id + 1)
     end
   end
 
@@ -209,7 +209,7 @@ defmodule Lavash.Test.Magic.TypedLive do
     end
 
     action :toggle_active do
-      update :active, &(!&1)
+      set :active, rx(not @active)
     end
 
     action :set_query, [:value] do
@@ -252,11 +252,11 @@ defmodule Lavash.Test.Magic.GuardedActionsLive do
 
     # Third argument is the guard list
     action :guarded_increment, [], [:enabled] do
-      update :count, &(&1 + 1)
+      set :count, rx(@count + 1)
     end
 
     action :increment_with_effect do
-      update :count, &(&1 + 1)
+      set :count, rx(@count + 1)
 
       effect fn state ->
         send(self(), {:effect_ran, state.count})

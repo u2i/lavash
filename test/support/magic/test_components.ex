@@ -13,13 +13,11 @@ defmodule Lavash.Test.Magic.CounterComponent do
 
   actions do
     action :increment do
-      update :count, fn count ->
-        (count || 0) + 1
-      end
+      set :count, rx((@count || 0) + 1)
     end
 
     action :decrement do
-      update :count, &((&1 || 0) - 1)
+      set :count, rx((@count || 0) - 1)
     end
 
     action :reset do

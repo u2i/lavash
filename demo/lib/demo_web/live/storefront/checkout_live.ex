@@ -186,11 +186,11 @@ defmodule DemoWeb.Storefront.CheckoutLive do
     end
 
     action :toggle_billing_address do
-      update :use_shipping_as_billing, &(not &1)
+      set :use_shipping_as_billing, rx(not @use_shipping_as_billing)
     end
 
     action :toggle_ship_to do
-      update :ship_to_expanded, &(not &1)
+      set :ship_to_expanded, rx(not @ship_to_expanded)
     end
 
     action :select_address, [:id] do

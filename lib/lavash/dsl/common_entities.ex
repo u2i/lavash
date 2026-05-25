@@ -203,37 +203,6 @@ defmodule Lavash.Dsl.CommonEntities do
   end
 
   @doc """
-  Update entity for actions - transforms a state field value.
-
-  DEPRECATED: Use `set` with `@field` syntax instead:
-
-      # Old update style
-      update :count, &(&1 + 1)
-
-      # New set style
-      set :count, @count + 1
-  """
-  def update_entity do
-    %Spark.Dsl.Entity{
-      name: :update,
-      target: Lavash.Actions.Update,
-      args: [:field, :fun],
-      schema: [
-        field: [
-          type: :atom,
-          required: true,
-          doc: "The field to update"
-        ],
-        fun: [
-          type: {:fun, 1},
-          required: true,
-          doc: "Function that transforms the current value"
-        ]
-      ]
-    }
-  end
-
-  @doc """
   MapBy entity for actions — key-based array mutations.
 
   Finds items in an array by a key field and applies a transformation.

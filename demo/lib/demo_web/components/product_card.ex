@@ -19,7 +19,7 @@ defmodule DemoWeb.ProductCard do
 
   actions do
     action :toggle_expand do
-      update :expanded, &(!&1)
+      set :expanded, rx(not @expanded)
     end
 
     action :set_hover, [:value] do

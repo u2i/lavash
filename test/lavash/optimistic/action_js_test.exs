@@ -11,7 +11,6 @@ defmodule Lavash.Optimistic.ActionJsTest do
       sets: Keyword.get(opts, :sets, []),
       runs: Keyword.get(opts, :runs, []),
       reads: Keyword.get(opts, :reads, []),
-      updates: Keyword.get(opts, :updates, []),
       effects: Keyword.get(opts, :effects, []),
       submits: Keyword.get(opts, :submits, []),
       navigates: Keyword.get(opts, :navigates, []),
@@ -28,11 +27,6 @@ defmodule Lavash.Optimistic.ActionJsTest do
   describe "action_is_optimistic?/1" do
     test "true when action has sets" do
       a = action(sets: [%Lavash.Actions.Set{field: :count, value: 1}])
-      assert ActionJs.action_is_optimistic?(a)
-    end
-
-    test "true when action has updates" do
-      a = action(updates: [%Lavash.Actions.Update{field: :count, fun: &(&1 + 1)}])
       assert ActionJs.action_is_optimistic?(a)
     end
 
@@ -107,57 +101,6 @@ defmodule Lavash.Optimistic.ActionJsTest do
 
     test "returns :unknown for map" do
       assert :unknown = ActionJs.analyze_value(%{key: "value"})
-    end
-  end
-
-  # ============================================
-  # analyze_update_function/1
-  # ============================================
-
-  describe "analyze_update_function/1" do
-    test "detects increment by 1" do
-      assert {:increment, 1} = ActionJs.analyze_update_function(&(&1 + 1))
-    end
-
-    test "detects increment by arbitrary n" do
-      assert {:increment, 5} = ActionJs.analyze_update_function(&(&1 + 5))
-    end
-
-    test "detects decrement by 1" do
-      assert {:decrement, 1} = ActionJs.analyze_update_function(&(&1 - 1))
-    end
-
-    test "detects decrement by arbitrary n" do
-      assert {:decrement, 3} = ActionJs.analyze_update_function(&(&1 - 3))
-    end
-
-    test "returns :unknown for non-linear function" do
-      assert :unknown = ActionJs.analyze_update_function(&(&1 * 2))
-    end
-
-    test "returns :unknown for non-function" do
-      assert :unknown = ActionJs.analyze_update_function("not a function")
-    end
-  end
-
-  # ============================================
-  # generate_update_js/1
-  # ============================================
-
-  describe "generate_update_js/1" do
-    test "generates JS for increment" do
-      update = %Lavash.Actions.Update{field: :count, fun: &(&1 + 1)}
-      assert "count: state.count + 1" = ActionJs.generate_update_js(update)
-    end
-
-    test "generates JS for decrement" do
-      update = %Lavash.Actions.Update{field: :count, fun: &(&1 - 3)}
-      assert "count: state.count - 3" = ActionJs.generate_update_js(update)
-    end
-
-    test "returns nil for unknown pattern" do
-      update = %Lavash.Actions.Update{field: :count, fun: &(&1 * 2)}
-      assert is_nil(ActionJs.generate_update_js(update))
     end
   end
 

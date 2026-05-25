@@ -93,7 +93,6 @@ defmodule Lavash.Component.CompilerTest do
               value: %Lavash.Rx{source: "@price * 2", ast: nil, deps: [:price]}
             }
           ],
-          updates: [],
           effects: [],
           submits: [],
           navigates: [],

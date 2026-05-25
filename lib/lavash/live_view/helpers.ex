@@ -62,21 +62,30 @@ defmodule Lavash.LiveView.Helpers do
     # extend_errors. Sending server-side versions would overwrite the
     # client-computed values. Params themselves are synced above.
 
-    # Add calculations - compute them from state
-    # Only include optimistic calculations (optimistic: true)
+    # Add calculations - compute them from state for inclusion in the
+    # client-side state payload. Async calculations are skipped: their
+    # value is an AsyncResult that's already in the render assigns and
+    # resolved by Phoenix's normal patch flow. Computing them here would
+    # call the user's slow_fun synchronously inside render — wrong both
+    # because it blocks mount and because the JS hook would see a raw
+    # value rather than a loading/ok status.
     Enum.reduce(calculations, state_map, fn calc, acc ->
-      {name, _source, ast, _deps, optimistic, _async, _reads} = calc
+      {name, _source, ast, _deps, optimistic, async, _reads} = calc
 
-      # Skip non-optimistic calculations
-      if optimistic do
-        try do
-          fun = Lavash.Rx.Cache.compile_rx(module, ast)
-          Map.put(acc, name, fun.(acc))
-        rescue
-          _ -> acc
-        end
-      else
-        acc
+      cond do
+        not optimistic ->
+          acc
+
+        async ->
+          acc
+
+        true ->
+          try do
+            fun = Lavash.Rx.Cache.compile_rx(module, ast)
+            Map.put(acc, name, fun.(acc))
+          rescue
+            _ -> acc
+          end
       end
     end)
   end

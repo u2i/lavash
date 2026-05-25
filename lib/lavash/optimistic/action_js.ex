@@ -9,18 +9,18 @@ defmodule Lavash.Optimistic.ActionJs do
   Checks if an action has transpilable client-side operations (sets/updates).
 
   Actions with effects, submits, navigates, or invokes can still be partially
-  optimistic — the sets/updates run client-side immediately while the server
+  optimistic — the sets run client-side immediately while the server
   handles the side effects.
   """
   def action_is_optimistic?(action) do
-    has_set_or_update = (action.sets || []) != [] or (action.updates || []) != []
+    has_set = (action.sets || []) != []
     has_map_by = (action.map_bys || []) != []
 
     runs = action.runs || []
     reads = action.reads || []
     has_transpilable_runs = runs != [] and reads != []
 
-    has_set_or_update or has_map_by or has_transpilable_runs
+    has_set or has_map_by or has_transpilable_runs
   end
 
   @doc """
@@ -63,54 +63,6 @@ defmodule Lavash.Optimistic.ActionJs do
   end
 
   def analyze_value(_), do: :unknown
-
-  @doc """
-  Analyze an update function to detect increment/decrement patterns.
-
-  Returns `{:increment, n}`, `{:decrement, n}`, or `:unknown`.
-  """
-  def analyze_update_function(fun) when is_function(fun, 1) do
-    result_0 = fun.(0)
-    result_10 = fun.(10)
-    result_100 = fun.(100)
-
-    delta1 = result_0 - 0
-    delta2 = result_10 - 10
-    delta3 = result_100 - 100
-
-    if delta1 == delta2 and delta2 == delta3 do
-      if delta1 >= 0 do
-        {:increment, delta1}
-      else
-        {:decrement, -delta1}
-      end
-    else
-      :unknown
-    end
-  rescue
-    _ -> :unknown
-  end
-
-  def analyze_update_function(_), do: :unknown
-
-  @doc """
-  Generate JS for an update operation (increment/decrement).
-  """
-  def generate_update_js(update) do
-    field = update.field
-    fun = update.fun
-
-    case analyze_update_function(fun) do
-      {:increment, n} ->
-        "#{field}: state.#{field} + #{n}"
-
-      {:decrement, n} ->
-        "#{field}: state.#{field} - #{n}"
-
-      :unknown ->
-        nil
-    end
-  end
 
   @doc """
   Normalize a dependency to its root field name as a string.

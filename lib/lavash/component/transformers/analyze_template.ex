@@ -68,11 +68,9 @@ defmodule Lavash.Component.Transformers.AnalyzeTemplate do
       actions
       |> Enum.flat_map(fn action ->
         sets = action.sets || []
-        updates = action.updates || []
         map_bys = action.map_bys || []
 
-        Enum.map(sets, & &1.field) ++
-          Enum.map(updates, & &1.field) ++ Enum.map(map_bys, & &1.field)
+        Enum.map(sets, & &1.field) ++ Enum.map(map_bys, & &1.field)
       end)
 
     MapSet.new(calc_names ++ form_derive_names ++ action_field_names)
