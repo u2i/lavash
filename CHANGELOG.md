@@ -6,6 +6,29 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.0-rc.2] — 2026-05-25
+
+### Added
+
+- **`from: :assigns`** — a new state source that lifts a value an
+  `on_mount` hook put on `socket.assigns` into lavash state. Closes
+  the AshAuthentication integration gap: the on_mount assigns
+  `:current_user`, and lavash can now expose it to `rx()` without a
+  custom `mount/3` escape hatch.
+
+  ```elixir
+  on_mount {AshAuthentication.LiveView, :live_user_required}
+
+  state :user, :map, from: :assigns, assigns_key: :current_user
+
+  calculate :greeting, rx("Hello, " <> @user.name)
+  ```
+
+  One-way read: lavash mutations don't propagate back to
+  `socket.assigns`. Missing assign falls back to `default:`.
+  `assigns_key:` defaults to the field name. LV-only (not
+  Lavash.Component — components receive parent data via props).
+
 ## [0.4.0-rc.1] — 2026-05-25
 
 The 0.4 line starts here. Two big shifts since rc.5: lavash now has
@@ -571,6 +594,7 @@ with reactive behavior wired in for free.
   `parse_value`/`parse_binding_value`, two of `resource_available?/1`.
 - The process-dictionary side channel for `component_states`.
 
-[Unreleased]: https://github.com/u2i/lavash/compare/v0.4.0-rc.1...HEAD
+[Unreleased]: https://github.com/u2i/lavash/compare/v0.4.0-rc.2...HEAD
+[0.4.0-rc.2]: https://github.com/u2i/lavash/compare/v0.4.0-rc.1...v0.4.0-rc.2
 [0.4.0-rc.1]: https://github.com/u2i/lavash/compare/v0.3.0-rc.5...v0.4.0-rc.1
 [0.3.0-rc.0]: https://github.com/u2i/lavash/compare/v0.2.0...v0.3.0-rc.0
