@@ -19,7 +19,7 @@ defmodule Lavash.Parity.Vanilla.HandleEventLive do
       socket
       |> assign(:count, 0)
       |> assign(:last_event, nil)
-      |> assign(:is_admin, true)
+      |> assign(:is_admin?, true)
 
     {:ok, socket}
   end
@@ -64,12 +64,12 @@ defmodule Lavash.Parity.Vanilla.HandleEventLive do
 
   @impl true
   def handle_event("toggle_admin", _params, socket) do
-    {:noreply, update(socket, :is_admin, &(!&1))}
+    {:noreply, update(socket, :is_admin?, &(!&1))}
   end
 
   @impl true
   def handle_event("guarded_inc", _params, socket) do
-    if socket.assigns.is_admin do
+    if socket.assigns.is_admin? do
       {:noreply, update(socket, :count, &(&1 + 1))}
     else
       {:noreply, socket}
@@ -82,7 +82,7 @@ defmodule Lavash.Parity.Vanilla.HandleEventLive do
     <div id="handle-event-vanilla">
       <p id="count">{@count}</p>
       <p id="last-event">{@last_event || "(none)"}</p>
-      <p id="is-admin">{to_string(@is_admin)}</p>
+      <p id="is-admin">{to_string(@is_admin?)}</p>
 
       <button id="inc" phx-click="inc">+1</button>
       <button id="bump-by" phx-click="bump_by" phx-value-amount="5">+5</button>

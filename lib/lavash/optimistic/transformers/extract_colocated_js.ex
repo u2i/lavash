@@ -326,19 +326,23 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
       nil
     else
       param_str = if params != [], do: ", value", else: ""
+      method_key = Lavash.Rx.Transpiler.js_field_key(name)
 
       if map_by_stmts != [] do
         # map_by actions mutate arrays in-place and return the full delta
         stmts = Enum.join(map_by_stmts, "\n")
         # Collect field names from map_by operations for the return delta
         map_by_fields =
-          Enum.map(map_bys, fn mb -> "#{mb.field}: state.#{mb.field}" end) |> Enum.uniq()
+          Enum.map(map_bys, fn mb ->
+            "#{Lavash.Rx.Transpiler.js_field_key(mb.field)}: #{Lavash.Rx.Transpiler.js_field_access("state", mb.field)}"
+          end)
+          |> Enum.uniq()
 
         set_delta = if all_exprs != [], do: Enum.join(all_exprs, ", ") <> ", ", else: ""
         map_by_delta = Enum.join(map_by_fields, ", ")
 
         """
-          #{name}(state#{param_str}) {
+          #{method_key}(state#{param_str}) {
         #{stmts}
             return { #{set_delta}#{map_by_delta} };
           }
@@ -347,7 +351,7 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
         expr_pairs = Enum.join(all_exprs, ", ")
 
         """
-          #{name}(state#{param_str}) {
+          #{method_key}(state#{param_str}) {
             return { #{expr_pairs} };
           }
         """
@@ -360,18 +364,20 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
     key = map_by.key
     key_str = to_string(key)
     transform = map_by.transform
+    state_field = Lavash.Rx.Transpiler.js_field_access("state", field)
+    item_key = Lavash.Rx.Transpiler.js_field_access("item", key_str)
 
     cond do
       transform == :remove ->
-        "    state.#{field} = (state.#{field} || []).filter(item => item.#{key_str} !== value);"
+        "    #{state_field} = (#{state_field} || []).filter(item => #{item_key} !== value);"
 
       is_binary(transform) ->
         item_transform_js =
           Lavash.Component.CompilerHelpers.fn_source_to_js_item_transform(transform)
 
         """
-            state.#{field} = (state.#{field} || []).map(item => {
-              if (String(item.#{key_str}) === String(value)) {
+            #{state_field} = (#{state_field} || []).map(item => {
+              if (String(#{item_key}) === String(value)) {
                 const result = #{item_transform_js};
                 return result === 'remove' ? null : result;
               }
@@ -387,24 +393,33 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
   # Generate JS for a set operation
   defp generate_set_js(set, action_params) do
     field = set.field
+    key = Lavash.Rx.Transpiler.js_field_key(field)
 
     case ActionJs.analyze_value(set.value) do
       {:literal, v} ->
-        "#{field}: #{Jason.encode!(v)}"
+        "#{key}: #{Jason.encode!(v)}"
 
       :from_params_value ->
-        "#{field}: value"
+        "#{key}: value"
 
       {:rx, source} ->
         js_expr = Lavash.Rx.Transpiler.to_js(source)
 
         js_expr =
           case action_params do
-            [param] -> String.replace(js_expr, "state.#{param}", "value")
-            _ -> js_expr
+            [param] ->
+              # The action's single param appears in the rx body as
+              # `@param` → `state.param` (or `state["param?"]`). Swap to
+              # `value` so the action receives the param via the value
+              # callsite parameter instead of via state.
+              param_ref = Lavash.Rx.Transpiler.js_field_access("state", param)
+              String.replace(js_expr, param_ref, "value")
+
+            _ ->
+              js_expr
           end
 
-        "#{field}: #{js_expr}"
+        "#{key}: #{js_expr}"
 
       :unknown ->
         nil
@@ -412,16 +427,20 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
   end
 
   defp generate_attr_derive_js(%{name: name, js_expr: js_expr}) do
+    method_key = Lavash.Rx.Transpiler.js_field_key(name)
+
     """
-      #{name}(state) {
+      #{method_key}(state) {
         return #{js_expr};
       }
     """
   end
 
   defp generate_subtree_derive_js(%{name: name, js_expr: js_expr}) do
+    method_key = Lavash.Rx.Transpiler.js_field_key(name)
+
     """
-      #{name}(state) {
+      #{method_key}(state) {
         return #{js_expr};
       }
     """
@@ -436,9 +455,10 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
 
     # Use the existing elixir_to_js transpiler
     js_expr = Lavash.Rx.Transpiler.to_js(expanded_source)
+    method_key = Lavash.Rx.Transpiler.js_field_key(name)
 
     """
-      #{name}(state) {
+      #{method_key}(state) {
         return #{js_expr};
       }
     """

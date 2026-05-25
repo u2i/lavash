@@ -229,6 +229,54 @@ defmodule Lavash.Rx.Transpiler do
   end
 
   @doc """
+  Emit a JS object property access for an Elixir field name.
+
+  Elixir allows `?` and `!` in atom names (idiomatic for boolean
+  predicates and bang-mutating helpers). JS identifiers don't, so
+  `state.is_admin?` is a syntax error. Field names that aren't valid
+  JS identifiers get rewritten to bracket access with a string key:
+  `state["is_admin?"]`. Safe names stay as dot access.
+
+  Used everywhere a state field becomes a JS property reference — the
+  rx transpiler's `@field` handling, optimistic action set deltas,
+  and the calc/derive emitter.
+  """
+  @spec js_field_access(String.t(), String.t() | atom()) :: String.t()
+  def js_field_access(target, field) do
+    field_str = to_string(field)
+
+    if js_safe_identifier?(field_str) do
+      "#{target}.#{field_str}"
+    else
+      ~s|#{target}["#{field_str}"]|
+    end
+  end
+
+  @doc """
+  Emit a JS object literal key for an Elixir field name.
+
+  Same rule as `js_field_access/2`: safe names emit as bare keys
+  (`{is_admin: true}`); names with `?`/`!`/leading-digit/etc. wrap
+  as quoted string keys (`{"is_admin?": true}`).
+  """
+  @spec js_field_key(String.t() | atom()) :: String.t()
+  def js_field_key(field) do
+    field_str = to_string(field)
+
+    if js_safe_identifier?(field_str) do
+      field_str
+    else
+      ~s|"#{field_str}"|
+    end
+  end
+
+  # JS identifier rule: must start with letter / _ / $, then letters /
+  # digits / _ / $. Excludes `?`, `!`, hyphens, etc.
+  defp js_safe_identifier?(name) do
+    Regex.match?(~r/^[A-Za-z_$][A-Za-z0-9_$]*$/, name)
+  end
+
+  @doc """
   Translates an Elixir AST to JavaScript.
 
   This is the lower-level function that works directly with AST.
@@ -261,9 +309,10 @@ defmodule Lavash.Rx.Transpiler do
     cond_to_nested_ternary(clauses)
   end
 
-  # @variable -> state.variable
+  # @variable -> state.variable (or state["variable?"] for names that
+  # aren't valid JS identifiers — see js_field_access/2).
   def ast_to_js({:@, _, [{var_name, _, _}]}) when is_atom(var_name) do
-    "state.#{var_name}"
+    js_field_access("state", var_name)
   end
 
   # Enum.member?(list, val) -> list.includes(val)

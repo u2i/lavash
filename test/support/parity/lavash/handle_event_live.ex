@@ -21,7 +21,7 @@ defmodule Lavash.Parity.Lavash.HandleEventLive do
 
   state :count, :integer, default: 0, optimistic: true
   state :last_event, :string, default: nil, optimistic: true
-  state :is_admin, :boolean, default: true, optimistic: true
+  state :is_admin?, :boolean, default: true, optimistic: true
 
   actions do
     action :inc do
@@ -37,10 +37,10 @@ defmodule Lavash.Parity.Lavash.HandleEventLive do
     end
 
     action :toggle_admin do
-      set :is_admin, rx(not @is_admin)
+      set :is_admin?, rx(not @is_admin?)
     end
 
-    action :guarded_inc, [], [:is_admin] do
+    action :guarded_inc, [], [:is_admin?] do
       set :count, rx(@count + 1)
     end
 
@@ -66,7 +66,7 @@ defmodule Lavash.Parity.Lavash.HandleEventLive do
     <div id="handle-event-lavash">
       <p id="count">{@count}</p>
       <p id="last-event">{@last_event || "(none)"}</p>
-      <p id="is-admin">{to_string(@is_admin)}</p>
+      <p id="is-admin">{to_string(@is_admin?)}</p>
 
       <button id="inc" phx-click="inc">+1</button>
       <button id="bump-by" phx-click="bump_by" phx-value-amount="5">+5</button>
