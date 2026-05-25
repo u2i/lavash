@@ -1,37 +1,40 @@
 # Lavash
 
-Declarative state management for Phoenix LiveView, built for Ash Framework.
+Declarative, reactive state for Phoenix LiveView. Lavash is two things in one
+package:
+
+- a **DSL** (`use Lavash.LiveView` / `use Lavash.Component`) that declares
+  state, computed values, actions, forms, and components, and a `~L` template
+  sigil that auto-injects the client-side machinery for optimistic updates.
+- a **reactive engine** (`Lavash.Reactive` / `use Lavash.LiveView.Explicit`)
+  that works without the DSL — you write a plain `Phoenix.LiveView` and use
+  the dependency graph directly.
+
+Either way, the reactive graph runs on the server: declared values recompute
+in topological order when their dependencies change, and the optimistic JS
+hook keeps the rendered DOM in sync without a server round-trip for changes
+that can be transpiled.
 
 ## Why Lavash?
 
-**Solve LiveView's state loss problem.** Standard LiveView stores all state server-side, which means network disconnects, deploys, or server restarts lose user state. Lavash solves this by treating the client as the source of truth:
-
-- **URL state** survives refresh, is shareable, and enables deep linking
-- **Socket state** syncs to JS and survives reconnects (but not refresh)
-- **Ephemeral state** for temporary UI state that can be lost
-
-**Components that own their state.** Unlike standard LiveComponents which are stateless renderers, Lavash components can declare and manage their own state, derived fields, forms, and actions—just like LiveViews.
-
-**First-class Ash integration.** Read Ash resources with auto-mapped action arguments, submit forms that auto-detect create vs update, and get cross-process PubSub invalidation when resources mutate.
-
-## Features
-
-- **Client-Driven State** - URL and socket state survive disconnects; no more lost form data
-- **Stateful Components** - Components with their own state, derives, forms, and actions
-- **Ash Integration** - Read resources, submit forms, auto-invalidate on mutations
-- **Derived Fields** - Computed values with dependency tracking and async support
-- **Declarative Actions** - Event handlers with set, update, submit, navigate, flash
-- **PubSub Invalidation** - Fine-grained cross-process cache invalidation
-- **Type System** - Automatic URL serialization with custom type support
-- **Optimistic Updates** - Instant client-side state changes with automatic server reconciliation
-- **Modal Plugin** - Ready-to-use modal behavior for components
+- **Reactive state**, not manual recompute. Declare a `calculate :doubled,
+  rx(@count * 2)`; lavash recomputes it whenever its dependencies change.
+- **Optimistic UI by default**. The `~L` sigil auto-injects `data-lavash-*`
+  attributes so simple actions feel instant — the JS hook updates the DOM
+  before the server reply lands.
+- **URL-backed state**. `state :search, :string, from: :url` makes the
+  field part of the URL — deep-linkable, refresh-safe, bookmarkable.
+- **First-class Ash integration**. Read resources, submit forms, and
+  auto-invalidate via PubSub on resource mutations.
+- **Stateful components**. Lavash components have their own state, derived
+  fields, and actions — and can bind to parent state.
 
 ## Installation
 
 ```elixir
 def deps do
   [
-    {:lavash, "~> 0.1.0"}
+    {:lavash, "~> 0.2"}
   ]
 end
 ```
@@ -43,25 +46,20 @@ Configure PubSub for cross-process invalidation:
 config :lavash, pubsub: MyApp.PubSub
 ```
 
-## Quick Start
+## Quick start
 
 ```elixir
 defmodule MyAppWeb.CounterLive do
   use Lavash.LiveView
 
-  # URL state - survives refresh, shareable
-  state :count, :integer, from: :url, default: 0
+  state :count, :integer, from: :url, default: 0, optimistic: true
+  state :multiplier, :integer, from: :ephemeral, default: 2, optimistic: true
 
-  # Computed value - updates when count changes
-  derive :doubled do
-    argument :count, state(:count)
-    run fn %{count: c}, _ -> c * 2 end
-  end
+  calculate :doubled, rx(@count * @multiplier)
 
-  # Actions transform state
   actions do
     action :increment do
-      update :count, &(&1 + 1)
+      set :count, rx(@count + 1)
     end
 
     action :reset do
@@ -69,8 +67,8 @@ defmodule MyAppWeb.CounterLive do
     end
   end
 
-  def render(assigns) do
-    ~H"""
+  render fn assigns ->
+    ~L"""
     <div>
       <p>Count: {@count}</p>
       <p>Doubled: {@doubled}</p>
@@ -82,51 +80,79 @@ defmodule MyAppWeb.CounterLive do
 end
 ```
 
-## State Types
+Bare `{@count}` is wrapped in `<span data-lavash-display="count">` at compile
+time. When the user clicks `+`, the JS hook updates the span text
+instantly; the server reply arrives later and reconciles.
 
-Lavash provides three state persistence modes:
+To enable the JS hook in `app.js`:
 
-| Type | Persisted In | Survives Refresh | Survives Reconnect | Shareable |
-|------|--------------|------------------|-------------------|-----------|
+```javascript
+import { LavashOptimistic } from "lavash";
+
+let liveSocket = new LiveSocket("/live", Socket, {
+  hooks: { LavashOptimistic, ...otherHooks }
+});
+```
+
+## State
+
+Lavash supports three persistence modes:
+
+| `from:` | Persisted in | Survives refresh | Survives reconnect | Shareable |
+|---|---|---|---|---|
 | `:url` | Query string | Yes | Yes | Yes |
 | `:socket` | JS client | No | Yes | No |
-| `:ephemeral` | Process only | No | No | No |
+| `:ephemeral` (default) | Process only | No | No | No |
 
 ```elixir
-# URL state - filters, pagination, tabs
+# URL-backed: filters, pagination, tabs
 state :search, :string, from: :url, default: ""
 state :page, :integer, from: :url, default: 1
 
-# Socket state - UI state that survives reconnects
+# Socket-backed: UI state that survives reconnects
 state :expanded_ids, {:array, :uuid}, from: :socket, default: []
 
-# Ephemeral state - temporary, fastest
-state :hovering, :boolean, from: :ephemeral, default: false
+# Ephemeral: temporary
+state :hovering, :boolean, default: false
 ```
 
-### Auto-Generated Setters
+### Optimistic state
 
-Use `setter: true` to auto-generate a `set_<name>` action:
+Add `optimistic: true` to make a field part of the client-side state map. The
+`LavashOptimistic` JS hook reads it from `data-lavash-state` and updates the
+DOM as transpiled actions fire — before the server reply arrives.
+
+```elixir
+state :count, :integer, default: 0, optimistic: true
+```
+
+Without `optimistic: true`, the field still works server-side but every
+update takes a full LiveView round-trip.
+
+### Auto-generated setters
+
+`setter: true` generates a `set_<name>` action callable from the client (e.g.
+from a form input's `phx-change`):
 
 ```elixir
 state :search, :string, from: :url, default: "", setter: true
-# Generates: action :set_search, [:value] do set :search, &(&1.params.value) end
+# Generates: action :set_search, [:value] do set :search, rx(@value) end
 ```
 
-## Type System
+## Type system
 
 Built-in types with automatic URL serialization:
 
-- `:string` - Pass-through
-- `:integer` - `"42"` <-> `42`
-- `:float` - `"3.14"` <-> `3.14`
-- `:boolean` - `"true"` <-> `true`
-- `:uuid` - Full UUID <-> base32 (26 chars)
-- `{:uuid, "prefix"}` - TypeID format: `cat_01h455vb4pex5vsknk084sn02q`
-- `:atom` - Uses `String.to_existing_atom/1`
-- `{:array, type}` - `"a,b,c"` <-> `["a", "b", "c"]`
+- `:string` — pass-through
+- `:integer` — `"42"` ↔ `42`
+- `:float` — `"3.14"` ↔ `3.14`
+- `:boolean` — `"true"` ↔ `true`
+- `:uuid` — full UUID ↔ base32 (26 chars)
+- `{:uuid, "prefix"}` — TypeID format (`cat_01h455vb4pex5vsknk084sn02q`)
+- `:atom` — uses `String.to_existing_atom/1`
+- `{:array, type}` — `"a,b,c"` ↔ `["a", "b", "c"]`
 
-### Custom Types
+### Custom types
 
 ```elixir
 defmodule MyApp.Types.Date do
@@ -144,43 +170,33 @@ defmodule MyApp.Types.Date do
   def dump(%Date{} = date), do: Date.to_iso8601(date)
 end
 
-# Usage
 state :start_date, MyApp.Types.Date, from: :url
 ```
 
-## Derived Fields
+## Reactive expressions: `rx`
 
-Computed values with automatic dependency tracking:
-
-```elixir
-derive :total do
-  argument :items, state(:items)
-  argument :tax_rate, state(:tax_rate)
-
-  run fn %{items: items, tax_rate: rate}, _ ->
-    subtotal = Enum.sum(Enum.map(items, & &1.price))
-    subtotal * (1 + rate)
-  end
-end
-```
-
-### Async Derived Fields
-
-For expensive computations:
+`rx(...)` captures an expression at compile time. References to `@field` are
+tracked as dependencies. The same expression compiles to both Elixir (for
+server-side evaluation) and JavaScript (for the optimistic hook).
 
 ```elixir
-derive :report do
-  async true
-  argument :filters, state(:filters)
-
-  run fn %{filters: f}, _ ->
-    # Expensive computation
-    generate_report(f)
-  end
-end
+calculate :doubled, rx(@count * 2)
+calculate :total, rx(Enum.sum(@items))
+calculate :greeting, rx("Hi, " <> @name)
 ```
 
-In templates, async fields render as `%Phoenix.LiveView.AsyncResult{}`:
+### Async calculations
+
+`async: true` runs the computation in a background task. The field is set to
+`AsyncResult.loading()` immediately and updated when the task completes.
+Downstream calculations propagate loading/failed states automatically.
+
+```elixir
+calculate :report, rx(generate_report(@filters)), async: true
+calculate :report_size, rx(byte_size(@report))  # waits for :report
+```
+
+In templates, async fields are `%Phoenix.LiveView.AsyncResult{}`:
 
 ```elixir
 <%= case @report do %>
@@ -190,23 +206,29 @@ In templates, async fields render as `%Phoenix.LiveView.AsyncResult{}`:
 <% end %>
 ```
 
-### Chained Derived Fields
+### Importing reactive helpers
 
-Derived fields can depend on other derived fields:
+`defrx` declares a transpilable helper; `import_rx` makes it available in
+`rx()` blocks elsewhere:
 
 ```elixir
-derive :doubled do
-  argument :count, state(:count)
-  run fn %{count: c}, _ -> c * 2 end
+defmodule MyApp.Validators do
+  use Lavash.Rx.Functions
+
+  defrx valid_email?(email) do
+    String.length(email) > 0 && String.contains?(email, "@")
+  end
 end
 
-derive :quadrupled do
-  argument :doubled, result(:doubled)
-  run fn %{doubled: d}, _ -> d * 2 end
+defmodule MyAppWeb.SignupLive do
+  use Lavash.LiveView
+  import_rx MyApp.Validators
+
+  calculate :email_valid, rx(valid_email?(@email))
 end
 ```
 
-## Reading Ash Resources
+## Reading Ash resources
 
 ### Get by ID
 
@@ -217,16 +239,16 @@ read :product, Product do
 end
 ```
 
-### Query with Auto-Mapped Arguments
+### Query with auto-mapped arguments
 
 ```elixir
 read :products, Product, :list do
-  invalidate :pubsub  # Enable fine-grained PubSub invalidation
+  invalidate :pubsub  # fine-grained PubSub invalidation
 end
 # Auto-maps state fields to action arguments by name
 ```
 
-### As Dropdown Options
+### As dropdown options
 
 ```elixir
 read :categories, Category do
@@ -237,19 +259,34 @@ end
 
 ## Forms
 
-Auto-detects create vs update based on data:
+Auto-detects create vs. update based on data:
 
 ```elixir
 form :edit_form, Product do
-  data result(:product)  # nil = create, record = update
+  data result(:product)  # nil → create, record → update
 end
 
-# Params auto-created as :edit_form_params ephemeral state
+# Params are auto-created as :edit_form_params (ephemeral state).
+# Validation derives are auto-generated: :edit_form_<field>_valid,
+# :edit_form_<field>_errors, :edit_form_valid, :edit_form_errors.
 ```
+
+Hook a form into your template:
+
+```elixir
+<form phx-change="form_change_edit_form" phx-submit="save">
+  <input field={@edit_form[:name]} />
+  <input field={@edit_form[:price]} />
+  <button type="submit" disabled={not @edit_form_valid}>Save</button>
+</form>
+```
+
+`<input field={...}>` auto-injects `name`, `value`, and the right
+`data-lavash-*` attrs so validation errors render instantly client-side.
 
 ## Actions
 
-Declarative event handlers:
+Declarative event handlers triggered by `phx-click`, `phx-change`, etc.
 
 ```elixir
 actions do
@@ -273,46 +310,73 @@ actions do
     end
   end
 
-  # Guarded actions
+  # Guarded — only fires when @form_valid is true
   action :submit, [], [:form_valid] do
     submit :form
   end
 end
 ```
 
-### Action Operations
+### Action operations
 
 | Operation | Description |
-|-----------|-------------|
-| `set :field, value` | Set field to value or function |
-| `update :field, fn` | Transform field with function |
+|---|---|
+| `set :field, rx(...)` | Set field via a reactive expression (transpilable) |
+| `set :field, value` | Set field to a literal value |
+| `update :field, fun` | Transform field with a function (server-only) |
 | `effect fn` | Execute side effects |
 | `submit :form` | Submit a form |
 | `navigate path` | Navigate to URL |
 | `flash :level, msg` | Show flash message |
-| `invoke id, :action` | Invoke action on child component |
+| `invoke id, :action` | Invoke an action on a child component |
+
+`set :field, rx(...)` transpiles to JS for optimistic updates. `update`,
+`effect`, `submit`, etc. always go through the server.
+
+## The `~L` sigil and auto-injection
+
+Use `~L` (not `~H`) in render functions inside Lavash modules. The
+transformer rewrites the template at compile time, injecting:
+
+| You write | Becomes |
+|---|---|
+| `{@count}` (optimistic) | `<span data-lavash-display="count">{@count}</span>` |
+| `<input field={@form[:name]}>` | Phoenix form attrs + `data-lavash-bind` + error attrs |
+| `<div :if={@open}>` (optimistic) | adds `data-lavash-visible="open"` |
+| `<button disabled={not @valid}>` (optimistic) | adds `data-lavash-enabled="valid"` |
+| `<div class={if @flag, do: "on", else: "off"}>` (optimistic) | adds `data-lavash-toggle="flag\|on\|off"` |
+| `<div class={if "x" in @items, do: "sel", else: "unsel"}>` (optimistic) | adds `data-lavash-member="items\|sel\|unsel"` + `data-lavash-member-value="x"` |
+| `<.lavash_component module=Child id="x" bind={[n: :count]}>` | adds parent value forwarding + binding-chain plumbing |
+
+You write normal Phoenix HEEx; lavash adds the wiring underneath. Hand-written
+`data-lavash-*` attributes still work for cases the inference can't reach
+(non-bare expressions, `unless`, complex class concatenation, etc.).
+
+### Diagnostics
+
+The transformer warns at compile time when:
+
+- A bare `{@field}` references a declared-but-non-optimistic state field —
+  the template renders as plain text. Likely missing `optimistic: true`.
+- `<.lavash_component bind=[child: :parent]>` targets a `:parent` that isn't a
+  declared state field on the host — the binding is write-only and the
+  child won't receive parent updates.
 
 ## Components
-
-LiveComponents with props:
 
 ```elixir
 defmodule MyAppWeb.ProductCard do
   use Lavash.Component
 
   prop :product, :map, required: true
-  prop :on_select, :atom  # Event name for notify_parent
 
-  state :expanded, :boolean, from: :socket, default: false
+  state :expanded, :boolean, from: :socket, default: false, optimistic: true
 
-  derive :title do
-    argument :product, prop(:product)
-    run fn %{product: p}, _ -> p.name end
-  end
+  calculate :title, rx(@product.name)
 
   actions do
     action :toggle do
-      update :expanded, &(!&1)
+      set :expanded, rx(not @expanded)
     end
 
     action :select do
@@ -320,35 +384,54 @@ defmodule MyAppWeb.ProductCard do
     end
   end
 
-  def render(assigns) do
-    ~H"""
-    <div phx-click="toggle" phx-target={@myself}>
+  render fn assigns ->
+    ~L"""
+    <div phx-click="toggle">
       <h3>{@title}</h3>
       <div :if={@expanded}>Details...</div>
-      <button phx-click="select" phx-target={@myself}>Select</button>
+      <button phx-click="select">Select</button>
     </div>
     """
   end
 end
 ```
 
-Usage with `lavash_component`:
+`phx-target={@myself}` is auto-injected inside component templates — you
+don't have to type it on every `phx-*` attribute.
+
+### Using a component
 
 ```elixir
-import Lavash.LiveView.Helpers
+import Lavash.LiveView.Helpers, only: [lavash_component: 1]
 
 <.lavash_component
   module={MyAppWeb.ProductCard}
   id={"product-#{product.id}"}
   product={product}
-  on_select="product_selected"
 />
 ```
 
-### Invoking Component Actions from Parent
+### Bindings
+
+A child can declare a `bind=` mapping to read and write a parent's state
+field:
 
 ```elixir
-# In parent LiveView
+<.lavash_component
+  module={MyAppWeb.Toggle}
+  id="dark-mode"
+  bind={[value: :dark_mode]}
+/>
+```
+
+The child's `:value` field hydrates from the parent's `:dark_mode` on every
+update; the child's writes to `:value` propagate back up to the parent's
+`:dark_mode`. Works across arbitrarily nested chains via parent CID routing
+or `send_update`.
+
+### Invoking component actions from parent
+
+```elixir
 actions do
   action :open_modal, [:id] do
     invoke "product-modal", :open,
@@ -358,9 +441,9 @@ actions do
 end
 ```
 
-## Overlays (Modal, etc.)
+## Overlays (modals, flyovers)
 
-Pre-built modal behavior:
+Pre-built phase-machine driven overlay behavior:
 
 ```elixir
 defmodule MyAppWeb.ProductModal do
@@ -372,19 +455,6 @@ defmodule MyAppWeb.ProductModal do
     close_on_escape true
     close_on_backdrop true
     async_assign :edit_form
-  end
-
-  render_loading fn assigns ->
-    ~H"<div class=\"p-6\">Loading...</div>"
-  end
-
-  render fn assigns ->
-    ~H"""
-    <div class="p-6">
-      <.modal_close_button myself={@myself} />
-      <!-- Form content -->
-    </div>
-    """
   end
 
   read :product, Product do
@@ -400,185 +470,31 @@ defmodule MyAppWeb.ProductModal do
       submit :edit_form, on_success: :close
     end
   end
-end
-```
 
-## Optimistic Updates
-
-Make UI feel instant by applying state changes client-side before server confirmation. Lavash automatically generates JavaScript functions from your DSL declarations.
-
-### Basic Setup
-
-1. Mark state fields and derives with `optimistic: true`:
-
-```elixir
-defmodule MyAppWeb.CounterLive do
-  use Lavash.LiveView
-
-  state :count, :integer, from: :url, default: 0, optimistic: true
-  state :multiplier, :integer, from: :ephemeral, default: 2, optimistic: true
-
-  derive :doubled do
-    optimistic true
-    argument :count, state(:count)
-    argument :multiplier, state(:multiplier)
-    run fn %{count: c, multiplier: m}, _ -> c * m end
-  end
-
-  actions do
-    action :increment do
-      update :count, &(&1 + 1)
-    end
-
-    action :decrement do
-      update :count, &(&1 - 1)
-    end
+  render fn assigns ->
+    ~L"""
+    <div class="p-6">
+      <.modal_close_button myself={@myself} />
+      <!-- form content -->
+    </div>
+    """
   end
 end
 ```
 
-2. Add `data-optimistic` to trigger elements and use the `<.o>` helper for display elements:
+The overlay runs through phases (`idle → entering → [loading] → visible →
+exiting → idle`); the optimistic JS hook drives the transitions
+client-side.
+
+## PubSub invalidation
 
 ```elixir
-import Lavash.LiveView.Helpers
-
-def render(assigns) do
-  ~H"""
-  <div>
-    <.o field={:count} value={@count} tag="div" />
-    <.o field={:doubled} value={@doubled} />
-
-    <button phx-click="increment" data-optimistic="increment">+</button>
-    <button phx-click="decrement" data-optimistic="decrement">-</button>
-  </div>
-  """
-end
-```
-
-The `<.o>` component eliminates duplication by generating both the display and the `data-optimistic-display` attribute. It supports:
-- `field` - the state/derive field name (required)
-- `value` - the current value from assigns (required)
-- `tag` - HTML tag to use (default: "span")
-- Additional HTML attributes like `class`
-
-Alternatively, you can use the raw data attribute:
-
-```elixir
-<div data-optimistic-display="count">{@count}</div>
-```
-
-3. Register the hook in your `app.js`:
-
-```javascript
-import { LavashOptimistic } from "./lavash_optimistic";
-
-let liveSocket = new LiveSocket("/live", Socket, {
-  hooks: { LavashOptimistic, ...otherHooks }
-});
-```
-
-### How It Works
-
-When a user clicks a button with `data-optimistic="increment"`:
-
-1. **Client-side**: The hook immediately runs the generated JavaScript function to update state
-2. **Server-side**: The normal `phx-click` event is sent to the server
-3. **Reconciliation**: When the server responds, stale values are ignored using per-field tracking
-
-Actions are automatically converted to JavaScript if they only contain `set` and `update` operations:
-
-| Elixir DSL | Generated JavaScript |
-|------------|---------------------|
-| `update :count, &(&1 + 1)` | `count: state.count + 1` |
-| `update :count, &(&1 - 1)` | `count: state.count - 1` |
-| `set :count, 0` | `count: 0` |
-| `set :count, &String.to_integer(&1.params.value)` | `count: Number(value)` |
-
-### Custom Derive Functions
-
-For complex derived values, provide JavaScript implementations via ColocatedJS:
-
-```elixir
-<script :type={Phoenix.LiveView.ColocatedJS} name="optimistic">
-  function factorial(n) {
-    if (n < 0) return null;
-    if (n > 170) return Infinity;
-    let result = 1;
-    for (let i = 2; i <= n; i++) result *= i;
-    return result;
-  }
-
-  export default {
-    // Derive functions receive state and return the computed value
-    doubled(state) {
-      return state.count * state.multiplier;
-    },
-
-    fact(state) {
-      return factorial(Math.max(state.count, 0));
-    }
-  };
-</script>
-```
-
-Register custom functions in `app.js`:
-
-```javascript
-import optimistic from "phoenix-colocated/demo/DemoWeb.CounterLive/optimistic";
-window.Lavash = window.Lavash || {};
-window.Lavash.optimistic = window.Lavash.optimistic || {};
-window.Lavash.optimistic["DemoWeb.CounterLive"] = optimistic;
-```
-
-### Input Fields
-
-For range sliders and other inputs, use `data-optimistic-field`:
-
-```elixir
-<input
-  type="range"
-  name="value"
-  value={@multiplier}
-  phx-change="set_multiplier"
-  data-optimistic-field="multiplier"
-/>
-```
-
-### Actions with Parameters
-
-For actions that take values (like "Set to 100"), use `data-optimistic-value`:
-
-```elixir
-<button
-  phx-click="set_count"
-  phx-value-amount="100"
-  data-optimistic="set_count"
-  data-optimistic-value="100"
->
-  Set to 100
-</button>
-```
-
-### Limitations
-
-Optimistic updates work best for:
-- Simple numeric operations (increment, decrement, set)
-- Pure computed values (derives)
-- UI state that doesn't require server validation
-
-Actions with side effects (`submit`, `navigate`, `effect`, `invoke`) are not generated as optimistic functions.
-
-## PubSub Invalidation
-
-Cross-process resource invalidation for multi-tab/user scenarios:
-
-```elixir
-# In read declaration
+# In a read declaration
 read :products, Product, :list do
   invalidate :pubsub
 end
 
-# In Ash resource - specify which attributes trigger invalidation
+# In the Ash resource: which attributes trigger invalidation
 defmodule MyApp.Product do
   use Ash.Resource, extensions: [Lavash.Resource]
 
@@ -588,23 +504,48 @@ defmodule MyApp.Product do
 end
 ```
 
-When a form submits, Lavash broadcasts to all relevant PubSub topics, and LiveViews with matching reads automatically reload.
+When a form submits, Lavash broadcasts to PubSub topics matching the
+mutated resource. LiveViews with subscribed reads auto-refresh.
 
-## Architecture
+## Using lavash without the DSL
 
-Lavash stores all state in `socket.private.lavash` to avoid LiveView change tracking overhead:
+`Lavash.LiveView.Explicit` exposes the reactive engine without the Spark
+DSL, the `~L` transformer, the optimistic JS, or any of the overlay /
+form / binding machinery. You get the dependency graph and automatic
+recomputation; you write `mount/3`, `handle_event/3`, and `render/1` like
+any plain Phoenix LiveView.
 
+```elixir
+defmodule MyAppWeb.CounterLive do
+  use Lavash.LiveView.Explicit
+
+  reactive do
+    state :count, 0
+    state :step, 1
+    derive :doubled, rx(@count * @step)
+  end
+
+  @impl Phoenix.LiveView
+  def handle_event("inc", _, socket) do
+    {:noreply, put_state(socket, :count, &(&1 + 1))}
+  end
+
+  @impl Phoenix.LiveView
+  def render(assigns) do
+    ~H"""
+    <p>{@count} (doubled = {@doubled})</p>
+    <button phx-click="inc">+</button>
+    """
+  end
+end
 ```
-socket.private.lavash = %{
-  state: %{},      # Current state values
-  derived: %{},    # Computed values
-  dirty: MapSet,   # Fields needing recomputation
-  url_fields: MapSet,
-  socket_fields: MapSet
-}
-```
 
-The dependency graph ensures derived fields compute in topological order, and only dirty fields are recomputed on state changes.
+`put_state/3` mutates a field and immediately recomputes the dependent
+graph — no "I forgot to call recompute" footgun. `mount/3` and
+`handle_info/2` for async derives are wired automatically.
+
+This path is useful when you want the reactive primitives but don't need
+the DSL's optimistic JS, URL-backed state, forms, or overlays.
 
 ## License
 

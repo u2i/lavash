@@ -2,39 +2,42 @@ defmodule Lavash.LiveView do
   @moduledoc """
   Use this module to create a Lavash-powered LiveView.
 
+  Declares the DSL surface (`state`, `calculate`, `read`, `form`, `actions`,
+  etc.), imports the `~L` sigil, and wires the template transformer +
+  optimistic JS hook.
+
   ## Example
 
-      defmodule MyApp.ProfileLive do
+      defmodule MyAppWeb.ProfileLive do
         use Lavash.LiveView
 
-        state do
-          url do
-            field :user_id, :integer, required: true
-            field :tab, :string, default: "overview"
-          end
+        state :user_id, :integer, from: :url, required: true
+        state :tab, :string, from: :url, default: "overview"
+        state :editing, :boolean, default: false
 
-          ephemeral do
-            field :editing, :boolean, default: false
-          end
-        end
-
-        derived do
-          field :user, depends_on: [:user_id], async: true, compute: &load_user/1
-        end
-
-        assigns do
-          assign :user
-          assign :tab
+        read :user, MyApp.Accounts.User do
+          id state(:user_id)
+          async true
         end
 
         actions do
-          action :change_tab, params: [:tab] do
-            set :tab, & &1.params.tab
+          action :change_tab, [:tab] do
+            set :tab, rx(@tab)
           end
         end
 
-        defp load_user(%{user_id: id}), do: MyApp.Accounts.get_user!(id)
+        render fn assigns ->
+          ~L\"\"\"
+          <div>
+            <h1>{@user.name}</h1>
+            <button phx-click="change_tab" phx-value-tab="overview">Overview</button>
+          </div>
+          \"\"\"
+        end
       end
+
+  For the non-DSL on-ramp (reactive engine without the template
+  transformer or optimistic JS), see `Lavash.LiveView.Explicit`.
   """
 
   use Spark.Dsl,

@@ -1,50 +1,37 @@
 defmodule Lavash do
   @moduledoc """
-  Lavash - A declarative state management layer for Phoenix LiveView.
+  Reactive state management for Phoenix LiveView.
 
-  Lavash provides an Ash-inspired DSL for managing LiveView state with:
+  Lavash is two things in one package:
 
-  - **URL State**: Bidirectionally synced with URL params
-  - **Ephemeral State**: Socket-only state, lost on disconnect
-  - **Derived State**: Computed values with dependency tracking
-  - **Assigns**: Projection of state into template assigns
-  - **Actions**: State transformers triggered by events
+  - A **DSL** (`Lavash.LiveView`, `Lavash.Component`) for declaring state,
+    computed values, forms, actions, and overlays, with a `~L` sigil that
+    auto-injects the client-side machinery for optimistic updates.
+  - A **reactive engine** (`Lavash.Reactive`, `Lavash.LiveView.Explicit`)
+    that powers the DSL but is also usable directly from a plain
+    `Phoenix.LiveView` when you want the dependency graph without the rest.
 
-  ## Example
+  See the README for a full guide. The minimal DSL example:
 
-      defmodule MyApp.ProfileLive do
+      defmodule MyAppWeb.ProfileLive do
         use Lavash.LiveView
 
-        state do
-          url do
-            field :user_id, :integer, required: true
-            field :tab, :string, default: "overview"
-          end
+        state :user_id, :integer, from: :url, required: true
+        state :tab, :string, from: :url, default: "overview"
+        state :editing, :boolean, default: false
 
-          ephemeral do
-            field :editing, :boolean, default: false
-          end
-        end
-
-        derived do
-          field :user, depends_on: [:user_id], async: true, compute: &load_user/1
-        end
-
-        assigns do
-          assign :user
-          assign :tab
+        read :user, MyApp.Accounts.User do
+          id state(:user_id)
         end
 
         actions do
-          action :change_tab, params: [:tab] do
-            set :tab, & &1.params.tab
+          action :change_tab, [:tab] do
+            set :tab, rx(@tab)
           end
         end
 
-        defp load_user(%{user_id: id}), do: MyApp.Accounts.get_user!(id)
-
-        def render(assigns) do
-          ~H\"\"\"
+        render fn assigns ->
+          ~L\"\"\"
           <div>...</div>
           \"\"\"
         end
@@ -52,17 +39,18 @@ defmodule Lavash do
 
   ## Imperative API
 
-  For cases where declarative actions don't fit (like form submissions with
-  async results), use the imperative API in `handle_event`:
+  Inside a handler, when the declarative pipeline doesn't fit, use the
+  imperative helpers:
 
       def handle_event("save", %{"product" => params}, socket) do
-        socket = Lavash.set(socket, :form_data, params)
-        changeset = Lavash.get(socket, :changeset)
+        socket =
+          socket
+          |> Lavash.set(:form_data, params)
+          |> Lavash.set(:submitting, true)
+          |> Lavash.finalize(__MODULE__)
 
-        case Ash.update(changeset) do
-          {:ok, _} -> {:noreply, push_navigate(socket, to: ~p"/products")}
-          {:error, _} -> {:noreply, Lavash.set(socket, :submitting, false)}
-        end
+        # derived fields are now recomputed and assigns projected
+        {:noreply, socket}
       end
   """
 

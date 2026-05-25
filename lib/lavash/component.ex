@@ -1,50 +1,41 @@
 defmodule Lavash.Component do
   @moduledoc """
-  Provides Ash-like developer experience for Phoenix LiveComponents.
+  Stateful Phoenix LiveComponents with the same DSL as `Lavash.LiveView`.
 
-  ## Usage
+  Components can declare `prop`, `state`, `calculate`, `actions`, and render
+  with the `~L` sigil. Inside a Lavash component, `phx-target={@myself}` is
+  auto-injected on `phx-*` attrs and `__lavash_client_bindings__` propagates
+  to nested `<.lavash_component>` calls.
 
-      defmodule MyApp.ProductCard do
+  ## Example
+
+      defmodule MyAppWeb.ProductCard do
         use Lavash.Component
 
-        props do
-          prop :product, :map, required: true
-          prop :on_select, :function
-        end
+        prop :product, :map, required: true
+        prop :on_select, :atom
 
-        state do
-          socket do
-            field :expanded, :boolean, default: false
-          end
+        state :expanded, :boolean, from: :socket, default: false, optimistic: true
+        state :hovered, :boolean, default: false, optimistic: true
 
-          ephemeral do
-            field :hovered, :boolean, default: false
-          end
-        end
-
-        derived do
-          field :show_actions, depends_on: [:expanded, :hovered],
-            compute: fn %{expanded: e, hovered: h} -> e or h end
-        end
-
-        assigns do
-          assign :product
-          assign :expanded
-          assign :hovered
-          assign :show_actions
-        end
+        calculate :show_actions, rx(@expanded or @hovered)
 
         actions do
           action :toggle_expand do
-            update :expanded, &(!&1)
+            set :expanded, rx(not @expanded)
+          end
+
+          action :select do
+            notify_parent :on_select
           end
         end
 
-        def render(assigns) do
-          ~H\"\"\"
-          <div phx-click="toggle_expand" phx-target={@myself}>
+        render fn assigns ->
+          ~L\"\"\"
+          <div phx-click="toggle_expand">
             <h3>{@product.name}</h3>
             <div :if={@show_actions}>...</div>
+            <button phx-click="select">Select</button>
           </div>
           \"\"\"
         end
@@ -52,19 +43,19 @@ defmodule Lavash.Component do
 
   ## Extensions
 
-  You can add behavior plugins via the `extensions` option:
+  Add behavior plugins via the `extensions` option:
 
-      use Lavash.Component, extensions: [Lavash.Modal]
+      use Lavash.Component, extensions: [Lavash.Overlay.Modal.Dsl]
 
   Available extensions:
-  - `Lavash.Modal` - Adds modal behavior (open/close state, escape handling, etc.)
+  - `Lavash.Overlay.Modal.Dsl` — modal phase machine (entering/visible/exiting)
+  - `Lavash.Overlay.Flyover.Dsl` — slide-in panel from screen edges
 
-  ## State Types
+  ## State persistence modes
 
-  - **props** - Passed from parent, read-only
-  - **socket state** - Internal state that survives reconnects (synced to JS client)
-  - **ephemeral state** - Internal state lost on reconnect
-  - **derived state** - Computed from props + internal state
+  Components use the same `from:` field as LiveViews. `from: :socket` is
+  particularly useful for components — the per-component-id state map
+  travels through the LiveView's assigns and survives reconnects.
   """
 
   use Spark.Dsl,
