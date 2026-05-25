@@ -285,6 +285,41 @@ defmodule Lavash.Template.TokenTransformerTest do
 
       assert [{:body_expr, "@count", _}] = result
     end
+
+    # u2i/lavash#16 — wrapping `{@field}` in a span inside `<textarea>` /
+    # `<option>` corrupts the form value because the browser treats the
+    # body content as the submitted value (not as rendered DOM).
+    test "skips when inside <textarea> (body content is the form value)" do
+      tokens = [
+        tag("textarea", [string_attr("name", "notes")],
+          children: [body_expr("@notes")]
+        )
+      ]
+
+      metadata = optimistic_metadata([:notes])
+      result = transform(tokens, metadata)
+
+      refute has_display_span?(result, "notes"),
+             "should not wrap {@notes} inside <textarea> — submitted value would be literal HTML"
+
+      # body_expr should still be present unwrapped
+      assert [
+               {:block, :tag, "textarea", _attrs, [{:body_expr, "@notes", _}], _, _}
+             ] = result
+    end
+
+    test "skips when inside <option> (body content is the displayed label)" do
+      tokens = [
+        tag("option", [string_attr("value", "a")],
+          children: [body_expr("@label")]
+        )
+      ]
+
+      metadata = optimistic_metadata([:label])
+      result = transform(tokens, metadata)
+
+      refute has_display_span?(result, "label")
+    end
   end
 
   # ============================================

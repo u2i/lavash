@@ -114,10 +114,21 @@ defmodule Lavash.Template.TokenTransformer do
         [node]
 
       field_name ->
-        if parent_is_display_wrapper?(parent) do
-          [node]
-        else
-          [wrap_body_expr_in_display_span(field_name, expr, expr_meta)]
+        cond do
+          parent_is_display_wrapper?(parent) ->
+            [node]
+
+          # u2i/lavash#16 — Inside elements whose body text becomes their
+          # form value (`<textarea>`, `<option>`, etc.) the browser sees
+          # the literal `<span data-lavash-display="...">N</span>` as the
+          # submitted value. The `data-lavash-bind` attribute auto-injected
+          # on `<textarea>` already keeps the field in sync on the client,
+          # so the span is also redundant. Leave the body_expr alone.
+          parent_consumes_body_as_value?(parent) ->
+            [node]
+
+          true ->
+            [wrap_body_expr_in_display_span(field_name, expr, expr_meta)]
         end
     end
   end
@@ -159,6 +170,18 @@ defmodule Lavash.Template.TokenTransformer do
   end
 
   defp parent_is_display_wrapper?(_), do: false
+
+  # Tags whose body content is submitted as their value rather than rendered
+  # as inner HTML. Wrapping `{@field}` in a span here would inject literal
+  # HTML into the form payload. `<title>` is mostly defensive — bare
+  # `{@field}` there is rare but the span would still corrupt the page
+  # title text.
+  @body_as_value_tags ~w(textarea option title)
+
+  defp parent_consumes_body_as_value?({:tag, name, _attrs}) when name in @body_as_value_tags,
+    do: true
+
+  defp parent_consumes_body_as_value?(_), do: false
 
   defp wrap_body_expr_in_display_span(field_name, expr, expr_meta) do
     line = expr_meta[:line] || 1
