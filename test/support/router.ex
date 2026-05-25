@@ -63,6 +63,7 @@ defmodule Lavash.TestRouter do
     live("/render_slots", RenderSlotsLive)
     live("/on_mount", OnMountLive)
     live("/functional_components", FunctionalComponentsLive)
+    live("/live_component", LiveComponentLive)
   end
 
   scope "/parity/lavash", Lavash.Parity.Lavash do
@@ -76,6 +77,7 @@ defmodule Lavash.TestRouter do
     live("/render_slots", RenderSlotsLive)
     live("/on_mount", OnMountLive)
     live("/functional_components", FunctionalComponentsLive)
+    live("/live_component", LiveComponentLive)
   end
 
   # Shared login destination both parity sides redirect to when
