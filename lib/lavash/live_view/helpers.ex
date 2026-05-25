@@ -81,8 +81,18 @@ defmodule Lavash.LiveView.Helpers do
 
         true ->
           try do
-            fun = Lavash.Rx.Cache.compile_rx(module, ast)
-            Map.put(acc, name, fun.(acc))
+            # Prefer the compile-time-hoisted `__lavash_calc__/2` so local
+            # `def`/`defp` helpers inside the rx body resolve. Falls back
+            # to the AST cache for older modules (and the explicit
+            # `Reactive` builder, which doesn't hoist). See u2i/lavash#18.
+            value =
+              if function_exported?(module, :__lavash_calc__, 2) do
+                module.__lavash_calc__(name, acc)
+              else
+                Lavash.Rx.Cache.compile_rx(module, ast).(acc)
+              end
+
+            Map.put(acc, name, value)
           rescue
             _ -> acc
           end

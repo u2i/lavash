@@ -64,6 +64,7 @@ defmodule Lavash.LiveView.Transformers.CompileLiveView do
     lavash_introspection_ast = build_lavash_introspection_ast()
     cache_invalidation_ast = build_cache_invalidation_ast()
     run_refs_ast = build_run_refs_ast(dsl_state)
+    calc_refs_ast = build_calc_refs_ast(dsl_state)
 
     Transformer.eval(
       dsl_state,
@@ -76,8 +77,62 @@ defmodule Lavash.LiveView.Transformers.CompileLiveView do
         unquote(cache_invalidation_ast)
         unquote(colocated_ast)
         unquote(run_refs_ast)
+        unquote(calc_refs_ast)
       end
     )
+  end
+
+  # Emit one `__lavash_calc__/2` clause per `calculate :name, rx(...)` so the
+  # rx body executes in the user module's scope. Same shape and rationale as
+  # `__lavash_run__/3` above — both `def` and `defp` helpers resolve, and the
+  # compiler tracks references inside the body so they don't warn as unused.
+  # See u2i/lavash#18.
+  defp build_calc_refs_ast(dsl_state) do
+    calculations = Transformer.get_entities(dsl_state, [:calculations]) || []
+    module = Transformer.get_persisted(dsl_state, :module)
+
+    state_var = Macro.var(:state, nil)
+
+    clauses =
+      Enum.map(calculations, fn calc ->
+        name = calc.name
+        # The `rx()` macro pre-qualifies bare calls to `module.fun(...)` so
+        # they work under `Code.eval_quoted` (where local resolution fails).
+        # Inside the hoisted `__lavash_calc__/2` we're already in the user's
+        # module, so strip the self-qualifier — that lets `defp` helpers
+        # resolve (they're invisible to remote calls but visible to local).
+        ast = unqualify_self_calls(calc.rx.ast, module)
+
+        quote do
+          @doc false
+          def __lavash_calc__(unquote(name), unquote(state_var)) do
+            _ = unquote(state_var)
+            unquote(ast)
+          end
+        end
+      end)
+
+    if clauses == [] do
+      quote do
+      end
+    else
+      quote do
+        (unquote_splicing(clauses))
+      end
+    end
+  end
+
+  # `Mod.fun(args)` where Mod == self → `fun(args)`.
+  defp unqualify_self_calls(ast, self_module) do
+    Macro.prewalk(ast, fn
+      {{:., dot_meta, [^self_module, fun]}, call_meta, args}
+      when is_atom(fun) and is_list(args) ->
+        _ = dot_meta
+        {fun, call_meta, args}
+
+      node ->
+        node
+    end)
   end
 
   # Emit one `__lavash_run__/3` clause per (action, run-index) pair so the

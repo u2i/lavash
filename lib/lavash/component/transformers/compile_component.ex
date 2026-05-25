@@ -61,6 +61,7 @@ defmodule Lavash.Component.Transformers.CompileComponent do
 
     introspection_ast = build_lavash_introspection_ast()
     run_refs_ast = build_run_refs_ast(dsl_state)
+    calc_refs_ast = build_calc_refs_ast(dsl_state)
 
     Transformer.eval(
       dsl_state,
@@ -88,6 +89,7 @@ defmodule Lavash.Component.Transformers.CompileComponent do
         unquote(introspection_ast)
         unquote(colocated_ast)
         unquote(run_refs_ast)
+        unquote(calc_refs_ast)
       end
     )
   end
@@ -124,6 +126,49 @@ defmodule Lavash.Component.Transformers.CompileComponent do
         (unquote_splicing(clauses))
       end
     end
+  end
+
+  # See `Lavash.LiveView.Transformers.CompileLiveView.build_calc_refs_ast/1`
+  # for the rationale: emit a `__lavash_calc__/2` clause per `calculate`
+  # so the rx body executes in the user's module scope.
+  defp build_calc_refs_ast(dsl_state) do
+    calculations = Transformer.get_entities(dsl_state, [:calculations]) || []
+    module = Transformer.get_persisted(dsl_state, :module)
+    state_var = Macro.var(:state, nil)
+
+    clauses =
+      Enum.map(calculations, fn calc ->
+        name = calc.name
+        ast = unqualify_self_calls(calc.rx.ast, module)
+
+        quote do
+          @doc false
+          def __lavash_calc__(unquote(name), unquote(state_var)) do
+            _ = unquote(state_var)
+            unquote(ast)
+          end
+        end
+      end)
+
+    if clauses == [] do
+      quote do
+      end
+    else
+      quote do
+        (unquote_splicing(clauses))
+      end
+    end
+  end
+
+  defp unqualify_self_calls(ast, self_module) do
+    Macro.prewalk(ast, fn
+      {{:., _dot_meta, [^self_module, fun]}, call_meta, args}
+      when is_atom(fun) and is_list(args) ->
+        {fun, call_meta, args}
+
+      node ->
+        node
+    end)
   end
 
   defp build_lavash_introspection_ast do

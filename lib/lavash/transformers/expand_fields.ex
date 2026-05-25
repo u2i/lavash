@@ -683,7 +683,16 @@ defmodule Lavash.Transformers.ExpandFields do
       reads: spec.reads,
       optimistic: Map.get(spec, :optimistic, false),
       compute: fn deps_map ->
-        Lavash.Rx.Cache.compile_rx(module, rewritten_ast).(deps_map)
+        # If the user's module exposes `__lavash_calc__/2` for this calc
+        # (compile-time hoist of the rx body — see u2i/lavash#18), call
+        # that directly so local helpers + module scope resolve normally.
+        # Falls through to the AST cache path for older modules + for the
+        # explicit Reactive builder which doesn't go through the hoist.
+        if function_exported?(module, :__lavash_calc__, 2) do
+          module.__lavash_calc__(spec.name, deps_map)
+        else
+          Lavash.Rx.Cache.compile_rx(module, rewritten_ast).(deps_map)
+        end
       end
     }
   end
