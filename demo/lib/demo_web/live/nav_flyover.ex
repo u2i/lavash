@@ -31,8 +31,8 @@ defmodule DemoWeb.NavFlyover do
     width :sm
   end
 
-  render fn assigns ->
-    ~L"""
+  template do
+    ~H"""
     <div class="h-full flex flex-col">
       <div class="flex items-center justify-between p-4 border-b border-base-300">
         <h2 class="text-lg font-bold">Navigation</h2>
