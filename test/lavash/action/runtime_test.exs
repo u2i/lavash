@@ -182,6 +182,55 @@ defmodule Lavash.Action.RuntimeTest do
   # build_params/2
   # ============================================
 
+  describe "apply_runs/4" do
+    # Regression for u2i/lavash#12 — `run fn` bodies should see calculated
+    # fields, not just declared state. Building assigns from `LSocket.state`
+    # (which skips :derived_field_names) made `reads [:my_calc]` raise
+    # KeyError at runtime. Fix uses `LSocket.full_state` so calculations
+    # are visible alongside state.
+    test "assigns map passed to run fn includes derived (calculated) fields" do
+      socket =
+        socket_with_state(count: 5)
+        |> LSocket.put_derived(:doubled, 10)
+
+      run = %Lavash.Actions.Run{
+        fun:
+          quote do
+            fn assigns ->
+              # Body reads both a state field and a derived field, then
+              # writes the sum back. If derived isn't in assigns this
+              # raises KeyError on `assigns.doubled`.
+              assign(assigns, :sum, assigns.count + assigns.doubled)
+            end
+          end
+      }
+
+      result = Runtime.apply_runs(socket, [run], %{}, NoTypesModule)
+
+      assert LSocket.get_state(result, :sum) == 15
+    end
+
+    test "params are merged into the assigns map alongside state and derived" do
+      socket =
+        socket_with_state(base: 1)
+        |> LSocket.put_derived(:bonus, 100)
+
+      run = %Lavash.Actions.Run{
+        fun:
+          quote do
+            fn assigns ->
+              total = assigns.base + assigns.bonus + assigns.delta
+              assign(assigns, :total, total)
+            end
+          end
+      }
+
+      result = Runtime.apply_runs(socket, [run], %{delta: 5}, NoTypesModule)
+
+      assert LSocket.get_state(result, :total) == 106
+    end
+  end
+
   describe "build_params/2" do
     test "extracts named params from event payload" do
       result = Runtime.build_params([:item_id], %{"item_id" => "abc"})

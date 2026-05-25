@@ -80,7 +80,11 @@ defmodule Lavash.Action.Runtime do
   """
   def apply_runs(socket, runs, params, module) do
     Enum.reduce(runs || [], socket, fn run, sock ->
-      state = LSocket.state(sock)
+      # Include calculated/derived values alongside state so `run fn` bodies
+      # can read `@some_calc` references listed in `reads [...]`. Without
+      # this, a `reads [:some_calc]` where :some_calc is `calculate :foo,
+      # rx(...)` crashed at runtime with KeyError. See u2i/lavash#12.
+      state = LSocket.full_state(sock)
       assigns = Map.merge(state, params) |> Map.put(:__changed__, %{})
 
       fun = Lavash.Rx.Cache.compile_run_fun(module, run.fun)
