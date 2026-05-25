@@ -33,8 +33,8 @@ defmodule DemoWeb.CounterLive do
     end
   end
 
-  render fn assigns ->
-    ~L"""
+  template do
+    ~H"""
     <div id="counter" class="max-w-md mx-auto mt-10 p-6 bg-white rounded-lg shadow-lg">
       <h1 class="text-2xl font-bold text-center mb-6">Lavash Counter Demo</h1>
 
