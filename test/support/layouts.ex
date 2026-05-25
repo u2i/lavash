@@ -17,9 +17,18 @@ defmodule Lavash.TestLayouts do
           import { LiveSocket } from "/assets/phoenix_live_view/phoenix_live_view.esm.js";
           import { lavash, defaultConcerns, getHooks, getState } from "/assets/lavash/index.js";
 
-          // Lavash global namespace + global event listeners (the
-          // phx:_lavash_sync handler) are installed as side effects
-          // of importing from /assets/lavash/index.js.
+          // Per-module optimistic functions (transpiled rx() bodies +
+          // action delta computers) extracted by Phoenix.LiveView.ColocatedJS
+          // at compile time. The manifest exports them keyed by module
+          // name. We assign to window.Lavash.optimistic so the lavash JS
+          // pipeline's loadGeneratedFunctions can dispatch by name.
+          // Without this load, optimistic actions and calc recomputes
+          // never fire client-side — the e2e tests would still pass
+          // (server reconciliation lands eventually) but they wouldn't
+          // be verifying any optimistic behaviour.
+          import { optimistic as lavashOptimisticFns } from "/assets/phoenix-colocated/lavash/index.js";
+          window.Lavash = window.Lavash || {};
+          window.Lavash.optimistic = { ...(window.Lavash.optimistic || {}), ...lavashOptimisticFns };
 
           const meta = document.querySelector("meta[name=csrf-token]");
           const token = meta && meta.getAttribute("content");

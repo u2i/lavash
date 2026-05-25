@@ -37,6 +37,19 @@ defmodule Lavash.TestEndpoint do
     gzip: false
   )
 
+  # Per-test-module optimistic JS extracted by Phoenix.LiveView.ColocatedJS
+  # at compile time. The manifest at /assets/phoenix-colocated/lavash/index.js
+  # imports each module's optimistic_<hash>.js and re-exports them under a
+  # named `optimistic` export. Layouts load it and assign to
+  # window.Lavash.optimistic so the lavash JS pipeline can dispatch by
+  # module name. Without this, hooks have empty fns and the optimistic
+  # patch never runs — see #93/#94 for context.
+  plug(Plug.Static,
+    at: "/assets/phoenix-colocated/lavash",
+    from: Path.join([Mix.Project.build_path(), "phoenix-colocated", "lavash"]),
+    gzip: false
+  )
+
   plug(Plug.Session, @session_options)
 
   plug(Plug.Parsers,

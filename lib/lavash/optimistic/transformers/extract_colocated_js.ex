@@ -81,47 +81,56 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
     end
   end
 
-  # Write optimistic JS using Phoenix's colocated directory structure
+  # Write optimistic JS via Phoenix's colocated assets API.
+  #
+  # `Phoenix.LiveView.ColocatedAssets.extract/5` does TWO things:
+  #
+  #   1. Writes the file into the colocated target directory at the
+  #      module's subfolder (same place we used to write it manually).
+  #   2. Returns a `%Phoenix.LiveView.ColocatedAssets.Entry{}` struct
+  #      that Phoenix's compile pass uses to track which files belong
+  #      to which module. Files NOT registered through an Entry get
+  #      deleted by `ColocatedAssets.compile/0`'s `process_module/2`
+  #      cleanup — that's the bug we hit when writing manually with
+  #      `File.write!`: lavash's file was deleted on every compile.
+  #
+  # The persisted Entry flows into `__phoenix_macro_components__/0`
+  # (see CompileLiveView.build_colocated_ast/1) which is what
+  # Phoenix walks at compile-time to assemble its manifest.
   defp write_colocated_optimistic(env, module, js_code) do
-    target_dir = CompilerHelpers.get_target_dir()
-    module_dir = Path.join(target_dir, inspect(module))
-
-    # Generate filename with hash for cache busting (same pattern as CompilerHelpers)
+    # Generate filename with hash for cache busting.
     hash = :crypto.hash(:md5, js_code) |> Base.encode32(case: :lower, padding: false)
     filename = "optimistic_#{hash}.js"
-    full_path = Path.join(module_dir, filename)
 
-    # Ensure directory exists
-    File.mkdir_p!(module_dir)
+    # Clean up any stale optimistic_*.js files (other hashes) before
+    # writing the new one. Phoenix's process_module/2 would also clean
+    # them up, but doing it here keeps the directory predictable
+    # between compiles and avoids one unnecessary deletion on the
+    # first compile after a content change.
+    module_dir = Path.join(CompilerHelpers.get_target_dir(), inspect(module))
 
-    # Only write if content changed (avoids unnecessary esbuild rebuilds)
-    needs_write =
-      case File.read(full_path) do
-        {:ok, existing} -> existing != js_code
-        {:error, _} -> true
-      end
+    case File.ls(module_dir) do
+      {:ok, files} ->
+        for file <- files, String.starts_with?(file, "optimistic_"), file != filename do
+          File.rm(Path.join(module_dir, file))
+        end
 
-    if needs_write do
-      # Clean up old optimistic files in this module's directory
-      case File.ls(module_dir) do
-        {:ok, files} ->
-          for file <- files, String.starts_with?(file, "optimistic_"), file != filename do
-            File.rm(Path.join(module_dir, file))
-          end
-
-        _ ->
-          :ok
-      end
-
-      # Write the new JS file
-      File.write!(full_path, js_code)
+      _ ->
+        :ok
     end
 
-    # Return the data in the format Phoenix's ColocatedJS expects
-    # Use key: "optimistic" to group all optimistic JS under a separate export
-    # The name is the module name for lookup in the registry
-    module_name = inspect(env.module)
-    {filename, %{name: module_name, key: "optimistic"}}
+    # Phoenix's extract/5 writes the file (mkdir_p! + write!) and
+    # returns the %Entry{} we persist for the macro_components hook.
+    # Data shape (name + key) is what ColocatedJS.build_manifest uses
+    # to group exports — `key: "optimistic"` puts our fns under the
+    # `optimistic` named export of the manifest.
+    Phoenix.LiveView.ColocatedAssets.extract(
+      Phoenix.LiveView.ColocatedJS,
+      env.module,
+      filename,
+      js_code,
+      %{name: inspect(env.module), key: "optimistic"}
+    )
   end
 
   defp generate_js_from_dsl(dsl_state, module) do
