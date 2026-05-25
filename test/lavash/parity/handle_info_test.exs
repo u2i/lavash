@@ -2,10 +2,12 @@ defmodule Lavash.Parity.HandleInfoTest do
   @moduledoc """
   Parity suite: `handle_info/2` features.
 
-  Both sides write the same custom `handle_info/2` clauses today —
-  the DSL doesn't have a declarative surface for receive-side
-  message dispatch yet. A future `handle_info do on :foo do ...
-  end end` block would close the gap.
+  Vanilla side: hand-written `def handle_info/2` clauses.
+  Lavash side: `messages do message <pattern> do ... end end`
+  block — the declarative capability for receive-side dispatch.
+
+  Both sides cover the same scenarios: self-scheduled timer,
+  self-sent custom message, PubSub broadcast.
   """
   use Lavash.ConnCase, async: false
 

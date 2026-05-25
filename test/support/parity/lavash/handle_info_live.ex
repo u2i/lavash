@@ -3,15 +3,15 @@ defmodule Lavash.Parity.Lavash.HandleInfoLive do
   Lavash DSL expression of the handle_info parity suite — paired
   with `Lavash.Parity.Vanilla.HandleInfoLive`.
 
-  Uses the new `handle_info do on <pattern> do ... end end` block
-  (introduced on this branch) for receive-side message dispatch.
-  The body is plain Elixir; `assigns` is in scope; return the
-  updated assigns and the runtime takes care of the recompute +
-  project chain.
+  Uses the `messages do message <pattern> do ... end end` block
+  for receive-side message dispatch. The body is plain Elixir
+  with `socket` in scope (full Phoenix.LiveView API available);
+  return the updated socket and the runtime takes care of the
+  recompute + project chain.
 
-  The mount-level PubSub subscription still uses a custom
-  `mount/3` — subscribing isn't yet declarative (will likely
-  become a `connected do subscribe \"...\" end` block).
+  Subscribe at mount via a custom `mount/3` chained to
+  Runtime.mount — `connected do ... end` will eventually absorb
+  this.
   """
   use Lavash.LiveView
 
@@ -35,17 +35,17 @@ defmodule Lavash.Parity.Lavash.HandleInfoLive do
     end
   end
 
-  handle_info do
-    on :tick do
-      assign(assigns, :ticks, assigns.ticks + 1)
+  messages do
+    message :tick do
+      assign(socket, :ticks, socket.assigns.ticks + 1)
     end
 
-    on {:custom_msg, msg}, [:msg] do
-      assign(assigns, :last_msg, msg)
+    message {:custom_msg, msg}, [:msg] do
+      assign(socket, :last_msg, msg)
     end
 
-    on :pinged do
-      assign(assigns, :broadcasts, assigns.broadcasts + 1)
+    message :pinged do
+      assign(socket, :broadcasts, socket.assigns.broadcasts + 1)
     end
   end
 

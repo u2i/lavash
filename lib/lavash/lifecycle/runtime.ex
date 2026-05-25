@@ -1,12 +1,16 @@
 defmodule Lavash.Lifecycle.Runtime do
   @moduledoc """
-  Runtime support for `handle_info do on ... end end` (and, eventually,
-  `mount do`, `handle_params do`, `connected do` — all lifecycle DSL
-  blocks).
+  Runtime support for lifecycle DSL blocks (`messages do message ...
+  end end` today; mount/handle_params/connected blocks if/when they
+  land).
 
-  The compiled handle_info clause calls back here with the user's
-  body function. We do the put_state + recompute + project dance
-  that's been the rc.5 boilerplate footgun.
+  The compiled clause arrives here with the already-mutated socket
+  (the user's body returned it). We mark the dirty fields, recompute
+  the reactive graph, and project derived values into assigns.
+
+  The discipline matches what the action runtime does at the end of
+  every `handle_event` — putting all the post-handler bookkeeping
+  in one place so users don't have to remember it.
   """
 
   alias Lavash.Assigns
@@ -14,25 +18,33 @@ defmodule Lavash.Lifecycle.Runtime do
   alias Lavash.Socket, as: LSocket
 
   @doc """
-  Dispatch a `handle_info do on ... do <body> end end` clause.
+  Dispatch a `message` clause result.
 
-  The compiled clause arrives here with:
+  Takes the user's module (for projection) and the socket their
+  body returned. Walks `socket.assigns.__changed__` to find which
+  state fields were touched, marks them dirty in the LSocket state
+  registry so the reactive graph notices, then recomputes and
+  projects.
 
-    * `module` — the user's LiveView module (for projection)
-    * `socket` — the current socket
-    * `updated_assigns` — the result of evaluating the user's body
-      against `socket.assigns` (Phoenix.Component.assign-marked
-      changes already in `__changed__`)
-
-  We extract the changed keys, write each via `LSocket.put_state` so
-  the reactive graph notices, then recompute and project.
+  Returns the standard `{:noreply, socket}` tuple Phoenix expects.
   """
-  def dispatch(module, socket, updated_assigns) do
-    changed = Map.get(updated_assigns, :__changed__, %{})
+  def dispatch(module, socket) do
+    changed = Map.get(socket.assigns, :__changed__, %{})
+
+    # Re-mark dirty state fields so Lavash.Reactive picks them up
+    # for downstream calculation recompute. Touching `socket.assigns`
+    # directly via Phoenix.Component.assign already updated the
+    # assigns map, but the LSocket dirty-tracking lives separately
+    # and only `put_state` writes to it.
+    state_field_names = LSocket.get(socket, :state_field_names) || MapSet.new()
 
     socket =
       Enum.reduce(changed, socket, fn {field, _marker}, sock ->
-        LSocket.put_state(sock, field, Map.get(updated_assigns, field))
+        if MapSet.member?(state_field_names, field) do
+          LSocket.put_state(sock, field, sock.assigns[field])
+        else
+          sock
+        end
       end)
 
     socket =
