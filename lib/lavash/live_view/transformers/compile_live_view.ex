@@ -57,7 +57,7 @@ defmodule Lavash.LiveView.Transformers.CompileLiveView do
         """
     end
 
-    mount_ast = build_mount_ast(has_on_mount)
+    mount_ast = build_mount_ast(has_on_mount, dsl_state)
     render_ast = build_render_ast(render_template, has_render, env, dsl_state)
     colocated_ast = build_colocated_ast(dsl_state)
     callbacks_ast = build_callbacks_ast()
@@ -66,6 +66,7 @@ defmodule Lavash.LiveView.Transformers.CompileLiveView do
     run_refs_ast = build_run_refs_ast(dsl_state)
     calc_refs_ast = build_calc_refs_ast(dsl_state)
     handle_info_ast = build_messages_ast(dsl_state)
+    async_defs_ast = build_async_defs_ast(dsl_state)
 
     # `components do component ... end end` emits its function
     # defs directly at macro expansion time (see
@@ -84,6 +85,7 @@ defmodule Lavash.LiveView.Transformers.CompileLiveView do
         unquote(colocated_ast)
         unquote(run_refs_ast)
         unquote(calc_refs_ast)
+        unquote(async_defs_ast)
       end
     )
   end
@@ -188,6 +190,42 @@ defmodule Lavash.LiveView.Transformers.CompileLiveView do
 
       var!(socket) =
         Lavash.Action.Runtime.apply_sets(var!(socket), [set], %{}, __MODULE__)
+    end
+  end
+
+  # `fire :name` — trigger an `async :name do ... end` declaration.
+  # Sets the field to `AsyncResult.loading()` immediately and spawns
+  # a task whose completion routes back through the existing
+  # `{:lavash_reactive, field, result}` handle_info channel.
+  defp build_op_ast({:fire, name}) do
+    quote do
+      var!(socket) =
+        Lavash.Lifecycle.AsyncRuntime.fire(var!(socket), __MODULE__, unquote(name))
+    end
+  end
+
+  # `when_connected do <ops> end` — guard inner ops on
+  # `Phoenix.LiveView.connected?(socket)`. On the HTTP-only first
+  # mount the body is skipped entirely; on the websocket mount it
+  # runs as if inlined into the surrounding block. Inner ops are
+  # built recursively so `fire`, `set`, `run`, etc. all work.
+  #
+  # `var!(socket)` is rebound from the `if` expression's value, so
+  # mutations inside the branch (each inner op reassigns
+  # `var!(socket) = ...`) survive past the `if`. Without this, Elixir
+  # treats the branch's assignment as branch-local and the outer
+  # socket reference stays stale.
+  defp build_op_ast({:when_connected, inner_ops}) do
+    inner_statements = Enum.map(inner_ops, &build_op_ast/1)
+
+    quote do
+      var!(socket) =
+        if Phoenix.LiveView.connected?(var!(socket)) do
+          unquote_splicing(inner_statements)
+          var!(socket)
+        else
+          var!(socket)
+        end
     end
   end
 
@@ -387,9 +425,36 @@ defmodule Lavash.LiveView.Transformers.CompileLiveView do
   # Mount
   # ============================================
 
-  defp build_mount_ast(has_on_mount) do
+  defp build_mount_ast(has_on_mount, dsl_state) do
+    module = Transformer.get_persisted(dsl_state, :module)
+    mount_ops = Module.get_attribute(module, :__lavash_mount_ops__) || []
+    async_defs = Module.get_attribute(module, :__lavash_async_defs__) || []
+
+    async_field_names = Enum.map(async_defs, fn {:__async__, name, _} -> name end)
+    async_init_ast = build_async_init_ast(async_field_names)
+
+    mount_block_ast = build_mount_block_ast(mount_ops)
+
+    # `__lavash_mount_lifecycle__/1` is the generated post-Runtime.mount
+    # hook: it initialises async-declared fields to AsyncResult.loading()
+    # and runs the user's `mount do <ops> end` block. It's called from
+    # inside `Lavash.LiveView.Runtime.mount/4` so that a user-overridden
+    # `mount/3` (escape hatch for things like `temporary_assigns:`) still
+    # picks up the mount-block ops without having to call them explicitly.
+    lifecycle_def =
+      quote do
+        @doc false
+        def __lavash_mount_lifecycle__(socket) do
+          socket = unquote(async_init_ast).(socket)
+          {:ok, socket} = unquote(mount_block_ast).(socket)
+          socket
+        end
+      end
+
     if has_on_mount do
       quote do
+        unquote(lifecycle_def)
+
         @impl Phoenix.LiveView
         def mount(params, session, socket) do
           {:ok, socket} = Lavash.LiveView.Runtime.mount(__MODULE__, params, session, socket)
@@ -400,12 +465,153 @@ defmodule Lavash.LiveView.Transformers.CompileLiveView do
       end
     else
       quote do
+        unquote(lifecycle_def)
+
         @impl Phoenix.LiveView
         def mount(params, session, socket) do
           Lavash.LiveView.Runtime.mount(__MODULE__, params, session, socket)
         end
 
         defoverridable mount: 3
+      end
+    end
+  end
+
+  # Initialise each `async :foo` field on assigns to `AsyncResult.loading()`
+  # at mount, before mount-block ops run. Without this the field is
+  # unset on first render, and any `{@field}` access raises :badkey.
+  # Vanilla `assign_async` does the same — wraps the field in an
+  # AsyncResult.loading() up front, regardless of whether the task has
+  # been kicked off yet.
+  defp build_async_init_ast([]) do
+    quote do
+      fn socket -> socket end
+    end
+  end
+
+  defp build_async_init_ast(names) do
+    quote do
+      fn socket ->
+        Enum.reduce(unquote(names), socket, fn name, sock ->
+          Lavash.Socket.put_derived(sock, name, Phoenix.LiveView.AsyncResult.loading())
+        end)
+      end
+    end
+  end
+
+  # Walk op tree (including nested `when_connected` ops) and return
+  # all `:set`-targeted field names. Conservative — a `set` inside
+  # `when_connected` lands here even if the guard skips at runtime;
+  # `finalize` then no-ops on a non-dirty field, so this is safe.
+  defp collect_touched(ops) do
+    Enum.flat_map(ops, fn
+      {:set, field, _value} -> [field]
+      {:when_connected, inner_ops} -> collect_touched(inner_ops)
+      _ -> []
+    end)
+  end
+
+  # Wrap the mount-block op-sequence in a lambda taking socket and
+  # returning `{:ok, socket}`. If there's no `mount do ... end` block,
+  # the lambda is identity. Importing Phoenix.LiveView / Phoenix.Component
+  # scoped to the lambda body so `run fn socket ->` bodies can call
+  # subscribe, push_event, assign, etc. unqualified — same convention
+  # as message bodies.
+  defp build_mount_block_ast([]) do
+    quote do
+      fn socket -> {:ok, socket} end
+    end
+  end
+
+  defp build_mount_block_ast(ops) do
+    op_statements = Enum.map(ops, &build_op_ast/1)
+    touched = collect_touched(ops)
+
+    quote do
+      fn socket ->
+        import Phoenix.LiveView,
+          only: [
+            push_event: 3,
+            push_patch: 2,
+            push_navigate: 2,
+            redirect: 2,
+            assign_async: 3,
+            assign_async: 4,
+            start_async: 3,
+            start_async: 4,
+            connected?: 1
+          ]
+
+        import Phoenix.Component, only: [assign: 2, assign: 3, update: 3]
+
+        var!(socket) = socket
+
+        unquote_splicing(op_statements)
+
+        case Lavash.Lifecycle.Runtime.finalize(__MODULE__, var!(socket), unquote(touched)) do
+          {:noreply, socket} -> {:ok, socket}
+        end
+      end
+    end
+  end
+
+  # Emit one `__lavash_async_def__/1` clause per `async :name do ... end`
+  # declaration so the runtime can look up the run-fn by name when
+  # `fire :name` is invoked. Similar to `__lavash_run__/3` and
+  # `__lavash_calc__/2`: hoists user lambdas into the user's module
+  # so local references resolve.
+  #
+  # Also emits a `handle_async/3` clause per declared async so
+  # results from `Phoenix.LiveView.start_async/3` (used by `fire`)
+  # route to `Lavash.Lifecycle.AsyncRuntime.handle_lavash_async/4`.
+  # This is what makes lavash asyncs visible to Phoenix's task
+  # tracker — `render_async/2` in tests now sees the in-flight
+  # work and waits correctly.
+  defp build_async_defs_ast(dsl_state) do
+    module = Transformer.get_persisted(dsl_state, :module)
+    defs = Module.get_attribute(module, :__lavash_async_defs__) || []
+
+    if defs == [] do
+      quote do
+        @doc false
+        def __lavash_async_def__(_name), do: :error
+      end
+    else
+      def_clauses =
+        Enum.map(defs, fn {:__async__, name, run_fn_ast} ->
+          quote do
+            @doc false
+            def __lavash_async_def__(unquote(name)) do
+              {:ok, unquote(run_fn_ast)}
+            end
+          end
+        end)
+
+      handle_async_clauses =
+        Enum.map(defs, fn {:__async__, name, _run_fn_ast} ->
+          quote do
+            @impl Phoenix.LiveView
+            def handle_async(unquote(name), result, socket) do
+              socket =
+                Lavash.Lifecycle.AsyncRuntime.handle_lavash_async(
+                  socket,
+                  __MODULE__,
+                  unquote(name),
+                  result
+                )
+
+              {:noreply, socket}
+            end
+          end
+        end)
+
+      quote do
+        unquote_splicing(def_clauses)
+
+        @doc false
+        def __lavash_async_def__(_name), do: :error
+
+        unquote_splicing(handle_async_clauses)
       end
     end
   end

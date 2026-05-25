@@ -122,12 +122,14 @@ defmodule Lavash.Lifecycle.MessagesMacro do
   defp extract_op({:run, _meta, [fn_ast]}), do: {:run, fn_ast}
   defp extract_op({:effect, _meta, [fn_ast]}), do: {:effect, fn_ast}
   defp extract_op({:set, _meta, [field, value]}), do: {:set, field, value}
+  defp extract_op({:fire, _meta, [name]}), do: {:fire, name}
 
   defp extract_op(other) do
     raise CompileError,
       description:
         "Unsupported op inside `message do ... end`: #{Macro.to_string(other)}. " <>
           "Allowed ops are `run fn socket -> ... end`, " <>
-          "`effect fn socket -> ... end`, and `set :field, rx(...)`."
+          "`effect fn socket -> ... end`, `set :field, rx(...)`, " <>
+          "and `fire :name`."
   end
 end

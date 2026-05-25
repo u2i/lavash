@@ -520,6 +520,8 @@ defmodule Lavash.Dsl do
       Lavash.Sigil,
       Lavash.Template.RenderMacro,
       Lavash.Lifecycle.MessagesMacro,
+      Lavash.Lifecycle.AsyncMacro,
+      Lavash.Lifecycle.MountMacro,
       Lavash.Lifecycle.OnMountImport,
       Lavash.Components.ComponentsMacro
     ]

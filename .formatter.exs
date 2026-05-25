@@ -29,6 +29,7 @@ spark_locals_without_parens = [
   emit: 2,
   emit: 3,
   encode: 1,
+  fire: 1,
   flash: 2,
   flash: 3,
   form: 2,
@@ -40,7 +41,10 @@ spark_locals_without_parens = [
   invoke: 2,
   invoke: 3,
   max_width: 1,
+  message: 2,
+  message: 3,
   module: 1,
+  mount: 1,
   navigate: 1,
   navigate: 2,
   notify_on: 1,
@@ -74,7 +78,8 @@ spark_locals_without_parens = [
   update: 1,
   update: 2,
   update: 3,
-  when: 1
+  when: 1,
+  when_connected: 1
 ]
 
 [

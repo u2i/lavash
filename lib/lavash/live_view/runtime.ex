@@ -140,6 +140,17 @@ defmodule Lavash.LiveView.Runtime do
       |> State.hydrate_ephemeral(module)
       |> State.hydrate_forms(module)
 
+    # Run the user's `mount do ... end` lifecycle block (async-field
+    # init + op-sequence). Pulled in here rather than at the top-level
+    # generated mount/3 so a user-overridden mount (escape hatch for
+    # temporary_assigns: and similar) still benefits from the block.
+    socket =
+      if function_exported?(module, :__lavash_mount_lifecycle__, 1) do
+        module.__lavash_mount_lifecycle__(socket)
+      else
+        socket
+      end
+
     {:ok, socket}
   end
 

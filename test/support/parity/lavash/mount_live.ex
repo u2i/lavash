@@ -12,8 +12,7 @@ defmodule Lavash.Parity.Lavash.MountLive do
   * `:notifications` literal list default — `state :notifications`. ✓
   * `:greeting` derived from another field — `calculate :greeting`. ✓
   * `:connected_at` requires `connected?(socket)` branching at mount —
-    not yet expressible declaratively. Hydrated via the custom
-    `mount/3` escape hatch (defoverridable).
+    `mount do when_connected do ... end end`. ✓
   * `temporary_assigns` — no DSL surface; the custom mount returns
     `{:ok, socket, temporary_assigns: [...]}` directly.
   """
@@ -28,10 +27,18 @@ defmodule Lavash.Parity.Lavash.MountLive do
   # `to_string(not is_nil(@connected_at))` render.
   calculate :connected, rx(not is_nil(@connected_at))
 
-  # See moduledoc — these can't (yet) be declared as state with a
-  # `from:` shape, so they're stored as state with no `from:` and
-  # populated by the custom mount/3 below.
+  # Populated by the `mount do when_connected ... end` block below.
+  # No `from:` — `:connected_at` is a regular ephemeral state field
+  # whose value is set imperatively at mount time when the socket is
+  # actually connected (i.e. on the websocket-mount pass, not the
+  # initial HTTP render).
   state :connected_at, :integer, default: nil
+
+  mount do
+    when_connected do
+      set :connected_at, System.system_time(:second)
+    end
+  end
 
   actions do
     action :inc do
@@ -65,20 +72,12 @@ defmodule Lavash.Parity.Lavash.MountLive do
     """
   end
 
-  # Escape hatch: still needed for `connected?(socket)` branching and
-  # for the `temporary_assigns:` return-tuple. `:handle` no longer
-  # needs the escape hatch — `from: :session` covers it.
+  # Escape hatch: still needed for the `temporary_assigns:` return-tuple.
+  # `:connected_at` is now handled by `mount do when_connected ... end`
+  # above; `:handle` by `from: :session`.
   @impl Phoenix.LiveView
   def mount(params, session, socket) do
     {:ok, socket} = Lavash.LiveView.Runtime.mount(__MODULE__, params, session, socket)
-
-    connected_at =
-      if Phoenix.LiveView.connected?(socket),
-        do: System.system_time(:second),
-        else: nil
-
-    socket = Lavash.Socket.put_state(socket, :connected_at, connected_at)
-
     {:ok, socket, temporary_assigns: [notifications: []]}
   end
 end
