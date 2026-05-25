@@ -47,6 +47,7 @@ defmodule Lavash.SparkHeex.Dsl do
       Lavash.SparkHeex.Transformers.IngestTemplate,
       Lavash.SparkHeex.Transformers.ValidateTemplate,
       Lavash.SparkHeex.Transformers.ValidateEvents,
+      Lavash.SparkHeex.Transformers.ValidateActionParams,
       Lavash.SparkHeex.Transformers.CompileTemplate
     ],
     imports: [Lavash.SparkHeex.TemplateMacro]

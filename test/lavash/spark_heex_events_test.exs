@@ -19,7 +19,7 @@ defmodule Lavash.SparkHeexEventsTest do
     template do
       ~H"""
       <button phx-click="inc">+1</button>
-      <form phx-submit="set_count">
+      <form phx-submit="set_count" phx-value-value="42">
         <input name="value" />
       </form>
       <span>{@count}</span>
