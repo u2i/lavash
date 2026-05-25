@@ -80,8 +80,8 @@ defmodule DemoWeb.FormValidationDemoLive do
   # - data-lavash-valid="form_field_valid"
   #
   # Override any of these by specifying them explicitly after the shorthand.
-  render fn assigns ->
-    ~L"""
+  template do
+    ~H"""
     <div id="form-validation-demo" class="max-w-lg mx-auto mt-10 p-6 bg-white rounded-lg shadow-lg">
       <h1 class="text-2xl font-bold text-center mb-2">Ash Form Validation</h1>
       <p class="text-gray-500 text-center mb-6 text-sm">
