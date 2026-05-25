@@ -30,4 +30,11 @@ step "mix credo --strict"
 step "mix test"
 "${MIX[@]}" test
 
+# `mix docs` exits 0 even with broken `Module.fun/n` references in
+# moduledocs / CHANGELOG, so a published doc set can ship with stale
+# links pointing at since-removed functions. `--warnings-as-errors`
+# turns those into a non-zero exit and surfaces the offending file.
+step "mix docs --warnings-as-errors"
+"${MIX[@]}" docs --warnings-as-errors
+
 printf '\n✓ pre-commit checks passed\n'
