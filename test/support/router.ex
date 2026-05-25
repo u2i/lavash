@@ -60,6 +60,7 @@ defmodule Lavash.TestRouter do
     live("/mount", MountLive)
     live("/handle_params", HandleParamsLive)
     live("/handle_info", HandleInfoLive)
+    live("/render_slots", RenderSlotsLive)
   end
 
   scope "/parity/lavash", Lavash.Parity.Lavash do
@@ -70,5 +71,6 @@ defmodule Lavash.TestRouter do
     live("/mount", MountLive)
     live("/handle_params", HandleParamsLive)
     live("/handle_info", HandleInfoLive)
+    live("/render_slots", RenderSlotsLive)
   end
 end
