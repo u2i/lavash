@@ -41,8 +41,8 @@ defmodule DemoWeb.ProductEditLive do
     end
   end
 
-  render fn assigns ->
-    ~L"""
+  template do
+    ~H"""
     <div class="max-w-2xl mx-auto p-6">
       <div class="flex items-center justify-between mb-6">
         <div>
