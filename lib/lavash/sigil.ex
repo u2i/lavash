@@ -24,16 +24,14 @@ defmodule Lavash.Sigil do
     caller = __CALLER__
 
     # Compile as standard HEEx — the transformer pipeline handles
-    # Lavash-specific processing via pre-tokenized tokens.
-    opts = [
-      engine: Phoenix.LiveView.TagEngine,
+    # Lavash-specific processing via pre-tokenized tokens. LV 1.2 split
+    # the TagEngine into a behaviour + Parser/Compiler — no more
+    # `EEx.compile_string(template, engine: TagEngine)` route.
+    Phoenix.LiveView.TagEngine.compile(template,
       file: caller.file,
       line: caller.line + 1,
       caller: caller,
-      source: template,
       tag_handler: Phoenix.LiveView.HTMLEngine
-    ]
-
-    EEx.compile_string(template, opts)
+    )
   end
 end

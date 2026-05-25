@@ -34,6 +34,10 @@ defmodule Lavash.TagEngine do
     opts =
       opts
       |> Keyword.put_new(:tag_handler, Phoenix.LiveView.HTMLEngine)
+      # Upstream `TagEngine.compile/2` passes this internally — Compiler can't
+      # handle `{:eex_comment, _}` nodes (only filters them in `all_spaces?`),
+      # so we must strip them at parse time.
+      |> Keyword.put_new(:strip_eex_comments, true)
 
     case Parser.parse(source, opts) do
       {:ok, %Parser{} = parsed} ->
@@ -80,7 +84,19 @@ defmodule Lavash.TagEngine do
       |> Keyword.drop([:token_transformer, :lavash_metadata])
       |> Keyword.put_new(:tag_handler, Phoenix.LiveView.HTMLEngine)
       |> Keyword.put_new(:source, "")
+      |> Keyword.update(:caller, nil, &ensure_function_in_env/1)
 
     Compiler.compile(parsed, compile_opts)
   end
+
+  # LV 1.2's HTMLEngine.annotate_body/1 destructures `caller.function` as
+  # `{fun, _}`. Lavash compiles templates from inside Spark transformers
+  # (i.e. module-define time), where `function` is nil. Plant a synthetic
+  # `{:render, 1}` so debug_heex_annotations doesn't crash. The annotation
+  # comment that lands in the output reads `<!-- <Mod.render> file:line -->`,
+  # which is exactly what a real render fn would emit.
+  defp ensure_function_in_env(%Macro.Env{function: nil} = env),
+    do: %{env | function: {:render, 1}}
+
+  defp ensure_function_in_env(env), do: env
 end
