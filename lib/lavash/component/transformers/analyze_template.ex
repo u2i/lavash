@@ -41,11 +41,89 @@ defmodule Lavash.Component.Transformers.AnalyzeTemplate do
       {dsl_state, parsed} =
         extract_and_inject_subtree_derives(dsl_state, parsed, all_optimistic_names)
 
+      # Collect phx-event attribute references so ValidateDsl can cross-check
+      # them against declared actions. `parsed.nodes` unwraps the Parser
+      # struct that holds the tree.
+      phx_events = collect_phx_events(parsed.nodes)
+      dsl_state = Transformer.persist(dsl_state, :lavash_template_phx_events, phx_events)
+
       # Persist updated parser tree
       dsl_state = Transformer.persist(dsl_state, :lavash_template_tokens, parsed)
 
       {:ok, dsl_state}
     end
+  end
+
+  # ============================================
+  # phx-event extraction (for ValidateDsl)
+  # ============================================
+
+  # The Phoenix event attributes that, when given a string value, refer to a
+  # `handle_event/3` handler — i.e. a lavash `action :name do ... end`.
+  # Dynamic values (`phx-click={JS.dispatch(...)}` or `phx-click={@var}`)
+  # are skipped: we can't know statically whether they resolve to a server
+  # event name or a JS command.
+  @phx_event_attrs ~w(phx-click phx-change phx-submit phx-blur phx-focus
+                      phx-keydown phx-keyup phx-window-keydown phx-window-keyup)
+
+  defp collect_phx_events(nodes) do
+    nodes
+    |> walk_for_phx_events([])
+    |> Enum.uniq()
+  end
+
+  defp walk_for_phx_events(nodes, acc) when is_list(nodes) do
+    Enum.reduce(nodes, acc, &walk_node_for_phx_events/2)
+  end
+
+  # Plain tag: extract attrs, then recurse into children.
+  defp walk_node_for_phx_events(
+         {:block, :tag, _name, attrs, children, _open_meta, _close_meta},
+         acc
+       ) do
+    acc = extract_attrs(attrs, acc)
+    walk_for_phx_events(children, acc)
+  end
+
+  defp walk_node_for_phx_events({:self_close, :tag, _name, attrs, _meta}, acc) do
+    extract_attrs(attrs, acc)
+  end
+
+  # Component nodes: don't extract from the component's own attrs (they
+  # bind to props, not host event handlers), BUT do recurse into children
+  # because slots can contain host-owned tags with phx-click attached.
+  defp walk_node_for_phx_events(
+         {:block, comp_type, _name, _attrs, children, _open_meta, _close_meta},
+         acc
+       )
+       when comp_type in [:local_component, :remote_component, :slot] do
+    walk_for_phx_events(children, acc)
+  end
+
+  defp walk_node_for_phx_events({:self_close, _comp_type, _name, _attrs, _meta}, acc) do
+    acc
+  end
+
+  # EEx block: recurse into each clause's children. Catches actions wired
+  # inside `<%= if ... do %>...<% end %>`.
+  defp walk_node_for_phx_events({:eex_block, _code, clauses, _meta}, acc) do
+    Enum.reduce(clauses, acc, fn {children, _end_code, _meta}, acc ->
+      walk_for_phx_events(children, acc)
+    end)
+  end
+
+  defp walk_node_for_phx_events(_other, acc), do: acc
+
+  defp extract_attrs(attrs, acc) do
+    Enum.reduce(attrs, acc, fn
+      {name, {:string, value, value_meta}, _attr_meta}, acc when name in @phx_event_attrs ->
+        [{value, value_meta} | acc]
+
+      # Dynamic expression — skip. Could be JS.dispatch(...) or @var or
+      # any runtime construct we can't statically resolve.
+      _, acc ->
+        acc
+    end)
   end
 
   # ============================================
