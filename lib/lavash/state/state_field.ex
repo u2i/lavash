@@ -38,6 +38,7 @@ defmodule Lavash.State.Field do
     :animated,
     :url_name,
     :session_key,
+    :assigns_key,
     __spark_metadata__: nil
   ]
 

@@ -60,6 +60,41 @@ defmodule Lavash.State do
   defp session_key(%{session_key: name}) when is_binary(name), do: name
   defp session_key(field), do: to_string(field.name)
 
+  @doc """
+  Hydrates fields declared `from: :assigns` by reading the named key
+  out of `socket.assigns` at mount time.
+
+  Runs AFTER any Phoenix `on_mount` hooks have completed (because
+  hydrate_assigns is called inside `Lavash.LiveView.Runtime.mount/4`,
+  which the runtime invokes from inside the LiveView's mount/3, by
+  which point on_mount has run). So an assign that an on_mount
+  installed — e.g. `:current_user` from `AshAuthentication.LiveView` —
+  is present when this lifts it into lavash state.
+
+  One-way read. If the field is later mutated via lavash actions, the
+  change does NOT propagate back to socket.assigns. The socket assign
+  is the source of truth at mount; lavash state is the source of
+  truth thereafter.
+
+  Resolution: `field.assigns_key` if set, otherwise `field.name`.
+  Missing assigns fall back to `field.default`.
+  """
+  def hydrate_assigns(socket, module) do
+    assigns_fields = module.__lavash__(:assigns_fields)
+
+    Enum.reduce(assigns_fields, socket, fn field, sock ->
+      key = field.assigns_key || field.name
+
+      value =
+        case Map.fetch(sock.assigns, key) do
+          {:ok, v} -> v
+          :error -> field.default
+        end
+
+      LSocket.put_state(sock, field.name, value)
+    end)
+  end
+
   def hydrate_ephemeral(socket, module) do
     ephemeral_fields = module.__lavash__(:ephemeral_fields)
     current_state = LSocket.state(socket)

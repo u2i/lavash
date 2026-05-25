@@ -34,6 +34,7 @@ defmodule Lavash.TestRouter do
     live("/custom-mount", CustomMountLive)
     live("/url-name", UrlNameLive)
     live("/url-mismatch", UrlMismatchLive)
+    live("/assigns", AssignsLive)
   end
 
   # Parallel "explicit" path: plain Phoenix.LiveView, no Lavash DSL.

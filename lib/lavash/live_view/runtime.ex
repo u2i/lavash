@@ -137,6 +137,7 @@ defmodule Lavash.LiveView.Runtime do
       |> Phoenix.Component.assign(:__lavash_component_states__, component_states)
       |> State.hydrate_socket(module, connect_params)
       |> State.hydrate_session(module, session || %{})
+      |> State.hydrate_assigns(module)
       |> State.hydrate_ephemeral(module)
       |> State.hydrate_forms(module)
 

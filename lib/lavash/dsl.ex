@@ -71,10 +71,10 @@ defmodule Lavash.Dsl do
   @state_schema CommonEntities.base_state_schema() ++
                   [
                     from: [
-                      type: {:in, [:url, :socket, :session, :ephemeral]},
+                      type: {:in, [:url, :socket, :session, :ephemeral, :assigns]},
                       default: :ephemeral,
                       doc:
-                        "Storage location: :url (synced with URL), :socket (survives reconnects), :session (hydrated once from the Plug session at mount), :ephemeral (default)"
+                        "Storage location: :url (synced with URL), :socket (survives reconnects), :session (hydrated once from the Plug session at mount), :assigns (hydrated once from socket.assigns at mount — for values an on_mount put there, e.g. @current_user), :ephemeral (default)"
                     ],
                     required: [
                       type: :boolean,
@@ -119,6 +119,22 @@ defmodule Lavash.Dsl do
                       Session fields are read once at mount and then behave
                       like ephemeral state for the rest of the LiveView's
                       life — the Plug session isn't reread.
+                      """
+                    ],
+                    assigns_key: [
+                      type: :atom,
+                      doc: """
+                      Source assign key for `from: :assigns` fields.
+
+                      Defaults to the field name. Set this when the assigns
+                      key on the socket differs from the lavash field name —
+                      e.g. `state :user, :map, from: :assigns, assigns_key: :current_user`
+                      hydrates from `socket.assigns.current_user`.
+
+                      `from: :assigns` reads the named socket assign at mount
+                      time (after any `on_mount` hooks have run, so the assigns
+                      are present). One-way read: the field is not synced back
+                      to socket.assigns if it mutates.
                       """
                     ]
                   ]
