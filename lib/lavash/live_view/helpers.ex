@@ -30,9 +30,6 @@ defmodule Lavash.LiveView.Helpers do
     # Get optimistic state fields
     state_fields = module.__lavash__(:optimistic_fields)
 
-    # Get optimistic derives
-    derives = module.__lavash__(:optimistic_derives)
-
     # Get calculations from the calculate macro
     calculations = get_calculations(module)
 
@@ -58,26 +55,6 @@ defmodule Lavash.LiveView.Helpers do
         |> Map.put(params_field, Map.get(assigns, params_field, %{}))
         |> Map.put(server_errors_field, Map.get(assigns, server_errors_field, %{}))
         |> Map.put(action_field, Map.get(assigns, action_field))
-      end)
-
-    # Add derives, unwrapping async values
-    state_map =
-      Enum.reduce(derives, state_map, fn derive, acc ->
-        value = Map.get(assigns, derive.name)
-
-        # Unwrap async values - handle both AsyncResult structs and plain tuples
-        value =
-          case value do
-            %Phoenix.LiveView.AsyncResult{ok?: true, result: v} -> v
-            %Phoenix.LiveView.AsyncResult{loading: loading} when loading != nil -> nil
-            %Phoenix.LiveView.AsyncResult{} -> nil
-            {:ok, v} -> v
-            :loading -> nil
-            {:error, _} -> nil
-            v -> v
-          end
-
-        Map.put(acc, derive.name, value)
       end)
 
     # Form validation fields (_valid, _errors, _show_errors) are intentionally

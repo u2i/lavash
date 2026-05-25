@@ -91,9 +91,8 @@ defmodule Lavash.Template.TokenTransformer do
   # - Attribute values: value={@count} — handled by other patterns
   defp maybe_inject_display_attrs(tokens, metadata) do
     optimistic_fields = metadata[:optimistic_fields] || %{}
-    optimistic_derives = metadata[:optimistic_derives] || %{}
     calculations = metadata[:calculations] || %{}
-    all_optimistic = Map.merge(optimistic_fields, Map.merge(optimistic_derives, calculations))
+    all_optimistic = Map.merge(optimistic_fields, calculations)
 
     # Always walk for diagnostics, even when there's nothing to wrap — a
     # declared-but-non-optimistic bare-ref is still worth warning about.
@@ -775,9 +774,6 @@ defmodule Lavash.Template.TokenTransformer do
       is_map_key(metadata[:optimistic_fields] || %{}, field_atom) ->
         field = metadata[:optimistic_fields][field_atom]
         field.type == :boolean
-
-      is_map_key(metadata[:optimistic_derives] || %{}, field_atom) ->
-        true
 
       is_map_key(metadata[:calculations] || %{}, field_atom) ->
         true

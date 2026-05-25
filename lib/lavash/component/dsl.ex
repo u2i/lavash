@@ -201,29 +201,6 @@ defmodule Lavash.Component.Dsl do
   }
 
   # ============================================
-  # Derive - computed values
-  # ============================================
-
-  @argument_entity CommonEntities.derive_argument_entity()
-
-  @derive_entity %Spark.Dsl.Entity{
-    name: :derive,
-    target: Lavash.Derived.Field,
-    args: [:name],
-    entities: [
-      arguments: [@argument_entity]
-    ],
-    schema: CommonEntities.base_derive_schema()
-  }
-
-  @derives_section %Spark.Dsl.Section{
-    name: :derives,
-    top_level?: true,
-    describe: "Derived values computed from props and internal state.",
-    entities: [@derive_entity]
-  }
-
-  # ============================================
   # Actions - state transformers
   # ============================================
 
@@ -300,7 +277,6 @@ defmodule Lavash.Component.Dsl do
       @states_section,
       @reads_section,
       @forms_section,
-      @derives_section,
       @calculations_section,
       @actions_section
     ],

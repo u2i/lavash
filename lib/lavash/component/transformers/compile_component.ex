@@ -132,11 +132,6 @@ defmodule Lavash.Component.Transformers.CompileComponent do
         Spark.Dsl.Extension.get_entities(__MODULE__, [:actions]) || []
       end
 
-      # All `derive ... end` entities, including non-optimistic ones.
-      def __lavash__(:derives) do
-        Spark.Dsl.Extension.get_entities(__MODULE__, [:derives]) || []
-      end
-
       def __lavash__(:socket_fields) do
         __lavash__(:states) |> Enum.filter(&(&1.from == :socket))
       end
@@ -287,7 +282,7 @@ defmodule Lavash.Component.Transformers.CompileComponent do
       end)
       |> Map.new()
 
-    form_derives =
+    form_valid_fields =
       forms
       |> Enum.flat_map(fn form -> [{:"#{form.name}_valid", %{optimistic: true}}] end)
       |> Map.new()
@@ -297,6 +292,7 @@ defmodule Lavash.Component.Transformers.CompileComponent do
       |> Enum.filter(&Map.get(&1, :optimistic, true))
       |> Enum.map(fn calc -> {calc.name, %{optimistic: true}} end)
       |> Map.new()
+      |> Map.merge(form_valid_fields)
 
     attr_derives = Transformer.get_persisted(dsl_state, :lavash_attr_derives) || []
 
@@ -304,7 +300,6 @@ defmodule Lavash.Component.Transformers.CompileComponent do
       context: context,
       optimistic_fields: optimistic_fields,
       all_state_fields: all_state_fields,
-      optimistic_derives: form_derives,
       calculations: calc_map,
       forms: forms_map,
       actions: actions_map,

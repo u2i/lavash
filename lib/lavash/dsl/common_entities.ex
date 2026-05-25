@@ -83,33 +83,6 @@ defmodule Lavash.Dsl.CommonEntities do
     }
   end
 
-  @doc """
-  Argument entity for derive blocks.
-  """
-  def derive_argument_entity do
-    %Spark.Dsl.Entity{
-      name: :argument,
-      target: Lavash.Argument,
-      args: [:name, {:optional, :source}],
-      schema: [
-        name: [
-          type: :atom,
-          required: true,
-          doc: "The name of the argument (key in the deps map passed to run)"
-        ],
-        source: [
-          type: :any,
-          doc:
-            "The source: state(:field), prop(:field), or result(:derive_name). Defaults to state(name) if omitted."
-        ],
-        transform: [
-          type: {:fun, 1},
-          doc: "Optional transform function applied to the value before passing to run"
-        ]
-      ]
-    }
-  end
-
   # ============================================
   # Action Sub-Entities (shared between LiveView and Component)
   # ============================================
@@ -389,32 +362,6 @@ defmodule Lavash.Dsl.CommonEntities do
 
         Example: skip_constraints [:session_id]
         """
-      ]
-    ]
-  end
-
-  # ============================================
-  # Base Derive Schema
-  # ============================================
-
-  @doc """
-  Base schema for derive entities.
-  """
-  def base_derive_schema do
-    [
-      name: [
-        type: :atom,
-        required: true,
-        doc: "The name of the derived field"
-      ],
-      async: [
-        type: :boolean,
-        default: false,
-        doc: "Whether this computation is async (returns loading/ok/error states)"
-      ],
-      run: [
-        type: {:fun, 2},
-        doc: "Function that computes the value: fn %{arg1: val1, ...}, context -> result end"
       ]
     ]
   end

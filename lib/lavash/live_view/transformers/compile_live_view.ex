@@ -140,12 +140,6 @@ defmodule Lavash.LiveView.Transformers.CompileLiveView do
         Spark.Dsl.Extension.get_entities(__MODULE__, [:actions]) || []
       end
 
-      # All `derive ... end` entities, including non-optimistic ones.
-      # __lavash__(:optimistic_derives) is the filtered subset.
-      def __lavash__(:derives) do
-        Spark.Dsl.Extension.get_entities(__MODULE__, [:derives]) || []
-      end
-
       def __lavash__(:url_fields) do
         __lavash__(:states) |> Enum.filter(&(&1.from == :url))
       end
@@ -160,11 +154,6 @@ defmodule Lavash.LiveView.Transformers.CompileLiveView do
 
       def __lavash__(:optimistic_fields) do
         Lavash.LiveView.Compiler.collect_optimistic_fields(__MODULE__)
-      end
-
-      def __lavash__(:optimistic_derives) do
-        Spark.Dsl.Extension.get_entities(__MODULE__, [:derives])
-        |> Enum.filter(&(Map.get(&1, :optimistic, false) == true))
       end
 
       def __lavash_calculations__ do

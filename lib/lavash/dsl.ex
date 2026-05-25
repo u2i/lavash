@@ -321,49 +321,6 @@ defmodule Lavash.Dsl do
   }
 
   # ============================================
-  # Derive - computed values (block form, server-only)
-  # ============================================
-
-  @argument_entity CommonEntities.derive_argument_entity()
-
-  # LiveView derive extends base schema with reads and optimistic options
-  @derive_schema CommonEntities.base_derive_schema() ++
-                   [
-                     reads: [
-                       type: {:list, :atom},
-                       default: [],
-                       doc:
-                         "Ash resources this derive reads from. Used for automatic invalidation when these resources are mutated."
-                     ],
-                     optimistic: [
-                       type: :boolean,
-                       default: false,
-                       doc: """
-                       Include this derive in optimistic state for client-side computation.
-                       When true, this field will be included in the optimistic state passed to the
-                       client hook, allowing client-side JavaScript to recompute the value immediately.
-                       """
-                     ]
-                   ]
-
-  @derive_entity %Spark.Dsl.Entity{
-    name: :derive,
-    target: Lavash.Derived.Field,
-    args: [:name],
-    entities: [
-      arguments: [@argument_entity]
-    ],
-    schema: @derive_schema
-  }
-
-  @derives_section %Spark.Dsl.Section{
-    name: :derives,
-    top_level?: true,
-    describe: "Derived values computed from state or other derivations.",
-    entities: [@derive_entity]
-  }
-
-  # ============================================
   # Actions - state transformers
   # ============================================
 
@@ -471,7 +428,6 @@ defmodule Lavash.Dsl do
       @forms_section,
       @extend_errors_section,
       @calculations_section,
-      @derives_section,
       @actions_section
     ],
     transformers: [

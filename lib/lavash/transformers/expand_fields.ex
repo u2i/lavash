@@ -27,62 +27,14 @@ defmodule Lavash.Transformers.ExpandFields do
   def transform(dsl_state) do
     module = Transformer.get_persisted(dsl_state, :module)
 
-    derive_specs = extract_derive_specs(dsl_state)
     read_specs = extract_read_specs(dsl_state)
     form_specs = extract_form_specs(dsl_state)
     calc_specs = extract_calc_specs(dsl_state, module)
-    specs = derive_specs ++ read_specs ++ form_specs ++ calc_specs
+    specs = read_specs ++ form_specs ++ calc_specs
     dsl_state = Transformer.persist(dsl_state, :lavash_field_specs, specs)
 
     {:ok, dsl_state}
   end
-
-  # --- Explicit derive spec extraction ---
-
-  defp extract_derive_specs(dsl_state) do
-    derives = Transformer.get_entities(dsl_state, [:derives]) || []
-
-    Enum.map(derives, fn derive ->
-      # Extract depends_on from arguments (same logic as normalize_derived in compiler)
-      depends_on =
-        (derive.arguments || [])
-        |> Enum.map(fn arg ->
-          extract_source_field(arg.source, arg.name)
-        end)
-
-      # Build arg name mapping: {arg_name, source_field, has_transform}
-      arg_mapping =
-        (derive.arguments || [])
-        |> Enum.map(fn arg ->
-          source_field = extract_source_field(arg.source, arg.name)
-          {arg.name, source_field, not is_nil(arg.transform)}
-        end)
-
-      %{
-        type: :derive,
-        name: derive.name,
-        depends_on: depends_on,
-        async: derive.async || false,
-        reads: derive.reads || [],
-        optimistic: Map.get(derive, :optimistic, false),
-        has_run: not is_nil(derive.run),
-        has_compute: not is_nil(derive.compute),
-        arg_mapping: arg_mapping
-      }
-    end)
-  end
-
-  defp extract_source_field(source, arg_name) do
-    case source do
-      {:state, name} -> name
-      {:result, name} -> name
-      {:prop, name} -> name
-      name when is_atom(name) and not is_nil(name) -> name
-      nil -> arg_name
-    end
-  end
-
-  # --- Multi-select chip spec extraction ---
 
   # --- Read spec extraction ---
 
@@ -426,47 +378,6 @@ defmodule Lavash.Transformers.ExpandFields do
   def build_fields(module) do
     specs = Spark.Dsl.Extension.get_persisted(module, :lavash_field_specs) || []
     Enum.map(specs, &spec_to_field(&1, module))
-  end
-
-  defp spec_to_field(%{type: :derive} = spec, module) do
-    # Look up the original entity to get run/compute fns and argument transforms
-    derive = Enum.find(module.__lavash__(:derives), &(&1.name == spec.name))
-
-    compute =
-      if spec.has_run do
-        # Rebuild arg_mapping with actual transform fns from entity
-        arg_transforms =
-          (derive.arguments || [])
-          |> Map.new(&{&1.name, &1.transform})
-
-        arg_mapping =
-          Enum.map(spec.arg_mapping, fn {arg_name, source_field, has_transform} ->
-            transform = if has_transform, do: arg_transforms[arg_name]
-            {arg_name, source_field, transform}
-          end)
-
-        fn deps ->
-          mapped_deps =
-            Enum.reduce(arg_mapping, %{}, fn {arg_name, source_field, transform}, acc ->
-              value = Map.get(deps, source_field)
-              value = if transform, do: transform.(value), else: value
-              Map.put(acc, arg_name, value)
-            end)
-
-          derive.run.(mapped_deps, %{})
-        end
-      else
-        derive.compute
-      end
-
-    %Lavash.Derived.Field{
-      name: spec.name,
-      depends_on: spec.depends_on,
-      async: spec.async,
-      reads: spec.reads,
-      optimistic: spec.optimistic,
-      compute: compute
-    }
   end
 
   defp spec_to_field(%{type: :read_by_id} = spec, _module) do

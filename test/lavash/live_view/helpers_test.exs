@@ -24,20 +24,8 @@ defmodule Lavash.LiveView.HelpersTest do
       ]
     end
 
-    def __lavash__(:optimistic_derives), do: []
     def __lavash__(:forms), do: []
 
-    def __lavash_calculations__, do: []
-  end
-
-  defmodule MockWithDerives do
-    def __lavash__(:optimistic_fields), do: []
-
-    def __lavash__(:optimistic_derives) do
-      [%{name: :doubled, optimistic: true}]
-    end
-
-    def __lavash__(:forms), do: []
     def __lavash_calculations__, do: []
   end
 
@@ -54,7 +42,6 @@ defmodule Lavash.LiveView.HelpersTest do
       ]
     end
 
-    def __lavash__(:optimistic_derives), do: []
     def __lavash__(:forms), do: []
 
     def __lavash_calculations__ do
@@ -78,7 +65,6 @@ defmodule Lavash.LiveView.HelpersTest do
       ]
     end
 
-    def __lavash__(:optimistic_derives), do: []
     def __lavash__(:forms), do: []
 
     def __lavash_calculations__ do
@@ -88,7 +74,6 @@ defmodule Lavash.LiveView.HelpersTest do
 
   defmodule MockEmpty do
     def __lavash__(:optimistic_fields), do: []
-    def __lavash__(:optimistic_derives), do: []
     def __lavash__(:forms), do: []
     def __lavash_calculations__, do: []
   end
@@ -105,30 +90,6 @@ defmodule Lavash.LiveView.HelpersTest do
       assert result[:count] == 5
       assert result[:name] == "hello"
       refute Map.has_key?(result, :other)
-    end
-
-    test "collects optimistic derives" do
-      assigns = %{doubled: 10}
-      result = Helpers.optimistic_state(MockWithDerives, assigns)
-
-      assert result[:doubled] == 10
-    end
-
-    test "unwraps AsyncResult ok" do
-      assigns = %{doubled: %Phoenix.LiveView.AsyncResult{ok?: true, result: 42, loading: nil}}
-      result = Helpers.optimistic_state(MockWithDerives, assigns)
-
-      assert result[:doubled] == 42
-    end
-
-    test "returns nil for loading AsyncResult" do
-      assigns = %{
-        doubled: %Phoenix.LiveView.AsyncResult{ok?: false, result: nil, loading: [self()]}
-      }
-
-      result = Helpers.optimistic_state(MockWithDerives, assigns)
-
-      assert result[:doubled] == nil
     end
 
     test "evaluates optimistic calculations from state" do

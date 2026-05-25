@@ -52,7 +52,6 @@ defmodule Lavash.Template.TokenTransformerTest do
 
     context = Keyword.get(opts, :context, :live_view)
     calculations = Keyword.get(opts, :calculations, %{})
-    derives = Keyword.get(opts, :derives, %{})
     forms = Keyword.get(opts, :forms, %{})
     actions = Keyword.get(opts, :actions, %{})
     attr_derives = Keyword.get(opts, :attr_derives, [])
@@ -60,7 +59,6 @@ defmodule Lavash.Template.TokenTransformerTest do
     %{
       context: context,
       optimistic_fields: field_map,
-      optimistic_derives: derives,
       calculations: calculations,
       forms: forms,
       actions: actions,
@@ -267,14 +265,6 @@ defmodule Lavash.Template.TokenTransformerTest do
   # ============================================
 
   describe "display injection - edge cases" do
-    test "recognizes optimistic_derives" do
-      tokens = [body_expr("@form_valid")]
-      metadata = optimistic_metadata([], derives: %{form_valid: %{optimistic: true}})
-      result = transform(tokens, metadata)
-
-      assert has_display_span?(result, "form_valid")
-    end
-
     test "recognizes calculations" do
       tokens = [body_expr("@doubled")]
       metadata = optimistic_metadata([], calculations: %{doubled: %{optimistic: true}})
@@ -380,9 +370,9 @@ defmodule Lavash.Template.TokenTransformerTest do
       refute Enum.any?(attrs, fn {name, _, _} -> name == "data-lavash-visible" end)
     end
 
-    test "recognizes optimistic derives as boolean-capable" do
+    test "recognizes optimistic calculations as boolean-capable" do
       tokens = [tag("span", [expr_attr(":if", "@form_valid")])]
-      metadata = optimistic_metadata([], derives: %{form_valid: %{optimistic: true}})
+      metadata = optimistic_metadata([], calculations: %{form_valid: %{optimistic: true}})
       result = transform(tokens, metadata)
 
       [{:tag, "span", attrs, _}] = result
@@ -410,7 +400,7 @@ defmodule Lavash.Template.TokenTransformerTest do
   describe "enabled injection" do
     test "injects data-lavash-enabled for disabled={not @field}" do
       tokens = [tag("button", [expr_attr("disabled", "not @form_valid")])]
-      metadata = optimistic_metadata([], derives: %{form_valid: %{optimistic: true}})
+      metadata = optimistic_metadata([], calculations: %{form_valid: %{optimistic: true}})
       result = transform(tokens, metadata)
 
       [{:tag, "button", attrs, _}] = result

@@ -29,9 +29,8 @@ defmodule Lavash.LiveView.Runtime do
   """
   def wrap_render(module, assigns, inner_content) do
     optimistic_fields = module.__lavash__(:optimistic_fields)
-    optimistic_derives = module.__lavash__(:optimistic_derives)
 
-    if optimistic_fields == [] and optimistic_derives == [] do
+    if optimistic_fields == [] do
       # No optimistic fields, just return the content directly
       inner_content
     else
@@ -55,7 +54,7 @@ defmodule Lavash.LiveView.Runtime do
 
       # Optimistic functions are now extracted to colocated JS files at compile time
       # by Lavash.Optimistic.Transformers.ExtractColocatedJs, no need to embed them here
-      has_optimistic_js = optimistic_fields != [] or optimistic_derives != []
+      has_optimistic_js = optimistic_fields != []
 
       # Get URL field names for client-side URL sync
       url_field_names =
