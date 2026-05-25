@@ -185,6 +185,40 @@ export function handleFormSubmit(e, hook) {
 }
 
 /**
+ * Read the value of a bound input element in a type-appropriate way.
+ *
+ * `target.value` works for text/textarea/select-single, but is wrong
+ * for:
+ *
+ *   - **checkbox** — `target.value` is the static `value=""` attr
+ *     (typically "true" or "on"), regardless of whether the box is
+ *     checked. We need `target.checked` (boolean) so the bind writes
+ *     a real boolean and downstream `data-lavash-enabled` /
+ *     reactive-graph comparisons against the literal `true` work.
+ *
+ *   - **radio** — same shape as checkbox: `target.value` is the
+ *     radio's static group-value. The right reading is "the value
+ *     of the currently-checked radio in this group" but we handle
+ *     that at the callsite (skip when !target.checked; the
+ *     newly-checked radio fires its own event and writes its
+ *     `target.value`). So here we just return target.value, which
+ *     is correct when target.checked is true.
+ *
+ *   - **select[multiple]** — `target.value` is just the FIRST
+ *     selected option's value, dropping the rest. The correct
+ *     reading is an array of all selected option values.
+ */
+function readBoundInputValue(target) {
+  if (target.tagName === "INPUT" && target.type === "checkbox") {
+    return target.checked;
+  }
+  if (target.tagName === "SELECT" && target.multiple) {
+    return Array.from(target.selectedOptions, opt => opt.value);
+  }
+  return target.value;
+}
+
+/**
  * Handle input/change event on a bound input.
  */
 export function handleInput(e, hook) {
@@ -200,11 +234,18 @@ export function handleInput(e, hook) {
   if (childHook && childHook !== hook.el) return;
 
   const fieldPath = target.dataset.lavashBind;
-  let value = target.value;
+  let value = readBoundInputValue(target);
 
-  // Apply input formatting
+  // For radio: an unchecked radio firing means the user clicked
+  // another radio in the group. The just-selected one will fire
+  // its own event; let that one update state. Skip the unchecked
+  // event so we don't write `null` over a valid selection.
+  if (target.type === "radio" && !target.checked) return;
+
+  // Apply input formatting (string inputs only — checkbox/multi-select
+  // already produce booleans/arrays which formatting can't process).
   const format = target.dataset.lavashFormat;
-  if (format) {
+  if (format && typeof value === "string") {
     const formatted = formatInputValue(value, format);
     if (formatted !== null) {
       value = formatted.value;
