@@ -136,48 +136,71 @@ defmodule Lavash.Dsl.CommonEntities do
   end
 
   @doc """
-  Run entity for actions - executes a function that transforms assigns.
+  PreRun entity for actions — pre-cascade socket-shaped run.
 
-  ## Server-only (plain function)
+  Runs BEFORE the reactive cascade. Use when you need imperative
+  Elixir to compute a state value that downstream calcs depend on:
 
-  Use this for complex multi-field updates where individual `set` calls
-  would be cumbersome:
-
-      action :checkout do
-        run fn assigns ->
-          assigns
-          |> assign(:status, :processing)
-          |> assign(:submitted_at, DateTime.utc_now())
+      action :submit do
+        pre_run fn socket ->
+          # Imperative validation / preprocessing before mutation
+          if socket.assigns.form_valid? do
+            socket
+            |> Lavash.Socket.put_state(:submitted, true)
+            |> Lavash.Socket.put_state(:submitted_at, DateTime.utc_now())
+          else
+            socket
+          end
         end
       end
 
-  ## Transpilable (with reads)
+  After the body returns, the action runtime extracts
+  `socket.assigns.__changed__` to populate lavash's dirty set, so
+  the cascade sees what changed and recomputes precisely. So you
+  can use raw `Phoenix.Component.assign/3` if you prefer — the
+  cascade will still see the write.
 
-  Add `reads` to declare state dependencies, enabling JavaScript transpilation
-  for optimistic client-side updates:
+  For most state mutation, prefer the declarative `set :foo, rx(...)`.
+  """
+  def pre_run_entity do
+    %Spark.Dsl.Entity{
+      name: :pre_run,
+      target: Lavash.Actions.PreRun,
+      args: [:fun],
+      schema: [
+        fun: [
+          type: :quoted,
+          required: true,
+          doc:
+            "Function `fn socket -> socket end`. Runs pre-cascade. " <>
+              "Use for imperative state mutation; cascade settles after."
+        ]
+      ]
+    }
+  end
 
-      action :apply_discount do
-        run [:subtotal, :discount_rate], fn assigns ->
-          discount = assigns.subtotal * assigns.discount_rate
-          final = assigns.subtotal - discount
+  @doc """
+  Run entity for actions — post-cascade socket-shaped run.
 
-          assigns
-          |> assign(:discount_amount, discount)
-          |> assign(:total, final)
+  Runs AFTER the reactive cascade. Reads settled state; can do
+  socket-level LV ops or external side effects:
+
+      action :send do
+        run fn socket ->
+          new_msg = %{id: next_id(), summary: socket.assigns.summary}
+          Phoenix.LiveView.stream_insert(socket, :messages, new_msg)
         end
       end
 
-  The `reads` list declares which state fields the function depends on.
-  This enables the transpiler to generate equivalent JavaScript.
+  Use for socket-level LV ops (`stream_insert/4`, `allow_upload/3`,
+  `consume_uploaded_entries/3`, `cancel_upload/3`) or anything that
+  needs the post-cascade view.
 
-  The function receives an assigns map (state + params merged) and should
-  use `assign/3` to update fields. This ensures proper change tracking.
-
-  For simple single-field updates, prefer `set` with `rx()`:
-
-      action :increment do
-        set :count, rx(@count + 1)
-      end
+  Writes from `run` land in assigns and `__changed__` is updated
+  for Phoenix's render diff. BUT lavash does NOT re-fire the
+  cascade — calcs depending on what `run` wrote are stale until
+  the next event. If you need a derived value of a write, write it
+  in `pre_run` instead.
   """
   def run_entity do
     %Spark.Dsl.Entity{
@@ -188,37 +211,9 @@ defmodule Lavash.Dsl.CommonEntities do
         fun: [
           type: :quoted,
           required: true,
-          doc: "Function that takes assigns and returns updated assigns using assign/3"
-        ]
-      ]
-    }
-  end
-
-  @doc """
-  SocketRun entity for actions — socket-shaped run.
-
-  Where `run fn assigns -> ... end` uses the change-tracked
-  assigns shape, `socket_run fn socket -> ... end` takes the
-  whole socket and trusts the user to mutate it via Phoenix
-  LiveView ops (`stream_insert/4`, `allow_upload/3`, etc.) or
-  lavash setters (`Lavash.Socket.put_state/3`). The returned
-  socket replaces the current socket wholesale.
-
-  See `Lavash.Actions.SocketRun` for when to reach for this vs.
-  the change-tracked `run`.
-  """
-  def socket_run_entity do
-    %Spark.Dsl.Entity{
-      name: :socket_run,
-      target: Lavash.Actions.SocketRun,
-      args: [:fun],
-      schema: [
-        fun: [
-          type: :quoted,
-          required: true,
           doc:
-            "Function that takes a socket and returns a (possibly mutated) socket. " <>
-              "Use for stream/upload/socket-level ops that don't fit `run`'s assigns shape."
+            "Function `fn socket -> socket end`. Runs post-cascade. " <>
+              "Use for socket-level LV ops or side effects that need settled state."
         ]
       ]
     }
@@ -423,17 +418,10 @@ defmodule Lavash.Dsl.CommonEntities do
         type: {:list, :atom},
         default: [],
         doc: """
-        State fields this action's run functions depend on.
-        When provided, enables JavaScript transpilation for optimistic updates.
-
-        Example:
-            action :apply_discount do
-              reads [:subtotal, :discount_rate]
-              run fn assigns ->
-                discount = assigns.subtotal * assigns.discount_rate
-                assigns |> assign(:discount_amount, discount)
-              end
-            end
+        Reserved for the optimistic-JS transpile path (see #119). Today
+        this is a no-op — `set :field, rx(...)` already declares its
+        own reads via the `rx` expression. Will be repointed at
+        `pre_run` bodies once the transpiler is updated.
         """
       ],
       when: [

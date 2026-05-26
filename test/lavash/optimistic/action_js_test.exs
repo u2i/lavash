@@ -35,9 +35,13 @@ defmodule Lavash.Optimistic.ActionJsTest do
       assert ActionJs.action_is_optimistic?(a)
     end
 
-    test "true when action has runs and reads" do
+    test "false when action has only post-cascade runs (no sets/map_bys)" do
+      # Post-#117: `run` is socket-shape and side-effect-only,
+      # not transpilable to JS. Optimistic eligibility is now
+      # purely set/map_by-driven (see #119 for the planned
+      # `pre_run` transpile path).
       a = action(runs: [%{fun: :some_fun}], reads: [:product])
-      assert ActionJs.action_is_optimistic?(a)
+      refute ActionJs.action_is_optimistic?(a)
     end
 
     test "false when action has only runs (no reads)" do

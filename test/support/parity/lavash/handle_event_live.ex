@@ -13,9 +13,9 @@ defmodule Lavash.Parity.Lavash.HandleEventLive do
 
   - `{:reply, payload, socket}` — synchronous reply payloads to JS
     hooks. Rare in practice, always paired with a JS hook, and the
-    escape hatch (`run fn assigns -> ... end` returning a socket
-    via raw Phoenix.LiveView API) covers it cleanly enough. Adding
-    a `reply` op to the DSL is deferred until a real use case asks.
+    escape hatch (`run fn socket -> ... end` returning a socket via
+    raw Phoenix.LiveView API) covers it cleanly enough. Adding a
+    `reply` op to the DSL is deferred until a real use case asks.
   """
   use Lavash.LiveView
 

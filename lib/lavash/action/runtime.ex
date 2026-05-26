@@ -71,89 +71,78 @@ defmodule Lavash.Action.Runtime do
   end
 
   @doc """
-  Apply run operations to state.
+  Apply pre-cascade run operations. Each body takes a socket and
+  returns a socket; the body runs BEFORE the reactive cascade.
 
-  Each run has a function (as quoted AST) that receives an assigns map (state + params merged)
-  and returns updated assigns using Phoenix.Component.assign/3.
+  The runtime sweeps `socket.assigns.__changed__` after the body
+  returns and threads any not-yet-dirty fields through
+  `LSocket.put_state/3` so the cascade sees them. This means
+  pre-cascade bodies can use either `Lavash.Socket.put_state/3`
+  (explicit) or `Phoenix.Component.assign/3` (raw) and both end
+  up in lavash's dirty set.
 
-  This enables proper change tracking via the assigns mechanism.
+  Event params are merged into `socket.assigns` for the body's
+  duration so `socket.assigns.body`, `.id`, etc. resolve from
+  `phx-value-*` payloads — matches the contract `apply_runs/5`
+  uses for post-cascade bodies.
   """
-  def apply_runs(socket, action_name, runs, params, module) do
-    (runs || [])
+  def apply_pre_runs(socket, action_name, pre_runs, params, module) do
+    (pre_runs || [])
     |> Enum.with_index()
-    |> Enum.reduce(socket, fn {_run, idx}, sock ->
-      # Build the assigns map handed to the run body. Lavash state lives
-      # in `socket.assigns` already (with a side registry tracking which
-      # names are "state"), so the full socket.assigns map carries:
-      #   - declared state + calculated/derived values (#12)
-      #   - non-Lavash assigns from on_mount/plugs/custom mount (#13)
-      # Event params are layered on top so phx-value-* / form-submit
-      # payloads win over like-named socket assigns.
-      # `__changed__` is reset so Phoenix.Component.assign tracks only
-      # writes made inside this run body.
-      assigns =
+    |> Enum.reduce(socket, fn {_pre_run, idx}, sock ->
+      assigns_with_params =
         sock.assigns
-        |> Map.drop([:__changed__])
         |> Map.merge(params)
         |> Map.put(:__changed__, %{})
+
+      sock_with_params = %{sock | assigns: assigns_with_params}
 
       # The body was hoisted at compile time into a generated function on
       # the user's module (see `CompileLiveView.build_run_refs_ast/1` and
       # the equivalent for components). Calling it via apply/3 means local
       # helpers, aliases, and imports inside the user's module resolve
-      # normally — no `:erl_eval` involved. Closes u2i/lavash#15.
-      updated_assigns = apply(module, :__lavash_run__, [action_name, idx, assigns])
+      # normally — no `:erl_eval` involved.
+      new_sock = apply(module, :__lavash_pre_run__, [action_name, idx, sock_with_params])
 
-      # Extract changed fields and apply them to socket.
-      # Phoenix.Component.assign stores either `true` (initial render) or
-      # the old value (subsequent change) under each changed key, so we
-      # accept any value here.
-      changed = Map.get(updated_assigns, :__changed__, %{})
+      # Sweep __changed__ to catch raw `assign/3` writes that didn't
+      # go through `put_state` (which would have marked dirty itself).
+      changed = Map.get(new_sock.assigns, :__changed__, %{})
+      already_dirty = LSocket.dirty(new_sock)
 
-      Enum.reduce(changed, sock, fn {field, _change_marker}, acc_sock ->
-        value = Map.get(updated_assigns, field)
-        LSocket.put_state(acc_sock, field, value)
+      Enum.reduce(changed, new_sock, fn {field, _marker}, acc ->
+        if MapSet.member?(already_dirty, field) do
+          acc
+        else
+          LSocket.put_state(acc, field, Map.get(new_sock.assigns, field))
+        end
       end)
     end)
   end
 
   @doc """
-  Apply socket-shaped run bodies. Each body takes a socket and
+  Apply post-cascade run operations. Each body takes a socket and
   returns a socket; the returned socket replaces the current one.
 
-  Unlike `apply_runs/5` (which threads change-tracked assigns and
-  diffs the result), `socket_run` is the escape-hatch shape used
-  when an action needs to call LV ops directly — `stream_insert/4`,
-  `allow_upload/3`, `cancel_upload/3`, etc. The runtime trusts the
-  user to call lavash setters (`Lavash.Socket.put_state/3`) for
-  any state field changes; nothing is inferred from the diff.
+  Runs AFTER the reactive cascade has settled. The body sees
+  consistent calc values and can do socket-level LV ops
+  (`stream_insert/4`, `allow_upload/3`,
+  `consume_uploaded_entries/3`, `cancel_upload/3`) that don't fit
+  the declarative state-mutation shape.
 
-  ## When ordering matters
-
-  Runs after `apply_sets` and `apply_runs` so that by the time a
-  socket_run body executes, all the declarative state writes
-  earlier in the action have landed. A sequence like
-
-      set :messages, rx(@messages ++ [%{role: "user", content: @input}])
-      socket_run fn s -> Phoenix.LiveView.stream_insert(s, :feed, ...) end
-
-  works as written — the `set` is applied to assigns before the
-  `socket_run` reads them.
+  Writes the body makes to `socket.assigns` (via `put_state`,
+  `assign/3`, or LV ops) land for Phoenix's render diff but do
+  NOT trigger a re-cascade. Calcs depending on what `run` wrote
+  are stale until the next user event. If you need a derived
+  value of a write, use `pre_run` instead.
   """
-  def apply_socket_runs(socket, action_name, socket_runs, params, module) do
-    (socket_runs || [])
+  def apply_runs(socket, action_name, runs, params, module) do
+    (runs || [])
     |> Enum.with_index()
-    |> Enum.reduce(socket, fn {_sr, idx}, sock ->
-      # Merge event params into socket.assigns for the duration of
-      # the body so `socket.assigns.body`, `.id`, etc. resolve as
-      # expected. The body could pull them off explicitly via a
-      # second arg, but threading params through socket.assigns
-      # matches the assigns-shaped `run`'s contract and means
-      # `phx-value-foo` shows up in the same place either way.
+    |> Enum.reduce(socket, fn {_run, idx}, sock ->
       assigns_with_params = Map.merge(sock.assigns, params)
       sock_with_params = %{sock | assigns: assigns_with_params}
 
-      apply(module, :__lavash_socket_run__, [action_name, idx, sock_with_params])
+      apply(module, :__lavash_run__, [action_name, idx, sock_with_params])
     end)
   end
 

@@ -13,12 +13,13 @@ defmodule Lavash.Parity.StreamsTest do
   Lavash doesn't yet expose `stream :name` as DSL surface. Both
   fixtures reach for raw `Phoenix.LiveView.stream/3`,
   `stream_insert/4`, `stream_delete/3` — but on the lavash side
-  these calls live inside `socket_run fn socket -> ... end`
-  bodies. The runtime accepts the returned socket wholesale, so
-  the stream changes land correctly.
+  these calls live inside `run fn socket -> ... end` bodies (the
+  post-cascade socket-shape op introduced by #117). The runtime
+  accepts the returned socket wholesale, so the stream changes
+  land correctly.
 
   A future `stream :name` DSL entity would let the lavash side
-  collapse from imperative `socket_run` bodies to declarative
+  collapse from imperative `run` bodies to declarative
   `push`/`delete`/`reset` ops; the parity tests below stay valid
   through that transition.
   """

@@ -17,17 +17,24 @@ defmodule Lavash.Test.Magic.ArraysLive do
 
   actions do
     action :add, [:name] do
-      run fn assigns -> assign(assigns, :items, assigns.items ++ [assigns.name]) end
+      pre_run fn socket ->
+        Lavash.Socket.put_state(
+          socket,
+          :items,
+          socket.assigns.items ++ [socket.assigns.name]
+        )
+      end
     end
 
     action :remove, [:name] do
-      run fn assigns ->
-        assign(assigns, :items, Enum.reject(assigns.items, &(&1 == assigns.name)))
+      pre_run fn socket ->
+        new = Enum.reject(socket.assigns.items, &(&1 == socket.assigns.name))
+        Lavash.Socket.put_state(socket, :items, new)
       end
     end
 
     action :clear do
-      run fn assigns -> assign(assigns, :items, []) end
+      pre_run fn socket -> Lavash.Socket.put_state(socket, :items, []) end
     end
   end
 

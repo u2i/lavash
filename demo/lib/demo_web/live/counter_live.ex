@@ -22,14 +22,9 @@ defmodule DemoWeb.CounterLive do
       set :count, rx(String.to_integer(@amount))
     end
 
-    # Using reads + run for multi-field transpilable updates
     action :reset do
-      reads [:count, :multiplier]
-      run fn assigns ->
-        assigns
-        |> assign(:count, 0)
-        |> assign(:multiplier, 2)
-      end
+      set :count, 0
+      set :multiplier, 2
     end
   end
 

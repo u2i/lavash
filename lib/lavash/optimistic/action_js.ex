@@ -16,11 +16,11 @@ defmodule Lavash.Optimistic.ActionJs do
     has_set = (action.sets || []) != []
     has_map_by = (action.map_bys || []) != []
 
-    runs = action.runs || []
-    reads = action.reads || []
-    has_transpilable_runs = runs != [] and reads != []
-
-    has_set or has_map_by or has_transpilable_runs
+    # `run` is now post-cascade socket-shape (side-effect-only, not
+    # transpilable). `pre_run` could in principle be transpiled to JS
+    # the same way the old assigns-shape `run` was — that path isn't
+    # wired yet, so for now optimistic eligibility is purely set-driven.
+    has_set or has_map_by
   end
 
   @doc """

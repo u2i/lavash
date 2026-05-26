@@ -101,6 +101,23 @@ defmodule Lavash.Component.Transformers.CompileComponent do
   defp build_run_refs_ast(dsl_state) do
     actions = Transformer.get_entities(dsl_state, [:actions]) || []
 
+    pre_run_clauses =
+      Enum.flat_map(actions, fn action ->
+        (action.pre_runs || [])
+        |> Enum.with_index()
+        |> Enum.map(fn {pre_run, idx} ->
+          name = action.name
+
+          quote do
+            @doc false
+            def __lavash_pre_run__(unquote(name), unquote(idx), var!(socket)) do
+              import Phoenix.Component, only: [assign: 3]
+              unquote(pre_run.fun).(var!(socket))
+            end
+          end
+        end)
+      end)
+
     run_clauses =
       Enum.flat_map(actions, fn action ->
         (action.runs || [])
@@ -110,31 +127,15 @@ defmodule Lavash.Component.Transformers.CompileComponent do
 
           quote do
             @doc false
-            def __lavash_run__(unquote(name), unquote(idx), var!(assigns)) do
+            def __lavash_run__(unquote(name), unquote(idx), var!(socket)) do
               import Phoenix.Component, only: [assign: 3]
-              unquote(run.fun).(var!(assigns))
+              unquote(run.fun).(var!(socket))
             end
           end
         end)
       end)
 
-    socket_run_clauses =
-      Enum.flat_map(actions, fn action ->
-        (action.socket_runs || [])
-        |> Enum.with_index()
-        |> Enum.map(fn {sr, idx} ->
-          name = action.name
-
-          quote do
-            @doc false
-            def __lavash_socket_run__(unquote(name), unquote(idx), var!(socket)) do
-              unquote(sr.fun).(var!(socket))
-            end
-          end
-        end)
-      end)
-
-    clauses = run_clauses ++ socket_run_clauses
+    clauses = pre_run_clauses ++ run_clauses
 
     if clauses == [] do
       quote do

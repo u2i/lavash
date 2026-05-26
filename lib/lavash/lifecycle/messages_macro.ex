@@ -36,16 +36,19 @@ defmodule Lavash.Lifecycle.MessagesMacro do
         end
       end
 
-  ## `run fn socket -> ... end` vs action's `run fn assigns -> ... end`
+  ## `run fn socket -> ... end`
 
   Messages frequently want the full Phoenix.LiveView API:
   `push_event`, `push_patch`, `redirect`, `start_async`,
   `assign_async`, etc. All operate on `socket`. So `run` inside a
-  `message` body takes the socket and should return the socket.
+  `message` body takes the socket and returns the socket — the same
+  shape as an action's `run` (post-cascade, socket-in/socket-out).
 
-  Action `run fn` bodies take `assigns` because actions are
-  state-mutation-focused — the assigns-shaped contract works well
-  there. Messages and actions diverge intentionally on this point.
+  For state mutations from a message body, prefer `set :field, rx(...)`
+  (declarative, participates in the reactive graph). Drop into
+  `run fn socket -> ... end` only when you need a socket-level LV
+  operation like `push_event`, `stream_insert/4`, `allow_upload/3`,
+  etc. — the same escape-hatch role `run` plays inside actions.
 
   ## `set :field, rx(...)`
 

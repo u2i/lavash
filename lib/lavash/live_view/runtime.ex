@@ -403,13 +403,11 @@ defmodule Lavash.LiveView.Runtime do
 
             case execute_action(socket, module, action, params) do
               {:ok, socket} ->
+                # execute_action has already settled the cascade.
+                # Now emit LV-level side effects against the
+                # post-cascade view.
                 socket =
                   socket
-                  # Settle the reactive graph FIRST so all subsequent
-                  # side-effect ops (flashes, navigates, push_events,
-                  # etc.) read post-cascade calc values rather than
-                  # stale ones from before this action ran.
-                  |> Reactive.recompute()
                   |> apply_flashes(action.flashes || [])
                   |> apply_navigates(action.navigates || [])
                   |> apply_push_patches(action.push_patches || [])
@@ -439,7 +437,6 @@ defmodule Lavash.LiveView.Runtime do
 
                 socket =
                   socket
-                  |> Reactive.recompute()
                   |> maybe_push_patch(module)
                   |> maybe_sync_socket_state(module)
                   |> Assigns.project(module)
@@ -644,14 +641,13 @@ defmodule Lavash.LiveView.Runtime do
     if ActionRuntime.guards_pass?(socket, module, action.when) do
       socket =
         socket
+        # Pre-cascade: state mutations
         |> ActionRuntime.apply_sets(action.sets || [], params, module)
+        |> ActionRuntime.apply_pre_runs(action.name, action.pre_runs || [], params, module)
+        # Cascade settles all calcs once
+        |> Reactive.recompute()
+        # Post-cascade: socket-level ops + side effects (see settled state)
         |> ActionRuntime.apply_runs(action.name, action.runs || [], params, module)
-        |> ActionRuntime.apply_socket_runs(
-          action.name,
-          action.socket_runs || [],
-          params,
-          module
-        )
         |> ActionRuntime.apply_effects(action.effects || [], params)
         |> apply_invokes(action.invokes || [], params)
 

@@ -3,14 +3,13 @@ defmodule Lavash.Parity.Lavash.UploadsLive do
   Lavash DSL expression of the uploads parity suite — paired
   with `Lavash.Parity.Vanilla.UploadsLive`.
 
-  ## Now using `socket_run`
+  ## Using socket-shape `run`
 
-  Earlier versions of this fixture wrapped upload ops in
-  `run fn socket -> ... end` and were tagged `:parity_gap`
-  because the assigns-shaped `run` dropped socket-level changes.
-  With `socket_run` (the socket-shaped action op) the gap closes
-  — the action body returns a socket and the runtime accepts it
-  wholesale.
+  Earlier versions of this fixture were tagged `:parity_gap`
+  because `run` was assigns-shaped and dropped socket-level
+  changes. Since #117 collapsed the assigns-shape into the
+  socket-shape, `run` is post-cascade and accepts a socket
+  wholesale — the gap closes.
 
   ## Still missing — a declarative `upload :files` flavor
 
@@ -41,7 +40,7 @@ defmodule Lavash.Parity.Lavash.UploadsLive do
     end
 
     action :save do
-      socket_run fn socket ->
+      run fn socket ->
         Phoenix.LiveView.consume_uploaded_entries(socket, :files, fn meta, entry ->
           contents = File.read!(meta.path)
           Lavash.Parity.UploadSink.record(entry.client_name, contents)
@@ -55,7 +54,7 @@ defmodule Lavash.Parity.Lavash.UploadsLive do
     end
 
     action :cancel, [:ref] do
-      socket_run fn socket ->
+      run fn socket ->
         Phoenix.LiveView.cancel_upload(socket, :files, socket.assigns.ref)
       end
     end

@@ -1,6 +1,6 @@
 defmodule Lavash.Action.HelperRefsTest do
   @moduledoc """
-  Issue #3 regression: helper functions called inside `run fn assigns -> ... end`
+  Issue #3 regression: helper functions called inside `run fn socket -> ... end`
   should be tracked by the compiler so they don't surface as "unused" — which
   breaks builds running with `--warnings-as-errors`.
   """
@@ -17,14 +17,14 @@ defmodule Lavash.Action.HelperRefsTest do
 
       actions do
         action :submit do
-          run fn assigns ->
-            _ = enqueue_commit_job(assigns)
-            Phoenix.Component.assign(assigns, :submitted, true)
+          run fn socket ->
+            _ = enqueue_commit_job(socket)
+            Phoenix.Component.assign(socket, :submitted, true)
           end
         end
       end
 
-      defp enqueue_commit_job(_assigns), do: :ok
+      defp enqueue_commit_job(_socket), do: :ok
 
       def render(assigns) do
         ~H\"<div>{@submitted}</div>\"
@@ -53,8 +53,8 @@ defmodule Lavash.Action.HelperRefsTest do
 
       actions do
         action :submit do
-          run fn assigns ->
-            assigns
+          run fn socket ->
+            socket
             |> maybe_put(:a, 1)
             |> maybe_put(:b, nil)
             |> trim_or_nil()
@@ -62,9 +62,9 @@ defmodule Lavash.Action.HelperRefsTest do
         end
       end
 
-      defp maybe_put(map, _k, nil), do: map
-      defp maybe_put(map, k, v), do: Map.put(map, k, v)
-      defp trim_or_nil(map), do: map
+      defp maybe_put(socket, _k, nil), do: socket
+      defp maybe_put(socket, k, v), do: Phoenix.Component.assign(socket, k, v)
+      defp trim_or_nil(socket), do: socket
 
       def render(assigns) do
         ~H\"<div>{@submitted}</div>\"
@@ -96,14 +96,14 @@ defmodule Lavash.Action.HelperRefsTest do
 
     actions do
       action :compute, [:n] do
-        run fn assigns ->
+        run fn socket ->
           n =
-            case assigns[:n] do
+            case socket.assigns[:n] do
               s when is_binary(s) -> String.to_integer(s)
               n when is_integer(n) -> n
             end
 
-          Phoenix.Component.assign(assigns, :doubled, double(n))
+          Phoenix.Component.assign(socket, :doubled, double(n))
         end
       end
     end

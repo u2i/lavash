@@ -190,20 +190,20 @@ defmodule Lavash.Action.RuntimeTest do
     defmodule TestRunModule do
       import Phoenix.Component, only: [assign: 3]
 
-      def __lavash_run__(:sum_calc, 0, assigns) do
-        assign(assigns, :sum, assigns.count + assigns.doubled)
+      def __lavash_run__(:sum_calc, 0, socket) do
+        assign(socket, :sum, socket.assigns.count + socket.assigns.doubled)
       end
 
-      def __lavash_run__(:merge_params, 0, assigns) do
-        total = assigns.base + assigns.bonus + assigns.delta
-        assign(assigns, :total, total)
+      def __lavash_run__(:merge_params, 0, socket) do
+        total = socket.assigns.base + socket.assigns.bonus + socket.assigns.delta
+        assign(socket, :total, total)
       end
 
-      def __lavash_run__(:call_helper, 0, assigns) do
+      def __lavash_run__(:call_helper, 0, socket) do
         # Locally-defined private helper — exactly the case in u2i/lavash#15.
         # If the runtime were still :erl_eval-based, this would raise
         # UndefinedFunctionError.
-        assign(assigns, :greeting, build_greeting(assigns.name))
+        assign(socket, :greeting, build_greeting(socket.assigns.name))
       end
 
       defp build_greeting(name), do: "Hi, " <> name
@@ -252,8 +252,8 @@ defmodule Lavash.Action.RuntimeTest do
     defmodule SocketAssignsModule do
       import Phoenix.Component, only: [assign: 3]
 
-      def __lavash_run__(:capture_user, 0, assigns) do
-        assign(assigns, :captured_email, assigns.current_user.email)
+      def __lavash_run__(:capture_user, 0, socket) do
+        assign(socket, :captured_email, socket.assigns.current_user.email)
       end
 
       def __lavash__(:states), do: []
@@ -276,7 +276,10 @@ defmodule Lavash.Action.RuntimeTest do
     # same name, which keeps the action contract predictable.
     defmodule ParamsWinModule do
       import Phoenix.Component, only: [assign: 3]
-      def __lavash_run__(:sum, 0, assigns), do: assign(assigns, :sum, assigns.amount + 1)
+
+      def __lavash_run__(:sum, 0, socket),
+        do: assign(socket, :sum, socket.assigns.amount + 1)
+
       def __lavash__(:states), do: []
     end
 

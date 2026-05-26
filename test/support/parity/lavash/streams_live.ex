@@ -3,19 +3,18 @@ defmodule Lavash.Parity.Lavash.StreamsLive do
   Lavash DSL expression of the streams parity suite — paired
   with `Lavash.Parity.Vanilla.StreamsLive`.
 
-  ## Now using `socket_run`
+  ## Using socket-shape `run`
 
-  Earlier versions of this fixture used `action :foo do run fn
-  socket -> ... end end` and were tagged `:parity_gap` because
-  the assigns-shaped `run` dropped socket-level changes. With
-  `socket_run` (the socket-shaped action op) the gap closes —
-  the action body returns a socket and the runtime accepts it
-  wholesale.
+  Earlier versions of this fixture were tagged `:parity_gap`
+  because `run` was assigns-shaped and dropped socket-level
+  changes. Since #117 collapsed the assigns-shape into the
+  socket-shape, `run` is post-cascade and accepts a socket
+  wholesale — the gap closes.
 
   Compare:
 
       action :append, [:body] do
-        socket_run fn socket ->
+        run fn socket ->
           id = System.unique_integer([:positive])
           Phoenix.LiveView.stream_insert(
             socket,
@@ -61,7 +60,7 @@ defmodule Lavash.Parity.Lavash.StreamsLive do
 
   actions do
     action :append, [:body] do
-      socket_run fn socket ->
+      run fn socket ->
         id = System.unique_integer([:positive])
 
         Phoenix.LiveView.stream_insert(
@@ -73,7 +72,7 @@ defmodule Lavash.Parity.Lavash.StreamsLive do
     end
 
     action :prepend, [:body] do
-      socket_run fn socket ->
+      run fn socket ->
         id = System.unique_integer([:positive])
 
         Phoenix.LiveView.stream_insert(
@@ -86,14 +85,14 @@ defmodule Lavash.Parity.Lavash.StreamsLive do
     end
 
     action :delete, [:id] do
-      socket_run fn socket ->
+      run fn socket ->
         id = String.to_integer(socket.assigns.id)
         Phoenix.LiveView.stream_delete(socket, :items, %{id: id, body: ""})
       end
     end
 
     action :reset do
-      socket_run fn socket ->
+      run fn socket ->
         new_items = [%{id: 999, body: "reset"}]
         Phoenix.LiveView.stream(socket, :items, new_items, reset: true)
       end

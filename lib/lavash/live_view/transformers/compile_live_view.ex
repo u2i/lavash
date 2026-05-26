@@ -282,22 +282,45 @@ defmodule Lavash.LiveView.Transformers.CompileLiveView do
     end)
   end
 
-  # Emit one `__lavash_run__/3` clause per (action, run-index) pair so the
-  # `run fn assigns -> ... end` body executes in the user module's scope.
-  # The body is spliced into a real def, which means:
+  # Emit one `__lavash_run__/3` and `__lavash_pre_run__/3` clause per
+  # (action, run-index) pair so the `run fn socket -> ... end` and
+  # `pre_run fn socket -> ... end` bodies execute in the user module's
+  # scope. Bodies are spliced into real defs, which means:
   #
   # 1. The compiler tracks every helper-function call inside the body
   #    (no more spurious "unused function" warnings — see u2i/lavash#11).
   # 2. Local function calls resolve at runtime (no more
-  #    UndefinedFunctionError on unqualified `helper(assigns)` — see #15).
+  #    UndefinedFunctionError on unqualified `helper(socket)` — see #15).
   # 3. Module attributes, aliases, and imports inside the user's module
   #    are in scope, just like any other function in that module.
   #
-  # The runtime calls `module.__lavash_run__(action_name, idx, assigns)`
-  # via `apply/3` (see `Lavash.Action.Runtime.apply_runs/5`).
+  # The runtime calls `module.__lavash_run__(action_name, idx, socket)`
+  # (and likewise for pre-runs) via `apply/3` (see
+  # `Lavash.Action.Runtime.apply_runs/5` and `apply_pre_runs/5`).
   defp build_run_refs_ast(dsl_state) do
     actions = Transformer.get_entities(dsl_state, [:actions]) || []
 
+    # Pre-cascade bodies — `pre_run fn socket -> socket end`.
+    # Imports `Phoenix.Component.assign/3` so bodies can use raw
+    # `assign/3`; the action runtime sweeps `__changed__` after.
+    pre_run_clauses =
+      Enum.flat_map(actions, fn action ->
+        (action.pre_runs || [])
+        |> Enum.with_index()
+        |> Enum.map(fn {pre_run, idx} ->
+          name = action.name
+
+          quote do
+            @doc false
+            def __lavash_pre_run__(unquote(name), unquote(idx), var!(socket)) do
+              import Phoenix.Component, only: [assign: 3]
+              unquote(pre_run.fun).(var!(socket))
+            end
+          end
+        end)
+      end)
+
+    # Post-cascade bodies — `run fn socket -> socket end`.
     run_clauses =
       Enum.flat_map(actions, fn action ->
         (action.runs || [])
@@ -307,36 +330,15 @@ defmodule Lavash.LiveView.Transformers.CompileLiveView do
 
           quote do
             @doc false
-            def __lavash_run__(unquote(name), unquote(idx), var!(assigns)) do
+            def __lavash_run__(unquote(name), unquote(idx), var!(socket)) do
               import Phoenix.Component, only: [assign: 3]
-              unquote(run.fun).(var!(assigns))
+              unquote(run.fun).(var!(socket))
             end
           end
         end)
       end)
 
-    # Parallel hoisting for `socket_run fn socket -> ... end` ops.
-    # Same compile-time-hoist trick — emit a `__lavash_socket_run__/3`
-    # clause per (action_name, idx) pair so the runtime can call
-    # back via `apply/3` with the user module's aliases / imports
-    # in scope.
-    socket_run_clauses =
-      Enum.flat_map(actions, fn action ->
-        (action.socket_runs || [])
-        |> Enum.with_index()
-        |> Enum.map(fn {sr, idx} ->
-          name = action.name
-
-          quote do
-            @doc false
-            def __lavash_socket_run__(unquote(name), unquote(idx), var!(socket)) do
-              unquote(sr.fun).(var!(socket))
-            end
-          end
-        end)
-      end)
-
-    clauses = run_clauses ++ socket_run_clauses
+    clauses = pre_run_clauses ++ run_clauses
 
     if clauses == [] do
       quote do

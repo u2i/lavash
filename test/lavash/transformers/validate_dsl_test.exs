@@ -99,7 +99,7 @@ defmodule Lavash.Transformers.ValidateDslTest do
         actions do
           action :submit, [:value] do
             reads [:n, :nopey]
-            run fn assigns -> assigns end
+            run fn socket -> socket end
           end
         end
         """,
@@ -117,7 +117,7 @@ defmodule Lavash.Transformers.ValidateDslTest do
           actions do
             action :submit, [:value] do
               reads [:n, :doubled]
-              run fn assigns -> assigns end
+              run fn socket -> socket end
             end
           end
           """

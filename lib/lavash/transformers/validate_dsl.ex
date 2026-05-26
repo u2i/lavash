@@ -244,7 +244,7 @@ defmodule Lavash.Transformers.ValidateDsl do
                 "action #{inspect(action.name)} sets #{inspect(bad_set.field)}, " <>
                   "but #{inspect(bad_set.field)} is not a declared `state`. " <>
                   "`set` writes to state — declare a `state #{inspect(bad_set.field)}, ...` " <>
-                  "or use `run fn assigns -> assign(assigns, #{inspect(bad_set.field)}, ...)` " <>
+                  "or use `run fn socket -> assign(socket, #{inspect(bad_set.field)}, ...) end` " <>
                   "if you want to write a transient assign."
             )}}
       end

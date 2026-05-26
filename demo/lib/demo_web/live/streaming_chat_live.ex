@@ -45,6 +45,10 @@ defmodule DemoWeb.StreamingChatLive do
   state :conversation_id, :integer, default: 0, optimistic: true
   state :input, :string, default: "", optimistic: true, setter: true
 
+  # Transient: holds the most recent submission's trimmed prompt
+  # so post-cascade `run` can read it after `:input` has been cleared.
+  state :pending_prompt, :string, default: ""
+
   calculate :has_messages?, rx(length(@messages) > 0)
   calculate :input_valid?, rx(String.trim(@input) != "" and not @streaming?)
 
@@ -53,18 +57,24 @@ defmodule DemoWeb.StreamingChatLive do
     # bump the conversation id so any stale chunks from a previous
     # turn are filtered out, flip streaming?, kick off the LLM task.
     action :submit do
+      # Capture the trimmed input as pending_prompt BEFORE we clear :input.
+      # The post-cascade `run` then reads pending_prompt to spawn the LLM
+      # task with the correct user content.
+      set :pending_prompt, rx(String.trim(@input))
       set :messages, rx(@messages ++ [%{role: "user", content: String.trim(@input)}])
       set :input, ""
       set :streaming?, true
       set :draft, ""
       set :conversation_id, rx(@conversation_id + 1)
 
-      run fn assigns ->
-        prompt = String.trim(assigns.input)
-        conv_id = assigns.conversation_id + 1
+      run fn socket ->
+        FakeLLM.stream(
+          socket.assigns.pending_prompt,
+          self(),
+          socket.assigns.conversation_id
+        )
 
-        FakeLLM.stream(prompt, self(), conv_id)
-        :ok
+        socket
       end
     end
 

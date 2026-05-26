@@ -2,15 +2,27 @@ defmodule Lavash.Actions.Action do
   @moduledoc """
   An action that transforms state in response to events.
 
-  Actions can contain:
-  - `set` - Set a state field to a value using @field syntax
-  - `run` - Execute a function that returns updated assigns
-  - `socket_run` - Execute a function with full socket access (returns socket)
-  - `effect` - Run a side effect
-  - `submit` - Submit a form (async, with on_error branching)
-  - `navigate` - Navigate to a URL on success
-  - `flash` - Show a flash message on success
-  - `invoke` - Invoke an action on a child component
+  ## Action lifecycle
+
+  Action bodies are split around the reactive cascade. Pre-cascade ops
+  mutate state; the cascade settles; post-cascade ops observe and
+  emit. See `docs/ACTION_LIFECYCLE.md` for the full design.
+
+  ## Pre-cascade ops (mutate state)
+
+  - `set :foo, rx(...)` - declarative state writes
+  - `pre_run fn socket -> socket end` - imperative pre-cascade hook
+  - `map_by ...` - keyed array mutations
+
+  ## Post-cascade ops (observe and emit)
+
+  - `run fn socket -> socket end` - imperative; reads settled state
+  - `effect fn assigns -> :ok end` - fire-and-forget side effects
+  - `submit` - form submission (async)
+  - `navigate`, `flash`, `push_event`, `push_patch`, `redirect` -
+    declarative side effects (handled outside execute_action, in the
+    LV-level pipeline)
+  - `invoke` - invoke an action on a child component
   """
   defstruct [
     :name,
@@ -18,8 +30,8 @@ defmodule Lavash.Actions.Action do
     :reads,
     :when,
     :sets,
+    :pre_runs,
     :runs,
-    :socket_runs,
     :map_bys,
     :effects,
     :submits,

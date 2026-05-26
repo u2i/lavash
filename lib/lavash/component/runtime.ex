@@ -266,7 +266,6 @@ defmodule Lavash.Component.Runtime do
           {:ok, socket} ->
             socket =
               socket
-              |> Reactive.recompute()
               |> maybe_sync_socket_state(module)
               |> Assigns.project(module)
               |> propagate_bound_field_changes(binding_map, bound_state_before)
@@ -290,7 +289,6 @@ defmodule Lavash.Component.Runtime do
 
             socket =
               socket
-              |> Reactive.recompute()
               |> maybe_sync_socket_state(module)
               |> Assigns.project(module)
               |> propagate_bound_field_changes(binding_map, bound_state_before)
@@ -330,7 +328,6 @@ defmodule Lavash.Component.Runtime do
           {:ok, socket} ->
             socket =
               socket
-              |> Reactive.recompute()
               |> maybe_sync_socket_state(module)
               |> Assigns.project(module)
               |> propagate_bound_field_changes(binding_map, bound_state_before)
@@ -355,7 +352,6 @@ defmodule Lavash.Component.Runtime do
 
             socket =
               socket
-              |> Reactive.recompute()
               |> maybe_sync_socket_state(module)
               |> Assigns.project(module)
               |> propagate_bound_field_changes(binding_map, bound_state_before)
@@ -555,14 +551,13 @@ defmodule Lavash.Component.Runtime do
 
     if ActionRuntime.guards_pass?(socket, module, action.when) do
       socket
+      # Pre-cascade: state mutations
       |> ActionRuntime.apply_sets(action.sets || [], params, module)
+      |> ActionRuntime.apply_pre_runs(action.name, action.pre_runs || [], params, module)
+      # Cascade settles all calcs once
+      |> Reactive.recompute()
+      # Post-cascade: socket-level ops + side effects
       |> ActionRuntime.apply_runs(action.name, action.runs || [], params, module)
-      |> ActionRuntime.apply_socket_runs(
-        action.name,
-        action.socket_runs || [],
-        params,
-        module
-      )
       |> ActionRuntime.apply_effects(action.effects || [], params)
       |> apply_submits(module, action.submits || [])
     else

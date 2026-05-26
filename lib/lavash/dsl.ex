@@ -367,8 +367,8 @@ defmodule Lavash.Dsl do
   # ============================================
 
   @set_entity CommonEntities.set_entity()
+  @pre_run_entity CommonEntities.pre_run_entity()
   @run_entity CommonEntities.run_entity()
-  @socket_run_entity CommonEntities.socket_run_entity()
   @map_by_entity CommonEntities.map_by_entity()
   @effect_entity CommonEntities.effect_entity()
   @submit_entity CommonEntities.submit_entity()
@@ -484,8 +484,8 @@ defmodule Lavash.Dsl do
     args: [:name, {:optional, :params}, {:optional, :when}],
     entities: [
       sets: [@set_entity],
+      pre_runs: [@pre_run_entity],
       runs: [@run_entity],
-      socket_runs: [@socket_run_entity],
       map_bys: [@map_by_entity],
       effects: [@effect_entity],
       submits: [@submit_entity],

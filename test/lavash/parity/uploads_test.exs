@@ -15,16 +15,15 @@ defmodule Lavash.Parity.UploadsTest do
   fixtures use raw `Phoenix.LiveView.allow_upload/3` — the
   vanilla side directly, the lavash side via
   `mount do run fn socket -> ... end end` and
-  `action :save do socket_run fn socket -> ... end end`.
+  `action :save do run fn socket -> ... end end`.
 
-  The `socket_run` action op (the socket-shaped variant of
-  `run`) closes what was previously a parity gap by letting
-  action bodies return a mutated socket wholesale rather than
-  going through the change-tracked `assigns -> assigns`
-  contract.
+  Since #117 collapsed the assigns-shape `run` into a single
+  post-cascade socket-shape `run`, action bodies can return a
+  mutated socket wholesale — closing what was previously a
+  parity gap.
 
   A future `upload :name` DSL entity would still let this
-  collapse from `socket_run` bodies to declarative ops, but
+  collapse from imperative `run` bodies to declarative ops, but
   behavior-wise the parity test passes today.
   """
   use Lavash.ConnCase, async: true
