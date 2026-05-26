@@ -2,6 +2,14 @@
 
 ## Git Commits
 
+Commit freely as work lands. You do not need to wait for explicit
+user approval before each commit in this repo — the pre-commit
+hook (`.githooks/pre-commit`) gates everything that matters:
+format, compile with warnings-as-errors, credo --strict, the full
+test suite (unit + browser e2e), and docs with warnings-as-errors.
+If the hook chain passes, the commit is safe to land. If it
+fails, fix the underlying issue rather than passing `--no-verify`.
+
 Do not include co-author attribution in commit messages.
 
 ## Testing — e2e is load-bearing, not optional
