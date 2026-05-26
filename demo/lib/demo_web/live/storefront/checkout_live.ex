@@ -273,7 +273,11 @@ defmodule DemoWeb.Storefront.CheckoutLive do
   # Mount
   # ─────────────────────────────────────────────────────────────
 
-  def on_mount(socket) do
+  mount do
+    run fn socket -> initialize_cart(socket) end
+  end
+
+  defp initialize_cart(socket) do
     user = socket.assigns[:current_user]
 
     cart_id =
@@ -296,12 +300,9 @@ defmodule DemoWeb.Storefront.CheckoutLive do
         end
       end
 
-    socket =
-      socket
-      |> Lavash.Socket.put_state(:cart_id, cart_id)
-      |> Lavash.Socket.put_state(:_user_id, user && user.id)
-
-    {:ok, socket}
+    socket
+    |> Lavash.Socket.put_state(:cart_id, cart_id)
+    |> Lavash.Socket.put_state(:_user_id, user && user.id)
   end
 
   # ─────────────────────────────────────────────────────────────
@@ -569,7 +570,6 @@ defmodule DemoWeb.Storefront.CheckoutLive do
           id="checkout-address-modal"
           open={@address_modal}
           bind={[open: :address_modal]}
-          current_user={@current_user}
         />
       </main>
     </div>
