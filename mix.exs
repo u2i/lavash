@@ -96,7 +96,13 @@ defmodule Lavash.MixProject do
       main: "readme",
       source_ref: "v#{@version}",
       source_url: @source_url,
-      extras: ["README.md", "CHANGELOG.md", "docs/ARCHITECTURE.md"],
+      extras: [
+        "README.md",
+        "CHANGELOG.md",
+        "docs/ARCHITECTURE.md",
+        "docs/ACTION_LIFECYCLE.md",
+        "docs/STREAMING.md"
+      ],
       groups_for_modules: [
         Core: [
           Lavash.LiveView,

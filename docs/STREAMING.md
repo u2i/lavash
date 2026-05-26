@@ -306,7 +306,7 @@ end
 
 Map onto Phoenix's `stream/3` underneath, so the wire diff
 ships only the new turn instead of the whole array. `@messages`
-in the template renders via `Phoenix.LiveView.stream_for/2`
+in the template renders via Phoenix.LiveView's stream rendering
 loops without the user having to know. Solves the perf cliff at
 scale.
 
