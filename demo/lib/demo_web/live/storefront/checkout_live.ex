@@ -8,7 +8,7 @@ defmodule DemoWeb.Storefront.CheckoutLive do
   """
   use Lavash.LiveView
   import Lavash.Rx
-  import Lavash.LiveView.Components
+  import Lavash.Optimistic.Components
   import Lavash.LiveView.Helpers, only: [lavash_component: 1]
 
   # Import credit card validators (expanded inline, transpiled to JS)

@@ -1,17 +1,30 @@
 defmodule Lavash.IntegrationCase do
   @moduledoc """
-  Per-test case for browser-driven integration tests.
+  Per-test case for browser-driven e2e tests — the half of the
+  test suite that proves the JS client actually works.
 
-  Boots a Wallabidi session against `Lavash.TestEndpoint` (running at
-  `LAVASH_TEST_PORT`, default 4002) using the Lightpanda driver. The endpoint
-  is started by `test/test_helper.exs` when the `e2e` tag is included or when
-  `LAVASH_E2E=1` is set.
+  Boots a Wallabidi session against `Lavash.TestEndpoint` (running
+  at `LAVASH_TEST_PORT`, default 4002) using Chrome via the CDP
+  driver. The endpoint is started by `test/test_helper.exs`
+  unconditionally; e2e tests run by default and skip only when
+  `LAVASH_NO_E2E=1` is set (or `mix test --exclude e2e` is passed).
+
+  ## Why this matters
+
+  Lavash's value prop — optimistic UI, modal phase machines,
+  client-side rx evaluation, `data-lavash-*` DOM updates — is
+  ~half JavaScript. Unit tests verify the Elixir transformers,
+  but only browser tests verify the JS actually does what the
+  Elixir said it should. They're not optional; they're the
+  contract.
+
+  ## Usage
 
   Tag your test module with:
 
       @moduletag :e2e
 
-  Then write:
+  (Done automatically by `use Lavash.IntegrationCase`.)
 
       use Lavash.IntegrationCase, async: false
 
@@ -21,6 +34,16 @@ defmodule Lavash.IntegrationCase do
         |> click(button("Increment"))
         |> assert_has(css("[data-lavash-display='count']", text: "1"))
       end
+
+  ## Chrome discovery
+
+  Wallabidi needs to know which Chrome to drive. The test helper
+  auto-discovers the standard macOS Chrome install at
+  `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`.
+  Override with either:
+
+    * `WALLABIDI_CHROME_PATH` — path to a local Chrome binary
+    * `WALLABIDI_CHROME_URL` — remote CDP endpoint (e.g. `chrome:9222`)
   """
 
   use ExUnit.CaseTemplate

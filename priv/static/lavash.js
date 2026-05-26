@@ -1,28 +1,24 @@
 /**
- * Lavash JS entry point.
+ * Layer-4 (optimism) entry point.
  *
- * Provides the `lavash()` decorator factory and the concern objects.
- * Also handles the global side-effects (window.Lavash namespace,
- * lavashState for reconnect-survival via _lavash_state connect param,
- * phx:_lavash_sync event listener).
+ * Provides the `lavash()` decorator factory + the standard concern
+ * bundle + the `window.Lavash` global namespace that colocated hooks
+ * and the generated optimistic fns plug into.
+ *
+ * Imports `./state_sync.js` purely for its side effects (the
+ * `phx:_lavash_sync` / `phx:_lavash_component_sync` listeners) so any
+ * consumer that imports this entry also gets the layer-2 reconnect
+ * cache wired up. A layer-2-only consumer can import state_sync
+ * directly and skip the optimistic machinery entirely.
  *
  * ## Usage in your app.js
  *
- *     import { lavash, concerns, getState, getHooks } from "lavash";
+ *     import { lavash, defaultConcerns, getState, getHooks } from "lavash";
  *
- *     const lavashDecorator = lavash({
- *       concerns: [
- *         concerns.optimisticActions,
- *         concerns.bindings,
- *         concerns.forms,
- *         concerns.overlays
- *       ]
- *     });
+ *     const decorator = lavash({ concerns: defaultConcerns });
  *
- *     // Lavash emits <div phx-hook="LavashOptimistic" ...> server-side.
- *     // Register a hook by that name, decorated with the lavash pipeline.
  *     const liveSocket = new LiveSocket("/live", Socket, {
- *       hooks: { LavashOptimistic: lavashDecorator({}) },
+ *       hooks: getHooks(decorator, MyAppHooks),
  *       params: () => ({ _csrf_token: csrf, _lavash_state: getState() })
  *     });
  */
@@ -30,21 +26,9 @@
 import { SyncedVar } from "./synced_var.js";
 import { OverlayAnimator } from "./overlay_animator.js";
 
-// ----- Global state: survives reconnects, lost on page refresh -----
-
-const lavashState = {
-  _components: {}
-};
-
-// LiveView state sync events (page-level + component-level).
-window.addEventListener("phx:_lavash_sync", (e) => {
-  Object.assign(lavashState, e.detail);
-});
-
-window.addEventListener("phx:_lavash_component_sync", (e) => {
-  const { id, state } = e.detail;
-  lavashState._components[id] = { ...lavashState._components[id], ...state };
-});
+// Side-effect import: installs the layer-2 sync listeners and makes
+// `getState` available. Re-exported below for convenience.
+import { getState } from "./state_sync.js";
 
 // ----- Global namespace: colocated hooks + generated optimistic fns -----
 
@@ -78,17 +62,6 @@ import { overlays } from "./concerns/overlays.js";
 export const defaultConcerns = [optimisticActions, bindings, forms, overlays];
 
 /**
- * Returns lavashState for the LiveSocket params callback.
- *
- *     new LiveSocket(..., {
- *       params: () => ({ _csrf_token: csrf, _lavash_state: getState() })
- *     });
- */
-export function getState() {
-  return lavashState;
-}
-
-/**
  * Decorate every hook in the dict with the lavash pipeline.
  *
  * Lavash auto-activates only on elements with `data-lavash-state`
@@ -115,4 +88,4 @@ export function getHooks(decorator, userHooks = {}) {
   return decorated;
 }
 
-export { SyncedVar, OverlayAnimator };
+export { SyncedVar, OverlayAnimator, getState };

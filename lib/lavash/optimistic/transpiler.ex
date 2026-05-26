@@ -1,4 +1,4 @@
-defmodule Lavash.Rx.Transpiler do
+defmodule Lavash.Optimistic.Transpiler do
   @moduledoc """
   Translates Elixir expressions to JavaScript.
 
@@ -105,7 +105,7 @@ defmodule Lavash.Rx.Transpiler do
       ...>   discount = assigns.subtotal * assigns.discount_rate
       ...>   assigns |> assign(:discount_amount, discount) |> assign(:total, assigns.subtotal - discount)
       ...> end
-      iex> Lavash.Rx.Transpiler.transpile_run_body(body)
+      iex> Lavash.Optimistic.Transpiler.transpile_run_body(body)
       {["const discount = (state.subtotal * state.discount_rate);"],
        "{discount_amount: discount, total: (state.subtotal - discount)}"}
   """
@@ -824,10 +824,10 @@ defmodule Lavash.Rx.Transpiler do
 
   ## Examples
 
-      iex> Lavash.Rx.Transpiler.validate("length(@tags)")
+      iex> Lavash.Optimistic.Transpiler.validate("length(@tags)")
       :ok
 
-      iex> Lavash.Rx.Transpiler.validate("Ash.read!(Product)")
+      iex> Lavash.Optimistic.Transpiler.validate("Ash.read!(Product)")
       {:error, "Ash.read!"}
   """
   @spec validate(String.t()) :: :ok | {:error, String.t()}

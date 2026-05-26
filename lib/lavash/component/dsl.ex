@@ -284,6 +284,7 @@ defmodule Lavash.Component.Dsl do
       Lavash.Transformers.ValidateDsl,
       Lavash.Component.Transformers.TokenizeTemplate,
       Lavash.Component.Transformers.AnalyzeTemplate,
+      Lavash.Optimistic.Transformers.AnalyzeOptimisticTemplate,
       Lavash.Transformers.ValidateTemplate,
       Lavash.Optimistic.Transformers.ExtractColocatedJs,
       Lavash.Component.Transformers.CompileComponent

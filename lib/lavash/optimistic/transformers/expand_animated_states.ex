@@ -55,6 +55,20 @@ defmodule Lavash.Optimistic.Transformers.ExpandAnimatedStates do
   Transform the DSL state by expanding animated state fields.
   """
   def transform(dsl_state) do
+    module = Transformer.get_persisted(dsl_state, :module)
+
+    # Layer-4 opt-out: see `Lavash.LiveView.Base`. Skip animated
+    # state expansion entirely so the synthesized `_phase` fields
+    # don't carry layer-4 metadata that would later trip
+    # `ValidateBase`.
+    if module && Module.get_attribute(module, :__lavash_layer__) == :base do
+      {:ok, dsl_state}
+    else
+      do_transform(dsl_state)
+    end
+  end
+
+  defp do_transform(dsl_state) do
     states = Transformer.get_entities(dsl_state, [:states]) || []
 
     # Only check StateField structs that have the animated field

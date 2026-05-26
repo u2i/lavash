@@ -85,7 +85,6 @@ defmodule Lavash.Socket do
 
   def url_changed?(socket), do: get(socket, :url_changed) == true
   def socket_changed?(socket), do: get(socket, :socket_changed) == true
-  def optimistic_version(socket), do: get(socket, :optimistic_version) || 0
 
   def url_field?(socket, field) do
     MapSet.member?(get(socket, :url_fields) || MapSet.new(), field)
@@ -200,17 +199,6 @@ defmodule Lavash.Socket do
     update(socket, :registered_components, fn components ->
       Map.put(components || %{}, id, {module, resources})
     end)
-  end
-
-  @doc """
-  Bumps the optimistic version counter.
-
-  Called when processing an event that triggers optimistic updates.
-  The version is included in the rendered HTML and compared by the client
-  to detect and reject stale DOM patches.
-  """
-  def bump_optimistic_version(socket) do
-    update(socket, :optimistic_version, &((&1 || 0) + 1))
   end
 
   @doc """

@@ -138,13 +138,13 @@ defmodule Lavash.Form.ValidationJs do
     error_checks =
       Enum.reduce(custom_errors, error_checks, fn error, acc ->
         expanded_condition = expand_defrx.(error.condition.source)
-        js_condition = Lavash.Rx.Transpiler.to_js(expanded_condition)
+        js_condition = Lavash.Optimistic.Transpiler.to_js(expanded_condition)
 
         msg_js =
           case error.message do
             %Lavash.Rx{source: source} ->
               expanded_msg = expand_defrx.(source)
-              "(#{Lavash.Rx.Transpiler.to_js(expanded_msg)})"
+              "(#{Lavash.Optimistic.Transpiler.to_js(expanded_msg)})"
 
             static_string when is_binary(static_string) ->
               Jason.encode!(static_string)

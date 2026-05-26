@@ -42,7 +42,7 @@ defmodule Lavash.Rx.Functions do
 
   - `defrx` function bodies must be single expressions
   - No intermediate variable assignments (e.g., `x = 1` is not allowed)
-  - All code must be transpilable to JavaScript (see `Lavash.Rx.Transpiler`)
+  - All code must be transpilable to JavaScript (see `Lavash.Optimistic.Transpiler`)
 
   ## Example with nested functions
 

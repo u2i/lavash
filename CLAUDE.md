@@ -4,6 +4,28 @@
 
 Do not include co-author attribution in commit messages.
 
+## Testing — e2e is load-bearing, not optional
+
+Lavash's behavior is roughly half JavaScript (optimistic UI,
+SyncedVar merge walker, modal phase machine, `data-lavash-*`
+DOM updates, client-side rx evaluation). The unit tests in
+`test/lavash/` verify the Elixir transformers; only the
+browser-driven e2e tests in `test/integration/` verify the JS
+actually does what the Elixir said it should.
+
+Treat e2e tests as a **default-on** part of the suite. Never
+describe them as "skipped by default" or "optional" — they
+literally run on `mix test` (see `test/test_helper.exs`). The
+opt-out exists for fast inner-loop dev (`LAVASH_NO_E2E=1`), not
+because they're a separate suite.
+
+When asserting "all tests pass," that claim must mean **including
+e2e**. A unit-only pass does not prove lavash works.
+
+Browser is Chrome via Wallabidi CDP. The helper auto-discovers
+the macOS Chrome install; override with `WALLABIDI_CHROME_PATH`
+or `WALLABIDI_CHROME_URL`.
+
 ## Colocated Hooks Development Workflow
 
 The demo app is configured for automatic reloading of colocated JS hooks from the lavash library.

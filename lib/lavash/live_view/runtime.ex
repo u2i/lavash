@@ -22,80 +22,35 @@ defmodule Lavash.LiveView.Runtime do
   alias Lavash.State
 
   @doc """
-  Wraps the user's render output with optimistic state tracking if needed.
+  Layer-1 entry point that wraps the user's render output if the
+  optimism extension is loaded. Delegates to
+  `Lavash.Optimistic.RenderWrapper.wrap_render/3` when that module
+  exists; otherwise returns `inner_content` unchanged.
 
-  If the module has any optimistic fields (state or derives with `optimistic: true`),
-  wraps the rendered content in a div with the LavashOptimistic hook and state data.
+  The optimism wrapper produces a
+  `<div phx-hook="LavashOptimistic" data-lavash-state=...>` shell
+  around the user's content. A layer-2-only build that omits the
+  `Lavash.Optimistic.RenderWrapper` module gets no wrapper, no
+  hook, and no embedded JSON state — pure server-authoritative
+  rendering. See `docs/ARCHITECTURE.md` punchlist item #8.
+
+  ## Why `Code.ensure_loaded?` vs `function_exported?`
+
+  `function_exported?/3` returns false for modules that haven't
+  been loaded yet, even if they'd be loadable on demand. Phoenix
+  LiveView renders run after the module compile cycle, so the
+  optimism module is reachable but may not be loaded into the BEAM
+  in the rare case it was tree-shaken. `Code.ensure_loaded?/1`
+  forces the load attempt and then `function_exported?` confirms
+  the symbol exists.
   """
   def wrap_render(module, assigns, inner_content) do
-    optimistic_fields = module.__lavash__(:optimistic_fields)
+    wrapper = Lavash.Optimistic.RenderWrapper
 
-    if optimistic_fields == [] do
-      # No optimistic fields, just return the content directly
-      inner_content
+    if Code.ensure_loaded?(wrapper) and function_exported?(wrapper, :wrap_render, 3) do
+      wrapper.wrap_render(module, assigns, inner_content)
     else
-      # Build optimistic state
-      optimistic_state = Lavash.LiveView.Helpers.optimistic_state(module, assigns)
-      module_name = inspect(module)
-      optimistic_json = Lavash.JSON.encode!(optimistic_state)
-
-      # Get the optimistic version from socket (passed via assigns.__changed__ context)
-      # We need to get it from the socket which is available in assigns
-      version =
-        case assigns do
-          %{__changed__: _} = a ->
-            # In a LiveView, we can access socket via assigns
-            socket = Map.get(a, :socket)
-            if socket, do: LSocket.optimistic_version(socket), else: 0
-
-          _ ->
-            0
-        end
-
-      # Optimistic functions are now extracted to colocated JS files at compile time
-      # by Lavash.Optimistic.Transformers.ExtractColocatedJs, no need to embed them here
-      has_optimistic_js = optimistic_fields != []
-
-      # Get URL field names for client-side URL sync
-      url_field_names =
-        module.__lavash__(:url_fields)
-        |> Enum.map(& &1.name)
-
-      # Escape for HTML attribute
-      escaped_module = Phoenix.HTML.Safe.to_iodata(module_name)
-      escaped_json = Phoenix.HTML.Safe.to_iodata(optimistic_json)
-      escaped_url_fields = Phoenix.HTML.Safe.to_iodata(Jason.encode!(url_field_names))
-      version_str = to_string(version)
-
-      # Build wrapper as a Rendered struct so LiveView can diff it properly
-      # The static parts are the wrapper div, dynamic parts include the inner content
-      # Note: Optimistic functions are now loaded from colocated JS files (imported in app.js)
-      # instead of being embedded as JSON and eval'd at runtime
-      %Phoenix.LiveView.Rendered{
-        static: [
-          ~s(<div id="lavash-optimistic-root" phx-hook="LavashOptimistic" data-lavash-module="),
-          ~s(" data-lavash-state="),
-          ~s(" data-lavash-version="),
-          ~s(" data-lavash-url-fields="),
-          ~s(">),
-          ~s(</div>)
-        ],
-        dynamic: fn _ ->
-          [
-            escaped_module,
-            escaped_json,
-            version_str,
-            escaped_url_fields,
-            inner_content
-          ]
-        end,
-        # IMPORTANT: fingerprint must NOT include dynamic values (state, version) that change
-        # on every update. Including them causes LiveView to treat this as a completely new
-        # template, wiping out the component registry and breaking CID-based event targeting.
-        # Only include structural information that defines the template shape.
-        fingerprint: :erlang.phash2({module_name, url_field_names, has_optimistic_js}),
-        root: true
-      }
+      inner_content
     end
   end
 
@@ -415,7 +370,7 @@ defmodule Lavash.LiveView.Runtime do
 
         socket =
           socket
-          |> LSocket.bump_optimistic_version()
+          |> Lavash.Optimistic.Version.bump()
           |> Reactive.recompute()
           |> Assigns.project(module)
 
@@ -444,7 +399,7 @@ defmodule Lavash.LiveView.Runtime do
 
           action ->
             # Bump optimistic version - client will use this to detect stale patches
-            socket = LSocket.bump_optimistic_version(socket)
+            socket = Lavash.Optimistic.Version.bump(socket)
 
             case execute_action(socket, module, action, params) do
               {:ok, socket} ->
@@ -583,7 +538,7 @@ defmodule Lavash.LiveView.Runtime do
       when op in [:set] do
     socket =
       socket
-      |> LSocket.bump_optimistic_version()
+      |> Lavash.Optimistic.Version.bump()
       |> apply_field_op(op, field, value)
       |> maybe_push_patch(module)
       |> Reactive.recompute()

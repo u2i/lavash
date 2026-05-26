@@ -82,7 +82,7 @@ defmodule Lavash.Component.CompilerHelpers do
   end
 
   defp transform_expr_to_js(expr, item_str, arg_str) do
-    js = Lavash.Rx.Transpiler.to_js(Macro.to_string(expr))
+    js = Lavash.Optimistic.Transpiler.to_js(Macro.to_string(expr))
 
     js
     |> String.replace("state.#{item_str}", "item")

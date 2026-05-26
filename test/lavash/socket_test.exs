@@ -41,7 +41,7 @@ defmodule Lavash.SocketTest do
 
       assert LSocket.url_field?(socket, :count)
       assert LSocket.socket_field?(socket, :theme)
-      assert LSocket.optimistic_version(socket) == 5
+      assert Lavash.Optimistic.Version.get(socket) == 5
     end
   end
 
@@ -215,31 +215,6 @@ defmodule Lavash.SocketTest do
 
       components = LSocket.get(socket, :registered_components)
       assert components["cart-1"] == {CartComponent, [:cart_item]}
-    end
-  end
-
-  # ============================================
-  # optimistic version
-  # ============================================
-
-  describe "optimistic version" do
-    test "starts at 0" do
-      assert LSocket.optimistic_version(init_socket()) == 0
-    end
-
-    test "bump_optimistic_version/1 increments" do
-      socket = init_socket() |> LSocket.bump_optimistic_version()
-      assert LSocket.optimistic_version(socket) == 1
-    end
-
-    test "bumps sequentially" do
-      socket =
-        init_socket()
-        |> LSocket.bump_optimistic_version()
-        |> LSocket.bump_optimistic_version()
-        |> LSocket.bump_optimistic_version()
-
-      assert LSocket.optimistic_version(socket) == 3
     end
   end
 end

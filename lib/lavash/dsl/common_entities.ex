@@ -13,8 +13,17 @@ defmodule Lavash.Dsl.CommonEntities do
   @doc """
   Base schema fields shared by all state entities.
 
-  LiveView extends this with: :url from option, setter, encode, decode, required
-  Component uses this with: :socket/:ephemeral from option only
+  Strictly layer-1/2 keys: name, type, default. Storage-source keys
+  (`from:`, `setter:`, `encode:`, `decode:`, etc.) are appended by
+  the LiveView and Component DSLs at their layer-2 build sites.
+  Layer-4 keys (`optimistic:`, `animated:`) come from
+  `Lavash.Optimistic.SchemaExtension.state_schema/0` and are
+  concatenated alongside.
+
+  This split is the layering carving from
+  `docs/ARCHITECTURE.md` punchlist item #3: the base DSL surface
+  shouldn't advertise optimism keys when the user hasn't opted in
+  to layer 4.
   """
   def base_state_schema do
     [
@@ -31,25 +40,8 @@ defmodule Lavash.Dsl.CommonEntities do
       default: [
         type: :any,
         doc: "Default value when not present"
-      ],
-      optimistic: [
-        type: :boolean,
-        default: false,
-        doc: "Enable optimistic updates with version tracking"
-      ],
-      animated: [
-        type: {:or, [:boolean, :keyword_list]},
-        default: false,
-        doc: """
-        Enable animated state transitions with phase tracking.
-
-        Options (when keyword list):
-        - `async: :field_name` - coordinate with async data loading
-        - `preserve_dom: true` - keep DOM alive during exit animation
-        - `duration: 200` - fallback timeout in ms
-        """
       ]
-    ]
+    ] ++ Lavash.Optimistic.SchemaExtension.state_schema()
   end
 
   # ============================================
@@ -354,14 +346,10 @@ defmodule Lavash.Dsl.CommonEntities do
         required: true,
         doc: "The reactive expression wrapped in rx()"
       ],
-      optimistic: [
-        type: :boolean,
-        default: true,
-        doc: """
-        Whether to transpile to JavaScript for client-side updates.
-        Auto-set to false if the expression can't be transpiled.
-        """
-      ],
+      # `optimistic:` is a layer-4 concern — moved to
+      # `Lavash.Optimistic.SchemaExtension.calculate_schema/0` and
+      # appended below for backward compatibility. See
+      # docs/ARCHITECTURE.md punchlist item #3.
       async: [
         type: :boolean,
         default: false,
@@ -379,7 +367,7 @@ defmodule Lavash.Dsl.CommonEntities do
         When any of these resources change, the calculation is recomputed.
         """
       ]
-    ]
+    ] ++ Lavash.Optimistic.SchemaExtension.calculate_schema()
   end
 
   # ============================================

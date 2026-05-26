@@ -351,7 +351,7 @@ defmodule Lavash.Transformers.ExpandFields do
       cond do
         is_async -> false
         not declared_optimistic -> false
-        true -> Lavash.Rx.Transpiler.transpilable?(ast)
+        true -> Lavash.Optimistic.Transpiler.transpilable?(ast)
       end
 
     %{

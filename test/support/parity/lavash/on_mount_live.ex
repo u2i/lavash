@@ -21,9 +21,13 @@ defmodule Lavash.Parity.Lavash.OnMountLive do
   on_mount({Lavash.Parity.OnMountHook, :require_user})
   on_mount({Lavash.Parity.OnMountHook, :audit})
 
-  # Hook-derived assigns surface here just like any other socket
-  # assigns. The lavash DSL doesn't need to know about them.
+  # Hook-derived assigns are lifted into lavash state via
+  # `from: :assigns` so they participate in template validation
+  # (and the reactive graph if anything reads them in `rx()`).
   state :greeting, :string, default: "(unset)"
+  state :current_user_id, :string, from: :assigns, default: nil
+  state :current_user_email, :string, from: :assigns, default: nil
+  state :audited_at, :map, from: :assigns, default: nil
 
   template do
     ~H"""

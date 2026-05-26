@@ -142,7 +142,7 @@ defmodule Lavash.Overlay.Modal.RenderGenerator do
         optimistic_json = Lavash.JSON.encode!(optimistic_state)
 
         # Get optimistic version from socket
-        version = Lavash.Socket.optimistic_version(var!(assigns).socket)
+        version = Lavash.Optimistic.Version.get(var!(assigns).socket)
 
         # Get client bindings for parent-to-child propagation
         client_bindings = Map.get(var!(assigns), :__lavash_client_bindings__) || %{}

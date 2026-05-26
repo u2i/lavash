@@ -175,6 +175,319 @@ defmodule Lavash.Transformers.ValidateTemplateTest do
     end
   end
 
+  describe "phx-value-* against action params" do
+    test "declared param passes" do
+      assert_compiles(
+        Lavash.Validate.TplGoodPhxValue,
+        """
+        state :count, :integer, default: 0, optimistic: true
+
+        actions do
+          action :bump_by, [:amount] do
+            set :count, rx(@count + 1)
+          end
+        end
+
+        template do
+          ~H\"\"\"
+          <button phx-click="bump_by" phx-value-amount="5">+5</button>
+          \"\"\"
+        end
+        """
+      )
+    end
+
+    test "undeclared param raises with declared params shown" do
+      assert_raises_dsl_error(
+        Lavash.Validate.TplBadPhxValue,
+        """
+        state :count, :integer, default: 0, optimistic: true
+
+        actions do
+          action :bump_by, [:amount] do
+            set :count, rx(@count + 1)
+          end
+        end
+
+        template do
+          ~H\"\"\"
+          <button phx-click="bump_by" phx-value-amout="5">+5</button>
+          \"\"\"
+        end
+        """,
+        "`phx-value-amout` references an undeclared param"
+      )
+    end
+
+    test "undeclared param suggests closest declared param" do
+      assert_raises_dsl_error(
+        Lavash.Validate.TplBadPhxValueSuggest,
+        """
+        state :count, :integer, default: 0, optimistic: true
+
+        actions do
+          action :bump_by, [:amount] do
+            set :count, rx(@count + 1)
+          end
+        end
+
+        template do
+          ~H\"\"\"
+          <button phx-click="bump_by" phx-value-amout="5">+5</button>
+          \"\"\"
+        end
+        """,
+        "Did you mean `phx-value-amount`?"
+      )
+    end
+
+    test "action with no params raises on any phx-value-*" do
+      assert_raises_dsl_error(
+        Lavash.Validate.TplNoParams,
+        """
+        state :count, :integer, default: 0, optimistic: true
+
+        actions do
+          action :increment do
+            set :count, rx(@count + 1)
+          end
+        end
+
+        template do
+          ~H\"\"\"
+          <button phx-click="increment" phx-value-foo="x">+</button>
+          \"\"\"
+        end
+        """,
+        "Action `increment` declares no params."
+      )
+    end
+
+    test "auto-setter accepts phx-value-value" do
+      assert_compiles(
+        Lavash.Validate.TplAutoSetterValue,
+        """
+        state :search, :string, default: "", optimistic: true
+
+        template do
+          ~H\"\"\"
+          <button phx-click="set_search" phx-value-value="hello">set</button>
+          \"\"\"
+        end
+        """
+      )
+    end
+
+    test "auto-setter rejects other phx-value keys" do
+      assert_raises_dsl_error(
+        Lavash.Validate.TplAutoSetterBadValue,
+        """
+        state :search, :string, default: "", optimistic: true
+
+        template do
+          ~H\"\"\"
+          <button phx-click="set_search" phx-value-payload="hello">set</button>
+          \"\"\"
+        end
+        """,
+        "`phx-value-payload` references an undeclared param"
+      )
+    end
+
+    test "multiple declared params, all referenced — compiles" do
+      assert_compiles(
+        Lavash.Validate.TplMultipleParams,
+        """
+        state :count, :integer, default: 0, optimistic: true
+
+        actions do
+          action :bump_by, [:amount, :reason] do
+            set :count, rx(@count + 1)
+          end
+        end
+
+        template do
+          ~H\"\"\"
+          <button phx-click="bump_by" phx-value-amount="5" phx-value-reason="user">+</button>
+          \"\"\"
+        end
+        """
+      )
+    end
+  end
+
+  describe "@name assign references" do
+    test "declared state field passes" do
+      assert_compiles(
+        Lavash.Validate.TplGoodAssign,
+        """
+        state :count, :integer, default: 0, optimistic: true
+
+        template do
+          ~H\"\"\"
+          <p>{@count}</p>
+          \"\"\"
+        end
+        """
+      )
+    end
+
+    test "typo'd assign raises with suggestion" do
+      assert_raises_dsl_error(
+        Lavash.Validate.TplBadAssign,
+        """
+        state :count, :integer, default: 0, optimistic: true
+
+        template do
+          ~H\"\"\"
+          <p>{@cout}</p>
+          \"\"\"
+        end
+        """,
+        "`@cout` references an undeclared assign"
+      )
+    end
+
+    test "typo suggests closest declared state" do
+      assert_raises_dsl_error(
+        Lavash.Validate.TplBadAssignSuggest,
+        """
+        state :count, :integer, default: 0, optimistic: true
+
+        template do
+          ~H\"\"\"
+          <p>{@cout}</p>
+          \"\"\"
+        end
+        """,
+        "Did you mean `@count`?"
+      )
+    end
+
+    test "@flash passes (Phoenix-injected)" do
+      assert_compiles(
+        Lavash.Validate.TplFlash,
+        """
+        template do
+          ~H\"\"\"
+          <p>{@flash[:info]}</p>
+          \"\"\"
+        end
+        """
+      )
+    end
+
+    test "@socket passes (Phoenix-injected)" do
+      assert_compiles(
+        Lavash.Validate.TplSocket,
+        """
+        template do
+          ~H\"\"\"
+          <p>{inspect(@socket.assigns)}</p>
+          \"\"\"
+        end
+        """
+      )
+    end
+
+    test "?-suffix state field works (e.g. @is_admin?)" do
+      assert_compiles(
+        Lavash.Validate.TplPredicate,
+        """
+        state :is_admin?, :boolean, default: true, optimistic: true
+
+        template do
+          ~H\"\"\"
+          <p>{to_string(@is_admin?)}</p>
+          \"\"\"
+        end
+        """
+      )
+    end
+
+    test "from: :assigns state passes" do
+      assert_compiles(
+        Lavash.Validate.TplFromAssigns,
+        """
+        state :current_user, :map, from: :assigns, default: nil
+
+        template do
+          ~H\"\"\"
+          <p>{inspect(@current_user)}</p>
+          \"\"\"
+        end
+        """
+      )
+    end
+
+    test "@-ref inside :if attr is validated" do
+      assert_raises_dsl_error(
+        Lavash.Validate.TplBadIfRef,
+        """
+        state :open, :boolean, default: false, optimistic: true
+
+        template do
+          ~H\"\"\"
+          <div :if={@opn}>hidden</div>
+          \"\"\"
+        end
+        """,
+        "`@opn` references an undeclared assign"
+      )
+    end
+
+    test "@-ref inside :for source expression is validated" do
+      assert_raises_dsl_error(
+        Lavash.Validate.TplBadForSource,
+        """
+        state :items, {:array, :string}, default: [], optimistic: true
+
+        template do
+          ~H\"\"\"
+          <span :for={item <- @itms}>{item}</span>
+          \"\"\"
+        end
+        """,
+        "`@itms` references an undeclared assign"
+      )
+    end
+
+    test "bare loop variable (no @-prefix) is ignored" do
+      # `item` is a local Elixir binding from :for — not an assign.
+      # The validator should NOT flag it; the Elixir compiler will
+      # catch undefined-variable errors.
+      assert_compiles(
+        Lavash.Validate.TplLoopVar,
+        """
+        state :items, {:array, :string}, default: [], optimistic: true
+
+        template do
+          ~H\"\"\"
+          <span :for={item <- @items}>{item}</span>
+          \"\"\"
+        end
+        """
+      )
+    end
+
+    test "<%= eex %> blocks are validated" do
+      assert_raises_dsl_error(
+        Lavash.Validate.TplBadEex,
+        """
+        state :count, :integer, default: 0, optimistic: true
+
+        template do
+          ~H\"\"\"
+          <%= if @count > 0 do %>positive<% end %>
+          <%= @cout %>
+          \"\"\"
+        end
+        """,
+        "`@cout` references an undeclared assign"
+      )
+    end
+  end
+
   describe "phx-click on a component" do
     test "is not validated (binds to a prop, not an event)" do
       # phx-click on a function/live component is a prop value, not a

@@ -135,7 +135,7 @@ defmodule Lavash.Reactive.GraphMacro do
           if async do
             [{to_string(name), nil, deps}]
           else
-            js_expr = Lavash.Rx.Transpiler.to_js(source)
+            js_expr = Lavash.Optimistic.Transpiler.to_js(source)
             [{to_string(name), js_expr, deps}]
           end
 

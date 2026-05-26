@@ -1,4 +1,4 @@
-defmodule Lavash.Rx.TranspilerIntegrationTest do
+defmodule Lavash.Optimistic.TranspilerIntegrationTest do
   @moduledoc """
   Integration tests that verify Elixir expressions and their JS transpilations
   produce identical results when evaluated with the same state.
@@ -7,7 +7,7 @@ defmodule Lavash.Rx.TranspilerIntegrationTest do
   """
   use ExUnit.Case, async: false
 
-  alias Lavash.Rx.Transpiler
+  alias Lavash.Optimistic.Transpiler
 
   @moduletag :integration
 

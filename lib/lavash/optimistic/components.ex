@@ -1,11 +1,11 @@
-defmodule Lavash.LiveView.Components do
+defmodule Lavash.Optimistic.Components do
   @moduledoc """
   Lavash form components with built-in optimistic updates.
 
   These components combine Phoenix form patterns with Lavash's optimistic
   validation system. Import them into your LiveView or component:
 
-      import Lavash.LiveView.Components
+      import Lavash.Optimistic.Components
 
   ## Styling dependency: daisyUI
 

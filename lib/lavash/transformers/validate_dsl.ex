@@ -74,12 +74,17 @@ defmodule Lavash.Transformers.ValidateDsl do
       |> MapSet.union(prop_names)
       |> MapSet.union(form_field_names)
 
+    # `set` targets: declared state OR form-synthesized state fields
+    # (e.g. `<form>_params` is an ephemeral state field the form
+    # runtime maintains — modal injection clears it on open).
+    writable = MapSet.union(state_names, form_field_names)
+
     with :ok <- check_unique(states, "state", module),
          :ok <- check_unique(calculations, "calculation", module),
          :ok <- check_unique(actions, "action", module),
          :ok <- check_state_calc_collision(state_names, calculations, module),
          :ok <- check_reads(actions, known, module),
-         :ok <- check_action_sets(actions, state_names, module),
+         :ok <- check_action_sets(actions, writable, module),
          :ok <- check_action_set_deps(actions, known, module),
          :ok <- check_action_guards(actions, state_names, calc_names, module),
          :ok <- check_calc_deps(calculations, known, module) do
@@ -95,20 +100,27 @@ defmodule Lavash.Transformers.ValidateDsl do
 
   defp form_field_names(form) do
     base = form.name
-    # Forms synthesize <form>_params, <form>_action, <form>_valid,
-    # <form>_errors, <form>_show_errors, plus per-field <form>_<f>_valid /
-    # _errors. The runtime exposes all of these in assigns, so they're
-    # legitimate reads targets.
-    fields = Map.get(form, :fields, []) || []
 
-    [
+    # The form itself is exposed under its declared name (e.g.
+    # `form :edit_form, ...` → `@edit_form` is the AshPhoenix form
+    # struct), plus the standard top-level derives.
+    top_level = [
+      base,
       :"#{base}_params",
       :"#{base}_action",
       :"#{base}_valid",
       :"#{base}_errors",
       :"#{base}_show_errors",
       :"#{base}_server_errors"
-    ] ++
+    ]
+
+    # Per-field validators (`<form>_<field>_valid`, etc.) are
+    # generated at JS-extract time from the Ash resource's
+    # attributes. ValidateDsl runs earlier than that, so we
+    # introspect the resource directly here.
+    fields = form_fields_from_resource(form)
+
+    per_field =
       Enum.flat_map(fields, fn field ->
         [
           :"#{base}_#{field}_valid",
@@ -116,6 +128,28 @@ defmodule Lavash.Transformers.ValidateDsl do
           :"#{base}_#{field}_show_errors"
         ]
       end)
+
+    top_level ++ per_field
+  end
+
+  # Pull the attribute names off the form's Ash resource. The form
+  # entity carries `:resource` (the Ash module). If the resource
+  # isn't loaded yet (compile order edge case) or doesn't expose
+  # the introspection API, fall back to `:fields` on the form entity.
+  defp form_fields_from_resource(form) do
+    resource = Map.get(form, :resource)
+
+    if is_atom(resource) and function_exported?(resource, :spark_dsl_config, 0) do
+      try do
+        resource
+        |> Ash.Resource.Info.attributes()
+        |> Enum.map(& &1.name)
+      rescue
+        _ -> Map.get(form, :fields, []) || []
+      end
+    else
+      Map.get(form, :fields, []) || []
+    end
   end
 
   # --- uniqueness ---

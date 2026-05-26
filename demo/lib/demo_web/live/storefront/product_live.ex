@@ -18,6 +18,12 @@ defmodule DemoWeb.Storefront.ProductLive do
   state :cart_id, :string, from: :ephemeral
   state :cart_open, :any, from: :ephemeral, default: nil, optimistic: true
 
+  # Action-scratch state. The update/remove cart actions stash the
+  # operating item id and delta here before reading it back in the
+  # `run` body.
+  state :_pending_item_id, :string, from: :ephemeral, default: nil
+  state :_pending_delta, :integer, from: :ephemeral, default: nil
+
   # Cart reads
   read :cart_items, CartItem, :for_cart do
     argument :cart_id, state(:cart_id)
@@ -129,8 +135,13 @@ defmodule DemoWeb.Storefront.ProductLive do
   defp parse_delta(d) when is_integer(d), do: d
   defp parse_delta(d) when is_binary(d), do: String.to_integer(d)
 
-  # Mount: load product and find/create cart
-  def on_mount(socket) do
+  # Mount: load product and find/create cart. Run via `mount do run
+  # ... end` so we don't shadow lavash's imported `on_mount` macro.
+  mount do
+    run fn socket -> load_product_and_cart(socket) end
+  end
+
+  defp load_product_and_cart(socket) do
     product_id = socket.assigns[:product_id]
 
     socket =
@@ -165,7 +176,7 @@ defmodule DemoWeb.Storefront.ProductLive do
         nil
       end
 
-    {:ok, Lavash.Socket.put_state(socket, :cart_id, cart_id)}
+    Lavash.Socket.put_state(socket, :cart_id, cart_id)
   end
 
   defp coffee_image(roast_level) do

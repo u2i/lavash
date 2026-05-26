@@ -14,7 +14,7 @@ defmodule DemoWeb.CheckoutDemoLive do
   """
   use Lavash.LiveView
   import Lavash.Rx
-  import Lavash.LiveView.Components
+  import Lavash.Optimistic.Components
   import Lavash.LiveView.Helpers, only: [lavash_component: 1]
 
   # Import credit card validators (valid_card_number?, valid_expiry?, valid_cvv?)

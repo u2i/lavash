@@ -398,7 +398,11 @@ defmodule Lavash.Component.Transformers.CompileComponent do
       optimistic_actions: optimistic_actions_map,
       attr_derives: attr_derives,
       caller_module: env.module,
-      caller_file: env.file
+      caller_file: env.file,
+      # Layer hint for the token transformer: `:base` suppresses
+      # "you declared :foo but didn't mark it optimistic" warnings
+      # since in Base mode that's the contract, not a typo.
+      layer: Module.get_attribute(env.module, :__lavash_layer__)
     }
   end
 

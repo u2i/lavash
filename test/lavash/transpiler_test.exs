@@ -1,7 +1,7 @@
-defmodule Lavash.Rx.TranspilerTest do
+defmodule Lavash.Optimistic.TranspilerTest do
   use ExUnit.Case, async: true
 
-  alias Lavash.Rx.Transpiler
+  alias Lavash.Optimistic.Transpiler
 
   describe "to_js/1 - literals" do
     test "string literals" do

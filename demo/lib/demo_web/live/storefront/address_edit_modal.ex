@@ -5,7 +5,7 @@ defmodule DemoWeb.Storefront.AddressEditModal do
   """
   use Lavash.Component, extensions: [Lavash.Overlay.Modal.Dsl]
 
-  import Lavash.LiveView.Components, only: [input: 1, select: 1]
+  import Lavash.Optimistic.Components, only: [input: 1, select: 1]
   import Lavash.Overlay.Modal.Helpers, only: [modal_close_button: 1]
 
   alias Demo.Orders.Address

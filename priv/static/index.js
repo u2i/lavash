@@ -35,7 +35,6 @@ export {
 } from "./lavash.js";
 
 export { SyncedVar as SyncedVarClass, SyncedVarStore } from "./synced_var.js";
-export { ReactiveStore } from "./reactive_store.js";
 
 // Backward-compat aliases
 export { OverlayAnimator as ModalAnimator } from "./overlay_animator.js";

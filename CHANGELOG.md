@@ -6,6 +6,47 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Compile-time validation of `phx-click` / `phx-submit` / `phx-change`
+  references.** Static-string event values on plain HTML tags are
+  cross-checked against the module's declared actions (and
+  auto-generated `set_<name>` setters from `state ..., setter: true`).
+  A typo'd `phx-click="incremnt"` now raises a `Spark.Error.DslError`
+  at compile time with a Levenshtein-based suggestion, instead of
+  surfacing as a silent no-op in the browser. Dynamic expressions
+  like `phx-click={JS.dispatch(...)}` and events on component nodes
+  are skipped — the validator only checks references it can
+  statically resolve.
+
+- **Compile-time validation of `phx-value-*` attribute names against
+  action `params` lists.** `<button phx-click="bump_by"
+  phx-value-amout="5">` now raises at compile time if `:bump_by`
+  declared `params [:amount]`, with a suggestion to `phx-value-amount`.
+  Catches typos whose runtime symptom was a silently-nil param —
+  often crashing later inside `String.to_integer(nil)`. Auto-generated
+  `set_<name>` setters accept only `phx-value-value`.
+
+- **Compile-time validation of `@name` assign references in HEEx.**
+  Every `@name` in a template (`{@field}`, `:if={@open}`,
+  `class={@theme}`, `<%= @count %>`, etc.) must resolve to a
+  declared `state`, `prop`, `slot`, `calculate`, `async`, or `form`
+  on the module — or to a Phoenix-injected assign (`@flash`,
+  `@socket`, `@live_action`, `@uploads`, `@streams`, `@id`,
+  `@myself`, `@inner_block`). Typos like `{@flsh[:info]}` or
+  `:if={@opn}` now raise a `Spark.Error.DslError` at compile time
+  with a Levenshtein-based suggestion. `?`-suffix field names
+  (e.g. `state :is_admin?, :boolean`) are matched correctly.
+
+  **Migration note:** on_mount hooks that inject assigns previously
+  worked implicitly — the assigns landed on `socket.assigns` and
+  were available in templates without lavash knowing. With this
+  validation in place, hook-injected assigns must be declared
+  via `state :name, :type, from: :assigns, assigns_key: :name`
+  to be referenced in HEEx. This makes the source of every
+  template assign explicit and gives the field a place in the
+  reactive graph.
+
 ## [0.4.0-rc.3] — 2026-05-25
 
 The optimistic JS pipeline was broken in rc.1/rc.2 — lavash's
@@ -29,7 +70,7 @@ through again.
   fns and `calculate :foo, rx(...)` JS never reached the browser.
   Every "optimistic" click was actually a server round-trip.
 
-  Fix: use `Phoenix.LiveView.ColocatedAssets.extract/5`, which
+  Fix: use Phoenix.LiveView.ColocatedAssets.extract/5, which
   writes the file AND returns the proper `Entry`. The persisted
   Entry flows through `__phoenix_macro_components__/0`; Phoenix
   tracks it; file survives.

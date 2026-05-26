@@ -124,7 +124,7 @@ defmodule Lavash.Component.Runtime do
     # Update our state with the new value
     socket =
       socket
-      |> LSocket.bump_optimistic_version()
+      |> Lavash.Optimistic.Version.bump()
       |> LSocket.put_state(field, parsed_value)
       |> Reactive.recompute()
       |> Assigns.project(module)

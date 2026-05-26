@@ -30,6 +30,12 @@ defmodule DemoWeb.Storefront.ProductsLive do
   # Parent owns flyover open state, bound down to CartFlyover
   state :cart_open, :any, from: :ephemeral, default: nil, optimistic: true
 
+  # Action-scratch state — actions stash the operating ids/delta here
+  # before reading them back in the run body of the same action.
+  state :_pending_product_id, :string, from: :ephemeral, default: nil
+  state :_pending_item_id, :string, from: :ephemeral, default: nil
+  state :_pending_delta, :integer, from: :ephemeral, default: nil
+
   # ============================================
   # Reads
   # ============================================
@@ -202,16 +208,17 @@ defmodule DemoWeb.Storefront.ProductsLive do
   defp parse_delta(d) when is_integer(d), do: d
   defp parse_delta(d) when is_binary(d), do: String.to_integer(d)
 
-  # Mount hook to find or create cart for current user
-  def on_mount(socket) do
+  mount do
+    run fn socket -> find_or_create_cart(socket) end
+  end
+
+  defp find_or_create_cart(socket) do
     user = socket.assigns[:current_user]
 
     cart_id =
       if user do
-        # Find or create cart for user
         case Cart |> Ash.Query.for_read(:for_user, %{user_id: user.id}) |> Ash.read_one() do
           {:ok, nil} ->
-            # Create new cart
             {:ok, cart} =
               Cart
               |> Ash.Changeset.for_create(:create, %{}, actor: user)
@@ -229,7 +236,7 @@ defmodule DemoWeb.Storefront.ProductsLive do
         nil
       end
 
-    {:ok, Lavash.Socket.put_state(socket, :cart_id, cart_id)}
+    Lavash.Socket.put_state(socket, :cart_id, cart_id)
   end
 
   defp coffee_image(roast_level) do

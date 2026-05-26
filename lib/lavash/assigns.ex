@@ -8,11 +8,9 @@ defmodule Lavash.Assigns do
   component state propagation.
   """
 
-  alias Lavash.Socket, as: LSocket
-
   def project(socket, module) do
     socket
-    |> Phoenix.Component.assign(:__lavash_parent_version__, LSocket.optimistic_version(socket))
+    |> Lavash.Optimistic.Version.project()
     |> project_form_metadata(module)
   end
 

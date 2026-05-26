@@ -27,63 +27,32 @@ import topbar from "../vendor/topbar"
 import morphdom from "../vendor/morphdom"
 window.morphdom = morphdom
 
-// Lavash - simplified initialization (see priv/static/lavash.js for the unified module)
-// Current approach: manual setup for demonstration purposes
-// Future: Use `import Lavash from "lavash"` and `hooks: Lavash.hooks, params: () => ({ _lavash_state: Lavash.state })`
+// Lavash: import the decorator factory + helpers. Importing `lavash`
+// also installs the layer-2 sync listeners (`phx:_lavash_sync` etc.)
+// as a side effect, so we don't need to wire those up manually.
+import { lavash, defaultConcerns, getHooks, getState } from "lavash"
 
-// Lavash optimistic UI library
-import { SyncedVar, LavashOptimistic, OverlayAnimator } from "lavash"
-// Lavash optimistic functions - auto-generated at compile time via phoenix-colocated
-import {optimistic as lavashLibOptimisticFns} from "phoenix-colocated/lavash"
-import {optimistic as demoOptimisticFns} from "phoenix-colocated/demo"
-
-// Register Lavash on window for colocated hooks and generated optimistic functions
-window.Lavash = window.Lavash || {};
-window.Lavash.SyncedVar = SyncedVar;
-window.Lavash.OverlayAnimator = OverlayAnimator;
-window.Lavash.optimistic = { ...lavashLibOptimisticFns, ...demoOptimisticFns };
+// Generated optimistic fns — auto-extracted at compile time by
+// phoenix-colocated. The lavash package's own colocated JS runs its
+// own registerOptimistic at load time; demo-defined optimistic fns
+// (e.g. `optimistic: true` state in demo components) live in the
+// demo's colocated bundle.
+import "phoenix-colocated/lavash"
+import "phoenix-colocated/demo"
 
 // Plain LiveView demo hooks (hand-coded, no DSL)
 import PlainCounter from "./plain_counter_hook.js"
 
-// Merge hooks
-const colocatedHooks = {
-  LavashOptimistic,
-  PlainCounter
-}
-
-// Lavash state - survives reconnects, lost on page refresh
-let lavashState = {
-  // Page-level state (LiveView)
-  // Component state is stored under _components keyed by component ID
-  _components: {}
-}
-
-// Listen for LiveView state sync events
-window.addEventListener("phx:_lavash_sync", (e) => {
-  lavashState = { ...lavashState, ...e.detail }
-  console.debug("[Lavash] LiveView state synced:", lavashState)
-})
-
-// Listen for component state sync events
-window.addEventListener("phx:_lavash_component_sync", (e) => {
-  const { id, state } = e.detail
-  lavashState._components[id] = { ...lavashState._components[id], ...state }
-  console.debug(`[Lavash] Component ${id} state synced:`, lavashState._components[id])
-})
+// Build the lavash decorator with the standard concern bundle.
+const decorator = lavash({ concerns: defaultConcerns })
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 
-// Note: LavashOptimistic uses getPendingCount() as a method (not a getter) because
-// Phoenix LiveView's ViewHook constructor evaluates all enumerable properties,
-// which would fail if a getter references uninitialized state like this.store
-const liveSocketOpts = {
+const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
-  params: () => ({ _csrf_token: csrfToken, _lavash_state: lavashState }),
-  hooks: colocatedHooks,
-};
-
-const liveSocket = new LiveSocket("/live", Socket, liveSocketOpts);
+  params: () => ({ _csrf_token: csrfToken, _lavash_state: getState() }),
+  hooks: getHooks(decorator, { PlainCounter }),
+});
 
 // Show progress bar on live navigation and form submits
 topbar.config({barColors: {0: "#29d"}, shadowColor: "rgba(0, 0, 0, .3)"})
