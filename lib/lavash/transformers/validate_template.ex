@@ -557,27 +557,25 @@ defmodule Lavash.Transformers.ValidateTemplate do
 
   # Best-effort typo suggestion: prefer the candidate with the smallest
   # Levenshtein distance. Returns nil if no close match.
+  # Pick the closest match using `String.jaro_distance/2`. The
+  # previous implementation used a naive recursive Levenshtein
+  # (`lev/2` calling itself 3× without memoization) which is
+  # exponential in string length — it stalled the compiler for
+  # several minutes on a template with ~30 long-named assigns
+  # (~25 chars each). Jaro is built into Elixir, runs in linear
+  # time, and is plenty good for "did you mean?" suggestions.
   defp closest_name(name, candidates) do
     name_str = to_string(name)
 
     {best, score} =
-      Enum.reduce(candidates, {nil, :infinity}, fn candidate, {best, best_score} ->
-        d = levenshtein(name_str, candidate)
-        if d < best_score, do: {candidate, d}, else: {best, best_score}
+      Enum.reduce(candidates, {nil, 0.0}, fn candidate, {_best, best_score} = acc ->
+        s = String.jaro_distance(name_str, candidate)
+        if s > best_score, do: {candidate, s}, else: acc
       end)
 
-    if best && score <= 3, do: best, else: nil
-  end
-
-  defp levenshtein(a, b) when is_binary(a) and is_binary(b) do
-    lev(String.graphemes(a), String.graphemes(b))
-  end
-
-  defp lev([], b), do: length(b)
-  defp lev(a, []), do: length(a)
-  defp lev([h | t1], [h | t2]), do: lev(t1, t2)
-
-  defp lev([_ | t1] = a, [_ | t2] = b) do
-    1 + Enum.min([lev(t1, b), lev(a, t2), lev(t1, t2)])
+    # 0.85 picked empirically: catches typo'd `subtot` → `subtotal`
+    # and `card_numbe` → `card_number` while rejecting unrelated
+    # names like `total_display` vs. `tax`.
+    if best && score >= 0.85, do: best, else: nil
   end
 end
