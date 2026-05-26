@@ -37,13 +37,13 @@ defmodule Lavash.IntegrationCase do
 
   ## Chrome discovery
 
-  Wallabidi needs to know which Chrome to drive. The test helper
-  auto-discovers the standard macOS Chrome install at
-  `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`.
-  Override with either:
+  Wallabidi needs to know which Chrome to drive. Set one of:
 
     * `WALLABIDI_CHROME_PATH` — path to a local Chrome binary
     * `WALLABIDI_CHROME_URL` — remote CDP endpoint (e.g. `chrome:9222`)
+
+  Without one of these the e2e suite fails at startup with
+  `Wallabidi.DependencyError: Chrome not found`.
   """
 
   use ExUnit.CaseTemplate

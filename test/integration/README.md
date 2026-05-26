@@ -42,21 +42,18 @@ LAVASH_NO_E2E=1 mix test
 mix test --exclude e2e
 ```
 
-## Chrome discovery
+## Chrome configuration
 
-Wallabidi drives a local Chrome via CDP. The test helper
-auto-discovers the standard macOS install at
-`/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`.
-
-Override with:
+Wallabidi drives a local Chrome via CDP. Set one of:
 
 ```sh
 WALLABIDI_CHROME_PATH=/path/to/chrome mix test    # local binary
 WALLABIDI_CHROME_URL=chrome:9222 mix test         # remote CDP endpoint
 ```
 
-If you see `(Wallabidi.DependencyError) Chrome not found`, one of
-the above is missing.
+Without one of these the e2e suite fails at startup with
+`(Wallabidi.DependencyError) Chrome not found`. Export the var in
+your shell profile to make it persistent.
 
 ## Per-test infrastructure
 

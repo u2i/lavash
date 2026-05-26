@@ -25,3 +25,7 @@ lavash-*.tar
 # Generated lavash-optimistic JS (for library components compiled in isolation)
 /assets/
 .claude/
+
+# Browsers Wallabidi may auto-download (Chrome for Testing for e2e).
+# Point WALLABIDI_CHROME_PATH at an installed Chrome; don't commit one.
+.browsers/

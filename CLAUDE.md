@@ -30,9 +30,9 @@ because they're a separate suite.
 When asserting "all tests pass," that claim must mean **including
 e2e**. A unit-only pass does not prove lavash works.
 
-Browser is Chrome via Wallabidi CDP. The helper auto-discovers
-the macOS Chrome install; override with `WALLABIDI_CHROME_PATH`
-or `WALLABIDI_CHROME_URL`.
+Browser is Chrome via Wallabidi CDP. Set `WALLABIDI_CHROME_PATH`
+(local binary) or `WALLABIDI_CHROME_URL` (remote CDP endpoint,
+e.g. `chrome:9222`) so Wallabidi knows which Chrome to drive.
 
 ## Colocated Hooks Development Workflow
 
