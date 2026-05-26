@@ -3,49 +3,48 @@ defmodule Lavash.Parity.Lavash.StreamsLive do
   Lavash DSL expression of the streams parity suite — paired
   with `Lavash.Parity.Vanilla.StreamsLive`.
 
-  ## The gap, concretely
+  ## Now using `socket_run`
 
-  Lavash doesn't (yet) have DSL surface for
-  `Phoenix.LiveView.stream/3`. Every action here drops to
-  `run fn socket -> ... end` to reach for `stream_insert/4`,
-  `stream_delete/3`, etc. directly. Compare:
+  Earlier versions of this fixture used `action :foo do run fn
+  socket -> ... end end` and were tagged `:parity_gap` because
+  the assigns-shaped `run` dropped socket-level changes. With
+  `socket_run` (the socket-shaped action op) the gap closes —
+  the action body returns a socket and the runtime accepts it
+  wholesale.
 
-  Vanilla LV:
-
-      def handle_event("append", %{"body" => body}, socket) do
-        id = System.unique_integer([:positive])
-        {:noreply, stream_insert(socket, :items, %{id: id, body: body})}
-      end
-
-  Lavash equivalent (this file):
+  Compare:
 
       action :append, [:body] do
-        run fn socket ->
+        socket_run fn socket ->
           id = System.unique_integer([:positive])
-          Phoenix.LiveView.stream_insert(socket, :items, %{id: id, body: socket.assigns.body})
+          Phoenix.LiveView.stream_insert(
+            socket,
+            :items,
+            %{id: id, body: socket.assigns.body}
+          )
         end
       end
 
-  Half the action body is escape-hatch code. There's no
-  `stream :items, :map, default: [...]` declaration; no
-  `push :items, rx(...)` op; no `stream_for` integration with
-  optimistic update derives.
+  vs. the previous attempt with plain `run` (which silently
+  dropped the stream changes because the action runtime extracted
+  `__changed__` from assigns and the assign map wasn't the source
+  of truth for streams).
 
-  What would close the gap — see `docs/STREAMING.md` primitive
-  #3 — is a `stream :name` field flavor that desugars
-  template-time `:for` over `@items` into `phx-update="stream"`
-  and rewrites `set :items, rx(@items ++ [...])` into
-  `stream_insert/4`. The reactive layer would need to know
-  streams aren't full assigns (they're DOM-tracked deltas) so
-  bindings + optimistic patches can opt out cleanly.
+  ## Still missing — a declarative `stream :name` flavor
 
-  ## Why this file exists
+  This fixture works today but it's verbose. A future
+  `stream :name` declaration plus `push :items, value` /
+  `delete :items, value` ops would let this collapse to:
 
-  Even though the lavash side leans entirely on escape hatches,
-  having the parity test passing locks down the behavior so a
-  future `stream :name` DSL refactor has a regression target.
-  When/if that lands, the actions here collapse from `run fn`
-  imperatives to declarative DSL.
+      stream :items, :map, default: [%{id: 1, body: "first"}, ...]
+
+      actions do
+        action :append, [:body] do
+          push :items, rx(%{id: next_id(), body: @body})
+        end
+      end
+
+  See `docs/STREAMING.md` primitive #3 for the design sketch.
   """
   use Lavash.LiveView
 
@@ -62,7 +61,7 @@ defmodule Lavash.Parity.Lavash.StreamsLive do
 
   actions do
     action :append, [:body] do
-      run fn socket ->
+      socket_run fn socket ->
         id = System.unique_integer([:positive])
 
         Phoenix.LiveView.stream_insert(
@@ -74,7 +73,7 @@ defmodule Lavash.Parity.Lavash.StreamsLive do
     end
 
     action :prepend, [:body] do
-      run fn socket ->
+      socket_run fn socket ->
         id = System.unique_integer([:positive])
 
         Phoenix.LiveView.stream_insert(
@@ -87,14 +86,14 @@ defmodule Lavash.Parity.Lavash.StreamsLive do
     end
 
     action :delete, [:id] do
-      run fn socket ->
+      socket_run fn socket ->
         id = String.to_integer(socket.assigns.id)
         Phoenix.LiveView.stream_delete(socket, :items, %{id: id, body: ""})
       end
     end
 
     action :reset do
-      run fn socket ->
+      socket_run fn socket ->
         new_items = [%{id: 999, body: "reset"}]
         Phoenix.LiveView.stream(socket, :items, new_items, reset: true)
       end

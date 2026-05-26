@@ -11,19 +11,21 @@ defmodule Lavash.Parity.UploadsTest do
 
   ## Lavash status
 
-  Lavash doesn't (yet) expose `upload :name` as DSL surface. Both
+  Lavash doesn't yet expose `upload :name` as DSL surface. Both
   fixtures use raw `Phoenix.LiveView.allow_upload/3` — the
   vanilla side directly, the lavash side via
   `mount do run fn socket -> ... end end` and
-  `action :save do run fn socket -> ... end end` escape hatches.
+  `action :save do socket_run fn socket -> ... end end`.
 
-  The lavash actions trying to mutate socket state (cancel,
-  save's consume callback returning a socket) hit the same
-  parity-gap pattern as streams: the action runtime expects
-  `assigns -> assigns`, not `socket -> socket`, so socket-shaped
-  return values get dropped.
+  The `socket_run` action op (the socket-shaped variant of
+  `run`) closes what was previously a parity gap by letting
+  action bodies return a mutated socket wholesale rather than
+  going through the change-tracked `assigns -> assigns`
+  contract.
 
-  Tagged `:parity_gap` so they don't block CI.
+  A future `upload :name` DSL entity would still let this
+  collapse from `socket_run` bodies to declarative ops, but
+  behavior-wise the parity test passes today.
   """
   use Lavash.ConnCase, async: true
 
@@ -64,9 +66,7 @@ defmodule Lavash.Parity.UploadsTest do
     end
   end
 
-  describe "lavash side (parity gap)" do
-    @describetag :parity_gap
-
+  describe "allow_upload + consume_uploaded_entries (lavash)" do
     test "mount + render shows the upload form", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/parity/lavash/uploads")
 

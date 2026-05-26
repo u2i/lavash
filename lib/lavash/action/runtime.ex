@@ -118,6 +118,46 @@ defmodule Lavash.Action.Runtime do
   end
 
   @doc """
+  Apply socket-shaped run bodies. Each body takes a socket and
+  returns a socket; the returned socket replaces the current one.
+
+  Unlike `apply_runs/5` (which threads change-tracked assigns and
+  diffs the result), `socket_run` is the escape-hatch shape used
+  when an action needs to call LV ops directly — `stream_insert/4`,
+  `allow_upload/3`, `cancel_upload/3`, etc. The runtime trusts the
+  user to call lavash setters (`Lavash.Socket.put_state/3`) for
+  any state field changes; nothing is inferred from the diff.
+
+  ## When ordering matters
+
+  Runs after `apply_sets` and `apply_runs` so that by the time a
+  socket_run body executes, all the declarative state writes
+  earlier in the action have landed. A sequence like
+
+      set :messages, rx(@messages ++ [%{role: "user", content: @input}])
+      socket_run fn s -> Phoenix.LiveView.stream_insert(s, :feed, ...) end
+
+  works as written — the `set` is applied to assigns before the
+  `socket_run` reads them.
+  """
+  def apply_socket_runs(socket, action_name, socket_runs, params, module) do
+    (socket_runs || [])
+    |> Enum.with_index()
+    |> Enum.reduce(socket, fn {_sr, idx}, sock ->
+      # Merge event params into socket.assigns for the duration of
+      # the body so `socket.assigns.body`, `.id`, etc. resolve as
+      # expected. The body could pull them off explicitly via a
+      # second arg, but threading params through socket.assigns
+      # matches the assigns-shaped `run`'s contract and means
+      # `phx-value-foo` shows up in the same place either way.
+      assigns_with_params = Map.merge(sock.assigns, params)
+      sock_with_params = %{sock | assigns: assigns_with_params}
+
+      apply(module, :__lavash_socket_run__, [action_name, idx, sock_with_params])
+    end)
+  end
+
+  @doc """
   Coerce a value to the declared type of a state field.
 
   Handles:

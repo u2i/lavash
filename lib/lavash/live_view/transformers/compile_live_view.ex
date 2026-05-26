@@ -298,7 +298,7 @@ defmodule Lavash.LiveView.Transformers.CompileLiveView do
   defp build_run_refs_ast(dsl_state) do
     actions = Transformer.get_entities(dsl_state, [:actions]) || []
 
-    clauses =
+    run_clauses =
       Enum.flat_map(actions, fn action ->
         (action.runs || [])
         |> Enum.with_index()
@@ -314,6 +314,29 @@ defmodule Lavash.LiveView.Transformers.CompileLiveView do
           end
         end)
       end)
+
+    # Parallel hoisting for `socket_run fn socket -> ... end` ops.
+    # Same compile-time-hoist trick — emit a `__lavash_socket_run__/3`
+    # clause per (action_name, idx) pair so the runtime can call
+    # back via `apply/3` with the user module's aliases / imports
+    # in scope.
+    socket_run_clauses =
+      Enum.flat_map(actions, fn action ->
+        (action.socket_runs || [])
+        |> Enum.with_index()
+        |> Enum.map(fn {sr, idx} ->
+          name = action.name
+
+          quote do
+            @doc false
+            def __lavash_socket_run__(unquote(name), unquote(idx), var!(socket)) do
+              unquote(sr.fun).(var!(socket))
+            end
+          end
+        end)
+      end)
+
+    clauses = run_clauses ++ socket_run_clauses
 
     if clauses == [] do
       quote do

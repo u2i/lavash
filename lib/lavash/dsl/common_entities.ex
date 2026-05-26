@@ -195,6 +195,36 @@ defmodule Lavash.Dsl.CommonEntities do
   end
 
   @doc """
+  SocketRun entity for actions — socket-shaped run.
+
+  Where `run fn assigns -> ... end` uses the change-tracked
+  assigns shape, `socket_run fn socket -> ... end` takes the
+  whole socket and trusts the user to mutate it via Phoenix
+  LiveView ops (`stream_insert/4`, `allow_upload/3`, etc.) or
+  lavash setters (`Lavash.Socket.put_state/3`). The returned
+  socket replaces the current socket wholesale.
+
+  See `Lavash.Actions.SocketRun` for when to reach for this vs.
+  the change-tracked `run`.
+  """
+  def socket_run_entity do
+    %Spark.Dsl.Entity{
+      name: :socket_run,
+      target: Lavash.Actions.SocketRun,
+      args: [:fun],
+      schema: [
+        fun: [
+          type: :quoted,
+          required: true,
+          doc:
+            "Function that takes a socket and returns a (possibly mutated) socket. " <>
+              "Use for stream/upload/socket-level ops that don't fit `run`'s assigns shape."
+        ]
+      ]
+    }
+  end
+
+  @doc """
   MapBy entity for actions — key-based array mutations.
 
   Finds items in an array by a key field and applies a transformation.

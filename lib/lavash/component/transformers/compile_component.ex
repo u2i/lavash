@@ -101,7 +101,7 @@ defmodule Lavash.Component.Transformers.CompileComponent do
   defp build_run_refs_ast(dsl_state) do
     actions = Transformer.get_entities(dsl_state, [:actions]) || []
 
-    clauses =
+    run_clauses =
       Enum.flat_map(actions, fn action ->
         (action.runs || [])
         |> Enum.with_index()
@@ -117,6 +117,24 @@ defmodule Lavash.Component.Transformers.CompileComponent do
           end
         end)
       end)
+
+    socket_run_clauses =
+      Enum.flat_map(actions, fn action ->
+        (action.socket_runs || [])
+        |> Enum.with_index()
+        |> Enum.map(fn {sr, idx} ->
+          name = action.name
+
+          quote do
+            @doc false
+            def __lavash_socket_run__(unquote(name), unquote(idx), var!(socket)) do
+              unquote(sr.fun).(var!(socket))
+            end
+          end
+        end)
+      end)
+
+    clauses = run_clauses ++ socket_run_clauses
 
     if clauses == [] do
       quote do

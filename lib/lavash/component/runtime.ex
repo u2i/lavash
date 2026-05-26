@@ -557,6 +557,12 @@ defmodule Lavash.Component.Runtime do
       socket
       |> ActionRuntime.apply_sets(action.sets || [], params, module)
       |> ActionRuntime.apply_runs(action.name, action.runs || [], params, module)
+      |> ActionRuntime.apply_socket_runs(
+        action.name,
+        action.socket_runs || [],
+        params,
+        module
+      )
       |> ActionRuntime.apply_effects(action.effects || [], params)
       |> apply_submits(module, action.submits || [])
     else

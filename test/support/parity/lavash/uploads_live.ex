@@ -3,68 +3,23 @@ defmodule Lavash.Parity.Lavash.UploadsLive do
   Lavash DSL expression of the uploads parity suite — paired
   with `Lavash.Parity.Vanilla.UploadsLive`.
 
-  ## The gap, concretely
+  ## Now using `socket_run`
 
-  Lavash doesn't (yet) have DSL surface for
-  `Phoenix.LiveView.allow_upload/3`, `consume_uploaded_entries/3`,
-  or the `:uploads` assign machinery. Every upload op in this
-  file drops to `run fn socket -> ... end` (and the mount uses
-  `mount do run fn socket -> allow_upload(socket, ...) end end`).
+  Earlier versions of this fixture wrapped upload ops in
+  `run fn socket -> ... end` and were tagged `:parity_gap`
+  because the assigns-shaped `run` dropped socket-level changes.
+  With `socket_run` (the socket-shaped action op) the gap closes
+  — the action body returns a socket and the runtime accepts it
+  wholesale.
 
-  Compare:
+  ## Still missing — a declarative `upload :files` flavor
 
-  Vanilla LV mount:
-
-      def mount(_params, _session, socket) do
-        socket =
-          socket
-          |> assign(:status, "idle")
-          |> allow_upload(:files,
-            accept: ~w(.txt .md .json),
-            max_entries: 2,
-            max_file_size: 10_000
-          )
-        {:ok, socket}
-      end
-
-  Lavash equivalent:
-
-      state :status, :string, default: "idle"
-
-      mount do
-        run fn socket ->
-          Phoenix.LiveView.allow_upload(socket, :files,
-            accept: ~w(.txt .md .json),
-            max_entries: 2,
-            max_file_size: 10_000
-          )
-        end
-      end
-
-  Same actions hit the same wall as streams (#52): action
-  \`run fn assigns -> ... end\` returns assigns; upload ops return
-  a socket; the action runtime drops the changes.
-
-  ## What would close the gap
-
-  A declarative `upload :files, ...` DSL entity that maps onto
-  `Phoenix.LiveView.allow_upload/3` and a `consume :files do ...`
-  op for the save side. The shape would parallel `form :name`:
-
-      upload :files do
-        accept ~w(.txt .md .json)
-        max_entries 2
-        max_file_size 10_000
-      end
-
-      actions do
-        action :save do
-          consume :files, fn meta, entry -> ... end
-        end
-      end
-
-  Out of scope tonight; this file uses the escape hatch so the
-  parity test demonstrates the gap.
+  This fixture works today but it's verbose. A future
+  `upload :files do accept ..., max_entries 2 end` declaration
+  plus a `consume :files, fn meta, entry -> ... end` op would
+  let this collapse to declarative DSL. Out of scope for the
+  parity test; the gap is in the verbosity, not the
+  functionality.
   """
   use Lavash.LiveView
 
@@ -86,7 +41,7 @@ defmodule Lavash.Parity.Lavash.UploadsLive do
     end
 
     action :save do
-      run fn socket ->
+      socket_run fn socket ->
         Phoenix.LiveView.consume_uploaded_entries(socket, :files, fn meta, entry ->
           contents = File.read!(meta.path)
           Lavash.Parity.UploadSink.record(entry.client_name, contents)
@@ -100,7 +55,7 @@ defmodule Lavash.Parity.Lavash.UploadsLive do
     end
 
     action :cancel, [:ref] do
-      run fn socket ->
+      socket_run fn socket ->
         Phoenix.LiveView.cancel_upload(socket, :files, socket.assigns.ref)
       end
     end

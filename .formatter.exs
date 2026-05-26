@@ -66,6 +66,7 @@ spark_locals_without_parens = [
   render_loading: 2,
   required: 1,
   run: 1,
+  socket_run: 1,
   set: 2,
   set: 3,
   setter: 1,
