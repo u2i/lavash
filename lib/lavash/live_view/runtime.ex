@@ -405,6 +405,11 @@ defmodule Lavash.LiveView.Runtime do
               {:ok, socket} ->
                 socket =
                   socket
+                  # Settle the reactive graph FIRST so all subsequent
+                  # side-effect ops (flashes, navigates, push_events,
+                  # etc.) read post-cascade calc values rather than
+                  # stale ones from before this action ran.
+                  |> Reactive.recompute()
                   |> apply_flashes(action.flashes || [])
                   |> apply_navigates(action.navigates || [])
                   |> apply_push_patches(action.push_patches || [])
@@ -412,7 +417,6 @@ defmodule Lavash.LiveView.Runtime do
                   |> apply_push_events(action.push_events || [], module, params)
                   |> maybe_push_patch(module)
                   |> maybe_sync_socket_state(module)
-                  |> Reactive.recompute()
                   |> Assigns.project(module)
 
                 update_combination_subscriptions(socket, module, old_state)
@@ -435,9 +439,9 @@ defmodule Lavash.LiveView.Runtime do
 
                 socket =
                   socket
+                  |> Reactive.recompute()
                   |> maybe_push_patch(module)
                   |> maybe_sync_socket_state(module)
-                  |> Reactive.recompute()
                   |> Assigns.project(module)
 
                 update_combination_subscriptions(socket, module, old_state)

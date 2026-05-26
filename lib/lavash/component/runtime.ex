@@ -266,8 +266,8 @@ defmodule Lavash.Component.Runtime do
           {:ok, socket} ->
             socket =
               socket
-              |> maybe_sync_socket_state(module)
               |> Reactive.recompute()
+              |> maybe_sync_socket_state(module)
               |> Assigns.project(module)
               |> propagate_bound_field_changes(binding_map, bound_state_before)
 
@@ -290,8 +290,8 @@ defmodule Lavash.Component.Runtime do
 
             socket =
               socket
-              |> maybe_sync_socket_state(module)
               |> Reactive.recompute()
+              |> maybe_sync_socket_state(module)
               |> Assigns.project(module)
               |> propagate_bound_field_changes(binding_map, bound_state_before)
 
@@ -330,8 +330,8 @@ defmodule Lavash.Component.Runtime do
           {:ok, socket} ->
             socket =
               socket
-              |> maybe_sync_socket_state(module)
               |> Reactive.recompute()
+              |> maybe_sync_socket_state(module)
               |> Assigns.project(module)
               |> propagate_bound_field_changes(binding_map, bound_state_before)
 
@@ -355,8 +355,8 @@ defmodule Lavash.Component.Runtime do
 
             socket =
               socket
-              |> maybe_sync_socket_state(module)
               |> Reactive.recompute()
+              |> maybe_sync_socket_state(module)
               |> Assigns.project(module)
               |> propagate_bound_field_changes(binding_map, bound_state_before)
 
