@@ -36,6 +36,7 @@ defmodule DemoWeb.Router do
     pipe_through :browser
 
     live "/", DemosIndexLive
+    live "/chat", StreamingChatLive
   end
 
   # Storefront (public, with automatic anonymous user creation)
