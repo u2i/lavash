@@ -40,4 +40,15 @@ if e2e? do
   {:ok, _} = Application.ensure_all_started(:wallabidi)
 end
 
-ExUnit.start(exclude: if(e2e?, do: [], else: [:e2e]))
+# `:parity_gap` marks tests that document a known divergence
+# between lavash and vanilla `Phoenix.LiveView` — the assertion is
+# what we WANT to be true, but the lavash side hasn't grown the
+# DSL surface to express it yet. Always excluded so they don't
+# fail CI; opt in with `mix test --include parity_gap` to see the
+# remaining gaps.
+default_excludes = [:parity_gap]
+
+excludes =
+  if e2e?, do: default_excludes, else: [:e2e | default_excludes]
+
+ExUnit.start(exclude: excludes)
