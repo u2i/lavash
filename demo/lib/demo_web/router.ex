@@ -57,6 +57,7 @@ defmodule DemoWeb.Router do
 
     live "/", Account.DashboardLive
     live "/orders", Account.OrdersLive
+    live "/orders/:order_id", Account.OrderDetailLive
     live "/settings", Account.SettingsLive
   end
 
@@ -69,6 +70,8 @@ defmodule DemoWeb.Router do
     live "/products/new", ProductEditLive
     live "/products/:product_id/edit", ProductEditLive
     live "/categories", CategoriesLive
+    live "/orders", OrdersLive
+    live "/orders/:order_id", OrderDetailLive
   end
 
   # Lavash.Reactive demos (plain LiveView, no DSL)

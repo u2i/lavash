@@ -85,5 +85,55 @@ defmodule Demo.Orders.Order do
       filter expr(user_id == ^arg(:user_id))
       prepare build(sort: [inserted_at: :desc])
     end
+
+    # All orders, newest first. Used by the admin order-management
+    # screens. The optional `:status` argument filters by status.
+    read :all_for_admin do
+      argument :status, :atom, allow_nil?: true
+      filter expr(is_nil(^arg(:status)) or status == ^arg(:status))
+      prepare build(sort: [inserted_at: :desc], load: [:user])
+    end
+
+    read :admin_detail do
+      argument :id, :uuid, allow_nil?: false
+      get? true
+      filter expr(id == ^arg(:id))
+      prepare build(load: [:user, :items, shipping_address: [], billing_address: []])
+    end
+
+    # Loads a single order belonging to the given user, with line
+    # items + shipping/billing addresses pre-fetched. Returns nil if
+    # the order doesn't exist or doesn't belong to the user — used
+    # by the customer order-detail page to gate access.
+    read :detail_for_user do
+      argument :id, :uuid, allow_nil?: false
+      argument :user_id, :uuid, allow_nil?: false
+      get? true
+      filter expr(id == ^arg(:id) and user_id == ^arg(:user_id))
+
+      prepare build(
+                load: [
+                  :items,
+                  shipping_address: [],
+                  billing_address: []
+                ]
+              )
+    end
+
+    update :cancel do
+      change set_attribute(:status, :cancelled)
+
+      validate fn changeset, _ ->
+        case Ash.Changeset.get_data(changeset, :status) do
+          :pending -> :ok
+          :paid -> :ok
+          status -> {:error, "Cannot cancel an order in status #{status}"}
+        end
+      end
+    end
+
+    update :update_status do
+      accept [:status]
+    end
   end
 end
