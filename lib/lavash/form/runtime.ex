@@ -7,7 +7,42 @@ defmodule Lavash.Form.Runtime do
   - `extract_changeset/1` - Extract Ash changeset from various form types
   - `extract_submit_errors/1` - Turn an Ash submit failure into a per-field error map
   - `broadcast_mutation/1` - Broadcast mutation events for PubSub invalidation
+  - `resolve_actor/1` - Look up the Ash actor for a `submit` op
   """
+
+  @doc """
+  Resolve the Ash actor to pass to `Lavash.Form.submit/2` for a
+  `submit :field` action op.
+
+  Lookup order:
+
+    1. `socket.assigns[:actor]` — the explicit, transport-agnostic
+       prop. Components should accept this when they need to act
+       on behalf of someone (they don't auto-receive
+       `:current_user` because that's an `on_mount` injection,
+       which only runs on LiveViews).
+
+    2. `socket.assigns[:current_user]` — the conventional
+       AshAuthentication assign. LiveViews under
+       `live_session ..., on_mount: AshAuthentication.LiveSession`
+       get this for free; for them `submit` Just Works without
+       any host-side wiring.
+
+    3. `nil` — no actor available. Submits that depend on an
+       actor (`relate_actor/1`, policy checks, etc.) will fail
+       with an Ash changeset error.
+  """
+  @spec resolve_actor(map() | Phoenix.LiveView.Socket.t()) :: any()
+  def resolve_actor(%Phoenix.LiveView.Socket{assigns: assigns}), do: resolve_actor(assigns)
+
+  def resolve_actor(%{} = assigns) do
+    case Map.get(assigns, :actor) do
+      nil -> Map.get(assigns, :current_user)
+      actor -> actor
+    end
+  end
+
+  def resolve_actor(_), do: nil
 
   @doc """
   Extract the Ash resource module from various form types.

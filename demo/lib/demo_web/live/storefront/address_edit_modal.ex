@@ -16,6 +16,10 @@ defmodule DemoWeb.Storefront.AddressEditModal do
     max_width :md
   end
 
+  # Passed in by the host LiveView so the create form can
+  # `relate_actor(:user)` to the signed-in customer.
+  prop :actor, :map, default: nil
+
   calculate :edit_address_id, rx(extract_address_id(@open)), optimistic: false
 
   def extract_address_id({:edit, id}), do: id

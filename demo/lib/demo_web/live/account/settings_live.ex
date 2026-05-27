@@ -167,6 +167,7 @@ defmodule DemoWeb.Account.SettingsLive do
           module={DemoWeb.Storefront.AddressEditModal}
           id="settings-address-modal"
           open={@address_modal}
+          actor={@current_user}
           bind={[open: :address_modal]}
         />
       <% else %>

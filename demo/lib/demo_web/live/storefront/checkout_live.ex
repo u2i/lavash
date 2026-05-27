@@ -31,6 +31,13 @@ defmodule DemoWeb.Storefront.CheckoutLive do
   state :cart_id, :string, from: :ephemeral
   state :_user_id, :string, from: :ephemeral
 
+  # `current_user` is injected by the AshAuthentication on_mount
+  # hook. Declaring it as state lets the template reference
+  # `@current_user` and rx() see it (e.g. when passed as a prop
+  # to the AddressEditModal so the address-save form has an
+  # actor for `relate_actor(:user)`).
+  state :current_user, :map, from: :assigns, assigns_key: :current_user
+
   # Payment form params
   state :payment_params, :map, from: :ephemeral, default: %{}, optimistic: true
 
@@ -579,6 +586,7 @@ defmodule DemoWeb.Storefront.CheckoutLive do
           module={DemoWeb.Storefront.AddressEditModal}
           id="checkout-address-modal"
           open={@address_modal}
+          actor={@current_user}
           bind={[open: :address_modal]}
         />
       </main>

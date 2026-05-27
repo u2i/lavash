@@ -587,8 +587,10 @@ defmodule Lavash.Component.Runtime do
     # Extract resource from form for mutation signaling
     resource = FormRuntime.extract_resource(form)
 
-    # Get actor from socket assigns for authorization
-    actor = socket.assigns[:current_user]
+    # Resolve the Ash actor for this submit. Prefers an explicit
+    # `:actor` prop, falls back to `:current_user`. See
+    # `Lavash.Form.Runtime.resolve_actor/1`.
+    actor = FormRuntime.resolve_actor(socket)
 
     # Use Lavash.Form.submit which handles Lavash.Form, Ash.Changeset,
     # AshPhoenix.Form, and Phoenix.HTML.Form
