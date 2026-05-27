@@ -28,6 +28,7 @@ defmodule DemoWeb.Account.SettingsLive do
   read :addresses, Address, :for_user do
     argument :user_id, state(:_user_id)
     async false
+    invalidate :pubsub
   end
 
   calculate :has_addresses?, rx(@addresses != nil and @addresses != []), optimistic: false
@@ -44,8 +45,15 @@ defmodule DemoWeb.Account.SettingsLive do
     action :delete_address, [:id] do
       effect fn state ->
         case Ash.get(Address, state.id, error?: false) do
-          {:ok, %Address{} = addr} -> Ash.destroy!(addr)
-          _ -> :ok
+          {:ok, %Address{} = addr} ->
+            Ash.destroy!(addr)
+            # Tell any LV reading `Address` to re-run. The form-runtime
+            # broadcast only fires on create/update; a raw `Ash.destroy!`
+            # has to broadcast itself.
+            Lavash.PubSub.broadcast(Address)
+
+          _ ->
+            :ok
         end
       end
     end

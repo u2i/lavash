@@ -26,10 +26,28 @@ defmodule Lavash.Assigns do
 
       action_type =
         case raw_value do
-          %Lavash.Form{action_type: type} -> type
-          %Phoenix.LiveView.AsyncResult{loading: loading} when loading != nil -> :loading
-          %Phoenix.LiveView.AsyncResult{failed: failed} when failed != nil -> {:error, failed}
-          _ -> nil
+          %Lavash.Form{action_type: type} ->
+            type
+
+          # When the form is loaded via `async_assign`, the resolved
+          # value is wrapped in an AsyncResult. Unwrap the ok-case
+          # so `:address_form_action` reflects the inner form's
+          # `:create` or `:update` rather than falling through to
+          # `nil` (which would make `@form_action == :create`
+          # always false in the template — and silently invert
+          # "Add" vs "Edit" labels). See u2i/lavash regression
+          # added with `Lavash.AssignsTest`.
+          %Phoenix.LiveView.AsyncResult{ok?: true, result: %Lavash.Form{action_type: type}} ->
+            type
+
+          %Phoenix.LiveView.AsyncResult{loading: loading} when loading != nil ->
+            :loading
+
+          %Phoenix.LiveView.AsyncResult{failed: failed} when failed != nil ->
+            {:error, failed}
+
+          _ ->
+            nil
         end
 
       Phoenix.Component.assign(sock, action_assign, action_type)

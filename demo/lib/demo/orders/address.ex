@@ -1,11 +1,20 @@
 defmodule Demo.Orders.Address do
   use Ash.Resource,
     domain: Demo.Orders,
-    data_layer: AshSqlite.DataLayer
+    data_layer: AshSqlite.DataLayer,
+    extensions: [Lavash.Resource]
 
   sqlite do
     table "addresses"
     repo Demo.Repo
+  end
+
+  # Register the address's owning user so a save/update/delete
+  # broadcasts on the `user_id` topic. Any LiveView reading
+  # `Address, :for_user` with `invalidate :pubsub` re-runs the
+  # query when this fires.
+  lavash do
+    notify_on [:user_id]
   end
 
   attributes do

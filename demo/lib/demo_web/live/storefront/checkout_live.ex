@@ -64,6 +64,7 @@ defmodule DemoWeb.Storefront.CheckoutLive do
   read :addresses, Address, :for_user do
     argument :user_id, state(:_user_id)
     async false
+    invalidate :pubsub
   end
 
   # ─────────────────────────────────────────────────────────────
