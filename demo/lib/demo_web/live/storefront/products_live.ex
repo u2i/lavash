@@ -19,6 +19,8 @@ defmodule DemoWeb.Storefront.ProductsLive do
   state :roast, {:array, :string}, from: :url, default: [], optimistic: true
   state :category, {:array, :string}, from: :url, default: [], optimistic: true
   state :in_stock, :boolean, from: :url, default: false, optimistic: true
+  state :search, :string, from: :url, default: "", optimistic: true, setter: true
+  state :sort, :atom, from: :url, default: :name, optimistic: true, setter: true
 
   # ============================================
   # Cart State
@@ -51,6 +53,9 @@ defmodule DemoWeb.Storefront.ProductsLive do
     # Map state fields to action arguments with transforms
     argument :roast, state(:roast), transform: &to_atoms/1
     argument :category_slugs, state(:category)
+    argument :in_stock, state(:in_stock)
+    argument :search, state(:search)
+    argument :sort, state(:sort)
   end
 
   # Load cart items with product preloaded (depends on cart_id)
@@ -65,7 +70,9 @@ defmodule DemoWeb.Storefront.ProductsLive do
   # Calculations & Derives
   # ============================================
 
-  calculate :has_filters, rx(@roast != [] or @category != [] or @in_stock), optimistic: false
+  calculate :has_filters,
+            rx(@roast != [] or @category != [] or @in_stock or @search != ""),
+            optimistic: false
 
   # Transform cart items to JSON-serializable maps for CartItemList component
   calculate :cart_items_json, rx(serialize_cart_items(@cart_items)), optimistic: false
@@ -120,6 +127,7 @@ defmodule DemoWeb.Storefront.ProductsLive do
       set :roast, []
       set :category, []
       set :in_stock, false
+      set :search, ""
     end
 
     action :open_cart do
@@ -285,6 +293,33 @@ defmodule DemoWeb.Storefront.ProductsLive do
             </span>
           </button>
         </div>
+      </div>
+
+      <!-- Search + sort row -->
+      <div class="flex flex-col md:flex-row gap-3">
+        <form phx-change="set_search" class="flex-1">
+          <input
+            type="text"
+            name="value"
+            value={@search}
+            data-lavash-bind="search"
+            placeholder="Search coffees..."
+            autocomplete="off"
+            class="input input-bordered w-full"
+          />
+        </form>
+        <form phx-change="set_sort">
+          <select
+            name="value"
+            data-lavash-bind="sort"
+            class="select select-bordered w-full md:w-auto"
+          >
+            <option value="name" selected={@sort == :name}>Name (A-Z)</option>
+            <option value="price_asc" selected={@sort == :price_asc}>Price: low to high</option>
+            <option value="price_desc" selected={@sort == :price_desc}>Price: high to low</option>
+            <option value="rating_desc" selected={@sort == :rating_desc}>Rating</option>
+          </select>
+        </form>
       </div>
 
       <!-- Filters -->

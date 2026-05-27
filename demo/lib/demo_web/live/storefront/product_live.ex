@@ -18,6 +18,9 @@ defmodule DemoWeb.Storefront.ProductLive do
   state :cart_id, :string, from: :ephemeral
   state :cart_open, :any, from: :ephemeral, default: nil, optimistic: true
 
+  # Quantity selector — bumped/dec'd via two actions, used by add_to_cart.
+  state :quantity, :integer, from: :ephemeral, default: 1, optimistic: true
+
   # Action-scratch state. The update/remove cart actions stash the
   # operating item id and delta here before reading it back in the
   # `run` body.
@@ -36,6 +39,8 @@ defmodule DemoWeb.Storefront.ProductLive do
 
   calculate :cart_item_count,
             rx(Enum.reduce(@cart_items, 0, fn item, acc -> acc + item.quantity end))
+
+  calculate :quantity_gt_1, rx(@quantity > 1)
 
   def serialize_cart_items(items) do
     Enum.map(items || [], fn item ->
@@ -58,12 +63,21 @@ defmodule DemoWeb.Storefront.ProductLive do
       set :cart_open, true
     end
 
+    action :inc_quantity do
+      set :quantity, rx(@quantity + 1)
+    end
+
+    action :dec_quantity do
+      set :quantity, rx(max(@quantity - 1, 1))
+    end
+
     action :add_to_cart do
       set :cart_open, true
 
       effect fn state ->
         cart_id = state.cart_id
         product_id = state.product_id
+        qty_to_add = state.quantity || 1
 
         existing =
           state.cart_items
@@ -71,20 +85,25 @@ defmodule DemoWeb.Storefront.ProductLive do
 
         if existing do
           existing
-          |> Ash.Changeset.for_update(:update_quantity, %{quantity: existing.quantity + 1})
+          |> Ash.Changeset.for_update(:update_quantity, %{
+            quantity: existing.quantity + qty_to_add
+          })
           |> Ash.update!()
         else
           CartItem
           |> Ash.Changeset.for_create(:add, %{
             cart_id: cart_id,
             product_id: product_id,
-            quantity: 1
+            quantity: qty_to_add
           })
           |> Ash.create!()
         end
 
         Lavash.PubSub.broadcast(CartItem)
       end
+
+      # Reset back to 1 after adding so the next add starts fresh.
+      set :quantity, 1
     end
 
     action :update_cart_item, [:item_id, :delta] do
@@ -275,12 +294,32 @@ defmodule DemoWeb.Storefront.ProductLive do
 
           <div class="divider"></div>
 
-          <div class="flex items-center justify-between">
+          <div class="flex items-center justify-between gap-4">
             <span class="text-3xl font-bold">${Decimal.to_string(@product.price)}</span>
             <%= if @product.in_stock do %>
-              <button class="btn btn-primary btn-lg" phx-click="add_to_cart">
-                Add to Cart
-              </button>
+              <div class="flex items-center gap-3">
+                <div class="join">
+                  <button
+                    phx-click="dec_quantity"
+                    class="btn btn-sm join-item"
+                    data-lavash-enabled="quantity_gt_1"
+                  >
+                    -
+                  </button>
+                  <span class="btn btn-sm join-item no-animation pointer-events-none min-w-12">
+                    {@quantity}
+                  </span>
+                  <button
+                    phx-click="inc_quantity"
+                    class="btn btn-sm join-item"
+                  >
+                    +
+                  </button>
+                </div>
+                <button class="btn btn-primary btn-lg" phx-click="add_to_cart">
+                  Add to Cart
+                </button>
+              </div>
             <% else %>
               <button class="btn btn-lg" disabled>Notify Me</button>
             <% end %>

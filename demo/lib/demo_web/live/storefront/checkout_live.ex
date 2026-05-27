@@ -340,7 +340,17 @@ defmodule DemoWeb.Storefront.CheckoutLive do
                   <span>{@total_display}</span>
                 </div>
               </div>
-              <a href={~p"/storefront/products"} class="btn btn-primary">Continue Shopping</a>
+              <div class="flex gap-2 justify-center">
+                <a href={~p"/storefront/products"} class="btn btn-ghost">
+                  Continue Shopping
+                </a>
+                <a
+                  href={~p"/account/orders/#{@order_placed_id}"}
+                  class="btn btn-primary"
+                >
+                  View Order
+                </a>
+              </div>
             </div>
           </div>
         <% else %>

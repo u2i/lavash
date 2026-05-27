@@ -121,6 +121,7 @@ defmodule Demo.Orders.Order do
     end
 
     update :cancel do
+      require_atomic? false
       change set_attribute(:status, :cancelled)
 
       validate fn changeset, _ ->

@@ -98,9 +98,20 @@ defmodule Demo.Catalog.Product do
       argument :roast, {:array, :atom}
       argument :category_slugs, {:array, :string}
       argument :in_stock, :boolean
+      argument :search, :string
+      argument :sort, :atom
 
       prepare fn query, _context ->
-        query = Ash.Query.sort(query, :name)
+        sort =
+          case Ash.Query.get_argument(query, :sort) do
+            :price_asc -> [price: :asc]
+            :price_desc -> [price: :desc]
+            :rating_desc -> [rating: :desc, name: :asc]
+            :name -> [name: :asc]
+            _ -> [name: :asc]
+          end
+
+        query = Ash.Query.sort(query, sort)
 
         # Convert category slugs to IDs for filtering
         case Ash.Query.get_argument(query, :category_slugs) do
@@ -121,9 +132,16 @@ defmodule Demo.Catalog.Product do
         end
       end
 
+      # Search uses `contains/2`, which on SQLite translates to a
+      # case-insensitive substring match against `name`, `origin`,
+      # and `tasting_notes`. Empty/nil search disables the filter.
       filter expr(
                (is_nil(^arg(:roast)) or ^arg(:roast) == [] or roast_level in ^arg(:roast)) and
-                 (is_nil(^arg(:in_stock)) or ^arg(:in_stock) == false or in_stock == true)
+                 (is_nil(^arg(:in_stock)) or ^arg(:in_stock) == false or in_stock == true) and
+                 (is_nil(^arg(:search)) or ^arg(:search) == "" or
+                    contains(name, ^arg(:search)) or
+                    contains(origin, ^arg(:search)) or
+                    contains(tasting_notes, ^arg(:search)))
              )
     end
   end
