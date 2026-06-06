@@ -6,6 +6,48 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.0-rc.4] — 2026-06-06
+
+Templates are now declared with a single shape: `template do ~H"..." end`
+(and `template_loading do ~H"..." end` for overlay loading states). The
+legacy `render fn assigns -> ~L"..." end` / `render_loading fn` variant
+and the `~L` sigil are removed. This release also lands several
+compile-time validations that turn common typo-class bugs into build
+errors.
+
+### Removed
+
+- **The `render fn assigns -> ~L"..." end` / `render_loading fn` variant
+  and the `~L` sigil.** `template do ~H"..." end` is now the only way to
+  declare a LiveView/Component template, and `template_loading do ~H"..."
+  end` the only way to declare an overlay loading body. Internally the
+  loading template now flows through the same token pipeline as the main
+  render (previously it rode an escaped-fn path that depended on the `~L`
+  sigil). The dead `Lavash.Sigil`, `Lavash.Template.Compiled`,
+  `Lavash.Render`, `Lavash.Component.Render`, and `Lavash.Component.Template`
+  modules were deleted.
+
+  **Migration:** replace
+
+      render fn assigns ->
+        ~L\"\"\"
+        <div>{@count}</div>
+        \"\"\"
+      end
+
+  with
+
+      template do
+        ~H\"\"\"
+        <div>{@count}</div>
+        \"\"\"
+      end
+
+  and `render_loading fn assigns -> ~L"..." end` with
+  `template_loading do ~H"..." end`. Inside `components do component ...`
+  blocks, replace the `render fn assigns -> ~H"..." end` body with
+  `template do ~H"..." end`.
+
 ### Added
 
 - **Compile-time validation of `phx-click` / `phx-submit` / `phx-change`
@@ -738,7 +780,8 @@ with reactive behavior wired in for free.
   `parse_value`/`parse_binding_value`, two of `resource_available?/1`.
 - The process-dictionary side channel for `component_states`.
 
-[Unreleased]: https://github.com/u2i/lavash/compare/v0.4.0-rc.3...HEAD
+[Unreleased]: https://github.com/u2i/lavash/compare/v0.4.0-rc.4...HEAD
+[0.4.0-rc.4]: https://github.com/u2i/lavash/compare/v0.4.0-rc.3...v0.4.0-rc.4
 [0.4.0-rc.3]: https://github.com/u2i/lavash/compare/v0.4.0-rc.2...v0.4.0-rc.3
 [0.4.0-rc.2]: https://github.com/u2i/lavash/compare/v0.4.0-rc.1...v0.4.0-rc.2
 [0.4.0-rc.1]: https://github.com/u2i/lavash/compare/v0.3.0-rc.5...v0.4.0-rc.1
