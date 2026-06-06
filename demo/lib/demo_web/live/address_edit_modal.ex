@@ -38,8 +38,8 @@ defmodule DemoWeb.AddressEditModal do
     max_width :md
   end
 
-  render_loading fn assigns ->
-    ~L"""
+  template_loading do
+    ~H"""
     <div class="p-6">
       <div class="animate-pulse">
         <div class="h-6 bg-gray-200 rounded w-1/3 mb-6"></div>
@@ -55,8 +55,8 @@ defmodule DemoWeb.AddressEditModal do
     """
   end
 
-  render fn assigns ->
-    ~L"""
+  template do
+    ~H"""
     <div class="p-6">
       <div class="flex items-center justify-between mb-6">
         <h2 class="text-xl font-bold">

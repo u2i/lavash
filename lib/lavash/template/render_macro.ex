@@ -82,9 +82,8 @@ defmodule Lavash.Template.RenderMacro do
 
   - The `do` block must contain a single `~H` sigil literal. No interpolation in
     the sigil delimiters, no surrounding code in the block.
-  - This shape does NOT support `render_loading` / `set_animated`. If you need
-    a loading-state render, use the `render fn assigns -> ~L\"\"\"...\"\"\" end` shape
-    alongside `render_loading fn assigns -> ~L\"\"\"...\"\"\" end`.
+  - For an overlay loading-state render, pair this with `template_loading do ... end`
+    (the `template`-shaped companion to `render_loading fn ... end`).
   - A module must not declare both `template do ... end` and `render fn ... end`.
     Doing so raises a compile error.
   """
@@ -112,6 +111,73 @@ defmodule Lavash.Template.RenderMacro do
 
       @__lavash_renders__ {:__render_fn__,
                            {:__lavash_template_source__, unquote(source), unquote(line)}}
+    end
+  end
+
+  @doc """
+  Declares the loading-state template using a `do` block containing a `~H` sigil.
+
+  The `template do ... end` companion for overlays (modals, flyovers). Mirrors
+  `render_loading fn assigns -> ~L\"\"\"...\"\"\" end` exactly — the body is shown
+  while the overlay's `async_assign` is still loading.
+
+  ## Example
+
+      template do
+        ~H\"\"\"
+        <div>{@product.name}</div>
+        \"\"\"
+      end
+
+      template_loading do
+        ~H\"\"\"
+        <div class="animate-pulse">Loading…</div>
+        \"\"\"
+      end
+
+  ## Limitations
+
+  - Same single-`~H`-sigil-literal rule as `template/1` (no interpolation in the
+    sigil delimiters, no surrounding code in the block).
+  - A module must not declare both `template_loading do ... end` and
+    `render_loading fn ... end`. Doing so raises a compile error.
+  """
+  defmacro template_loading(do: block) do
+    {source, line} = extract_heex_source!(block, __CALLER__)
+    __build_loading_attr__(source, line)
+  end
+
+  @doc false
+  # Shared expansion used by both `Lavash.Template.RenderMacro.template_loading/1`
+  # and the component-side re-export `Lavash.Component.RenderImport.template_loading/1`.
+  #
+  # The overlay render generator consumes `:__loading_fn__` as an escaped `fn`
+  # AST (it does NOT run the token pipeline on the loading template — see
+  # `Lavash.Overlay.Modal.RenderGenerator.generate_render_fn_code/5`). So we
+  # synthesize the same shape `render_loading fn assigns -> ~L"..." end`
+  # produces: an escaped `fn assigns -> ~L<source> end`. Using `~L` routes it
+  # through the identical sigil expansion the `fn` form uses.
+  def __build_loading_attr__(source, line) do
+    sigil_ast =
+      {:sigil_L, [line: line], [{:<<>>, [line: line], [source]}, []]}
+
+    fn_ast =
+      {:fn, [line: line], [{:->, [line: line], [[{:assigns, [line: line], nil}], sigil_ast]}]}
+
+    escaped_fn = Macro.escape(fn_ast)
+
+    quote do
+      if List.keymember?(@__lavash_renders__ || [], :__loading_fn__, 0) do
+        raise CompileError,
+          file: __ENV__.file,
+          line: __ENV__.line,
+          description:
+            ~s(Cannot use both `template_loading do ~H"..." end` and ) <>
+              ~s(`render_loading fn assigns -> ~L"..." end` in the same module. ) <>
+              "Pick one template-declaration shape."
+      end
+
+      @__lavash_renders__ {:__loading_fn__, unquote(escaped_fn)}
     end
   end
 

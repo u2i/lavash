@@ -210,4 +210,122 @@ defmodule Lavash.TemplateMacroTest do
       assert function_exported?(LiveViewTemplateShape, :render, 1)
     end
   end
+
+  # ============================================================
+  # template_loading do ~H end (overlay loading-state shape)
+  # ============================================================
+
+  defmodule TemplateLoadingModal do
+    @moduledoc false
+    use Lavash.Component, extensions: [Lavash.Overlay.Modal.Dsl]
+
+    state :open, :any, from: :ephemeral, default: nil, optimistic: true
+
+    modal do
+      open_field :open
+      async_assign :thing
+      max_width :md
+    end
+
+    template do
+      ~H"""
+      <div id={"#{@id}-content"}>loaded</div>
+      """
+    end
+
+    template_loading do
+      ~H"""
+      <div id={"#{@id}-loading"} class="animate-pulse">loading…</div>
+      """
+    end
+  end
+
+  defmodule RenderLoadingModal do
+    @moduledoc false
+    use Lavash.Component, extensions: [Lavash.Overlay.Modal.Dsl]
+
+    state :open, :any, from: :ephemeral, default: nil, optimistic: true
+
+    modal do
+      open_field :open
+      async_assign :thing
+      max_width :md
+    end
+
+    render fn assigns ->
+      ~L"""
+      <div id={"#{@id}-content"}>loaded</div>
+      """
+    end
+
+    render_loading fn assigns ->
+      ~L"""
+      <div id={"#{@id}-loading"} class="animate-pulse">loading…</div>
+      """
+    end
+  end
+
+  describe "template_loading do ~H end" do
+    test "both the template and render_loading shapes compile and export render/1" do
+      assert function_exported?(TemplateLoadingModal, :render, 1)
+      assert function_exported?(RenderLoadingModal, :render, 1)
+    end
+
+    test "the loading template is persisted on the modal render config" do
+      # GenerateRender stores the loading fn under :modal_render_loading_template.
+      # The template_loading do ~H end shape must populate it just like
+      # render_loading fn assigns -> ~L"..." end does.
+      t_loading =
+        Spark.Dsl.Extension.get_persisted(
+          TemplateLoadingModal,
+          :modal_render_loading_template
+        )
+
+      r_loading =
+        Spark.Dsl.Extension.get_persisted(
+          RenderLoadingModal,
+          :modal_render_loading_template
+        )
+
+      assert match?({:render_ast, _}, t_loading)
+      assert match?({:render_ast, _}, r_loading)
+    end
+
+    test "using both template_loading/1 and render_loading/1 in the same module raises" do
+      src = """
+      defmodule Lavash.TemplateMacroTest.BothLoadingShapes do
+        use Lavash.Component, extensions: [Lavash.Overlay.Modal.Dsl]
+
+        state :open, :any, from: :ephemeral, default: nil
+
+        modal do
+          open_field :open
+          async_assign :thing
+        end
+
+        template do
+          ~H\"\"\"
+          <div>loaded</div>
+          \"\"\"
+        end
+
+        render_loading fn assigns ->
+          ~L\"\"\"
+          <div>loading</div>
+          \"\"\"
+        end
+
+        template_loading do
+          ~H\"\"\"
+          <div>loading</div>
+          \"\"\"
+        end
+      end
+      """
+
+      assert_raise CompileError, ~r/Cannot use both `template_loading do/, fn ->
+        Code.compile_string(src, "nofile")
+      end
+    end
+  end
 end
