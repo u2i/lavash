@@ -55,4 +55,17 @@ defmodule Lavash.Integration.OverlaysTest do
     |> click(css("#open-modal"))
     |> assert_has(css("#modal-content"))
   end
+
+  test "custom template_loading body renders during the async loading phase", %{session: session} do
+    # ModalAsyncComponent declares `template_loading do ~H ... end` with a
+    # #modal-async-loading marker. Its async calc sleeps 200ms, so the loading
+    # body must show before the resolved content (#modal-async-content) swaps in.
+    # This is the only e2e proof that the token-pipeline loading reroute renders.
+    session
+    |> visit("/magic/modal-async-host")
+    |> click(css("#open-modal"))
+    |> assert_has(css("#modal-async-loading", text: "Loading item"))
+    |> assert_has(css("#modal-async-content"))
+    |> assert_has(css("#modal-async-body", text: "Loaded item 42"))
+  end
 end

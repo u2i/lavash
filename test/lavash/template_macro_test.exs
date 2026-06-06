@@ -323,7 +323,7 @@ defmodule Lavash.TemplateMacroTest do
       end
       """
 
-      assert_raise CompileError, ~r/Cannot use both `template_loading do/, fn ->
+      assert_raise CompileError, ~r/loading template/, fn ->
         Code.compile_string(src, "nofile")
       end
     end

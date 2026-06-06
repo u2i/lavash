@@ -18,7 +18,7 @@ defmodule Lavash.Components.ComponentsMacro do
           prop :variant, :atom, values: [:primary, :secondary], default: :primary
           slot :inner_block, required: true
 
-          render fn assigns ->
+          template do
             ~H\"\"\"
             <button class={["btn", "btn-\#{@variant}", @class]} {@rest}>
               {render_slot(@inner_block)}
@@ -31,7 +31,7 @@ defmodule Lavash.Components.ComponentsMacro do
           prop :label, :string, required: true
           prop :count, :integer, default: 0
 
-          render fn assigns ->
+          template do
             ~H\"\"\"
             <span class="badge">
               <span class="label">{@label}</span>
@@ -61,9 +61,10 @@ defmodule Lavash.Components.ComponentsMacro do
 
   `slot` is unchanged — same name, same options as Phoenix.Component.
 
-  `render fn assigns -> ~H\"...\" end` is the function body. The
-  lambda takes assigns and returns rendered HEEx. (Same shape as
-  Phoenix.Component's `def name(assigns), do: ~H\"...\"`.)
+  `template do ~H\"...\" end` is the function body. The `~H` template
+  is compiled into the generated component's `def name(assigns)`, with
+  `assigns` in scope. (Same result as Phoenix.Component's
+  `def name(assigns), do: ~H\"...\"`.)
   """
 
   @doc """
@@ -80,10 +81,10 @@ defmodule Lavash.Components.ComponentsMacro do
   @doc """
   A single `component :name do ... end` clause. The body is a
   sequence of `prop` / `slot` declarations followed by a single
-  `render fn assigns -> ~H\"...\" end`.
+  `template do ~H\"...\" end`.
   """
   defmacro component(name, do: body) do
-    {props, slots, render_fn} = extract_component_parts(body)
+    {props, slots, template_body} = extract_component_parts(body)
 
     # Emit the Phoenix function component DIRECTLY at macro
     # expansion time. Deferring this to a Spark transformer via
@@ -117,15 +118,20 @@ defmodule Lavash.Components.ComponentsMacro do
     # "could not define attributes for function" error at compile
     # time. The fully-qualified call sidesteps the hygiene issue.
     #
-    # We use bare `assigns` (not `Macro.var` or `var!(assigns)`)
-    # so the user's lambda body, which references `assigns`
-    # literally for `~H` sigil binding, sees the same variable.
+    # The `~H` template body comes from the user's `template do ... end`
+    # block, so its `assigns` references carry the caller's hygiene
+    # context. We bind the def's parameter with `var!(assigns)` and
+    # re-expose it as a caller-context `assigns` so the spliced sigil
+    # body resolves to the same variable. (The original `render fn`
+    # shape sidestepped this by carrying its own closure binding.)
+    assigns_var = Macro.var(:assigns, nil)
+
     quote do
       unquote_splicing(attr_calls)
       unquote_splicing(slot_calls)
 
-      Phoenix.Component.Declarative.def unquote(name)(assigns) do
-        unquote(render_fn).(assigns)
+      Phoenix.Component.Declarative.def unquote(name)(unquote(assigns_var)) do
+        unquote(template_body)
       end
     end
   end
@@ -133,7 +139,7 @@ defmodule Lavash.Components.ComponentsMacro do
   # Walks the component body AST and extracts:
   #   * props :: list of {name, type, opts}
   #   * slots :: list of {name, opts, inner_attrs_or_nil}
-  #   * render_fn :: the `fn assigns -> ... end` AST
+  #   * template_body :: the `~H"..."` sigil AST from the `template do ... end` block
   defp extract_component_parts({:__block__, _, statements}) do
     do_extract(statements, [], [], nil)
   end
@@ -142,42 +148,42 @@ defmodule Lavash.Components.ComponentsMacro do
     do_extract([single_statement], [], [], nil)
   end
 
-  defp do_extract([], props, slots, render_fn) do
-    if is_nil(render_fn) do
+  defp do_extract([], props, slots, template_body) do
+    if is_nil(template_body) do
       raise CompileError,
-        description: "component must contain `render fn assigns -> ~H\"...\" end`"
+        description: "component must contain `template do ~H\"...\" end`"
     end
 
-    {Enum.reverse(props), Enum.reverse(slots), render_fn}
+    {Enum.reverse(props), Enum.reverse(slots), template_body}
   end
 
   # prop :name, :type, opts? — two-arg or three-arg form
-  defp do_extract([{:prop, _, [name, type]} | rest], props, slots, render_fn) do
-    do_extract(rest, [{name, type, []} | props], slots, render_fn)
+  defp do_extract([{:prop, _, [name, type]} | rest], props, slots, template_body) do
+    do_extract(rest, [{name, type, []} | props], slots, template_body)
   end
 
-  defp do_extract([{:prop, _, [name, type, opts]} | rest], props, slots, render_fn) do
-    do_extract(rest, [{name, type, opts} | props], slots, render_fn)
+  defp do_extract([{:prop, _, [name, type, opts]} | rest], props, slots, template_body) do
+    do_extract(rest, [{name, type, opts} | props], slots, template_body)
   end
 
   # slot :name (one-arg form, no opts)
-  defp do_extract([{:slot, _, [name]} | rest], props, slots, render_fn) do
-    do_extract(rest, props, [{name, []} | slots], render_fn)
+  defp do_extract([{:slot, _, [name]} | rest], props, slots, template_body) do
+    do_extract(rest, props, [{name, []} | slots], template_body)
   end
 
   # slot :name, opts (two-arg form)
-  defp do_extract([{:slot, _, [name, opts]} | rest], props, slots, render_fn) do
-    do_extract(rest, props, [{name, opts} | slots], render_fn)
+  defp do_extract([{:slot, _, [name, opts]} | rest], props, slots, template_body) do
+    do_extract(rest, props, [{name, opts} | slots], template_body)
   end
 
-  # render fn assigns -> ~H"..." end
-  defp do_extract([{:render, _, [fn_ast]} | rest], props, slots, render_fn) do
-    if not is_nil(render_fn) do
+  # template do ~H"..." end
+  defp do_extract([{:template, _, [[do: block]]} | rest], props, slots, template_body) do
+    if not is_nil(template_body) do
       raise CompileError,
-        description: "component may declare only one `render fn`"
+        description: "component may declare only one `template`"
     end
 
-    do_extract(rest, props, slots, fn_ast)
+    do_extract(rest, props, slots, block)
   end
 
   defp do_extract([unknown | _], _, _, _) do
@@ -186,6 +192,6 @@ defmodule Lavash.Components.ComponentsMacro do
         "Unsupported statement inside `component do ... end`: " <>
           Macro.to_string(unknown) <>
           ". Allowed: `prop name, type, opts?`, `slot name, opts?`, " <>
-          "`render fn assigns -> ~H\"...\" end`."
+          "`template do ~H\"...\" end`."
   end
 end

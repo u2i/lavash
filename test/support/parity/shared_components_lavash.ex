@@ -23,7 +23,7 @@ defmodule Lavash.Parity.SharedComponentsLavash do
       prop :variant, :atom, values: [:primary, :secondary, :danger], default: :primary
       slot :inner_block, required: true
 
-      render fn assigns ->
+      template do
         ~H"""
         <button class={["btn", "btn-#{@variant}", @class]} {@rest}>
           {render_slot(@inner_block)}
@@ -37,7 +37,7 @@ defmodule Lavash.Parity.SharedComponentsLavash do
       prop :count, :integer, default: 0
       prop :tone, :atom, values: [:info, :warn, :danger], default: :info
 
-      render fn assigns ->
+      template do
         ~H"""
         <span class={"badge badge-#{@tone}"}>
           <span class="badge-label">{@label}</span>
@@ -50,7 +50,7 @@ defmodule Lavash.Parity.SharedComponentsLavash do
     component :tree_node do
       prop :node, :map, required: true
 
-      render fn assigns ->
+      template do
         ~H"""
         <li class="tree-node">
           <span class="node-label">{@node.label}</span>

@@ -31,21 +31,37 @@ defmodule Lavash.Component.Transformers.TokenizeTemplate do
     else
       lavash_renders = Module.get_attribute(env.module, :__lavash_renders__) || []
       {template_source, sigil_line} = resolve_template_source_and_line(lavash_renders)
+      {loading_source, loading_line} = resolve_loading_source_and_line(lavash_renders)
 
       if is_nil(template_source) do
         {:ok, dsl_state}
       else
-        dsl_state = Transformer.persist(dsl_state, :lavash_template_source, template_source)
+        dsl_state =
+          dsl_state
+          |> Transformer.persist(:lavash_template_source, template_source)
+          |> persist_tokens(:lavash_template_tokens, template_source, sigil_line, env)
+          |> tokenize_loading(loading_source, loading_line, env)
 
-        case safe_tokenize(template_source, sigil_line, env) do
-          {:ok, tokens} ->
-            dsl_state = Transformer.persist(dsl_state, :lavash_template_tokens, tokens)
-            {:ok, dsl_state}
-
-          :error ->
-            {:ok, dsl_state}
-        end
+        {:ok, dsl_state}
       end
+    end
+  end
+
+  # Tokenize the overlay loading template (from `template_loading do ~H end`)
+  # into its own slot so the modal/flyover render generators can compile it
+  # through the same token pipeline as the main render.
+  defp tokenize_loading(dsl_state, nil, _line, _env), do: dsl_state
+
+  defp tokenize_loading(dsl_state, loading_source, loading_line, env) do
+    dsl_state
+    |> Transformer.persist(:lavash_loading_source, loading_source)
+    |> persist_tokens(:lavash_loading_tokens, loading_source, loading_line, env)
+  end
+
+  defp persist_tokens(dsl_state, key, source, sigil_line, env) do
+    case safe_tokenize(source, sigil_line, env) do
+      {:ok, tokens} -> Transformer.persist(dsl_state, key, tokens)
+      :error -> dsl_state
     end
   end
 
@@ -67,11 +83,19 @@ defmodule Lavash.Component.Transformers.TokenizeTemplate do
   # ============================================
 
   defp resolve_template_source_and_line(lavash_renders) do
+    resolve_render_source(lavash_renders, :__render_fn__)
+  end
+
+  defp resolve_loading_source_and_line(lavash_renders) do
+    resolve_render_source(lavash_renders, :__loading_fn__)
+  end
+
+  defp resolve_render_source(lavash_renders, key) do
     renders_map = Map.new(lavash_renders)
 
-    case Map.get(renders_map, :__render_fn__) do
+    case Map.get(renders_map, key) do
       nil -> {nil, nil}
-      escaped_fn -> extract_source_and_line(escaped_fn)
+      stored -> extract_source_and_line(stored)
     end
   end
 

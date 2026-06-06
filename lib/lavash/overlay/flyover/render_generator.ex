@@ -17,15 +17,18 @@ defmodule Lavash.Overlay.Flyover.RenderGenerator do
   def helpers_path, do: @helpers_path
 
   # Generate code for render function based on template type.
-  # Uses pre-tokenized tokens when available for consistent attribute injection.
+  # Both the main render and the loading template are tokenized by
+  # TokenizeTemplate into their own persisted slots; compile each from
+  # its tokens for consistent attribute injection.
   defp generate_render_fn_code({:render_ast, escaped_fn}, field, _module, dsl_state, env) do
-    use_pre_tokens = field == :flyover_render_template
+    {tokens_key, source_key} =
+      case field do
+        :flyover_render_template -> {:lavash_template_tokens, :lavash_template_source}
+        :flyover_render_loading_template -> {:lavash_loading_tokens, :lavash_loading_source}
+      end
 
-    pre_tokens =
-      use_pre_tokens && Spark.Dsl.Transformer.get_persisted(dsl_state, :lavash_template_tokens)
-
-    template_source =
-      use_pre_tokens && Spark.Dsl.Transformer.get_persisted(dsl_state, :lavash_template_source)
+    pre_tokens = Spark.Dsl.Transformer.get_persisted(dsl_state, tokens_key)
+    template_source = Spark.Dsl.Transformer.get_persisted(dsl_state, source_key)
 
     if pre_tokens && template_source do
       metadata =

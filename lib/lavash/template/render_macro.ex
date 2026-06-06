@@ -151,33 +151,23 @@ defmodule Lavash.Template.RenderMacro do
   # Shared expansion used by both `Lavash.Template.RenderMacro.template_loading/1`
   # and the component-side re-export `Lavash.Component.RenderImport.template_loading/1`.
   #
-  # The overlay render generator consumes `:__loading_fn__` as an escaped `fn`
-  # AST (it does NOT run the token pipeline on the loading template — see
-  # `Lavash.Overlay.Modal.RenderGenerator.generate_render_fn_code/5`). So we
-  # synthesize the same shape `render_loading fn assigns -> ~L"..." end`
-  # produces: an escaped `fn assigns -> ~L<source> end`. Using `~L` routes it
-  # through the identical sigil expansion the `fn` form uses.
+  # Stores the loading template as the same tagged source tuple `template/1` uses
+  # for `:__render_fn__`, so `TokenizeTemplate` tokenizes the loading body into
+  # `:lavash_loading_tokens`/`:lavash_loading_source` and the overlay render
+  # generators compile it through the identical token pipeline as the main render.
   def __build_loading_attr__(source, line) do
-    sigil_ast =
-      {:sigil_L, [line: line], [{:<<>>, [line: line], [source]}, []]}
-
-    fn_ast =
-      {:fn, [line: line], [{:->, [line: line], [[{:assigns, [line: line], nil}], sigil_ast]}]}
-
-    escaped_fn = Macro.escape(fn_ast)
-
     quote do
       if List.keymember?(@__lavash_renders__ || [], :__loading_fn__, 0) do
         raise CompileError,
           file: __ENV__.file,
           line: __ENV__.line,
           description:
-            ~s(Cannot use both `template_loading do ~H"..." end` and ) <>
-              ~s(`render_loading fn assigns -> ~L"..." end` in the same module. ) <>
-              "Pick one template-declaration shape."
+            ~s(`template_loading do ~H"..." end` declared more than once. ) <>
+              "A module may declare at most one loading template."
       end
 
-      @__lavash_renders__ {:__loading_fn__, unquote(escaped_fn)}
+      @__lavash_renders__ {:__loading_fn__,
+                           {:__lavash_template_source__, unquote(source), unquote(line)}}
     end
   end
 

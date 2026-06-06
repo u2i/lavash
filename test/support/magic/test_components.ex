@@ -117,19 +117,30 @@ defmodule Lavash.Test.Magic.ModalComponent do
     end
   end
 
-  render fn assigns ->
-    # Send a message to the test process to track that render was called
-    # Uses a registered name so it works across processes
-    if test_pid = Process.whereis(:modal_test_pid) do
-      send(test_pid, {:modal_rendered, assigns.item_id})
-    end
-
+  template do
     ~H"""
+    <.render_probe item_id={@item_id} />
     <div id="modal-content">
       <h2>Editing item {@item_id}</h2>
       <button phx-click="close" phx-target={@myself}>Close</button>
     </div>
     """
+  end
+
+  # Emits a message to the test process whenever the template renders, so
+  # the render-optimization tests can observe that render/1 ran (and with
+  # which item_id). Renders nothing. A function component is used because
+  # `template do ~H end` holds only the template — the side effect runs
+  # exactly when the body renders, preserving the original semantics.
+  # No `attr` schema: the @on_definition hook that backs `attr` doesn't
+  # reach plain defs in a Lavash.Component module (see issue #20), and
+  # this internal probe doesn't need validation.
+  def render_probe(assigns) do
+    if test_pid = Process.whereis(:modal_test_pid) do
+      send(test_pid, {:modal_rendered, assigns.item_id})
+    end
+
+    ~H""
   end
 end
 
@@ -192,12 +203,18 @@ defmodule Lavash.Test.Magic.ModalAsyncComponent do
     end
   end
 
-  render fn assigns ->
+  template do
     ~H"""
     <div id="modal-async-content">
       <p id="modal-async-body">{@item}</p>
       <button phx-click="close" phx-target={@myself}>Close</button>
     </div>
+    """
+  end
+
+  template_loading do
+    ~H"""
+    <div id="modal-async-loading">Loading item…</div>
     """
   end
 end
