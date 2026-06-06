@@ -1,17 +1,11 @@
 defmodule Lavash.TemplateMacroTest do
   @moduledoc """
-  Tests for the `template do ~H"..." end` template-declaration shape, which
-  is additive backward-compatible alongside the existing
-  `render fn assigns -> ~L"..." end` shape.
+  Tests for the `template do ~H"..." end` / `template_loading do ~H"..." end`
+  template-declaration macros.
   """
   use ExUnit.Case, async: true
 
   import Phoenix.LiveViewTest, only: [render_component: 2]
-
-  # ============================================================
-  # Fixtures: two components with identical template bodies but
-  # different template-declaration shapes.
-  # ============================================================
 
   defmodule TemplateShapeComponent do
     @moduledoc false
@@ -22,23 +16,6 @@ defmodule Lavash.TemplateMacroTest do
 
     template do
       ~H"""
-      <div id={@id}>
-        <span id={"#{@id}-label"}>{@label}</span>
-        <span id={"#{@id}-count"}>{@count}</span>
-      </div>
-      """
-    end
-  end
-
-  defmodule RenderShapeComponent do
-    @moduledoc false
-    use Lavash.Component
-
-    prop :label, :string, default: "Count"
-    state :count, :integer, from: :ephemeral, default: 0, optimistic: true
-
-    render fn assigns ->
-      ~L"""
       <div id={@id}>
         <span id={"#{@id}-label"}>{@label}</span>
         <span id={"#{@id}-count"}>{@count}</span>
@@ -67,59 +44,44 @@ defmodule Lavash.TemplateMacroTest do
       assert %Phoenix.LiveView.TagEngine.Parser{nodes: nodes} = parsed
       assert is_list(nodes) and nodes != []
     end
-
-    test "produces the same source as the equivalent render fn / ~L shape" do
-      template_source =
-        Spark.Dsl.Extension.get_persisted(TemplateShapeComponent, :lavash_template_source)
-
-      render_source =
-        Spark.Dsl.Extension.get_persisted(RenderShapeComponent, :lavash_template_source)
-
-      assert template_source == render_source
-    end
   end
 
   # ============================================================
-  # Compiled render function existence + shape
+  # Compiled render function
   # ============================================================
 
   describe "compiled render function" do
-    test "both shapes export a render/1 function" do
+    test "exports a render/1 function" do
       assert function_exported?(TemplateShapeComponent, :render, 1)
-      assert function_exported?(RenderShapeComponent, :render, 1)
     end
 
-    test "calling render/1 produces the same HTML output as the legacy shape" do
-      t_html = render_component(TemplateShapeComponent, id: "x", label: "Hello", count: 7)
-      r_html = render_component(RenderShapeComponent, id: "x", label: "Hello", count: 7)
+    test "calling render/1 renders the template body" do
+      html = render_component(TemplateShapeComponent, id: "x", label: "Hello", count: 7)
 
-      # Both shapes wrap with the same lavash optimistic envelope; the
-      # rendered bodies should match exactly.
-      assert t_html == r_html
-      assert t_html =~ ~s|<span id="x-label">Hello</span>|
-      assert t_html =~ ~s|data-lavash-display="count">7</span>|
+      assert html =~ ~s|<span id="x-label">Hello</span>|
+      assert html =~ ~s|data-lavash-display="count">7</span>|
     end
   end
 
   # ============================================================
-  # Compile-time conflicts
+  # Compile-time enforcement
   # ============================================================
 
   describe "compile-time enforcement" do
-    test "using both template/1 and render/1 in the same module raises" do
+    test "using both template do ... end and def render/1 raises" do
       src = """
       defmodule Lavash.TemplateMacroTest.BothShapes do
-        use Lavash.Component
+        use Lavash.LiveView
 
-        state :count, :integer, from: :ephemeral, default: 0
+        state :count, :integer, default: 0
 
-        render fn assigns ->
-          ~L\"\"\"
+        template do
+          ~H\"\"\"
           <div>{@count}</div>
           \"\"\"
         end
 
-        template do
+        def render(assigns) do
           ~H\"\"\"
           <div>{@count}</div>
           \"\"\"
@@ -127,7 +89,9 @@ defmodule Lavash.TemplateMacroTest do
       end
       """
 
-      assert_raise CompileError, ~r/Cannot use both `template do/, fn ->
+      # The guard fires inside a Spark transformer, which wraps the
+      # CompileError as a RuntimeError carrying the same message.
+      assert_raise RuntimeError, ~r/Cannot define both `template do/, fn ->
         Code.compile_string(src, "nofile")
       end
     end
@@ -150,7 +114,7 @@ defmodule Lavash.TemplateMacroTest do
   end
 
   # ============================================================
-  # data-lavash-* injection still happens for the new shape
+  # data-lavash-* injection happens for the template shape
   # ============================================================
 
   defmodule OptimisticTemplateShapeComponent do
@@ -175,19 +139,19 @@ defmodule Lavash.TemplateMacroTest do
     end
   end
 
-  describe "lavash pipeline still runs for the new shape" do
+  describe "lavash pipeline runs for the template shape" do
     test "optimistic field injects data-lavash-display wrapper" do
       html = render_component(OptimisticTemplateShapeComponent, id: "y", count: 3)
 
       # The token transformer auto-wraps bare `{@count}` in a span
-      # carrying data-lavash-display="count" — this is the lavash pipeline
-      # processing the source captured by the new template/1 macro.
+      # carrying data-lavash-display="count" — the lavash pipeline
+      # processing the source captured by the template/1 macro.
       assert html =~ ~s|data-lavash-display="count"|
     end
   end
 
   # ============================================================
-  # LiveView (not just Component) also accepts the new shape
+  # LiveView (not just Component) accepts the shape
   # ============================================================
 
   defmodule LiveViewTemplateShape do
@@ -204,7 +168,7 @@ defmodule Lavash.TemplateMacroTest do
   end
 
   describe "Lavash.LiveView" do
-    test "accepts the new template do ~H end shape" do
+    test "accepts the template do ~H end shape" do
       source = Spark.Dsl.Extension.get_persisted(LiveViewTemplateShape, :lavash_template_source)
       assert source =~ "Count: {@count}"
       assert function_exported?(LiveViewTemplateShape, :render, 1)
@@ -240,60 +204,32 @@ defmodule Lavash.TemplateMacroTest do
     end
   end
 
-  defmodule RenderLoadingModal do
-    @moduledoc false
-    use Lavash.Component, extensions: [Lavash.Overlay.Modal.Dsl]
-
-    state :open, :any, from: :ephemeral, default: nil, optimistic: true
-
-    modal do
-      open_field :open
-      async_assign :thing
-      max_width :md
-    end
-
-    render fn assigns ->
-      ~L"""
-      <div id={"#{@id}-content"}>loaded</div>
-      """
-    end
-
-    render_loading fn assigns ->
-      ~L"""
-      <div id={"#{@id}-loading"} class="animate-pulse">loading…</div>
-      """
-    end
-  end
-
   describe "template_loading do ~H end" do
-    test "both the template and render_loading shapes compile and export render/1" do
+    test "the modal compiles and exports render/1" do
       assert function_exported?(TemplateLoadingModal, :render, 1)
-      assert function_exported?(RenderLoadingModal, :render, 1)
+    end
+
+    test "the loading template is tokenized into its own persisted slot" do
+      source = Spark.Dsl.Extension.get_persisted(TemplateLoadingModal, :lavash_loading_source)
+      tokens = Spark.Dsl.Extension.get_persisted(TemplateLoadingModal, :lavash_loading_tokens)
+
+      assert source =~ "loading…"
+      assert %Phoenix.LiveView.TagEngine.Parser{} = tokens
     end
 
     test "the loading template is persisted on the modal render config" do
-      # GenerateRender stores the loading fn under :modal_render_loading_template.
-      # The template_loading do ~H end shape must populate it just like
-      # render_loading fn assigns -> ~L"..." end does.
-      t_loading =
+      loading =
         Spark.Dsl.Extension.get_persisted(
           TemplateLoadingModal,
           :modal_render_loading_template
         )
 
-      r_loading =
-        Spark.Dsl.Extension.get_persisted(
-          RenderLoadingModal,
-          :modal_render_loading_template
-        )
-
-      assert match?({:render_ast, _}, t_loading)
-      assert match?({:render_ast, _}, r_loading)
+      assert match?({:render_ast, _}, loading)
     end
 
-    test "using both template_loading/1 and render_loading/1 in the same module raises" do
+    test "declaring template_loading more than once raises" do
       src = """
-      defmodule Lavash.TemplateMacroTest.BothLoadingShapes do
+      defmodule Lavash.TemplateMacroTest.DoubleLoading do
         use Lavash.Component, extensions: [Lavash.Overlay.Modal.Dsl]
 
         state :open, :any, from: :ephemeral, default: nil
@@ -309,15 +245,15 @@ defmodule Lavash.TemplateMacroTest do
           \"\"\"
         end
 
-        render_loading fn assigns ->
-          ~L\"\"\"
-          <div>loading</div>
+        template_loading do
+          ~H\"\"\"
+          <div>loading a</div>
           \"\"\"
         end
 
         template_loading do
           ~H\"\"\"
-          <div>loading</div>
+          <div>loading b</div>
           \"\"\"
         end
       end

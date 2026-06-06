@@ -8,15 +8,11 @@ defmodule Lavash.SparkHeex do
 
   ## Why
 
-  Lavash's existing approach is:
-
-      render fn assigns ->
-        ~L\"\"\"<div>{@count}</div>\"\"\"
-      end
-
-  The DSL doesn't know what's inside the sigil until a separate transformer
-  walks the AST and extracts the string. That means DSL-level analysis (e.g.
-  "is `@count` a declared state field?") can't happen at DSL build time.
+  Lavash's original approach wrapped the template in a function literal whose
+  body was an opaque sigil. The DSL didn't know what was inside the sigil until
+  a separate transformer walked the AST and extracted the string. That meant
+  DSL-level analysis (e.g. "is `@count` a declared state field?") couldn't
+  happen at DSL build time.
 
   This spike introduces a `template do ... end` section. The body holds a
   single `~H"..."` sigil; the macro extracts the source string at parse time

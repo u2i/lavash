@@ -99,34 +99,12 @@ defmodule Lavash.Component.Transformers.TokenizeTemplate do
     end
   end
 
-  # `template do ~H"..." end` macro registers a tagged tuple directly,
-  # bypassing the AST-walk used for `render fn assigns -> ~L"..." end`.
+  # `template do ~H"..." end` / `template_loading do ~H"..." end` register the
+  # source as a tagged tuple on `@__lavash_renders__`.
   defp extract_source_and_line({:__lavash_template_source__, source, line})
        when is_binary(source) do
     {source, line}
   end
 
-  defp extract_source_and_line({:fn, _, [{:->, _, [[_], body]}]}),
-    do: extract_compiled_source_and_line(body)
-
   defp extract_source_and_line(_), do: {nil, nil}
-
-  defp extract_compiled_source_and_line({:sigil_L, meta, [{:<<>>, _, [source]}, _]})
-       when is_binary(source) do
-    {source, Keyword.get(meta, :line)}
-  end
-
-  defp extract_compiled_source_and_line(
-         {:%, _, [{:__aliases__, _, [:Lavash, :Template, :Compiled]}, {:%{}, _, fields}]}
-       ) do
-    {Keyword.get(fields, :source), nil}
-  end
-
-  defp extract_compiled_source_and_line({:__block__, _, [inner]}),
-    do: extract_compiled_source_and_line(inner)
-
-  defp extract_compiled_source_and_line({:quote, _, [[do: ast]]}),
-    do: extract_compiled_source_and_line(ast)
-
-  defp extract_compiled_source_and_line(_), do: {nil, nil}
 end

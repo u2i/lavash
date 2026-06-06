@@ -33,7 +33,7 @@ defmodule DemoWeb.FlyoverDemoLive do
         width :sm          # :sm, :md, :lg, :xl, :full
       end
 
-      render fn assigns ->
+      template do
         ~H&quot;&quot;&quot;
         &lt;div class="h-full p-4"&gt;
           &lt;h2&gt;Navigation&lt;/h2&gt;

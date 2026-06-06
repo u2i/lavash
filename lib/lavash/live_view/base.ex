@@ -99,7 +99,6 @@ defmodule Lavash.LiveView.Base do
 
       import Lavash.LiveView.Helpers
       import Lavash.Template.RenderMacro
-      import Lavash.Sigil, only: [sigil_L: 2]
     end
   end
 end

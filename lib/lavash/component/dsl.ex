@@ -295,7 +295,6 @@ defmodule Lavash.Component.Dsl do
       Phoenix.Component,
       Lavash.DslHelpers,
       Lavash.Rx,
-      Lavash.Sigil,
       Lavash.Component.RenderImport
     ]
 end

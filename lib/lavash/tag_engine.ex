@@ -94,7 +94,7 @@ defmodule Lavash.TagEngine do
   # (i.e. module-define time), where `function` is nil. Plant a synthetic
   # `{:render, 1}` so debug_heex_annotations doesn't crash. The annotation
   # comment that lands in the output reads `<!-- <Mod.render> file:line -->`,
-  # which is exactly what a real render fn would emit.
+  # which is exactly what the generated render/1 would emit.
   defp ensure_function_in_env(%Macro.Env{function: nil} = env),
     do: %{env | function: {:render, 1}}
 

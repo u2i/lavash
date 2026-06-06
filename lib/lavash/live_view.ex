@@ -3,8 +3,8 @@ defmodule Lavash.LiveView do
   Use this module to create a Lavash-powered LiveView.
 
   Declares the DSL surface (`state`, `calculate`, `read`, `form`, `actions`,
-  etc.), imports the `~L` sigil, and wires the template transformer +
-  optimistic JS hook.
+  etc.), provides the `template do ~H end` block, and wires the template
+  transformer + optimistic JS hook.
 
   ## Example
 
@@ -26,8 +26,8 @@ defmodule Lavash.LiveView do
           end
         end
 
-        render fn assigns ->
-          ~L\"\"\"
+        template do
+          ~H\"\"\"
           <div>
             <h1>{@user.name}</h1>
             <button phx-click="change_tab" phx-value-tab="overview">Overview</button>
@@ -58,9 +58,6 @@ defmodule Lavash.LiveView do
       import Lavash.LiveView.Helpers
       import Lavash.Optimistic.Macros, only: [optimistic_action: 3]
       import Lavash.Template.RenderMacro
-
-      # Import ~L sigil for templates (compiled by transformer pipeline)
-      import Lavash.Sigil, only: [sigil_L: 2]
     end
   end
 end

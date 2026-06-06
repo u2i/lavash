@@ -69,7 +69,7 @@ defmodule DemoWeb.FormValidationDemoLive do
     end
   end
 
-  # Using render fn with ~H sigil with shorthand form field syntax
+  # Using template do ~H with shorthand form field syntax
   #
   # field={@form[:field]} expands to:
   # - name={@form[:field].name}

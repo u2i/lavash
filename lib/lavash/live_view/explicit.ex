@@ -4,15 +4,15 @@ defmodule Lavash.LiveView.Explicit do
   Phoenix.LiveView.
 
   This is the path for "I want the reactive recomputation machinery
-  without the Spark DSL, the `~L` template transformer, or the optimistic
-  JS hook." You get the dependency graph and automatic recomputation; you
-  write `mount/3`, `handle_event/3`, and `render/1` like any other
-  Phoenix.LiveView.
+  without the Spark DSL, the `template do ~H end` transformer, or the
+  optimistic JS hook." You get the dependency graph and automatic
+  recomputation; you write `mount/3`, `handle_event/3`, and `render/1`
+  like any other Phoenix.LiveView.
 
   Compare with `use Lavash.LiveView`, which adds the DSL (`state`,
-  `actions`), the template transformer (`~L`), URL/socket-backed state,
-  forms, bindings, overlays, and the optimistic JS hook — a much larger
-  API surface in exchange for less code at the call site.
+  `actions`), the `template do ~H end` transformer, URL/socket-backed
+  state, forms, bindings, overlays, and the optimistic JS hook — a much
+  larger API surface in exchange for less code at the call site.
 
   ## Example
 
@@ -58,8 +58,8 @@ defmodule Lavash.LiveView.Explicit do
 
   - No URL-backed or socket-backed state; you wire `handle_params/3`
     yourself.
-  - No `~L` template transformer. Use `~H`. No auto-injected
-    `data-lavash-*` attributes.
+  - No `template do ~H end` transformer. Use `~H` in `render/1`. No
+    auto-injected `data-lavash-*` attributes.
   - No optimistic JS hook. Updates take a server round-trip.
   - No `bind=`, no `<.lavash_component>`, no forms, no overlays. These
     are DSL features.

@@ -26,7 +26,7 @@ defmodule Lavash.Overlay.Modal.Dsl do
           end
         end
 
-        render fn assigns ->
+        template do
           ~H"..."
         end
       end

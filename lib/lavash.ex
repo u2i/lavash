@@ -5,8 +5,8 @@ defmodule Lavash do
   Lavash is two things in one package:
 
   - A **DSL** (`Lavash.LiveView`, `Lavash.Component`) for declaring state,
-    computed values, forms, actions, and overlays, with a `~L` sigil that
-    auto-injects the client-side machinery for optimistic updates.
+    computed values, forms, actions, and overlays, with a `template do ~H end`
+    block that auto-injects the client-side machinery for optimistic updates.
   - A **reactive engine** (`Lavash.Reactive`, `Lavash.LiveView.Explicit`)
     that powers the DSL but is also usable directly from a plain
     `Phoenix.LiveView` when you want the dependency graph without the rest.
@@ -30,8 +30,8 @@ defmodule Lavash do
           end
         end
 
-        render fn assigns ->
-          ~L\"\"\"
+        template do
+          ~H\"\"\"
           <div>...</div>
           \"\"\"
         end

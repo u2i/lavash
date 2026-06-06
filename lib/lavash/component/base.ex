@@ -27,8 +27,8 @@ defmodule Lavash.Component.Base do
           end
         end
 
-        render fn assigns ->
-          ~L\"\"\"
+        template do
+          ~H\"\"\"
           <div phx-click="toggle" phx-target={@myself}>
             <h3>{@user.name}</h3>
             <div :if={@expanded}>...</div>
@@ -58,7 +58,6 @@ defmodule Lavash.Component.Base do
 
       Module.register_attribute(__MODULE__, :__lavash_renders__, accumulate: true)
 
-      import Lavash.Sigil, only: [sigil_L: 2]
       import Lavash.Template.RenderMacro
     end
   end

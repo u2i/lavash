@@ -119,11 +119,11 @@ defmodule Lavash.Components.ComponentsMacro do
     # time. The fully-qualified call sidesteps the hygiene issue.
     #
     # The `~H` template body comes from the user's `template do ... end`
-    # block, so its `assigns` references carry the caller's hygiene
-    # context. We bind the def's parameter with `var!(assigns)` and
-    # re-expose it as a caller-context `assigns` so the spliced sigil
-    # body resolves to the same variable. (The original `render fn`
-    # shape sidestepped this by carrying its own closure binding.)
+    # block. We name the def's parameter with a context-agnostic
+    # `Macro.var(:assigns, nil)` so the spliced sigil body — which
+    # references `assigns` by name during sigil expansion — resolves to
+    # the same variable. (The former render-fn shape sidestepped this by
+    # carrying its own closure binding.)
     assigns_var = Macro.var(:assigns, nil)
 
     quote do

@@ -21,7 +21,7 @@ defmodule Lavash.Overlay.Flyover.Dsl do
           close_on_backdrop true
         end
 
-        render fn assigns ->
+        template do
           ~H"..."
         end
       end

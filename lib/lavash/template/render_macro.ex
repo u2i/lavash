@@ -1,74 +1,25 @@
 defmodule Lavash.Template.RenderMacro do
   @moduledoc """
-  Macro for defining render functions in Lavash LiveViews and Components.
+  Macros for declaring templates in Lavash LiveViews and Components.
 
-  This macro captures `render fn assigns -> ~L\"\"\"...\"\"\" end` definitions and stores
-  them in a module attribute for later processing by the compiler.
+  `template do ~H\"\"\"...\"\"\" end` captures the template source and stores it on
+  a module attribute for the Lavash compile pipeline. `template_loading do ... end`
+  declares the loading-state body for overlays (modals, flyovers).
 
   ## Usage
 
-      render fn assigns ->
-        ~L\"\"\"
+      template do
+        ~H\"\"\"
         <div>{@count}</div>
         \"\"\"
       end
-
-  The function receives assigns and must return HEEx content via the `~L` sigil.
   """
-
-  @doc """
-  Defines a render function.
-
-  The function receives `assigns` and should return HEEx content via `~L` sigil.
-
-  ## Examples
-
-      render fn assigns ->
-        ~L\"\"\"
-        <div>
-          <span>{@count}</span>
-          <button phx-click="increment">+</button>
-        </div>
-        \"\"\"
-      end
-  """
-  defmacro render(render_fn) do
-    # render_fn is already the quoted AST of the function expression
-    # We need to escape it so it can be stored in a module attribute as data
-    # then unescaped when used in the compiler
-    escaped_ast = Macro.escape(render_fn)
-
-    quote do
-      @__lavash_renders__ {:__render_fn__, unquote(escaped_ast)}
-    end
-  end
-
-  @doc """
-  Defines a loading render function for overlays (modals, flyovers).
-
-  ## Examples
-
-      render_loading fn assigns ->
-        ~L\"\"\"
-        <div class="animate-pulse">Loading...</div>
-        \"\"\"
-      end
-  """
-  defmacro render_loading(render_fn) do
-    escaped_ast = Macro.escape(render_fn)
-
-    quote do
-      @__lavash_renders__ {:__loading_fn__, unquote(escaped_ast)}
-    end
-  end
 
   @doc """
   Declares a component/LiveView template using a `do` block containing a `~H` sigil.
 
-  This is an alternative shape to `render fn assigns -> ~L\"\"\"...\"\"\" end`. Both
-  shapes feed into the same Lavash compile pipeline (`TokenizeTemplate` →
-  `AnalyzeTemplate` → `ExtractColocatedJs` → `CompileComponent/CompileLiveView`) and
-  produce the same compiled output for the same template body.
+  The template source feeds the Lavash compile pipeline (`TokenizeTemplate` →
+  `AnalyzeTemplate` → `ExtractColocatedJs` → `CompileComponent/CompileLiveView`).
 
   ## Example
 
@@ -82,9 +33,8 @@ defmodule Lavash.Template.RenderMacro do
 
   - The `do` block must contain a single `~H` sigil literal. No interpolation in
     the sigil delimiters, no surrounding code in the block.
-  - For an overlay loading-state render, pair this with `template_loading do ... end`
-    (the `template`-shaped companion to `render_loading fn ... end`).
-  - A module must not declare both `template do ... end` and `render fn ... end`.
+  - For an overlay loading-state render, pair this with `template_loading do ... end`.
+  - A module must not declare both `template do ... end` and `def render/1`.
     Doing so raises a compile error.
   """
   defmacro template(do: block) do
@@ -96,17 +46,14 @@ defmodule Lavash.Template.RenderMacro do
   # Shared expansion used by both `Lavash.Template.RenderMacro.template/1`
   # and the component-side re-export `Lavash.Component.RenderImport.template/1`.
   def __build_template_attr__(source, line) do
-    # Register on the same `@__lavash_renders__` attribute so the downstream
-    # pipeline finds a `:__render_fn__` entry. We embed the source in a tagged
-    # tuple that `TokenizeTemplate.extract_compiled_source_and_line/1` recognizes.
+    # Register the source on `@__lavash_renders__` under `:__render_fn__` as a
+    # tagged tuple that `TokenizeTemplate` recognizes.
     quote do
       if List.keymember?(@__lavash_renders__ || [], :__render_fn__, 0) do
         raise CompileError,
           file: __ENV__.file,
           line: __ENV__.line,
-          description:
-            ~s(Cannot use both `template do ~H"..." end` and `render fn assigns -> ~L"..." end` ) <>
-              "in the same module. Pick one template-declaration shape."
+          description: "`template do ~H\"...\" end` declared more than once."
       end
 
       @__lavash_renders__ {:__render_fn__,
@@ -117,9 +64,8 @@ defmodule Lavash.Template.RenderMacro do
   @doc """
   Declares the loading-state template using a `do` block containing a `~H` sigil.
 
-  The `template do ... end` companion for overlays (modals, flyovers). Mirrors
-  `render_loading fn assigns -> ~L\"\"\"...\"\"\" end` exactly — the body is shown
-  while the overlay's `async_assign` is still loading.
+  The `template do ... end` companion for overlays (modals, flyovers) — the body
+  is shown while the overlay's `async_assign` is still loading.
 
   ## Example
 
@@ -139,8 +85,7 @@ defmodule Lavash.Template.RenderMacro do
 
   - Same single-`~H`-sigil-literal rule as `template/1` (no interpolation in the
     sigil delimiters, no surrounding code in the block).
-  - A module must not declare both `template_loading do ... end` and
-    `render_loading fn ... end`. Doing so raises a compile error.
+  - A module may declare at most one `template_loading do ... end`.
   """
   defmacro template_loading(do: block) do
     {source, line} = extract_heex_source!(block, __CALLER__)

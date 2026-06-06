@@ -509,8 +509,9 @@ defmodule Lavash.Dsl do
   # Extension setup
   # ============================================
 
-  # Note: Render is handled by Lavash.Template.RenderMacro instead of Spark DSL
-  # This enables `render :name do ~L"""...""" end` syntax without Spark entity conflicts
+  # Note: the template is handled by Lavash.Template.RenderMacro instead of a
+  # Spark DSL entity. This enables `template do ~H"..." end` without Spark
+  # entity conflicts.
 
   use Spark.Dsl.Extension,
     sections: [
@@ -537,7 +538,6 @@ defmodule Lavash.Dsl do
       Phoenix.Component,
       Lavash.DslHelpers,
       Lavash.Rx,
-      Lavash.Sigil,
       Lavash.Template.RenderMacro,
       Lavash.Lifecycle.MessagesMacro,
       Lavash.Lifecycle.AsyncMacro,

@@ -44,16 +44,17 @@ defmodule Lavash.LiveView.Transformers.CompileLiveView do
     renders_map = Map.new(lavash_renders)
     render_template = Map.get(renders_map, :__render_fn__)
 
-    # Error if both render macro and render/1 are defined
+    # Error if both the template macro and render/1 are defined
     if render_template && has_render do
       raise CompileError,
         file: env.file,
         line: env.line,
         description: """
-        Cannot define both `render fn assigns ->` macro and `render/1` in the same LiveView.
+        Cannot define both `template do ~H"..." end` and `render/1` in the same LiveView.
 
-        When using the `render` macro, the framework generates the render/1 function automatically.
-        Remove your `def render(assigns)` function, or remove the `render fn assigns -> ... end` macro.
+        When using `template do ... end`, the framework generates the render/1 function
+        automatically. Remove your `def render(assigns)` function, or remove the
+        `template do ~H"..." end` block.
         """
     end
 

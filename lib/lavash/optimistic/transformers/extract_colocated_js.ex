@@ -158,7 +158,7 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
     animated_fields = Transformer.get_persisted(dsl_state, :lavash_animated_fields) || []
     defrx_map = get_defrx_map(dsl_state)
 
-    # Read reactive attribute derives from AnalyzeTemplate or ~L sigil
+    # Read reactive attribute derives from AnalyzeTemplate
     attr_derives =
       (Transformer.get_persisted(dsl_state, :lavash_attr_derives) || []) ++
         try do

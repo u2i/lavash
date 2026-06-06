@@ -20,7 +20,7 @@ defmodule Lavash.Overlay.Flyover.RenderGenerator do
   # Both the main render and the loading template are tokenized by
   # TokenizeTemplate into their own persisted slots; compile each from
   # its tokens for consistent attribute injection.
-  defp generate_render_fn_code({:render_ast, escaped_fn}, field, _module, dsl_state, env) do
+  defp generate_render_fn_code({:render_ast, _source_tuple}, field, _module, dsl_state, env) do
     {tokens_key, source_key} =
       case field do
         :flyover_render_template -> {:lavash_template_tokens, :lavash_template_source}
@@ -30,29 +30,25 @@ defmodule Lavash.Overlay.Flyover.RenderGenerator do
     pre_tokens = Spark.Dsl.Transformer.get_persisted(dsl_state, tokens_key)
     template_source = Spark.Dsl.Transformer.get_persisted(dsl_state, source_key)
 
-    if pre_tokens && template_source do
-      metadata =
-        Lavash.Component.Transformers.CompileComponent.build_token_transformer_metadata_from_dsl(
-          env,
-          dsl_state
-        )
+    metadata =
+      Lavash.Component.Transformers.CompileComponent.build_token_transformer_metadata_from_dsl(
+        env,
+        dsl_state
+      )
 
-      compiled =
-        Lavash.TagEngine.compile_from_tokens(pre_tokens,
-          file: env.file,
-          line: 1,
-          caller: env,
-          source: template_source,
-          tag_handler: Phoenix.LiveView.HTMLEngine,
-          token_transformer: Lavash.Template.TokenTransformer,
-          lavash_metadata: metadata
-        )
+    compiled =
+      Lavash.TagEngine.compile_from_tokens(pre_tokens,
+        file: env.file,
+        line: 1,
+        caller: env,
+        source: template_source,
+        tag_handler: Phoenix.LiveView.HTMLEngine,
+        token_transformer: Lavash.Template.TokenTransformer,
+        lavash_metadata: metadata
+      )
 
-      quote do
-        fn var!(assigns) -> unquote(compiled) end
-      end
-    else
-      escaped_fn
+    quote do
+      fn var!(assigns) -> unquote(compiled) end
     end
   end
 

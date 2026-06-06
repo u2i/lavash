@@ -3,9 +3,9 @@ defmodule Lavash.Component do
   Stateful Phoenix LiveComponents with the same DSL as `Lavash.LiveView`.
 
   Components can declare `prop`, `state`, `calculate`, `actions`, and render
-  with the `~L` sigil. Inside a Lavash component, `phx-target={@myself}` is
-  auto-injected on `phx-*` attrs and `__lavash_client_bindings__` propagates
-  to nested `<.lavash_component>` calls.
+  with a `template do ~H end` block. Inside a Lavash component,
+  `phx-target={@myself}` is auto-injected on `phx-*` attrs and
+  `__lavash_client_bindings__` propagates to nested `<.lavash_component>` calls.
 
   ## Example
 
@@ -25,8 +25,8 @@ defmodule Lavash.Component do
           end
         end
 
-        render fn assigns ->
-          ~L\"\"\"
+        template do
+          ~H\"\"\"
           <div phx-click="toggle_expand">
             <h3>{@product.name}</h3>
             <div :if={@show_actions}>...</div>
@@ -74,10 +74,6 @@ defmodule Lavash.Component do
       # Register module attribute for render definitions
       Module.register_attribute(__MODULE__, :__lavash_renders__, accumulate: true)
 
-      # Import ~L sigil for Lavash component templates (context: :component)
-      # This ensures proper binding injection for nested components
-      # ~H still uses Phoenix.Component.sigil_H for standard HEEx
-      import Lavash.Sigil, only: [sigil_L: 2]
       import Lavash.Template.RenderMacro
     end
   end

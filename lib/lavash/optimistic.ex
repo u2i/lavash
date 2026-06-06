@@ -32,7 +32,7 @@ defmodule Lavash.Optimistic do
         optimistic_action :increment, :count,
           run: fn count, _params -> count + 1 end
 
-        render fn assigns ->
+        template do
           ~H\"\"\"
           <div>
             <span>{@count}</span>
