@@ -6,6 +6,47 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.0-rc.5] — 2026-06-08
+
+Fixes the optimistic-template transpiler, which emitted invalid or
+silently-broken client JS for several valid Elixir constructs — failures
+that only surfaced at prod `esbuild`, never at `mix compile`/test. The
+analysis now decides per expression whether it actually needs client
+transpilation, and raises a clear compile-time error when an
+optimistic-dependent expression can't be transpiled.
+
+### Fixed
+
+- **`?`-suffixed keys on nested access** (`@matrix.declared?`,
+  `r.spec_home?`) emitted `obj.declared?` — invalid JS (esbuild
+  "Unexpected ?"). They now route through `js_field_access/2` and emit
+  quoted bracket keys: `obj["declared?"]`. (Top-level `@`-refs already
+  did this; nested/loop-variable access bypassed it.)
+
+- **Empty-list comparison** `x == []` / `x != []` emitted `x === []` /
+  `x !== []`, which in JS compares against a fresh array literal (always
+  false / always true). Now emits `.length === 0` / `.length > 0`.
+
+### Added
+
+- **Loop-aware optimistic analysis.** `:for={x <- src}` now binds `x` as
+  optimistic-derived only when `src` is optimistic. A loop variable over a
+  static list is server-rendered (no client transpilation, no error); over
+  an optimistic list it drives a client re-render. `build_optimistic_names`
+  now also includes optimistic `state` fields (previously only
+  calculations/forms/actions), so `:if`/`:for`/`{...}` over optimistic
+  state transpile as expected.
+
+- **Compile-time error for untranspilable optimistic expressions.** When an
+  expression depends on optimistic state but has no JS equivalent (a local
+  helper call, `fn`, an unsupported comprehension), lavash now raises a
+  `Spark.Error.DslError` at `mix compile` naming the source line and the
+  offending construct, with remedies (move it to a `calculate`/`defrx`, or
+  drop the optimistic dependency to render it server-side). Previously this
+  emitted invalid JS that broke prod esbuild, or a placeholder that
+  silently dropped that part of the DOM. `defrx` helpers are expanded
+  before validation, so they are not flagged.
+
 ## [0.4.0-rc.4] — 2026-06-06
 
 Templates are now declared with a single shape: `template do ~H"..." end`
@@ -780,7 +821,8 @@ with reactive behavior wired in for free.
   `parse_value`/`parse_binding_value`, two of `resource_available?/1`.
 - The process-dictionary side channel for `component_states`.
 
-[Unreleased]: https://github.com/u2i/lavash/compare/v0.4.0-rc.4...HEAD
+[Unreleased]: https://github.com/u2i/lavash/compare/v0.4.0-rc.5...HEAD
+[0.4.0-rc.5]: https://github.com/u2i/lavash/compare/v0.4.0-rc.4...v0.4.0-rc.5
 [0.4.0-rc.4]: https://github.com/u2i/lavash/compare/v0.4.0-rc.3...v0.4.0-rc.4
 [0.4.0-rc.3]: https://github.com/u2i/lavash/compare/v0.4.0-rc.2...v0.4.0-rc.3
 [0.4.0-rc.2]: https://github.com/u2i/lavash/compare/v0.4.0-rc.1...v0.4.0-rc.2
