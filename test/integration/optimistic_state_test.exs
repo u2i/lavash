@@ -51,4 +51,36 @@ defmodule Lavash.Integration.OptimisticStateTest do
     |> assert_has(css("#toggle-target.on-class"))
     |> assert_has(css("#chip-three.selected"))
   end
+
+  describe "transpiler edge cases (generated JS must parse + run in the browser)" do
+    # These constructs previously emitted invalid/broken client JS that only
+    # failed at prod esbuild. If the JS is wrong, the optimistic re-render
+    # never patches the DOM and these assertions fail.
+
+    test "?-suffixed nested key drives an optimistic :if", %{session: session} do
+      session = visit(session, "/magic/transpiler-edge")
+      refute Wallabidi.Browser.has?(session, css("#declared"))
+
+      session
+      |> click(css("#toggle-declared"))
+      |> assert_has(css("#declared", text: "declared"))
+    end
+
+    test "empty-list comparison (!= []) drives an optimistic :if", %{session: session} do
+      session = visit(session, "/magic/transpiler-edge")
+      refute Wallabidi.Browser.has?(session, css("#has-findings"))
+
+      session
+      |> click(css("#add-finding"))
+      |> assert_has(css("#has-findings", text: "Has findings: 1"))
+    end
+
+    test "optimistic :for with ?-suffixed loop-var fields re-renders", %{session: session} do
+      session
+      |> visit("/magic/transpiler-edge")
+      |> assert_has(css("#repos .repo", text: "alpha: ready"))
+      |> click(css("#add-repo"))
+      |> assert_has(css("#repos .repo", text: "beta: pending"))
+    end
+  end
 end

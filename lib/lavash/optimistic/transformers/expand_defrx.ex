@@ -30,7 +30,10 @@ defmodule Lavash.Optimistic.Transformers.ExpandDefrx do
   end
 
   # Get defrx definitions from module attributes (local and imported)
-  defp get_defrx_map(dsl_state) do
+  @doc false
+  # Public so other optimistic transformers (e.g. AnalyzeOptimisticTemplate's
+  # transpilability oracle) can resolve defrx definitions the same way.
+  def get_defrx_map(dsl_state) do
     env = Spark.Dsl.Transformer.get_persisted(dsl_state, :env)
 
     if env do
@@ -142,7 +145,10 @@ defmodule Lavash.Optimistic.Transformers.ExpandDefrx do
   end
 
   # Expand defrx calls in an AST
-  defp expand_defrx_in_ast(ast, defrx_map) do
+  @doc false
+  # Public so other optimistic transformers can expand defrx calls in an AST
+  # (e.g. before validating a template expression's transpilability).
+  def expand_defrx_in_ast(ast, defrx_map) do
     do_expand_ast(ast, defrx_map)
   end
 

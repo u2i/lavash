@@ -620,14 +620,17 @@ defmodule Lavash.Optimistic.Transpiler do
     "#{ast_to_js(obj)}[#{ast_to_js(key)}]"
   end
 
-  # Dot access on AST node
+  # Dot access on AST node. Route through js_field_access/2 so field names
+  # that aren't valid JS identifiers (e.g. `?`/`!`-suffixed predicates like
+  # `declared?`) emit as quoted bracket keys (obj["declared?"]) rather than
+  # invalid `obj.declared?`.
   def ast_to_js({:., _, [obj, field]}) when is_atom(field) do
-    "#{ast_to_js(obj)}.#{field}"
+    js_field_access(ast_to_js(obj), field)
   end
 
   # Function call on object: item.field (alternate AST form)
   def ast_to_js({{:., _, [obj, field]}, _, []}) when is_atom(field) do
-    "#{ast_to_js(obj)}.#{field}"
+    js_field_access(ast_to_js(obj), field)
   end
 
   # Variable reference
@@ -688,6 +691,15 @@ defmodule Lavash.Optimistic.Transpiler do
 
     "[#{Enum.join(js_elements, ", ")}]"
   end
+
+  # Empty-list comparison. In Elixir `x == []` / `x != []` test emptiness;
+  # the generic op clause below would emit `x === []` / `x !== []`, which in
+  # JS compares against a fresh array literal (reference equality) and is
+  # always false/true respectively. Emit length checks instead.
+  def ast_to_js({:==, _, [left, []]}), do: "(#{ast_to_js(left)}.length === 0)"
+  def ast_to_js({:==, _, [[], right]}), do: "(#{ast_to_js(right)}.length === 0)"
+  def ast_to_js({:!=, _, [left, []]}), do: "(#{ast_to_js(left)}.length > 0)"
+  def ast_to_js({:!=, _, [[], right]}), do: "(#{ast_to_js(right)}.length > 0)"
 
   # Binary operators
   def ast_to_js({op, _, [left, right]})

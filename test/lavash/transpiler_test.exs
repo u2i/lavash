@@ -55,6 +55,20 @@ defmodule Lavash.Optimistic.TranspilerTest do
     test "nested @variable access" do
       assert Transpiler.to_js("@user.name") == "state.user.name"
     end
+
+    test "?-suffixed nested key becomes a quoted bracket key (not invalid JS)" do
+      # `obj.declared?` is invalid JS; must emit obj["declared?"].
+      assert Transpiler.to_js("@matrix.declared?") == ~s|state.matrix["declared?"]|
+      assert Transpiler.to_js("@repo.spec_home?") == ~s|state.repo["spec_home?"]|
+    end
+
+    test "!-suffixed nested key becomes a quoted bracket key" do
+      assert Transpiler.to_js("@cfg.enabled!") == ~s|state.cfg["enabled!"]|
+    end
+
+    test "?-suffixed key on a (loop) variable becomes a quoted bracket key" do
+      assert Transpiler.to_js("r.available?") == ~s|r["available?"]|
+    end
   end
 
   describe "elixir_to_js/1 - comparison operators" do
@@ -68,6 +82,18 @@ defmodule Lavash.Optimistic.TranspilerTest do
       assert Transpiler.to_js("@a < @b") == "(state.a < state.b)"
       assert Transpiler.to_js("@a >= @b") == "(state.a >= state.b)"
       assert Transpiler.to_js("@a <= @b") == "(state.a <= state.b)"
+    end
+
+    test "empty-list comparison emits a length check, not array-literal equality" do
+      # `x === []` / `x !== []` in JS compares against a fresh array (always
+      # false / always true). Elixir means emptiness — emit a length check.
+      assert Transpiler.to_js("@findings == []") == "(state.findings.length === 0)"
+      assert Transpiler.to_js("@findings != []") == "(state.findings.length > 0)"
+    end
+
+    test "empty-list comparison works with the list on either side" do
+      assert Transpiler.to_js("[] == @findings") == "(state.findings.length === 0)"
+      assert Transpiler.to_js("[] != @findings") == "(state.findings.length > 0)"
     end
   end
 

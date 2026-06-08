@@ -59,24 +59,35 @@ defmodule Lavash.Optimistic.Transformers.AnalyzeOptimisticTemplate do
         {:ok, dsl_state}
 
       true ->
-        do_transform(dsl_state, parsed, template_source)
+        do_transform(dsl_state, parsed, template_source, module)
     end
   end
 
-  defp do_transform(dsl_state, parsed, template_source) do
+  defp do_transform(dsl_state, parsed, template_source, module) do
     all_optimistic_names = build_optimistic_names(dsl_state)
+    defrx_map = Lavash.Optimistic.Transformers.ExpandDefrx.get_defrx_map(dsl_state)
 
     # Extract attr derives from the raw source string
     dsl_state = maybe_extract_attr_derives(dsl_state, template_source, all_optimistic_names)
 
-    # Extract subtree derives and inject data-lavash-html onto block nodes
-    {dsl_state, parsed} =
-      extract_and_inject_subtree_derives(dsl_state, parsed, all_optimistic_names)
+    # Extract subtree derives and inject data-lavash-html onto block nodes.
+    # This also validates that every optimistic-dependent expression in a
+    # transpiled subtree CAN be transpiled — an untranspilable one raises a
+    # compile-time DslError rather than emitting broken JS at esbuild time.
+    case extract_and_inject_subtree_derives(
+           dsl_state,
+           parsed,
+           all_optimistic_names,
+           defrx_map,
+           module
+         ) do
+      {:ok, dsl_state, parsed} ->
+        dsl_state = Transformer.persist(dsl_state, :lavash_template_tokens, parsed)
+        {:ok, dsl_state}
 
-    # Persist updated parser tree (with data-lavash-html injections)
-    dsl_state = Transformer.persist(dsl_state, :lavash_template_tokens, parsed)
-
-    {:ok, dsl_state}
+      {:error, dsl_error} ->
+        {:error, dsl_error}
+    end
   end
 
   # ============================================
@@ -89,6 +100,14 @@ defmodule Lavash.Optimistic.Transformers.AnalyzeOptimisticTemplate do
       |> Enum.filter(&Map.get(&1, :optimistic, true))
 
     calc_names = Enum.map(calculations, & &1.name)
+
+    # State fields declared `optimistic: true` (or `animated`). These can be
+    # read directly in `:if`/`:for`/`{...}` and drive client re-renders even
+    # when no action/calc references them.
+    state_names =
+      (Transformer.get_entities(dsl_state, [:states]) || [])
+      |> Enum.filter(&Lavash.State.Field.optimistic?/1)
+      |> Enum.map(& &1.name)
 
     forms = Transformer.get_entities(dsl_state, [:forms]) || []
     form_derive_names = Enum.map(forms, fn f -> :"#{f.name}_valid" end)
@@ -104,7 +123,7 @@ defmodule Lavash.Optimistic.Transformers.AnalyzeOptimisticTemplate do
         Enum.map(sets, & &1.field) ++ Enum.map(map_bys, & &1.field)
       end)
 
-    MapSet.new(calc_names ++ form_derive_names ++ action_field_names)
+    MapSet.new(calc_names ++ state_names ++ form_derive_names ++ action_field_names)
   end
 
   # ============================================
@@ -189,6 +208,114 @@ defmodule Lavash.Optimistic.Transformers.AnalyzeOptimisticTemplate do
 
   defp find_loop_variables(_), do: false
 
+  # ============================================
+  # Loop-aware optimistic-dependency analysis
+  # ============================================
+  #
+  # Whether a template expression "needs" client transpilation is decided by
+  # whether it (transitively) references optimistic state. `@field` refs are
+  # checked against the optimistic field names; bare loop variables are
+  # checked against `optimistic_loop_vars` — the set of `:for` binding vars
+  # whose SOURCE list is itself optimistic-derived. A loop var over a static
+  # list never changes on the client, so refs to it are server-only.
+
+  # Parse a `:for={x <- src}` (or `:for={x <- src, filter}`) generator into
+  # `{var_atom, collection_ast}`. Returns nil if it isn't a single-binding
+  # comprehension generator we can reason about.
+  defp parse_for_binding(code) do
+    case Code.string_to_quoted(code) do
+      {:ok, {:<-, _, [{var, _, ctx}, collection]}} when is_atom(var) and is_atom(ctx) ->
+        {var, collection}
+
+      _ ->
+        nil
+    end
+  end
+
+  # Does `code` (a template expression string) reference any optimistic state?
+  defp expr_references_optimistic?(code, optimistic_names, optimistic_loop_vars) do
+    case Code.string_to_quoted(code) do
+      {:ok, ast} -> ast_references_optimistic?(ast, optimistic_names, optimistic_loop_vars)
+      _ -> false
+    end
+  end
+
+  # @field where field is optimistic
+  defp ast_references_optimistic?({:@, _, [{name, _, _}]}, names, _loop_vars)
+       when is_atom(name) do
+    MapSet.member?(names, name)
+  end
+
+  # bare variable that is bound to an optimistic loop source
+  defp ast_references_optimistic?({name, _, ctx}, _names, loop_vars)
+       when is_atom(name) and is_atom(ctx) do
+    MapSet.member?(loop_vars, name)
+  end
+
+  defp ast_references_optimistic?({_, _, args}, names, loop_vars) when is_list(args) do
+    Enum.any?(args, &ast_references_optimistic?(&1, names, loop_vars))
+  end
+
+  defp ast_references_optimistic?(list, names, loop_vars) when is_list(list) do
+    Enum.any?(list, &ast_references_optimistic?(&1, names, loop_vars))
+  end
+
+  defp ast_references_optimistic?({left, right}, names, loop_vars) do
+    ast_references_optimistic?(left, names, loop_vars) or
+      ast_references_optimistic?(right, names, loop_vars)
+  end
+
+  defp ast_references_optimistic?(_, _names, _loop_vars), do: false
+
+  # The optimistic `@`-field names actually referenced by `code`, given the
+  # current loop-var scope. These are the concrete deps the JS hook subscribes
+  # to. Loop vars are not deps themselves — their backing `@`-source is.
+  defp collect_optimistic_refs(code, optimistic_names, optimistic_loop_vars) do
+    case Code.string_to_quoted(code) do
+      {:ok, ast} -> collect_ast_optimistic_refs(ast, optimistic_names, optimistic_loop_vars)
+      _ -> []
+    end
+  end
+
+  defp collect_ast_optimistic_refs({:@, _, [{name, _, _}]}, names, _loop_vars)
+       when is_atom(name) do
+    if MapSet.member?(names, name), do: [name], else: []
+  end
+
+  defp collect_ast_optimistic_refs({_, _, args}, names, loop_vars) when is_list(args) do
+    Enum.flat_map(args, &collect_ast_optimistic_refs(&1, names, loop_vars))
+  end
+
+  defp collect_ast_optimistic_refs(list, names, loop_vars) when is_list(list) do
+    Enum.flat_map(list, &collect_ast_optimistic_refs(&1, names, loop_vars))
+  end
+
+  defp collect_ast_optimistic_refs({left, right}, names, loop_vars) do
+    collect_ast_optimistic_refs(left, names, loop_vars) ++
+      collect_ast_optimistic_refs(right, names, loop_vars)
+  end
+
+  defp collect_ast_optimistic_refs(_, _names, _loop_vars), do: []
+
+  # ============================================
+  # Transpilability oracle (defrx-aware)
+  # ============================================
+  #
+  # An expression that must run on the client (it depends on optimistic state)
+  # has to be transpilable to JS. defrx helpers ARE transpilable — expand them
+  # first, then validate the resulting AST. Returns :ok | {:error, reason}.
+  defp template_expr_transpilable?(code, defrx_map) do
+    case Code.string_to_quoted(code) do
+      {:ok, ast} ->
+        ast
+        |> Lavash.Optimistic.Transformers.ExpandDefrx.expand_defrx_in_ast(defrx_map)
+        |> Lavash.Optimistic.Transpiler.validate_ast()
+
+      {:error, _} ->
+        {:error, "unparseable expression"}
+    end
+  end
+
   defp try_transpile(expr) do
     js = Lavash.Optimistic.Transpiler.to_js(String.trim(expr))
 
@@ -205,11 +332,33 @@ defmodule Lavash.Optimistic.Transformers.AnalyzeOptimisticTemplate do
   # Subtree derive extraction + token injection
   # ============================================
 
-  defp extract_and_inject_subtree_derives(dsl_state, parsed, all_optimistic_names) do
+  defp extract_and_inject_subtree_derives(
+         dsl_state,
+         parsed,
+         all_optimistic_names,
+         defrx_map,
+         module
+       ) do
     tree = Lavash.Template.parse(parsed)
-    {derives_with_positions, _index} = find_parent_subtrees(tree, all_optimistic_names, [], 0)
-    derives_with_positions = Enum.reverse(derives_with_positions)
 
+    # The subtree walk validates each optimistic-dependent expression as it
+    # goes; an untranspilable one is thrown as `{:lavash_untranspilable, ...}`
+    # and converted to a compile-time DslError here.
+    ctx = %{names: all_optimistic_names, defrx_map: defrx_map, module: module}
+
+    try do
+      {derives_with_positions, _index} =
+        find_parent_subtrees(tree, ctx, MapSet.new(), [], 0)
+
+      derives_with_positions = Enum.reverse(derives_with_positions)
+      {dsl_state, parsed} = finish_subtree_derives(dsl_state, parsed, derives_with_positions)
+      {:ok, dsl_state, parsed}
+    catch
+      {:lavash_untranspilable, dsl_error} -> {:error, dsl_error}
+    end
+  end
+
+  defp finish_subtree_derives(dsl_state, parsed, derives_with_positions) do
     if derives_with_positions == [] do
       {dsl_state, parsed}
     else
@@ -285,23 +434,34 @@ defmodule Lavash.Optimistic.Transformers.AnalyzeOptimisticTemplate do
     end
   end
 
-  defp find_parent_subtrees(nodes, optimistic_names, acc, index) when is_list(nodes) do
+  defp find_parent_subtrees(nodes, ctx, loop_vars, acc, index)
+       when is_list(nodes) do
     Enum.reduce(nodes, {acc, index}, fn node, {a, i} ->
-      find_parent_subtrees(node, optimistic_names, a, i)
+      find_parent_subtrees(node, ctx, loop_vars, a, i)
     end)
   end
 
   defp find_parent_subtrees(
-         {:element, _tag, _attrs, children, meta},
-         optimistic_names,
+         {:element, _tag, attrs, children, meta},
+         ctx,
+         loop_vars,
          acc,
          index
        ) do
-    if has_optimistic_child?(children, optimistic_names) do
+    # Extend the optimistic-loop-var scope for this element's children if it
+    # carries a `:for` whose source list is optimistic-derived.
+    child_loop_vars = extend_loop_scope(attrs, ctx.names, loop_vars)
+
+    if has_optimistic_child?(children, ctx.names, child_loop_vars) do
+      # This subtree will be transpiled and re-rendered on the client. Every
+      # optimistic-dependent expression in it MUST be transpilable, or we emit
+      # broken JS at esbuild time. Validate now; throw on the first failure.
+      validate_subtree_transpilable!(children, ctx, child_loop_vars)
+
       children_js = Enum.map_join(children, "", &Lavash.Component.JsGenerator.subtree_to_js/1)
 
       derive_name = "__subtree_#{index}"
-      all_deps = collect_all_optimistic_deps(children, optimistic_names)
+      all_deps = collect_all_optimistic_deps(children, ctx.names, child_loop_vars)
 
       derive = %{
         name: derive_name,
@@ -312,23 +472,127 @@ defmodule Lavash.Optimistic.Transformers.AnalyzeOptimisticTemplate do
       position = {meta[:line], meta[:column]}
       {[{derive, position} | acc], index + 1}
     else
-      find_parent_subtrees(children, optimistic_names, acc, index)
+      find_parent_subtrees(children, ctx, child_loop_vars, acc, index)
     end
   end
 
-  defp find_parent_subtrees(_node, _optimistic_names, acc, index), do: {acc, index}
+  defp find_parent_subtrees(_node, _ctx, _loop_vars, acc, index),
+    do: {acc, index}
 
-  defp has_optimistic_child?(children, optimistic_names) do
+  # Walk an optimistic subtree and ensure every optimistic-dependent expression
+  # (interpolations + `:if`/`:for`/attr exprs) is transpilable. Throws
+  # `{:lavash_untranspilable, %DslError{}}` on the first that isn't.
+  defp validate_subtree_transpilable!(nodes, ctx, loop_vars) when is_list(nodes) do
+    Enum.each(nodes, &validate_subtree_transpilable!(&1, ctx, loop_vars))
+  end
+
+  defp validate_subtree_transpilable!({:element, _tag, attrs, children, _meta}, ctx, loop_vars) do
+    child_loop_vars = extend_loop_scope(attrs, ctx.names, loop_vars)
+
+    Enum.each(attrs, fn
+      # `:for={x <- src}` is a generator, not a JS-able value expression — its
+      # dependency is handled via loop-scope, and JsGenerator parses it
+      # specially. Skip it (validating `x <- src` would wrongly reject `<-`).
+      {":for", _} ->
+        :ok
+
+      # `:if={cond}` IS transpiled (the client evaluates the condition), so it
+      # must be validated like any other expression.
+      {_name, {:expr, code, meta}} ->
+        check_expr_transpilable!(code, meta, ctx, loop_vars)
+
+      _ ->
+        :ok
+    end)
+
+    validate_subtree_transpilable!(children, ctx, child_loop_vars)
+  end
+
+  defp validate_subtree_transpilable!({:expr, code, meta}, ctx, loop_vars) do
+    check_expr_transpilable!(code, meta, ctx, loop_vars)
+  end
+
+  defp validate_subtree_transpilable!(_node, _ctx, _loop_vars), do: :ok
+
+  # Only optimistic-dependent expressions need to transpile; server-only
+  # expressions (no optimistic refs) are left to the server renderer.
+  defp check_expr_transpilable!(code, meta, ctx, loop_vars) do
+    if expr_references_optimistic?(code, ctx.names, loop_vars) do
+      case template_expr_transpilable?(code, ctx.defrx_map) do
+        :ok ->
+          :ok
+
+        {:error, reason} ->
+          throw({:lavash_untranspilable, untranspilable_error(code, reason, meta, ctx.module)})
+      end
+    end
+  end
+
+  defp untranspilable_error(code, reason, meta, module) do
+    line_hint =
+      case meta do
+        %{line: line} -> " (line #{line})"
+        _ -> ""
+      end
+
+    %Spark.Error.DslError{
+      module: module,
+      path: [:template],
+      message: """
+      Cannot transpile `#{String.trim(code)}`#{line_hint} to client JS.
+
+      This expression depends on optimistic state, so lavash must re-render it
+      on the client — but `#{reason}` has no JS equivalent. (Only expressions
+      lavash can transpile may depend on optimistic state inside an
+      optimistically-updated subtree.)
+
+      Either:
+
+        - Move the derived value into a `calculate :name, rx(...)` and reference
+          `@name` in the template. The `rx(...)` body may call `defrx` helpers
+          (`defrx name(args), do: ...`, or `import_rx` from another module),
+          which lavash transpiles to JS.
+        - Drop the optimistic dependency (don't reference optimistic state here)
+          so the expression is server-rendered only.
+      """
+    }
+  end
+
+  # If `attrs` includes `:for={x <- src}` and `src` is optimistic-derived in
+  # the current scope, add `x` to the loop-var scope for the children.
+  defp extend_loop_scope(attrs, optimistic_names, loop_vars) do
+    case Enum.find(attrs, fn {name, _} -> name == ":for" end) do
+      {":for", {:expr, code, _meta}} ->
+        case parse_for_binding(code) do
+          {var, collection} ->
+            collection_src = Macro.to_string(collection)
+
+            if expr_references_optimistic?(collection_src, optimistic_names, loop_vars) do
+              MapSet.put(loop_vars, var)
+            else
+              loop_vars
+            end
+
+          nil ->
+            loop_vars
+        end
+
+      _ ->
+        loop_vars
+    end
+  end
+
+  defp has_optimistic_child?(children, optimistic_names, loop_vars) do
     Enum.any?(children, fn
       {:element, _tag, attrs, _children, _meta} ->
-        match?({:ok, _}, optimistic_conditional(attrs, optimistic_names))
+        match?({:ok, _}, optimistic_conditional(attrs, optimistic_names, loop_vars))
 
       _ ->
         false
     end)
   end
 
-  defp optimistic_conditional(attrs, optimistic_names) do
+  defp optimistic_conditional(attrs, optimistic_names, loop_vars) do
     conditional_attr =
       Enum.find(attrs, fn
         {":if", {:expr, _code, _meta}} -> true
@@ -338,11 +602,7 @@ defmodule Lavash.Optimistic.Transformers.AnalyzeOptimisticTemplate do
 
     case conditional_attr do
       {_name, {:expr, code, _meta}} ->
-        deps =
-          Regex.scan(~r/@(\w+)/, code)
-          |> Enum.map(fn [_, field] -> String.to_atom(field) end)
-          |> Enum.filter(&MapSet.member?(optimistic_names, &1))
-
+        deps = collect_optimistic_refs(code, optimistic_names, loop_vars)
         if deps != [], do: {:ok, deps}, else: :skip
 
       _ ->
@@ -350,30 +610,33 @@ defmodule Lavash.Optimistic.Transformers.AnalyzeOptimisticTemplate do
     end
   end
 
-  defp collect_all_optimistic_deps(nodes, optimistic_names) when is_list(nodes) do
-    Enum.flat_map(nodes, &collect_all_optimistic_deps(&1, optimistic_names))
+  defp collect_all_optimistic_deps(nodes, optimistic_names, loop_vars) when is_list(nodes) do
+    Enum.flat_map(nodes, &collect_all_optimistic_deps(&1, optimistic_names, loop_vars))
   end
 
-  defp collect_all_optimistic_deps({:element, _tag, attrs, children, _meta}, optimistic_names) do
+  defp collect_all_optimistic_deps(
+         {:element, _tag, attrs, children, _meta},
+         optimistic_names,
+         loop_vars
+       ) do
+    # An element's own `:for` can introduce a loop var for its children.
+    child_loop_vars = extend_loop_scope(attrs, optimistic_names, loop_vars)
+
     attr_deps =
       Enum.flat_map(attrs, fn
         {_name, {:expr, code, _meta}} ->
-          Regex.scan(~r/@(\w+)/, code)
-          |> Enum.map(fn [_, field] -> String.to_atom(field) end)
-          |> Enum.filter(&MapSet.member?(optimistic_names, &1))
+          collect_optimistic_refs(code, optimistic_names, loop_vars)
 
         _ ->
           []
       end)
 
-    attr_deps ++ collect_all_optimistic_deps(children, optimistic_names)
+    attr_deps ++ collect_all_optimistic_deps(children, optimistic_names, child_loop_vars)
   end
 
-  defp collect_all_optimistic_deps({:expr, code, _meta}, optimistic_names) do
-    Regex.scan(~r/@(\w+)/, code)
-    |> Enum.map(fn [_, field] -> String.to_atom(field) end)
-    |> Enum.filter(&MapSet.member?(optimistic_names, &1))
+  defp collect_all_optimistic_deps({:expr, code, _meta}, optimistic_names, loop_vars) do
+    collect_optimistic_refs(code, optimistic_names, loop_vars)
   end
 
-  defp collect_all_optimistic_deps(_node, _optimistic_names), do: []
+  defp collect_all_optimistic_deps(_node, _optimistic_names, _loop_vars), do: []
 end

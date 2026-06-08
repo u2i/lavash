@@ -29,6 +29,7 @@ defmodule Lavash.TestRouter do
     live("/bindings-nested", BindingNestedHostLive)
     live("/bindings-siblings", BindingSiblingsHostLive)
     live("/dom-directives", DomDirectivesLive)
+    live("/transpiler-edge", TranspilerEdgeLive)
     live("/arrays", ArraysLive)
     live("/form", FormLive)
     live("/custom-mount", CustomMountLive)
