@@ -64,3 +64,4 @@ This path is useful when you want the reactive primitives but don't need
 the DSL's optimistic JS, URL-backed state, forms, or overlays. If you
 want the DSL but still no client-side optimism, use
 `Lavash.LiveView.Base` instead (layers 1 + 2 + 3).
+# Additional documentation improvements
