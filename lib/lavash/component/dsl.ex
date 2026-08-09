@@ -282,6 +282,7 @@ defmodule Lavash.Component.Dsl do
     ],
     transformers: [
       Lavash.Optimistic.Transformers.ExpandAnimatedStates,
+      Lavash.Optimistic.Transformers.ExpandDefrx,
       Lavash.Transformers.ExpandFields,
       Lavash.Transformers.ValidateDsl,
       Lavash.Component.Transformers.TokenizeTemplate,

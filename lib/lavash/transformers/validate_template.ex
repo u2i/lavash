@@ -101,10 +101,12 @@ defmodule Lavash.Transformers.ValidateTemplate do
   end
 
   # Map: action_name (string) → list of param atoms accepted. Includes
-  # declared actions and auto-generated setters.
+  # declared actions, auto-generated setters, and the auto-generated
+  # `validate_{form}` form-change handlers.
   defp build_action_index(dsl_state) do
     actions = Transformer.get_entities(dsl_state, [:actions]) || []
     states = Transformer.get_entities(dsl_state, [:states]) || []
+    forms = Transformer.get_entities(dsl_state, [:forms]) || []
 
     declared =
       Map.new(actions, fn action ->
@@ -119,11 +121,18 @@ defmodule Lavash.Transformers.ValidateTemplate do
         {"set_#{field.name}", @auto_setter_params}
       end)
 
+    # Each form gets an auto-generated `validate_{form}` change handler
+    # (see Lavash.LiveView.Runtime) — accept it on plain HTML tags too,
+    # not just on <.form> component nodes (which skip validation).
+    form_validators = Map.new(forms, fn form -> {"validate_#{form.name}", []} end)
+
     # User-declared actions take precedence: if a user wrote
     # `action :set_count, [:amount] do ... end`, that's the
     # authoritative shape — even if `:count` would otherwise have
     # auto-generated a `set_count` setter with `:value`.
-    Map.merge(auto_setters, declared)
+    auto_setters
+    |> Map.merge(form_validators)
+    |> Map.merge(declared)
   end
 
   defp setter_field?(%{setter: true}), do: true

@@ -276,7 +276,10 @@ export function handleInput(e, hook) {
   const dotIndex = fieldPath.indexOf(".");
   const rootField = dotIndex > 0 ? fieldPath.substring(0, dotIndex) : fieldPath;
   hook.recomputeDerives([rootField]);
-  hook.updateDOM();
+  // isOptimistic: a bound-input change is a client-ahead-of-server
+  // update — subtree derives (data-lavash-html) must re-render too,
+  // e.g. dependent selects whose options derive from this field.
+  hook.updateDOM(true);
   hook.syncUrl();
 
   // Debounced server validation

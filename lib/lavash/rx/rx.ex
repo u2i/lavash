@@ -137,6 +137,14 @@ defmodule Lavash.Rx do
   """
   defmacro import_rx(module, opts \\ []) do
     quote do
+      # `require` gives the compiler an explicit compile-time dependency
+      # on the defrx module: within a fresh parallel compile it suspends
+      # this file until the module is available, and it marks this
+      # module for recompilation when the defrx definitions change.
+      # Without it, rx() expansion can race the defrx module's own
+      # compilation and silently resolve to zero imported definitions.
+      require unquote(module)
+
       # Register the import for use during DSL compilation
       Module.register_attribute(__MODULE__, :lavash_defrx_imports, accumulate: true)
       @lavash_defrx_imports {unquote(module), unquote(opts)}
@@ -216,7 +224,11 @@ defmodule Lavash.Rx do
   # Collect defrx definitions from imported modules
   defp collect_imported_defrx(imports) do
     Enum.flat_map(imports, fn {module, opts} ->
-      try do
+      # ensure_compiled does the parallel-compiler waiting dance when the
+      # defrx module is part of the same compilation batch, instead of
+      # silently resolving to zero definitions.
+      with {:module, _} <- Code.ensure_compiled(module),
+           true <- function_exported?(module, :__defrx_definitions__, 0) do
         defs = module.__defrx_definitions__()
 
         case Keyword.get(opts, :only) do
@@ -228,8 +240,8 @@ defmodule Lavash.Rx do
               {name, arity} in only_list
             end)
         end
-      rescue
-        UndefinedFunctionError ->
+      else
+        _ ->
           # Module doesn't export defrx definitions
           []
       end

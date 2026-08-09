@@ -339,7 +339,10 @@ defmodule Lavash.Optimistic.Transformers.AnalyzeOptimisticTemplate do
          defrx_map,
          module
        ) do
-    tree = Lavash.Template.parse(parsed)
+    # descend_components: subtree candidates can live inside component
+    # slots (e.g. a select inside <.form>); the injection walker below
+    # already descends into component blocks, so finding must too.
+    tree = Lavash.Template.parse(parsed, descend_components: true)
 
     # The subtree walk validates each optimistic-dependent expression as it
     # goes; an untranspilable one is thrown as `{:lavash_untranspilable, ...}`
