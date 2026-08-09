@@ -171,6 +171,56 @@ defmodule Lavash.Test.Magic.ModalHostLive do
   end
 end
 
+defmodule Lavash.Test.Magic.ModalNoCloseComponent do
+  @moduledoc """
+  Test fixture: modal with `close_on_escape false` and
+  `close_on_backdrop false`.
+
+  Regression fixture for the render-generator bug where persisted
+  `false` was discarded via `persisted || true`, making both options
+  impossible to turn off (issue #24).
+  """
+  use Lavash.Component, extensions: [Lavash.Overlay.Modal.Dsl]
+
+  modal do
+    open_field :item_id
+    close_on_escape false
+    close_on_backdrop false
+  end
+
+  actions do
+    action :open, [:id] do
+      set :item_id, & &1.params.id
+    end
+  end
+
+  template do
+    ~H"""
+    <div id="modal-no-close-content">
+      <h2>Item {@item_id}</h2>
+    </div>
+    """
+  end
+end
+
+defmodule Lavash.Test.Magic.ModalNoCloseHostLive do
+  @moduledoc """
+  Test fixture: LiveView hosting the no-close modal component.
+  """
+  use Lavash.LiveView
+
+  def render(assigns) do
+    ~H"""
+    <div>
+      <.live_component
+        module={Lavash.Test.Magic.ModalNoCloseComponent}
+        id="test-modal-no-close"
+      />
+    </div>
+    """
+  end
+end
+
 defmodule Lavash.Test.Magic.ModalAsyncComponent do
   @moduledoc """
   Test fixture: modal whose content depends on an async derived value.

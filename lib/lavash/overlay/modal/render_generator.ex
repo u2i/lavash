@@ -64,8 +64,20 @@ defmodule Lavash.Overlay.Modal.RenderGenerator do
     alias Spark.Dsl.Transformer
     env = Transformer.get_persisted(dsl_state, :env)
     open_field = Transformer.get_persisted(dsl_state, :modal_open_field) || :open
-    close_on_escape = Transformer.get_persisted(dsl_state, :modal_close_on_escape) || true
-    close_on_backdrop = Transformer.get_persisted(dsl_state, :modal_close_on_backdrop) || true
+    # `false` is a valid configured value — only default to true when unset,
+    # so don't use `||` here (false || true would discard the user's config)
+    close_on_escape =
+      case Transformer.get_persisted(dsl_state, :modal_close_on_escape) do
+        nil -> true
+        value -> value
+      end
+
+    close_on_backdrop =
+      case Transformer.get_persisted(dsl_state, :modal_close_on_backdrop) do
+        nil -> true
+        value -> value
+      end
+
     max_width = Transformer.get_persisted(dsl_state, :modal_max_width) || :md
     async_assign = Transformer.get_persisted(dsl_state, :modal_async_assign)
     helpers_path = @helpers_path
