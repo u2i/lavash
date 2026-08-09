@@ -3,9 +3,12 @@ defmodule Lavash.Optimistic.JsValidatorTest do
 
   alias Lavash.Optimistic.JsValidator
 
-  # These tests exercise the node-backed path; when node isn't on PATH
-  # the validator returns :skip and the error assertions below would be
-  # meaningless, so skip the module.
+  # These tests need a real validator binary (esbuild or node). In
+  # lavash's own test env the esbuild hex package isn't a dependency,
+  # so the node fallback is what runs; skip when it's absent and the
+  # validator would return :skip. (The esbuild-preferred path is
+  # exercised by consuming apps — e.g. the demo — where the package is
+  # present.)
   @moduletag skip: is_nil(System.find_executable("node"))
 
   describe "validate/1" do
@@ -34,7 +37,7 @@ defmodule Lavash.Optimistic.JsValidatorTest do
       """
 
       assert {:error, message} = JsValidator.validate(js)
-      assert message =~ "node --check"
+      assert message =~ "reported:"
       assert message =~ "generated.mjs"
       refute message =~ "lavash_jscheck_"
     end
