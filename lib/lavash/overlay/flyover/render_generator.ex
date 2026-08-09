@@ -98,7 +98,6 @@ defmodule Lavash.Overlay.Flyover.RenderGenerator do
           field: to_string(config.field),
           phaseField: to_string(config.phase_field),
           async: config.async && to_string(config.async),
-          preserveDom: config.preserve_dom,
           duration: config.duration,
           type: config.type && to_string(config.type)
         }

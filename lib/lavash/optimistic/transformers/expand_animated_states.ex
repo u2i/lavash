@@ -21,12 +21,11 @@ defmodule Lavash.Optimistic.Transformers.ExpandAnimatedStates do
   ## Options
 
   - `async: :field_name` - coordinate with async data loading
-  - `preserve_dom: true` - keep DOM alive during exit animation
   - `duration: 200` - fallback timeout in ms
 
   ## Example
 
-      state :product_id, :any, animated: [async: :product, preserve_dom: true]
+      state :product_id, :any, animated: [async: :product]
 
   Expands to:
       state :product_id, :any
@@ -243,7 +242,6 @@ defmodule Lavash.Optimistic.Transformers.ExpandAnimatedStates do
       field: field,
       phase_field: :"#{field}_phase",
       async: Keyword.get(opts, :async),
-      preserve_dom: Keyword.get(opts, :preserve_dom, false),
       duration: Keyword.get(opts, :duration, 200),
       type: Keyword.get(opts, :type)
     }

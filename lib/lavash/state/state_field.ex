@@ -17,7 +17,7 @@ defmodule Lavash.State.Field do
   State fields can be animated, which adds phase tracking for enter/exit transitions:
 
       state :panel_open, :boolean, animated: true
-      state :product_id, :any, animated: [async: :product, preserve_dom: true]
+      state :product_id, :any, animated: [async: :product]
 
   This generates additional fields:
   - `{field}_phase` - "idle" | "entering" | "loading" | "visible" | "exiting"

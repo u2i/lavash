@@ -49,13 +49,12 @@ defmodule Lavash.Overlay.Modal.Transformers.InjectState do
       dsl_state
     else
       # Build animated options
-      # preserve_dom: true keeps the content visible during exit animation
-      # type: :modal tells the animation system this is a modal (for ModalAnimator)
+      # type: :modal tells the animation system this is a modal (for OverlayAnimator)
       animated_opts =
         if async_assign do
-          [async: async_assign, preserve_dom: true, duration: 200, type: :modal]
+          [async: async_assign, duration: 200, type: :modal]
         else
-          [preserve_dom: true, duration: 200, type: :modal]
+          [duration: 200, type: :modal]
         end
 
       state_field = %Lavash.State.Field{
