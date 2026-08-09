@@ -15,19 +15,18 @@ defmodule Lavash.TestLayouts do
         <script type="module">
           import { Socket } from "/assets/phoenix/phoenix.mjs";
           import { LiveSocket } from "/assets/phoenix_live_view/phoenix_live_view.esm.js";
-          import { lavash, defaultConcerns, getHooks, getState, registerColocated } from "/assets/lavash/index.js";
+          import { lavash, defaultConcerns, getHooks, getState } from "/assets/lavash/index.js";
 
           // Per-module optimistic functions (transpiled rx() bodies +
           // action delta computers) extracted by Phoenix.LiveView.ColocatedJS
-          // at compile time. The manifest exports them keyed by module
-          // name. registerColocated puts them where the lavash JS
-          // pipeline's loadGeneratedFunctions can dispatch by name.
-          // Without this call, optimistic actions and calc recomputes
+          // at compile time. Each generated module SELF-REGISTERS into
+          // window.Lavash.optimistic when imported, so this bare
+          // side-effect import of the manifest is all the wiring needed.
+          // Without this import, optimistic actions and calc recomputes
           // never fire client-side — the e2e tests would still pass
           // (server reconciliation lands eventually) but they wouldn't
           // be verifying any optimistic behaviour.
-          import * as lavashColocated from "/assets/phoenix-colocated/lavash/index.js";
-          registerColocated(lavashColocated);
+          import "/assets/phoenix-colocated/lavash/index.js";
 
           const meta = document.querySelector("meta[name=csrf-token]");
           const token = meta && meta.getAttribute("content");

@@ -44,15 +44,12 @@ window.Lavash.registerOptimistic = function(moduleName, fns) {
 /**
  * Register a phoenix-colocated manifest's generated optimistic functions.
  *
- * The colocated manifest exports the per-module optimistic fns under the
- * `optimistic` named export, keyed by module name. They must land in
- * `window.Lavash.optimistic` for the hook's loadGeneratedFunctions to
- * find them — WITHOUT this call, a bare side-effect import of the
- * manifest silently registers nothing and every optimistic action
- * degrades to a server round-trip (looks fine locally, laggy under
- * real latency).
- *
- * Usage:
+ * NOTE: normally unnecessary — lavash-generated colocated modules
+ * self-register into `window.Lavash.optimistic` at import time, so a
+ * bare side-effect import of the manifest
+ * (`import "phoenix-colocated/my_app"`) is all an app needs. This
+ * helper remains for manual setups (e.g. manifests produced by older
+ * lavash versions, or registering a hand-built fns map):
  *
  *     import * as colocated from "phoenix-colocated/my_app";
  *     import { registerColocated } from "lavash";
