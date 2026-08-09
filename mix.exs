@@ -68,7 +68,7 @@ defmodule Lavash.MixProject do
       # test_helper.exs only for e2e runs because its Application.start raises
       # if Chrome isn't installed (we use Lightpanda, which gets configured
       # before Wallabidi starts).
-      {:wallabidi, "0.4.0-rc.4", only: :test, runtime: false},
+      {:wallabidi, "~> 0.4.3", only: :test, runtime: false},
       {:lightpanda, "~> 0.3", only: :test, runtime: false},
       # Code quality
       {:excoveralls, "~> 0.18", only: :test},

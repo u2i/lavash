@@ -32,7 +32,14 @@ defmodule Lavash.Integration.DependentSelectTest do
 
     # Phase 1 (in-browser, synchronous): change the country and sample
     # both region selects in the same task — zero server involvement
-    # possible at that point.
+    # possible at that point. This is the one check that stays custom
+    # JS on purpose: no driver-level primitive can observe "rendered in
+    # the same task as the change event" — native interactions +
+    # latency-window reasoning are load- and driver-semantics-
+    # dependent, the in-task sample is not.
+    #
+    # visit/2 (wallabidi >= 0.4.3) already awaits the LiveView
+    # connection; the probe only waits for the lavash hook to mount.
     probe = """
     var done = arguments[arguments.length - 1];
     var texts = function(sel) {
@@ -40,16 +47,10 @@ defmodule Lavash.Integration.DependentSelectTest do
     };
     var start = performance.now();
     (function ready() {
-      var main = document.querySelector('[data-phx-main]');
       var hookEl = document.querySelector("[phx-hook='LavashOptimistic']");
-      var connected = main && main.classList.contains('phx-connected');
-      var mounted = hookEl && hookEl.__lavash_hook__;
-      if (!(connected && mounted)) {
+      if (!(hookEl && hookEl.__lavash_hook__)) {
         if (performance.now() - start > 5000) {
-          done({timeout: true, connected: !!connected, hookEl: !!hookEl,
-                mounted: !!mounted, country: !!document.getElementById('country'),
-                hooks: Array.prototype.map.call(document.querySelectorAll('[phx-hook]'),
-                  function(e) { return e.getAttribute('phx-hook'); })});
+          done({timeout: true, hookEl: !!hookEl});
           return;
         }
         setTimeout(ready, 50);
