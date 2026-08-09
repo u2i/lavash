@@ -334,13 +334,21 @@ export class OverlayAnimator {
   /**
    * Freeze an element's continuous properties at their current computed
    * values so a new transition starts from the visual present.
+   *
+   * The values MUST be read before style is mutated: getComputedStyle
+   * returns a live object, and setting `transition: none` cancels any
+   * in-flight (or same-task pending) transition — a read after that
+   * resolves to the transition's TARGET value, freezing the element at
+   * its destination and turning the re-applied transition into a no-op
+   * (the "flyover appears instead of sliding" bug).
    */
   _freeze(elm, props) {
     const cs = getComputedStyle(elm);
+    const values = props.map((p) => cs[p]);
     elm.style.transition = "none";
-    for (const p of props) {
-      elm.style[p] = cs[p];
-    }
+    props.forEach((p, i) => {
+      elm.style[p] = values[i];
+    });
   }
 
   /**
