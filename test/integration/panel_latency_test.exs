@@ -210,6 +210,70 @@ defmodule Lavash.Integration.PanelLatencyTest do
     end
   end
 
+  describe "enter animation actually animates (freeze snapshot regression)" do
+    test "panel is mid-transition during entering, not frozen at its target", %{
+      session: session
+    } do
+      # Regression for the live-getComputedStyle freeze bug: for a
+      # non-async overlay, open=true and the content arrive in the SAME
+      # patch, so two animated applies run in one task. The second
+      # apply's _freeze set `transition: none` BEFORE reading the live
+      # computed style object — cancelling the just-started transition
+      # resolves the read to the TARGET value, freezing the panel at its
+      # destination. Visually: the overlay pops instead of animating.
+      #
+      # The probe runs entirely in-browser and is load-immune: a
+      # MutationObserver fires in a microtask the moment the phase
+      # attribute flips to "entering" — zero wall-clock time has passed
+      # for the transition at that point, so a healthy fade reads its
+      # START value (~0) and the frozen bug reads the TARGET (1),
+      # regardless of CPU contention. (Timer-based polling raced here:
+      # under full-suite load a late sample reads a legitimately
+      # finished fade.)
+      session = visit(session, "/magic/modal-host")
+
+      probe = """
+      var done = arguments[arguments.length - 1];
+      var root = document.getElementById('lavash-test-modal');
+      var finished = false;
+      var obs = new MutationObserver(function() {
+        if (finished) return;
+        if (root.getAttribute('data-modal-phase') === 'entering') {
+          var panel = document.getElementById('test-modal-modal-panel_content');
+          finished = true;
+          obs.disconnect();
+          done({phase: 'entering', opacity: getComputedStyle(panel).opacity});
+        }
+      });
+      obs.observe(root, {attributes: true, attributeFilter: ['data-modal-phase']});
+      document.getElementById('open-modal').click();
+      setTimeout(function() {
+        if (finished) return;
+        finished = true;
+        obs.disconnect();
+        done({phase: root.getAttribute('data-modal-phase'), missed: true});
+      }, 4000);
+      """
+
+      test_pid = self()
+
+      Wallabidi.Browser.execute_script_async(session, probe, [], fn result ->
+        send(test_pid, {:probe, result})
+      end)
+
+      assert_receive {:probe, result}, 5_000
+
+      assert result["phase"] == "entering",
+             "never observed the entering phase (got: #{inspect(result)})"
+
+      {opacity, _} = Float.parse(result["opacity"])
+
+      assert opacity < 0.9,
+             "panel already at opacity #{opacity} at the start of entering — " <>
+               "the enter transition was frozen at its target instead of animating"
+    end
+  end
+
   describe "close mid-loading (loading → exiting)" do
     test "closing while async is pending exits cleanly without late callback", %{
       session: session

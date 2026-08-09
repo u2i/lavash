@@ -176,9 +176,6 @@ export class SyncedVar {
     // Track last server value to count distinct server transitions (not duplicate patches)
     this._lastServerValue = _UNSET;
 
-    // FLIP support
-    this.flipPreRect = null;
-
     // Animation
     this.animated = !!options.animated;
     if (this.animated) {

@@ -1,47 +1,45 @@
 // Debug: Animation speed multiplier (1 = normal, 0.1 = 10x slower, 2 = 2x faster)
 const ANIMATION_SPEED = 1;
 
+const OVERLAY_OPACITY = "0.5";
+
 /**
- * OverlayAnimator - Unified DOM manipulation for modal and flyover overlays.
+ * OverlayAnimator - Phase-derived DOM control for modal and flyover overlays.
  *
- * This class implements the SyncedVar delegate interface for overlay-specific
- * behavior including:
- * - Panel open/close animations (opacity, transform, optionally size)
- * - Overlay fade in/out
- * - Ghost element creation for close animation
- * - Unified transition from loading→content (interrupts enter animation if needed)
- * - onBeforeElUpdated hook for content removal detection
+ * This class implements the SyncedVar delegate interface. The design rule:
+ * every style and class on the live chrome elements (wrapper, overlay,
+ * panel, loading, main) is a pure function of the phase machine's state —
+ * `(phase, contentReady)` — applied through one idempotent entry point,
+ * `applyPhaseStyles`. No path hand-edits individual styles; interrupted
+ * animations are handled by re-applying, not by bespoke undo code.
+ *
+ * The one deliberate exception is ghost elements: on exit, the panel and
+ * backdrop are cloned to document.body and animated out there, because the
+ * real elements' content is about to be removed by the server patch. Ghosts
+ * exist precisely to outlive the declarative DOM.
+ *
+ * Target inputs:
+ *   open         - phase is entering/loading/visible
+ *   contentReady - SyncedVar.isAsyncReady (server content present)
+ *   hidden       - phase is exiting (ghosts own the visuals)
  *
  * Usage (handled automatically by LavashOptimistic hook):
  *
- *   // Modal
- *   const animator = new OverlayAnimator(modalElement, {
- *     type: 'modal',
+ *   const animator = new OverlayAnimator(chromeEl, {
+ *     type: 'modal' | 'flyover',
+ *     slideFrom: 'right',          // flyover only
  *     duration: 200,
  *     openField: 'product_id',
- *     js: this.js()
- *   });
- *
- *   // Flyover
- *   const animator = new OverlayAnimator(flyoverElement, {
- *     type: 'flyover',
- *     slideFrom: 'right',
- *     duration: 200,
- *     openField: 'open',
- *     js: this.js()
  *   });
  */
 export class OverlayAnimator {
   /**
-   * Create an OverlayAnimator.
-   *
    * @param {HTMLElement} el - The overlay wrapper element
    * @param {Object} config - Configuration options
    * @param {string} config.type - 'modal' or 'flyover'
    * @param {string} config.slideFrom - For flyover: 'left', 'right', 'top', 'bottom'
    * @param {number} config.duration - Animation duration in ms (default: 200)
    * @param {string} config.openField - The open state field name (for logging)
-   * @param {Object} config.js - LiveView JS commands interface (this.js() from hook)
    */
   constructor(el, config = {}) {
     this.el = el;
@@ -51,10 +49,7 @@ export class OverlayAnimator {
 
     // Apply speed multiplier: lower = slower (0.1 = 10x slower)
     this.duration = (config.duration || 200) / ANIMATION_SPEED;
-    this.panelIdForLog = `#${el.id}`;
-    this.js = config.js;
 
-    // Type-specific animation config
     this._initAnimationConfig();
 
     // Cache element references
@@ -67,16 +62,19 @@ export class OverlayAnimator {
     this.getMainContentInner = () => el.querySelector(`#${id}-main_content_inner`);
     this.getLoadingContent = () => el.querySelector(`#${id}-loading_content`);
 
-    // Ghost element state
+    // Ghost element state (exit animation)
     this.ghostElement = null;
     this._ghostOverlay = null;
-    this._ghostInsertedInBeforeUpdate = false;
-    this._preUpdateContentClone = null;
 
-    // Animation state
-    this._sizeLockApplied = false;
+    // Declarative state: the target inputs of the last apply.
+    this._applied = null;
+    // SyncedVar captured from delegate callbacks (source of phase/contentReady)
+    this._sv = null;
+
+    // In-flight transition bookkeeping
     this._transitionHandler = null;
-    this._loadingFadedOut = false;
+    this._completionTimer = null;
+    this._sizeLockApplied = false;
   }
 
   /**
@@ -87,7 +85,7 @@ export class OverlayAnimator {
       this._openTransform = "scale(1)";
       this._closedTransform = "scale(0.95)";
       this._panelFades = true; // Modal panel fades in/out
-      this._animatesSize = true; // Modal animates width/height
+      this._animatesSize = true; // Modal animates width/height on content swap
     } else {
       // Flyover
       this._openTransform = "translate(0, 0)";
@@ -112,488 +110,423 @@ export class OverlayAnimator {
     }
   }
 
-  // --- SyncedVar Delegate Callbacks ---
+  // --- Target computation ---
 
   /**
-   * Called when entering the "entering" phase.
-   * Shows loading content and animates panel open.
+   * The complete set of inputs that determine chrome styling.
+   * Everything applyPhaseStyles writes derives from these three booleans.
    */
-  onEntering(syncedVar) {
-    // Check if this is a reopen (interrupting close animation)
-    const isReopen =
-      !!this._ghostOverlay || !this.el.classList.contains("invisible");
+  _targetInputs(phase) {
+    const open =
+      phase === "entering" || phase === "loading" || phase === "visible";
+    return {
+      open,
+      contentReady: !!this._sv?.isAsyncReady,
+      // During exit the ghosts own the visuals; the real elements hide.
+      hidden: phase === "exiting",
+    };
+  }
+
+  // --- Declarative style application ---
+
+  /**
+   * Apply the complete chrome style state for a phase. Idempotent: applying
+   * the same target inputs twice is a no-op, so callers never need to know
+   * what state the DOM was left in by an interrupted animation.
+   */
+  applyPhaseStyles(phase, { animate = true } = {}) {
+    const t = this._targetInputs(phase);
+    const prev = this._applied;
+    if (
+      prev &&
+      prev.open === t.open &&
+      prev.contentReady === t.contentReady &&
+      prev.hidden === t.hidden
+    ) {
+      return;
+    }
     console.debug(
-      `[OverlayAnimator:${this.type}] onEntering: isReopen=${isReopen}`
+      `[OverlayAnimator:${this.type}] apply: phase=${phase}, open=${t.open}, contentReady=${t.contentReady}, hidden=${t.hidden}, animate=${animate}`
     );
+    this._applied = t;
 
-    if (isReopen) {
-      console.debug(`[OverlayAnimator:${this.type}] onEntering: REOPEN - cleaning up previous state`);
-      // Clean up any ghost elements INSTANTLY (no fade) to avoid duplicates
-      this._cleanupCloseAnimation(true);
-      // Reset internal state but don't touch wrapper visibility
-      this._sizeLockApplied = false;
-      this._loadingFadedOut = false;
-      this._ghostInsertedInBeforeUpdate = false;
-      this._preUpdateContentClone = null;
-      // Clean up transition handler
-      if (this.panelContent && this._transitionHandler) {
-        console.debug(`[OverlayAnimator:${this.type}] onEntering: removing _transitionHandler`);
-        this.panelContent.removeEventListener(
-          "transitionend",
-          this._transitionHandler
-        );
-        this._transitionHandler = null;
-      }
-      // Clear visibility:hidden that onExiting sets during ghost animation
-      if (this.panelContent) {
-        console.debug(`[OverlayAnimator:${this.type}] onEntering: clearing panel styles (visibility, width, height, overflow)`);
-        this.panelContent.style.visibility = "";
-        // Clear any styles that might have been set during _transitionToContent
-        // that weren't cleaned up (e.g., if animation was interrupted)
-        this.panelContent.style.removeProperty("width");
-        this.panelContent.style.removeProperty("height");
-        this.panelContent.style.removeProperty("overflow");
-        // Reset transform to closed position so enter animation plays properly.
-        // During exit, the ghost clone animated out while the real panel stayed at
-        // the open position — so without this reset, alreadyVisible would be true
-        // and the enter animation would be skipped.
-        this.panelContent.style.transition = "none";
-        this.panelContent.style.transform = this._closedTransform;
-        if (this._panelFades) {
-          this.panelContent.style.opacity = "0";
-        }
-        this.panelContent.offsetHeight; // Force reflow
-      }
-      if (this.overlay) this.overlay.style.visibility = "";
+    // Supersede any in-flight transition; the new apply owns the DOM now.
+    this._cancelPendingTransition();
 
-      // Hide main content so loading shows properly on reopen
-      const mainContent = this.getMainContentContainer();
-      if (mainContent) {
-        this.js.addClass(mainContent, "hidden");
-        mainContent.classList.add("hidden");
-        mainContent.style.removeProperty("opacity");
-        mainContent.style.removeProperty("transition");
-      }
-
-      // Reset loading content styles from previous session
-      const loadingContent = this.getLoadingContent();
-      if (loadingContent) {
-        loadingContent.style.removeProperty("opacity");
-        loadingContent.style.removeProperty("transition");
-      }
+    if (animate && t.open) {
+      this._applyAnimated(t, prev);
     } else {
-      // First open - reset DOM completely
-      this._resetDOM();
+      this._applyInstant(t);
     }
+  }
 
-    // Make wrapper visible and interactive
-    this.js.removeClass(this.el, "invisible pointer-events-none");
-    this.el.classList.remove("invisible", "pointer-events-none");
+  /**
+   * Instant apply: jump every element to its target state. Used for idle
+   * reset, exit (ghosts animate instead), and normalization before an
+   * animated apply.
+   */
+  _applyInstant(t) {
+    const panel = this.panelContent;
+    const overlay = this.overlay;
+    const loading = this.getLoadingContent();
+    const main = this.getMainContentContainer();
 
-    // Show loading skeleton while waiting for server content
-    const loadingContent = this.getLoadingContent();
-    if (loadingContent) {
-      this.js.removeClass(loadingContent, "hidden");
-      loadingContent.classList.remove("hidden");
-      // Use inline styles for animation (starting at opacity 0)
-      loadingContent.style.opacity = "0";
-      loadingContent.style.transition = "none";
-      loadingContent.offsetHeight; // Force reflow
-      loadingContent.style.transition = `opacity ${this.duration}ms ease-out`;
-      loadingContent.offsetHeight; // Force reflow
-      loadingContent.style.opacity = "1";
-      this.js.removeClass(loadingContent, "opacity-0");
-    }
+    this.el.classList.toggle("invisible", !t.open);
+    this.el.classList.toggle("pointer-events-none", !t.open);
 
-    // Animate panel in
-    if (this.panelContent) {
-      // Check current state before animating (for reopen handling)
-      // For fading overlays (modals): check opacity
-      // For sliding overlays (flyovers): check if panel is at the open position
-      let alreadyVisible;
+    if (panel) {
+      panel.style.removeProperty("transition");
+      panel.style.visibility = t.hidden ? "hidden" : "";
+      panel.style.transform = t.open
+        ? this._openTransform
+        : this._closedTransform;
       if (this._panelFades) {
-        const currentOpacity = parseFloat(getComputedStyle(this.panelContent).opacity);
-        alreadyVisible = currentOpacity > 0.5;
-      } else {
-        // For flyovers: check if transform is at/near the open position
-        const currentTransform = getComputedStyle(this.panelContent).transform;
-        // "none" or "matrix(1,0,0,1,0,0)" means at open (identity) position
-        alreadyVisible = currentTransform === "none" || currentTransform === this._openTransform ||
-          currentTransform === "matrix(1, 0, 0, 1, 0, 0)";
+        panel.style.opacity = t.open ? "1" : "0";
       }
-      console.debug(
-        `[OverlayAnimator:${this.type}] onEntering: alreadyVisible=${alreadyVisible}, transform=${getComputedStyle(this.panelContent).transform}`
-      );
-      console.debug(
-        `[OverlayAnimator:${this.type}] onEntering: wrapper.class="${this.el.className}"`
-      );
+      panel.style.removeProperty("width");
+      panel.style.removeProperty("height");
+      panel.style.removeProperty("overflow");
+    }
 
-      if (alreadyVisible) {
-        // Panel is already visible (reopen case) - don't animate, just ensure it's at open state
-        this.panelContent.style.transform = this._openTransform;
-        if (this._panelFades) {
-          this.panelContent.style.opacity = "1";
-        }
-        this.panelContent.style.transition = "none";
-        // Still need to notify transition end since we're skipping the animation
-        setTimeout(() => syncedVar.notifyTransitionEnd(), 0);
+    if (overlay) {
+      overlay.style.removeProperty("transition");
+      overlay.style.visibility = t.hidden ? "hidden" : "";
+      overlay.style.opacity = t.open ? OVERLAY_OPACITY : "0";
+    }
+
+    const loadingShown = t.open && !t.contentReady;
+    if (loading) {
+      loading.style.removeProperty("transition");
+      loading.classList.toggle("hidden", !loadingShown);
+      if (loadingShown) {
+        loading.classList.remove("opacity-0");
+        loading.style.opacity = "1";
       } else {
-        // Set initial state (closed position)
-        this.panelContent.style.transform = this._closedTransform;
-        if (this._panelFades) {
-          this.panelContent.style.opacity = "0";
-        }
-        this.panelContent.offsetHeight; // Force reflow
-
-        // Build transition string
-        let transitionProps = [`transform ${this.duration}ms ease-out`];
-        if (this._panelFades) {
-          transitionProps.push(`opacity ${this.duration}ms ease-out`);
-        }
-        this.panelContent.style.transition = transitionProps.join(", ");
-        this.panelContent.offsetHeight; // Force reflow
-
-        // Animate to open state
-        this.panelContent.style.transform = this._openTransform;
-        if (this._panelFades) {
-          this.panelContent.style.opacity = "1";
-        }
-
-        // Set up transition end handler
-        this._transitionHandler = (e) => {
-          if (e.target !== this.panelContent) return;
-          if (e.propertyName !== "transform") return;
-          this.panelContent.removeEventListener(
-            "transitionend",
-            this._transitionHandler
-          );
-          this._transitionHandler = null;
-          syncedVar.notifyTransitionEnd();
-        };
-        this.panelContent.addEventListener(
-          "transitionend",
-          this._transitionHandler
-        );
+        loading.style.removeProperty("opacity");
       }
     }
 
-    // Animate overlay in
-    if (this.overlay) {
-      this.overlay.style.transition = `opacity ${this.duration}ms ease-out`;
-      this.overlay.offsetHeight;
-      this.overlay.style.opacity = "0.5";
+    const mainShown = t.open && t.contentReady;
+    if (main) {
+      main.style.removeProperty("transition");
+      main.classList.toggle("hidden", !mainShown);
+      if (mainShown) {
+        main.style.opacity = "1";
+      } else {
+        main.style.removeProperty("opacity");
+      }
     }
+
+    this._sizeLockApplied = false;
   }
 
   /**
-   * Called when entering the "loading" phase.
+   * Animated apply: freeze each element at its current visual value, then
+   * transition to the target. Because starting values come from computed
+   * style, interrupted animations (reopen mid-exit, content mid-enter)
+   * continue smoothly from wherever they are.
    */
-  onLoading(_syncedVar) {
-    console.debug(`[OverlayAnimator:${this.type}] onLoading`);
+  _applyAnimated(t, prev) {
+    const panel = this.panelContent;
+    const overlay = this.overlay;
+    const loading = this.getLoadingContent();
+    const main = this.getMainContentContainer();
+    const dur = this.duration;
+
+    // Structural state (instant): wrapper visible + interactive, no
+    // exit-time visibility:hidden.
+    this.el.classList.remove("invisible", "pointer-events-none");
+    if (panel) panel.style.visibility = "";
+    if (overlay) overlay.style.visibility = "";
+
+    const loadingWasShown = loading && !loading.classList.contains("hidden");
+    const mainWasShown = main && !main.classList.contains("hidden");
+    const loadingShown = t.open && !t.contentReady;
+    const mainShown = t.open && t.contentReady;
+
+    // Freeze continuous values at their current computed state.
+    if (panel) {
+      this._freeze(panel, this._panelFades ? ["transform", "opacity"] : ["transform"]);
+    }
+    if (overlay) this._freeze(overlay, ["opacity"]);
+    if (loading && loadingWasShown) this._freeze(loading, ["opacity"]);
+    if (main && mainWasShown) this._freeze(main, ["opacity"]);
+
+    // Elements becoming shown start transparent.
+    if (loading && loadingShown && !loadingWasShown) {
+      loading.classList.remove("hidden", "opacity-0");
+      loading.style.transition = "none";
+      loading.style.opacity = "0";
+    }
+    if (main && mainShown && !mainWasShown) {
+      main.classList.remove("hidden");
+      main.style.transition = "none";
+      main.style.opacity = "0";
+    }
+
+    // Size FLIP (modal only): when a loading/main swap changes the panel's
+    // natural size while it's already open, animate width/height across it.
+    let sizeFlip = null;
+    if (
+      this._animatesSize &&
+      panel &&
+      prev?.open &&
+      (loadingShown !== loadingWasShown || mainShown !== mainWasShown)
+    ) {
+      sizeFlip = this._prepareSizeFlip(panel, loading, main, {
+        loadingShown,
+        mainShown,
+      });
+    }
+    // Any pre-patch size lock is now owned (and cleaned up) by this apply.
+    this._sizeLockApplied = false;
+
+    // Reflow so frozen/starting values are committed before transitions.
+    if (panel) panel.offsetHeight;
+
+    // Set up transitions.
+    const panelTransitions = [`transform ${dur}ms ease-out`];
+    if (this._panelFades) panelTransitions.push(`opacity ${dur}ms ease-out`);
+    if (sizeFlip) {
+      panelTransitions.push(`width ${dur}ms ease-out`);
+      panelTransitions.push(`height ${dur}ms ease-out`);
+    }
+    if (panel) panel.style.transition = panelTransitions.join(", ");
+    if (overlay) overlay.style.transition = `opacity ${dur}ms ease-out`;
+    if (loading) loading.style.transition = `opacity ${dur}ms ease-out`;
+    if (main) main.style.transition = `opacity ${dur}ms ease-out`;
+
+    if (panel) panel.offsetHeight;
+
+    // Write targets.
+    if (panel) {
+      panel.style.transform = this._openTransform;
+      if (this._panelFades) panel.style.opacity = "1";
+      if (sizeFlip) {
+        panel.style.width = `${sizeFlip.width}px`;
+        panel.style.height = `${sizeFlip.height}px`;
+      }
+    }
+    if (overlay) overlay.style.opacity = OVERLAY_OPACITY;
+    if (loading) loading.style.opacity = loadingShown ? "1" : "0";
+    if (main) main.style.opacity = mainShown ? "1" : "0";
+
+    // Completion: timer-backed so cleanup runs even when no panel property
+    // actually transitioned (e.g. content swap while the panel is already
+    // at its open transform and unchanged size).
+    this._scheduleCompletion(() => {
+      for (const elm of [panel, overlay, loading, main]) {
+        if (elm) elm.style.removeProperty("transition");
+      }
+      if (panel) {
+        panel.style.removeProperty("width");
+        panel.style.removeProperty("height");
+        panel.style.removeProperty("overflow");
+      }
+      if (loading && !loadingShown) loading.classList.add("hidden");
+      if (main && !mainShown) main.classList.add("hidden");
+      if (this._sv?.getPhase() === "entering") {
+        this._sv.notifyTransitionEnd();
+      }
+    });
   }
 
   /**
-   * Called when entering the "visible" phase.
+   * Freeze an element's continuous properties at their current computed
+   * values so a new transition starts from the visual present.
+   *
+   * The values MUST be read before style is mutated: getComputedStyle
+   * returns a live object, and setting `transition: none` cancels any
+   * in-flight (or same-task pending) transition — a read after that
+   * resolves to the transition's TARGET value, freezing the element at
+   * its destination and turning the re-applied transition into a no-op
+   * (the "flyover appears instead of sliding" bug).
    */
-  onVisible(_syncedVar) {
-    console.debug(`[OverlayAnimator:${this.type}] onVisible`);
-    this.js.removeClass(this.el, "invisible");
+  _freeze(elm, props) {
+    const cs = getComputedStyle(elm);
+    const values = props.map((p) => cs[p]);
+    elm.style.transition = "none";
+    props.forEach((p, i) => {
+      elm.style[p] = values[i];
+    });
   }
 
   /**
-   * Called when entering the "exiting" phase.
+   * Measure the panel's natural size in the target display state, then
+   * re-lock it at its current size so width/height can transition.
    */
-  onExiting(_syncedVar) {
-    console.debug(`[OverlayAnimator:${this.type}] onExiting`);
+  _prepareSizeFlip(panel, loading, main, target) {
+    const cs = getComputedStyle(panel);
+    const startWidth = parseFloat(cs.width);
+    const startHeight = parseFloat(cs.height);
 
-    // Disable pointer events immediately
-    this.js.addClass(this.el, "pointer-events-none");
-    this.el.classList.add("pointer-events-none");
+    // Apply end-state display, unlock, measure — invisibly.
+    const prevVisibility = panel.style.visibility;
+    panel.style.visibility = "hidden";
+    const loadingWasHidden = loading && loading.classList.contains("hidden");
+    const mainWasHidden = main && main.classList.contains("hidden");
+    if (loading) loading.classList.toggle("hidden", !target.loadingShown);
+    if (main) main.classList.toggle("hidden", !target.mainShown);
+    panel.style.width = "";
+    panel.style.height = "";
+    panel.offsetHeight;
+    const endStyle = getComputedStyle(panel);
+    const width = parseFloat(endStyle.width);
+    const height = parseFloat(endStyle.height);
 
-    // Remove pending transition handlers
+    // Restore crossfade display state (both layers visible during fade)
+    // and re-lock at the starting size.
+    if (loading) loading.classList.toggle("hidden", loadingWasHidden);
+    if (main) main.classList.toggle("hidden", mainWasHidden);
+    panel.style.width = `${startWidth}px`;
+    panel.style.height = `${startHeight}px`;
+    panel.style.overflow = "hidden";
+    panel.style.visibility = prevVisibility;
+    panel.offsetHeight;
+
+    return { width, height };
+  }
+
+  /**
+   * Run `finalize` when the current transition completes — via panel
+   * transitionend when one fires, or the duration-based fallback timer
+   * when none does. Exactly once.
+   */
+  _scheduleCompletion(finalize) {
+    const panel = this.panelContent;
+    let done = false;
+    const complete = () => {
+      if (done) return;
+      done = true;
+      if (panel && this._transitionHandler) {
+        panel.removeEventListener("transitionend", this._transitionHandler);
+      }
+      this._transitionHandler = null;
+      if (this._completionTimer) clearTimeout(this._completionTimer);
+      this._completionTimer = null;
+      finalize();
+    };
+
+    if (panel) {
+      this._transitionHandler = (e) => {
+        if (e.target !== panel) return;
+        complete();
+      };
+      panel.addEventListener("transitionend", this._transitionHandler);
+    }
+    this._completionTimer = setTimeout(complete, this.duration + 60);
+  }
+
+  _cancelPendingTransition() {
     if (this.panelContent && this._transitionHandler) {
       this.panelContent.removeEventListener(
         "transitionend",
         this._transitionHandler
       );
-      this._transitionHandler = null;
     }
+    this._transitionHandler = null;
+    if (this._completionTimer) clearTimeout(this._completionTimer);
+    this._completionTimer = null;
+  }
 
-    // Set up ghost element animation
-    this._setupGhostElementAnimation();
+  // --- SyncedVar Delegate Callbacks ---
+
+  /**
+   * Called when entering the "entering" phase. Normalizing to idle first
+   * makes reopen-mid-exit identical to a fresh open: any exit residue
+   * (ghosts, hidden panels, locked sizes) is wiped by the idempotent
+   * instant apply, then the enter animation plays.
+   */
+  onEntering(syncedVar) {
+    this._sv = syncedVar;
+    this._cleanupGhosts();
+    this.applyPhaseStyles("idle", { animate: false });
+    this.applyPhaseStyles("entering");
+  }
+
+  /**
+   * Called when entering the "loading" phase. Targets are identical to
+   * entering-without-content, so the apply is a no-op by idempotency.
+   */
+  onLoading(syncedVar) {
+    this._sv = syncedVar;
+    this.applyPhaseStyles("loading");
+  }
+
+  /**
+   * Called when entering the "visible" phase.
+   */
+  onVisible(syncedVar) {
+    this._sv = syncedVar;
+    this.applyPhaseStyles("visible");
+  }
+
+  /**
+   * Called when entering the "exiting" phase. Ghosts are cloned from the
+   * current visual state before the real elements are hidden.
+   */
+  onExiting(syncedVar) {
+    this._sv = syncedVar;
+    this._createGhosts();
+    this.applyPhaseStyles("exiting", { animate: false });
   }
 
   /**
    * Called when entering the "idle" phase.
    */
-  onIdle(_syncedVar) {
-    this._resetDOM();
+  onIdle(syncedVar) {
+    this._sv = syncedVar;
+    this.applyPhaseStyles("idle", { animate: false });
   }
 
   /**
-   * Called when async data arrives.
+   * Called when async data arrives in loading or visible phase.
+   * isAsyncReady has flipped, so the apply crossfades loading -> content.
    */
-  onAsyncReady(_syncedVar) {
-    console.debug(`[OverlayAnimator:${this.type}] onAsyncReady`);
+  onAsyncReady(syncedVar) {
+    this._sv = syncedVar;
+    this.applyPhaseStyles(syncedVar.getPhase());
   }
 
   /**
-   * Called by LavashOptimistic after a LiveView update.
-   */
-  onUpdated(animated, _phase) {
-    const mainInner = this.getMainContentInner();
-    const mainContent = this.getMainContentContainer();
-    const mainContentLoaded = mainInner && mainInner.children.length > 0;
-    const mainContentHidden = mainContent && mainContent.classList.contains("hidden");
-
-    const currentPhase = animated.getPhase();
-    const loadingContent = this.getLoadingContent();
-    const loadingVisible =
-      loadingContent && !loadingContent.classList.contains("hidden");
-
-    console.debug(
-      `[OverlayAnimator:${this.type}] onUpdated: phase=${currentPhase}, mainContentLoaded=${mainContentLoaded}, mainContentHidden=${mainContentHidden}, loadingVisible=${loadingVisible}`
-    );
-
-    // Handle content arrival
-    if (mainContentLoaded && !animated.isAsyncReady) {
-      animated.onAsyncDataReady();
-      // For loading or visible phase with loading showing, trigger transition
-      if (
-        (currentPhase === "loading" || currentPhase === "visible") &&
-        loadingVisible
-      ) {
-        this._transitionToContent(animated);
-      }
-      return;
-    }
-
-    // Edge case: visible phase with loading still showing
-    if (mainContentLoaded && currentPhase === "visible" && loadingVisible) {
-      this._transitionToContent(animated);
-    }
-
-    // Release size lock if it wasn't used (modal only)
-    if (this._animatesSize) {
-      this.releaseSizeLockIfNeeded();
-    }
-  }
-
-  /**
-   * Called when content arrives while enter animation is still running.
+   * Called when content arrives while the enter animation is still running.
+   * The crossfade composes with the in-flight enter transition because the
+   * animated apply freezes at current computed values first.
    */
   onContentReadyDuringEnter(syncedVar) {
-    console.debug(`[OverlayAnimator:${this.type}] onContentReadyDuringEnter`);
-    this._transitionToContent(syncedVar);
+    this._sv = syncedVar;
+    this.applyPhaseStyles("entering");
   }
 
   /**
-   * Unified transition to content state.
-   *
-   * TODO: When the server responds quickly (low latency / fast refresh), the
-   * loading→content crossfade isn't smooth — content can pop in abruptly
-   * because the loading skeleton barely had time to fade in before content
-   * arrives. Consider a minimum display time for loading, or skip the
-   * loading skeleton entirely when content arrives during the enter animation.
+   * Called by LavashOptimistic after a LiveView update. Pure detection:
+   * notice server content arriving and inform the phase machine; the
+   * delegate callbacks it triggers do the styling.
    */
-  _transitionToContent(syncedVar) {
-    const mainContent = this.getMainContentContainer();
-    const mainInnerEl = this.getMainContentInner();
-    const loadingContent = this.getLoadingContent();
-
-    if (!this.panelContent || !mainInnerEl) {
-      console.debug(
-        `[OverlayAnimator:${this.type}] _transitionToContent: missing elements`
-      );
-      return;
-    }
-
-    // 1. Capture and freeze loading state
-    let loadingCurrentOpacity = "0";
-    if (loadingContent) {
-      loadingCurrentOpacity = getComputedStyle(loadingContent).opacity;
-      loadingContent.style.transition = "none";
-      loadingContent.offsetHeight;
-      loadingContent.style.opacity = loadingCurrentOpacity;
-    }
-
-    // 2. Capture and freeze panel state
-    const computedStyle = getComputedStyle(this.panelContent);
-    const currentTransform = computedStyle.transform;
-    const currentOpacity = this._panelFades ? computedStyle.opacity : "1";
-    const currentWidth = parseFloat(computedStyle.width);
-    const currentHeight = parseFloat(computedStyle.height);
+  onUpdated(animated, _phase) {
+    this._sv = animated;
+    const mainInner = this.getMainContentInner();
+    const contentLoaded = mainInner && mainInner.children.length > 0;
+    const phase = animated.getPhase();
 
     console.debug(
-      `[OverlayAnimator:${this.type}] _transitionToContent: transform=${currentTransform}, opacity=${currentOpacity}`
-    );
-    console.debug(
-      `[OverlayAnimator:${this.type}] _transitionToContent: wrapper.class="${this.el.className}", panel.class="${this.panelContent.className}"`
-    );
-    console.debug(
-      `[OverlayAnimator:${this.type}] _transitionToContent: mainContent.class="${mainContent?.className}", mainContent.hidden=${mainContent?.classList.contains('hidden')}`
+      `[OverlayAnimator:${this.type}] onUpdated: phase=${phase}, contentLoaded=${!!contentLoaded}, asyncReady=${animated.isAsyncReady}`
     );
 
-    // Freeze panel
-    this.panelContent.style.transition = "none";
-    this.panelContent.style.transform = currentTransform;
-    if (this._panelFades) {
-      this.panelContent.style.opacity = currentOpacity;
-    }
-    if (this._animatesSize) {
-      this.panelContent.style.width = `${currentWidth}px`;
-      this.panelContent.style.height = `${currentHeight}px`;
-      this.panelContent.style.overflow = "hidden";
+    if (contentLoaded && !animated.isAsyncReady) {
+      animated.onAsyncDataReady();
+    } else if (
+      contentLoaded &&
+      (phase === "entering" || phase === "loading" || phase === "visible")
+    ) {
+      // Content present but the swap not yet applied (no-op when it was).
+      this.applyPhaseStyles(phase);
     }
 
-    // Remove enter transition handler
-    if (this._transitionHandler) {
-      this.panelContent.removeEventListener(
-        "transitionend",
-        this._transitionHandler
-      );
-      this._transitionHandler = null;
-    }
-
-    // 3. Show main content at opacity 0
-    if (mainContent) {
-      this.js.removeClass(mainContent, "hidden");
-      mainContent.classList.remove("hidden");
-      mainContent.style.transition = "none";
-      mainContent.style.opacity = "0";
-      mainContent.offsetHeight;
-      console.debug(
-        `[OverlayAnimator:${this.type}] _transitionToContent step3: hidden=${mainContent.classList.contains('hidden')}, opacity=${mainContent.style.opacity}, offsetHeight=${mainContent.offsetHeight}, display=${getComputedStyle(mainContent).display}`
-      );
-    }
-
-    // 4. Measure target size (modal only)
-    let targetWidth = currentWidth;
-    let targetHeight = currentHeight;
-    if (this._animatesSize) {
-      const lockedWidth = this.panelContent.style.width;
-      const lockedHeight = this.panelContent.style.height;
-      this.panelContent.style.visibility = "hidden";
-      this.panelContent.style.width = "";
-      this.panelContent.style.height = "";
-      this.panelContent.offsetHeight;
-      const targetStyle = getComputedStyle(this.panelContent);
-      targetWidth = parseFloat(targetStyle.width);
-      targetHeight = parseFloat(targetStyle.height);
-      this.panelContent.style.width = lockedWidth;
-      this.panelContent.style.height = lockedHeight;
-      this.panelContent.offsetHeight;
-      this.panelContent.style.visibility = "";
-    }
-
-    // 5. Set up transitions
-    let panelTransitions = [`transform ${this.duration}ms ease-out`];
-    if (this._panelFades) {
-      panelTransitions.push(`opacity ${this.duration}ms ease-out`);
-    }
-    if (this._animatesSize) {
-      panelTransitions.push(`width ${this.duration}ms ease-out`);
-      panelTransitions.push(`height ${this.duration}ms ease-out`);
-    }
-    this.panelContent.style.transition = panelTransitions.join(", ");
-
-    if (mainContent) {
-      mainContent.style.transition = `opacity ${this.duration}ms ease-out`;
-    }
-
-    // Counter-fade loading
-    // For modals: use panel opacity for counter-fade calculation
-    // For flyovers: use loading's own opacity (panel doesn't fade)
-    const referenceOpacity = this._panelFades
-      ? parseFloat(currentOpacity)
-      : parseFloat(loadingCurrentOpacity);
-    const shouldFadeLoading = loadingContent && referenceOpacity >= 0.1;
-
-    if (loadingContent) {
-      loadingContent.style.opacity = loadingCurrentOpacity;
-      if (shouldFadeLoading) {
-        const loadingFadeDuration = this.duration * referenceOpacity;
-        loadingContent.style.transition = `opacity ${loadingFadeDuration}ms ease-out`;
-      } else {
-        loadingContent.style.transition = "none";
-      }
-    }
-
-    // Force reflow on each element
-    this.panelContent.offsetHeight;
-    if (mainContent) mainContent.offsetHeight;
-    if (loadingContent) loadingContent.offsetHeight;
-
-    // 6. Trigger animations
-    this.panelContent.style.transform = this._openTransform;
-    if (this._panelFades) {
-      this.panelContent.style.opacity = "1";
-    }
-    if (this._animatesSize) {
-      this.panelContent.style.width = `${targetWidth}px`;
-      this.panelContent.style.height = `${targetHeight}px`;
-    }
-    if (mainContent) {
-      mainContent.style.opacity = "1";
-      console.debug(
-        `[OverlayAnimator:${this.type}] _transitionToContent step6: mainContent opacity set to 1, transition=${mainContent.style.transition}`
-      );
-    }
-    if (loadingContent) {
-      loadingContent.style.opacity = "0";
-      console.debug(
-        `[OverlayAnimator:${this.type}] _transitionToContent step6: loading opacity set to 0, shouldFade=${shouldFadeLoading}`
-      );
-      if (shouldFadeLoading) {
-        const loadingFadeDuration = this.duration * referenceOpacity;
-        setTimeout(() => {
-          this.js.addClass(loadingContent, "hidden");
-          loadingContent.style.removeProperty("transition");
-        }, loadingFadeDuration);
-      } else {
-        this.js.addClass(loadingContent, "hidden");
-        loadingContent.style.removeProperty("transition");
-      }
-    }
-
-    // Verify final state after transition completes
-    const self = this;
-    setTimeout(() => {
-      if (mainContent) {
-        const cs = getComputedStyle(mainContent);
-        console.debug(
-          `[OverlayAnimator:${self.type}] _transitionToContent VERIFY (after ${self.duration + 50}ms): ` +
-          `hidden=${mainContent.classList.contains('hidden')}, ` +
-          `computedOpacity=${cs.opacity}, ` +
-          `computedDisplay=${cs.display}, ` +
-          `offsetHeight=${mainContent.offsetHeight}, ` +
-          `childCount=${mainContent.children.length}, ` +
-          `innerText.length=${mainContent.innerText?.length || 0}`
-        );
-      }
-    }, this.duration + 50);
-
-    // Clean up after animation
-    const cleanup = (e) => {
-      if (e.target !== this.panelContent) return;
-      if (e.propertyName !== "transform") return;
-      this.panelContent.removeEventListener("transitionend", cleanup);
-      this.panelContent.style.removeProperty("transition");
-      if (this._animatesSize) {
-        this.panelContent.style.removeProperty("width");
-        this.panelContent.style.removeProperty("height");
-        this.panelContent.style.removeProperty("overflow");
-      }
-      if (syncedVar?.getPhase() === "entering") {
-        syncedVar.notifyTransitionEnd();
-      }
-    };
-    this.panelContent.addEventListener("transitionend", cleanup);
-
-    this._loadingFadedOut = true;
+    this.releaseSizeLockIfNeeded();
   }
 
-  // --- Size Lock (Modal only) ---
+  // --- Size Lock (pre-patch FLIP capture, modal only) ---
 
   capturePreUpdateRect(phase) {
     if (!this._animatesSize || !this.panelContent || phase === "idle") return;
@@ -613,140 +546,36 @@ export class OverlayAnimator {
 
   // --- Ghost Element Animation ---
 
-  createGhostBeforePatch(originalElement) {
-    const rect = originalElement.getBoundingClientRect();
+  /**
+   * Clone the panel and backdrop to document.body and animate the clones
+   * out. The clones start from the panel's current computed state, so a
+   * close mid-enter animates out from wherever the panel visually is.
+   */
+  _createGhosts() {
+    const panel = this.panelContent;
+    if (!panel) return;
 
-    // Skip if element has zero dimensions (hidden, not laid out, or stale response)
+    const rect = panel.getBoundingClientRect();
+    // Skip if panel has zero dimensions (hidden or not laid out)
     if (rect.width === 0 || rect.height === 0) {
       console.debug(
-        `[OverlayAnimator:${this.type}] createGhostBeforePatch: skipping - element has zero dimensions`
+        `[OverlayAnimator:${this.type}] _createGhosts: skipping - panel has zero dimensions`
       );
       return;
     }
 
-    this._preUpdateContentClone = originalElement.cloneNode(true);
-    this._preUpdateContentClone.id = `${originalElement.id}_ghost`;
-    // Strip IDs from all descendants to prevent duplicate IDs in the DOM,
-    // which confuses morphdom and prevents hook updated() from firing
-    this._preUpdateContentClone.querySelectorAll("[id]").forEach((el) => el.removeAttribute("id"));
-    const panelBg = this.panelContent
-      ? getComputedStyle(this.panelContent).backgroundColor
-      : "white";
-    const borderRadius = this.panelContent
-      ? getComputedStyle(this.panelContent).borderRadius
-      : "0";
+    const cs = getComputedStyle(panel);
 
-    Object.assign(this._preUpdateContentClone.style, {
-      position: "fixed",
-      top: `${rect.top}px`,
-      left: `${rect.left}px`,
-      width: `${rect.width}px`,
-      height: `${rect.height}px`,
-      margin: "0",
-      pointerEvents: "none",
-      zIndex: "9999",
-      backgroundColor: panelBg,
-      borderRadius: borderRadius,
-      transform: this._openTransform,
-      opacity: this._panelFades ? "1" : undefined,
-    });
-
-    document.body.appendChild(this._preUpdateContentClone);
-
-    // Create ghost overlay
-    if (this.overlay) {
-      const overlayOpacity = getComputedStyle(this.overlay).opacity;
-      this._ghostOverlay = document.createElement("div");
-      Object.assign(this._ghostOverlay.style, {
-        position: "fixed",
-        inset: "0",
-        backgroundColor: "black",
-        opacity: overlayOpacity,
-        pointerEvents: "none",
-        zIndex: "9998",
-      });
-      document.body.appendChild(this._ghostOverlay);
-    }
-
-    originalElement.style.visibility = "hidden";
-    if (this.overlay) this.overlay.style.visibility = "hidden";
-
-    this._ghostInsertedInBeforeUpdate = true;
-  }
-
-  _setupGhostElementAnimation() {
-    // If ghost was created from onBeforeElUpdated, animate it
-    if (this._ghostInsertedInBeforeUpdate && this._preUpdateContentClone) {
-      // Animate ghost overlay out
-      if (this._ghostOverlay) {
-        this._ghostOverlay.style.transition = `opacity ${this.duration}ms ease-out`;
-        this._ghostOverlay.offsetHeight;
-        this._ghostOverlay.style.opacity = "0";
-      }
-
-      // Animate ghost panel out
-      const ghost = this._preUpdateContentClone;
-      let ghostTransitions = [`transform ${this.duration}ms ease-out`];
-      if (this._panelFades) {
-        ghostTransitions.push(`opacity ${this.duration}ms ease-out`);
-      }
-      ghost.style.transition = ghostTransitions.join(", ");
-      ghost.offsetHeight;
-      ghost.style.transform = this._closedTransform;
-      if (this._panelFades) {
-        ghost.style.opacity = "0";
-      }
-
-      // Also animate the real panel out (hidden but needs reset)
-      if (this.panelContent) {
-        this.panelContent.style.transition = ghostTransitions.join(", ");
-        this.panelContent.offsetHeight;
-        this.panelContent.style.transform = this._closedTransform;
-        if (this._panelFades) {
-          this.panelContent.style.opacity = "0";
-        }
-      }
-
-      // Schedule cleanup
-      setTimeout(() => {
-        if (this._preUpdateContentClone?.parentNode) {
-          this._preUpdateContentClone.remove();
-          this._preUpdateContentClone = null;
-        }
-        if (this._ghostOverlay?.parentNode) {
-          this._ghostOverlay.remove();
-          this._ghostOverlay = null;
-        }
-      }, this.duration + 50);
-      return;
-    }
-
-    // Fallback: animate real panel out (user-initiated close)
-    if (!this.panelContent) return;
-
-    const rect = this.panelContent.getBoundingClientRect();
-
-    // Skip if panel has zero dimensions (edge case - shouldn't happen normally)
-    if (rect.width === 0 || rect.height === 0) {
-      console.debug(
-        `[OverlayAnimator:${this.type}] _setupGhostElementAnimation: skipping - panel has zero dimensions`
-      );
-      return;
-    }
-
-    const panelBg = getComputedStyle(this.panelContent).backgroundColor;
-    const borderRadius = getComputedStyle(this.panelContent).borderRadius;
-
-    this.ghostElement = this.panelContent.cloneNode(true);
-    this.ghostElement.removeAttribute("id");
-    this.ghostElement.removeAttribute("phx-click");
-    this.ghostElement.removeAttribute("phx-target");
-    this.ghostElement.removeAttribute("phx-window-keydown");
-    this.ghostElement.removeAttribute("phx-key");
+    const ghost = panel.cloneNode(true);
+    ghost.removeAttribute("id");
+    ghost.removeAttribute("phx-click");
+    ghost.removeAttribute("phx-target");
+    ghost.removeAttribute("phx-window-keydown");
+    ghost.removeAttribute("phx-key");
     // Strip IDs from all descendants to prevent duplicate IDs in the DOM
-    this.ghostElement.querySelectorAll("[id]").forEach((el) => el.removeAttribute("id"));
+    ghost.querySelectorAll("[id]").forEach((n) => n.removeAttribute("id"));
 
-    Object.assign(this.ghostElement.style, {
+    Object.assign(ghost.style, {
       position: "fixed",
       top: `${rect.top}px`,
       left: `${rect.left}px`,
@@ -755,15 +584,15 @@ export class OverlayAnimator {
       margin: "0",
       pointerEvents: "none",
       zIndex: "9999",
-      backgroundColor: panelBg,
-      borderRadius: borderRadius,
-      transform: this._openTransform,
-      opacity: this._panelFades ? "1" : undefined,
+      backgroundColor: cs.backgroundColor,
+      borderRadius: cs.borderRadius,
+      transition: "none",
+      transform: "none",
+      opacity: this._panelFades ? cs.opacity : "1",
     });
+    document.body.appendChild(ghost);
+    this.ghostElement = ghost;
 
-    document.body.appendChild(this.ghostElement);
-
-    // Create ghost overlay
     if (this.overlay) {
       const overlayOpacity = getComputedStyle(this.overlay).opacity;
       this._ghostOverlay = document.createElement("div");
@@ -774,35 +603,28 @@ export class OverlayAnimator {
         opacity: overlayOpacity,
         pointerEvents: "none",
         zIndex: "9998",
+        transition: "none",
       });
       document.body.appendChild(this._ghostOverlay);
-
-      this._ghostOverlay.style.transition = `opacity ${this.duration}ms ease-out`;
-      this._ghostOverlay.offsetHeight;
-      this._ghostOverlay.style.opacity = "0";
     }
 
-    // Hide real panel
-    this.panelContent.style.visibility = "hidden";
-    if (this.overlay) this.overlay.style.visibility = "hidden";
+    // Animate ghosts to the closed target state.
+    ghost.offsetHeight;
+    const ghostTransitions = [`transform ${this.duration}ms ease-out`];
+    if (this._panelFades) {
+      ghostTransitions.push(`opacity ${this.duration}ms ease-out`);
+    }
+    ghost.style.transition = ghostTransitions.join(", ");
+    if (this._ghostOverlay) {
+      this._ghostOverlay.style.transition = `opacity ${this.duration}ms ease-out`;
+    }
+    ghost.offsetHeight;
 
-    // Animate ghost out
-    requestAnimationFrame(() => {
-      let ghostTransitions = [`transform ${this.duration}ms ease-out`];
-      if (this._panelFades) {
-        ghostTransitions.push(`opacity ${this.duration}ms ease-out`);
-      }
-      this.ghostElement.style.transition = ghostTransitions.join(", ");
-      this.ghostElement.offsetHeight;
-      requestAnimationFrame(() => {
-        this.ghostElement.style.transform = this._closedTransform;
-        if (this._panelFades) {
-          this.ghostElement.style.opacity = "0";
-        }
-      });
-    });
+    ghost.style.transform = this._closedTransform;
+    if (this._panelFades) ghost.style.opacity = "0";
+    if (this._ghostOverlay) this._ghostOverlay.style.opacity = "0";
 
-    // Schedule cleanup
+    // Remove after the animation completes.
     setTimeout(() => {
       if (this.ghostElement?.parentNode) {
         this.ghostElement.remove();
@@ -812,113 +634,21 @@ export class OverlayAnimator {
         this._ghostOverlay.remove();
         this._ghostOverlay = null;
       }
-    }, this.duration + 50);
+    }, this.duration + 60);
   }
 
-  _cleanupCloseAnimation(instant = true) {
-    console.debug(
-      `[OverlayAnimator:${this.type}] _cleanupCloseAnimation: instant=${instant}, ` +
-      `ghostElement=${!!this.ghostElement}, _preUpdateContentClone=${!!this._preUpdateContentClone}, ` +
-      `_ghostOverlay=${!!this._ghostOverlay}`
-    );
-
-    const cleanup = (el, name) => {
-      if (!el?.parentNode) {
-        console.debug(`[OverlayAnimator:${this.type}] _cleanupCloseAnimation: ${name} not in DOM`);
-        return;
-      }
-      console.debug(`[OverlayAnimator:${this.type}] _cleanupCloseAnimation: removing ${name}`);
-      if (instant) {
-        el.remove();
-      } else {
-        el.style.transition = `opacity ${this.duration / 2}ms ease-out`;
-        el.style.opacity = "0";
-        setTimeout(() => el.parentNode && el.remove(), this.duration / 2);
-      }
-    };
-
-    cleanup(this._preUpdateContentClone, "_preUpdateContentClone");
-    this._preUpdateContentClone = null;
-
-    cleanup(this._ghostOverlay, "_ghostOverlay");
-    this._ghostOverlay = null;
-
-    cleanup(this.ghostElement, "ghostElement");
+  _cleanupGhosts() {
+    if (this.ghostElement?.parentNode) this.ghostElement.remove();
     this.ghostElement = null;
-
-    this._ghostInsertedInBeforeUpdate = false;
-  }
-
-  // --- DOM Reset ---
-
-  _resetDOM() {
-    console.debug(`[OverlayAnimator:${this.type}] _resetDOM`);
-
-    this._sizeLockApplied = false;
-    this._loadingFadedOut = false;
-    this._ghostInsertedInBeforeUpdate = false;
-    this._preUpdateContentClone = null;
-
-    if (this.panelContent && this._transitionHandler) {
-      this.panelContent.removeEventListener(
-        "transitionend",
-        this._transitionHandler
-      );
-      this._transitionHandler = null;
-    }
-
-    // Wrapper
-    this.js.addClass(this.el, "invisible pointer-events-none");
-
-    // Panel
-    if (this.panelContent) {
-      this.panelContent.style.visibility = "";
-      this.panelContent.style.transform = this._closedTransform;
-      if (this._panelFades) {
-        this.panelContent.style.opacity = "0";
-      }
-      this.panelContent.style.removeProperty("transition");
-      if (this._animatesSize) {
-        this.panelContent.style.removeProperty("width");
-        this.panelContent.style.removeProperty("height");
-        this.panelContent.style.removeProperty("overflow");
-      }
-    }
-
-    // Overlay
-    if (this.overlay) {
-      this.overlay.style.visibility = "";
-      this.overlay.style.opacity = "0";
-      this.overlay.style.removeProperty("transition");
-    }
-
-    // Loading
-    const loadingContent = this.getLoadingContent();
-    if (loadingContent) {
-      this.js.addClass(loadingContent, "hidden opacity-0");
-      loadingContent.style.removeProperty("opacity");
-      loadingContent.style.removeProperty("transition");
-    }
-
-    // Main content
-    const mainContent = this.getMainContentContainer();
-    if (mainContent) {
-      this.js.addClass(mainContent, "hidden");
-      mainContent.style.removeProperty("opacity");
-      mainContent.style.removeProperty("transition");
-    }
+    if (this._ghostOverlay?.parentNode) this._ghostOverlay.remove();
+    this._ghostOverlay = null;
   }
 
   // --- Cleanup ---
 
   destroy() {
-    this._cleanupCloseAnimation();
-    if (this.panelContent && this._transitionHandler) {
-      this.panelContent.removeEventListener(
-        "transitionend",
-        this._transitionHandler
-      );
-    }
+    this._cancelPendingTransition();
+    this._cleanupGhosts();
   }
 }
 

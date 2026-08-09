@@ -67,7 +67,6 @@ defmodule Lavash.Optimistic.SchemaExtension do
 
         Options (when keyword list):
         - `async: :field_name` - coordinate with async data loading
-        - `preserve_dom: true` - keep DOM alive during exit animation
         - `duration: 200` - fallback timeout in ms
         """
       ]

@@ -49,13 +49,12 @@ defmodule Lavash.Overlay.Flyover.Transformers.InjectState do
       dsl_state
     else
       # Build animated options
-      # preserve_dom: true keeps the content visible during exit animation
-      # type: :flyover tells the animation system this is a flyover (for FlyoverAnimator)
+      # type: :flyover tells the animation system this is a flyover (for OverlayAnimator)
       animated_opts =
         if async_assign do
-          [async: async_assign, preserve_dom: true, duration: 200, type: :flyover]
+          [async: async_assign, duration: 200, type: :flyover]
         else
-          [preserve_dom: true, duration: 200, type: :flyover]
+          [duration: 200, type: :flyover]
         end
 
       state_field = %Lavash.State.Field{
