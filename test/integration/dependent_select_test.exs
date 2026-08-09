@@ -4,25 +4,46 @@ defmodule Lavash.Integration.DependentSelectTest do
   option list, in both flavors (see the DependentSelectLive fixture):
 
   - optimistic — the option list is a transpiled defrx calc rendered by
-    a subtree derive; it must swap client-side in the same task as the
-    change event, before any server reply can exist.
+    a subtree derive; it must swap client-side while the server reply
+    is still in flight.
   - non-optimistic — the same calc marked `optimistic: false`; the swap
-    must NOT happen synchronously and must arrive with the server
-    render after the round-trip.
+    must NOT appear before the server render lands, and must appear
+    with it.
+
+  No custom JS: `visit/2` (wallabidi >= 0.4.3) waits for the LiveView
+  to connect, the country change is dispatched with `await: :defer`,
+  and the latency simulator makes "before the server replied" a wide
+  window — the in-window assertions complete in ~10ms against a
+  1000ms window (measured), so anything they observe is
+  client-rendered.
+
+  Two wallabidi subtleties this test depends on:
+
+  - `refute_has/2` RETRIES until the element appears (then fails) or
+    the wait window closes — it asserts "never appears within the
+    window", which would race the legitimate server patch here. The
+    instant "absent right now" check is `all/2` (its `minimum: 0`
+    succeeds immediately), asserted `== []`.
+  - Options inside a closed `<select>` don't count as visible; query
+    them with `visible: :any`.
 
   ## Why async: false
 
   Uses the LiveView latency simulator (sessionStorage on the shared
-  browser session) to make "before the server replied" a wide,
-  reliable window.
+  browser session); concurrent tests would cross-pollute it, and the
+  in-window margin assumes no competing CPU load.
   """
   use Lavash.IntegrationCase, async: false
 
   alias Wallabidi.LiveView, as: WLV
 
-  @latency_ms 400
+  @latency_ms 1_000
 
-  test "optimistic swaps synchronously; non-optimistic waits for the server", %{
+  defp region_option(select_id, text) do
+    css("##{select_id} option", text: text, visible: :any)
+  end
+
+  test "optimistic swaps before the server reply; non-optimistic waits for it", %{
     session: session
   } do
     session =
@@ -30,95 +51,28 @@ defmodule Lavash.Integration.DependentSelectTest do
       |> visit("/magic/dependent-select")
       |> WLV.set_latency(@latency_ms)
 
-    # Phase 1 (in-browser, synchronous): change the country and sample
-    # both region selects in the same task — zero server involvement
-    # possible at that point. This is the one check that stays custom
-    # JS on purpose: no driver-level primitive can observe "rendered in
-    # the same task as the change event" — native interactions +
-    # latency-window reasoning are load- and driver-semantics-
-    # dependent, the in-task sample is not.
-    #
-    # visit/2 (wallabidi >= 0.4.3) already awaits the LiveView
-    # connection; the probe only waits for the lavash hook to mount.
-    probe = """
-    var done = arguments[arguments.length - 1];
-    var texts = function(sel) {
-      return Array.prototype.map.call(sel.options, function(o) { return o.text.trim(); });
-    };
-    var start = performance.now();
-    (function ready() {
-      var hookEl = document.querySelector("[phx-hook='LavashOptimistic']");
-      if (!(hookEl && hookEl.__lavash_hook__)) {
-        if (performance.now() - start > 5000) {
-          done({timeout: true, hookEl: !!hookEl});
-          return;
-        }
-        setTimeout(ready, 50);
-        return;
-      }
-      var country = document.getElementById('country');
-      var fast = document.getElementById('fast-region');
-      var slow = document.getElementById('slow-region');
-      var before = { fast: texts(fast), slow: texts(slow) };
-      country.value = 'CA';
-      country.dispatchEvent(new Event('input', {bubbles: true}));
-      country.dispatchEvent(new Event('change', {bubbles: true}));
-      var sync = { fast: texts(fast), slow: texts(slow) };
-      done({before: before, sync: sync});
-    })();
-    """
-
-    test_pid = self()
-
-    Wallabidi.Browser.execute_script_async(session, probe, [], fn result ->
-      send(test_pid, {:probe, result})
-    end)
-
-    assert_receive {:probe, result}, 10_000
-
-    refute result["timeout"], "probe timed out waiting for readiness: #{inspect(result)}"
-
-    # Both start with the US list.
-    assert result["before"]["fast"] == ["California", "Texas"]
-    assert result["before"]["slow"] == ["California", "Texas"]
-
-    # Optimistic: swapped in the same task as the change event.
-    assert result["sync"]["fast"] == ["Ontario", "Quebec"],
-           "optimistic region options did not swap synchronously: #{inspect(result["sync"])}"
-
-    # Non-optimistic: unchanged before the server has replied.
-    assert result["sync"]["slow"] == ["California", "Texas"],
-           "non-optimistic options swapped before the server round-trip: #{inspect(result["sync"])}"
+    # Baseline: both region selects show the US list.
+    session
+    |> assert_has(region_option("fast-region", "California"))
+    |> assert_has(region_option("slow-region", "California"))
 
     try do
-      # Phase 2: after the server round-trip, the non-optimistic select
-      # catches up (and the optimistic one must not regress).
-      poll = """
-      var done = arguments[arguments.length - 1];
-      var texts = function(sel) {
-        return Array.prototype.map.call(sel.options, function(o) { return o.text.trim(); });
-      };
-      var start = performance.now();
-      (function check() {
-        var slow = texts(document.getElementById('slow-region'));
-        if (slow[0] === 'Ontario' || performance.now() - start > 6000) {
-          done({slow: slow, fast: texts(document.getElementById('fast-region'))});
-        } else {
-          setTimeout(check, 100);
-        }
-      })();
-      """
+      # Change the country without waiting for the server ack.
+      session = click(session, css("#country option[value='CA']", visible: :any), await: :defer)
 
-      Wallabidi.Browser.execute_script_async(session, poll, [], fn result ->
-        send(test_pid, {:poll, result})
-      end)
+      # Optimistic: already swapped, deep inside the lag window — no
+      # server reply exists yet.
+      assert_has(session, region_option("fast-region", "Ontario"))
 
-      assert_receive {:poll, after_server}, 10_000
+      # Non-optimistic: nothing Canadian yet (instant check — see
+      # moduledoc for why this must not be refute_has).
+      assert all(session, region_option("slow-region", "Ontario")) == []
+      assert_has(session, region_option("slow-region", "California"))
 
-      assert after_server["slow"] == ["Ontario", "Quebec"],
-             "non-optimistic options never swapped after the server round-trip"
-
-      assert after_server["fast"] == ["Ontario", "Quebec"]
+      # After the round-trip both agree on the Canadian list.
+      session = WLV.await_patch(session)
+      assert_has(session, region_option("slow-region", "Ontario"))
+      assert_has(session, region_option("fast-region", "Ontario"))
     after
       _ = WLV.clear_latency(session)
     end
