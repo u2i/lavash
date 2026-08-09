@@ -19,9 +19,9 @@ defmodule Lavash.Rx.CalcLocalHelpersTest do
       state :doc, :any, default: nil
       state :handle, :string, default: nil
 
-      calculate :via_public, rx(lookup_pub(@doc))
-      calculate :via_private, rx(lookup_priv(@doc, @handle))
-      calculate :via_chain, rx(format(lookup_priv(@doc, @handle)))
+      calculate :via_public, rx(lookup_pub(@doc)), optimistic: false
+      calculate :via_private, rx(lookup_priv(@doc, @handle)), optimistic: false
+      calculate :via_chain, rx(format(lookup_priv(@doc, @handle))), optimistic: false
 
       def lookup_pub(nil), do: "no-doc"
       def lookup_pub(doc), do: "pub:" <> doc["k"]
@@ -59,7 +59,7 @@ defmodule Lavash.Rx.CalcLocalHelpersTest do
 
       state :n, :integer, default: 0, from: :ephemeral
 
-      calculate :doubled, rx(double(@n))
+      calculate :doubled, rx(double(@n)), optimistic: false
 
       defp double(n), do: n * 2
 
@@ -80,7 +80,7 @@ defmodule Lavash.Rx.CalcLocalHelpersTest do
       state :tasks_doc, :any, default: nil
       state :handle, :string, default: nil
 
-      calculate :raw_state, rx(lookup_state(@tasks_doc, @handle))
+      calculate :raw_state, rx(lookup_state(@tasks_doc, @handle)), optimistic: false
 
       defp lookup_state(nil, _h), do: nil
       defp lookup_state(doc, h) when is_map(doc), do: (doc["by_person"] || %{})[h]
