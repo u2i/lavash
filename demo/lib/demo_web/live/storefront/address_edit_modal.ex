@@ -10,11 +10,23 @@ defmodule DemoWeb.Storefront.AddressEditModal do
 
   alias Demo.Orders.Address
 
+  import_rx DemoWeb.AddressRegions
+
   modal do
     open_field :open
     async_assign :address_form
     max_width :md
   end
+
+  # Region select derives from the chosen country (issue #39),
+  # optimistically: region_options/region_label are defrx functions, so
+  # switching country swaps the option list client-side instantly.
+  # Depends only on form params (kept in client state) — a dependency on
+  # the async @address read would stall the calc chain during load.
+  calculate :region_country, rx(@address_form_params["country"] || "United States")
+  calculate :region_options, rx(region_options(@region_country))
+  calculate :region_label, rx(region_label(@region_country))
+  calculate :region_selected, rx(@address_form_params["state"] || "")
 
   # Passed in by the host LiveView so the create form can
   # `relate_actor(:user)` to the signed-in customer.
@@ -95,7 +107,28 @@ defmodule DemoWeb.Storefront.AddressEditModal do
 
         <div class="grid grid-cols-3 gap-4">
           <.input field={@address_form[:city]} label="City" errors={@address_form_city_errors} />
-          <.select field={@address_form[:state]} label="State" options={us_states()} prompt="Select..." />
+          <%!-- Inline select (not <.select>) so the :for over the
+               optimistic @region_options is auto-extracted as a
+               subtree derive and re-renders client-side. --%>
+          <div>
+            <label class="floating-label w-full">
+              <select
+                name={@address_form[:state].name}
+                data-lavash-bind="address_form_params.state"
+                class="select select-bordered w-full"
+              >
+                <option
+                  :for={opt <- @region_options}
+                  value={opt.code}
+                  selected={opt.code == @region_selected}
+                  disabled={opt.code == ""}
+                >
+                  {opt.name}
+                </option>
+              </select>
+              <span style="opacity: 100%; top: 0; translate: -12.5% calc(-50% - 0.125em); scale: 0.75; pointer-events: auto;">{@region_label}</span>
+            </label>
+          </div>
           <.input field={@address_form[:zip]} label="ZIP code" errors={@address_form_zip_errors} />
         </div>
 
@@ -113,21 +146,4 @@ defmodule DemoWeb.Storefront.AddressEditModal do
     """
   end
 
-  defp us_states do
-    [
-      {"Alabama", "AL"}, {"Alaska", "AK"}, {"Arizona", "AZ"}, {"Arkansas", "AR"},
-      {"California", "CA"}, {"Colorado", "CO"}, {"Connecticut", "CT"}, {"Delaware", "DE"},
-      {"Florida", "FL"}, {"Georgia", "GA"}, {"Hawaii", "HI"}, {"Idaho", "ID"},
-      {"Illinois", "IL"}, {"Indiana", "IN"}, {"Iowa", "IA"}, {"Kansas", "KS"},
-      {"Kentucky", "KY"}, {"Louisiana", "LA"}, {"Maine", "ME"}, {"Maryland", "MD"},
-      {"Massachusetts", "MA"}, {"Michigan", "MI"}, {"Minnesota", "MN"}, {"Mississippi", "MS"},
-      {"Missouri", "MO"}, {"Montana", "MT"}, {"Nebraska", "NE"}, {"Nevada", "NV"},
-      {"New Hampshire", "NH"}, {"New Jersey", "NJ"}, {"New Mexico", "NM"}, {"New York", "NY"},
-      {"North Carolina", "NC"}, {"North Dakota", "ND"}, {"Ohio", "OH"}, {"Oklahoma", "OK"},
-      {"Oregon", "OR"}, {"Pennsylvania", "PA"}, {"Rhode Island", "RI"}, {"South Carolina", "SC"},
-      {"South Dakota", "SD"}, {"Tennessee", "TN"}, {"Texas", "TX"}, {"Utah", "UT"},
-      {"Vermont", "VT"}, {"Virginia", "VA"}, {"Washington", "WA"}, {"West Virginia", "WV"},
-      {"Wisconsin", "WI"}, {"Wyoming", "WY"}
-    ]
-  end
 end

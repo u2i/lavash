@@ -31,6 +31,26 @@ defmodule DemoWeb.AddressEditModal do
   # Session ID from parent for scoping addresses
   prop :session_id, :string, required: true
 
+  import_rx DemoWeb.AddressRegions
+
+  # Region select derives from the chosen country (issue #39). This
+  # modal keeps the <.select> component (server-rendered options), so
+  # the option swap arrives with the server round-trip — contrast with
+  # the storefront modal, which re-renders its options optimistically.
+  # Depends only on form params — a dependency on the async @address
+  # read would stall the calc chain during load.
+  calculate :region_country,
+            rx(@address_form_params["country"] || "United States"),
+            optimistic: false
+
+  calculate :region_options, rx(region_options(@region_country)), optimistic: false
+
+  calculate :region_option_tuples,
+            rx(DemoWeb.AddressRegions.as_tuples(@region_options)),
+            optimistic: false
+
+  calculate :region_label, rx(region_label(@region_country)), optimistic: false
+
   # Configure modal behavior - open is nil | :create | {:edit, id}
   modal do
     open_field :open
@@ -116,8 +136,8 @@ defmodule DemoWeb.AddressEditModal do
           />
           <.select
             field={@address_form[:state]}
-            label="State"
-            options={us_states()}
+            label={@region_label}
+            options={@region_option_tuples}
             prompt="Select..."
           />
           <.input
@@ -213,58 +233,4 @@ defmodule DemoWeb.AddressEditModal do
     end
   end
 
-  defp us_states do
-    [
-      {"Alabama", "AL"},
-      {"Alaska", "AK"},
-      {"Arizona", "AZ"},
-      {"Arkansas", "AR"},
-      {"California", "CA"},
-      {"Colorado", "CO"},
-      {"Connecticut", "CT"},
-      {"Delaware", "DE"},
-      {"Florida", "FL"},
-      {"Georgia", "GA"},
-      {"Hawaii", "HI"},
-      {"Idaho", "ID"},
-      {"Illinois", "IL"},
-      {"Indiana", "IN"},
-      {"Iowa", "IA"},
-      {"Kansas", "KS"},
-      {"Kentucky", "KY"},
-      {"Louisiana", "LA"},
-      {"Maine", "ME"},
-      {"Maryland", "MD"},
-      {"Massachusetts", "MA"},
-      {"Michigan", "MI"},
-      {"Minnesota", "MN"},
-      {"Mississippi", "MS"},
-      {"Missouri", "MO"},
-      {"Montana", "MT"},
-      {"Nebraska", "NE"},
-      {"Nevada", "NV"},
-      {"New Hampshire", "NH"},
-      {"New Jersey", "NJ"},
-      {"New Mexico", "NM"},
-      {"New York", "NY"},
-      {"North Carolina", "NC"},
-      {"North Dakota", "ND"},
-      {"Ohio", "OH"},
-      {"Oklahoma", "OK"},
-      {"Oregon", "OR"},
-      {"Pennsylvania", "PA"},
-      {"Rhode Island", "RI"},
-      {"South Carolina", "SC"},
-      {"South Dakota", "SD"},
-      {"Tennessee", "TN"},
-      {"Texas", "TX"},
-      {"Utah", "UT"},
-      {"Vermont", "VT"},
-      {"Virginia", "VA"},
-      {"Washington", "WA"},
-      {"West Virginia", "WV"},
-      {"Wisconsin", "WI"},
-      {"Wyoming", "WY"}
-    ]
-  end
 end

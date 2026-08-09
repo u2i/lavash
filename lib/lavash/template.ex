@@ -51,41 +51,65 @@ defmodule Lavash.Template do
   - `{:text, content}` for text nodes
   - `{:expr, code, meta}` for Elixir expressions
 
-  Components and slots are skipped (they aren't consumed downstream).
+  Components and slots are skipped by default (they aren't consumed by
+  layer-1 analysis). Pass `descend_components: true` to instead splice
+  their children into the tree transparently — used by the optimistic
+  template analysis so `:if`/`:for` subtrees inside component slots
+  (e.g. a select inside `<.form>`) are still discoverable. The
+  component boundary itself is never emitted; only the host-owned tags
+  within its slots are.
   """
-  def parse(%Parser{nodes: nodes}), do: parse(nodes)
+  def parse(input, opts \\ [])
 
-  def parse(nodes) when is_list(nodes) do
-    Enum.flat_map(nodes, &node_to_element/1)
+  def parse(%Parser{nodes: nodes}, opts), do: parse(nodes, opts)
+
+  def parse(nodes, opts) when is_list(nodes) do
+    descend = Keyword.get(opts, :descend_components, false)
+    Enum.flat_map(nodes, &node_to_element(&1, descend))
   end
 
-  defp node_to_element({:block, :tag, name, attrs, children, open_meta, _close_meta}) do
-    [{:element, name, parse_attrs(attrs), parse(children), open_meta}]
+  defp node_to_element({:block, :tag, name, attrs, children, open_meta, _close_meta}, descend) do
+    [
+      {:element, name, parse_attrs(attrs), parse(children, descend_components: descend),
+       open_meta}
+    ]
   end
 
-  defp node_to_element({:self_close, :tag, name, attrs, meta}) do
+  defp node_to_element({:self_close, :tag, name, attrs, meta}, _descend) do
     [{:element, name, parse_attrs(attrs), [], meta}]
   end
 
-  defp node_to_element({:text, content, _meta}) do
+  defp node_to_element({:text, content, _meta}, _descend) do
     [{:text, content}]
   end
 
-  defp node_to_element({:body_expr, code, meta}) do
+  defp node_to_element({:body_expr, code, meta}, _descend) do
     [{:expr, code, meta}]
   end
 
-  defp node_to_element({:eex, code, meta}) do
+  defp node_to_element({:eex, code, meta}, _descend) do
     [{:expr, code, meta}]
   end
 
-  defp node_to_element({:eex_block, _code, clauses, _meta}) do
-    Enum.flat_map(clauses, fn {clause_nodes, _end_code, _meta} -> parse(clause_nodes) end)
+  defp node_to_element({:eex_block, _code, clauses, _meta}, descend) do
+    Enum.flat_map(clauses, fn {clause_nodes, _end_code, _meta} ->
+      parse(clause_nodes, descend_components: descend)
+    end)
+  end
+
+  # Component/slot blocks: transparent descent when requested — their slot
+  # children are host-owned markup that downstream analysis may care about.
+  defp node_to_element(
+         {:block, comp_type, _name, _attrs, children, _open_meta, _close_meta},
+         true
+       )
+       when comp_type in [:local_component, :remote_component, :slot] do
+    parse(children, descend_components: true)
   end
 
   # Components, slots, eex_comment etc. are not interesting to downstream
   # consumers (AnalyzeTemplate looks at HTML tags and bare exprs).
-  defp node_to_element(_node), do: []
+  defp node_to_element(_node, _descend), do: []
 
   defp parse_attrs(attrs) do
     Enum.flat_map(attrs, fn
