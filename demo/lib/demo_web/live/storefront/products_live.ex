@@ -94,7 +94,12 @@ defmodule DemoWeb.Storefront.ProductsLive do
   end
 
   # Cart calculations
-  calculate :cart_item_count, rx(Enum.reduce(@cart_items, 0, fn item, acc -> acc + item.quantity end))
+  # optimistic: false — depends on @cart_items, a server-side Ash read
+  # that never exists in client state; a client-side recompute can only
+  # crash (undefined.reduce). The count updates via server patches.
+  calculate :cart_item_count,
+            rx(Enum.reduce(@cart_items, 0, fn item, acc -> acc + item.quantity end)),
+            optimistic: false
 
   calculate :cart_subtotal,
             rx(
