@@ -50,6 +50,11 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
     js_code = generate_js_from_dsl(dsl_state, module)
 
     if js_code do
+      # Fail the module's compilation if the generated JS doesn't parse.
+      # Without this, invalid JS surfaces only in the consuming app's
+      # bundler — whose failing watcher keeps serving a stale bundle.
+      Lavash.Optimistic.JsValidator.validate!(js_code, module, env)
+
       # Use Phoenix's colocated system via CompilerHelpers
       # This writes to the same directory as other colocated hooks
       colocated_data = write_colocated_optimistic(env, module, js_code)
