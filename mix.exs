@@ -68,7 +68,14 @@ defmodule Lavash.MixProject do
       # test_helper.exs only for e2e runs because its Application.start raises
       # if Chrome isn't installed (we use Lightpanda, which gets configured
       # before Wallabidi starts).
-      {:wallabidi, "~> 0.4.3", only: :test, runtime: false},
+      # Pinned to the feat/query-wait-option tip for the Query `wait:`
+      # option (per-query wait override; `wait: 0` = "absent right now" —
+      # see u2i/wallabidi#67). Switch back to hex on the next release.
+      {:wallabidi,
+       github: "u2i/wallabidi",
+       ref: "d1909c3ba99a7e8d43ece431386dcc69e76a775f",
+       only: :test,
+       runtime: false},
       {:lightpanda, "~> 0.3", only: :test, runtime: false},
       # Code quality
       {:excoveralls, "~> 0.18", only: :test},

@@ -22,8 +22,8 @@ defmodule Lavash.Integration.DependentSelectTest do
   - `refute_has/2` RETRIES until the element appears (then fails) or
     the wait window closes — it asserts "never appears within the
     window", which would race the legitimate server patch here. The
-    instant "absent right now" check is `all/2` (its `minimum: 0`
-    succeeds immediately), asserted `== []`.
+    instant "absent right now" check is `wait: 0` on the query
+    (wallabidi's `Query` docs cover exactly this trap).
   - Options inside a closed `<select>` don't count as visible; query
     them with `visible: :any`.
 
@@ -64,9 +64,14 @@ defmodule Lavash.Integration.DependentSelectTest do
       # server reply exists yet.
       assert_has(session, region_option("fast-region", "Ontario"))
 
-      # Non-optimistic: nothing Canadian yet (instant check — see
-      # moduledoc for why this must not be refute_has).
-      assert all(session, region_option("slow-region", "Ontario")) == []
+      # Non-optimistic: nothing Canadian yet. wait: 0 makes this an
+      # instant "absent right now" check — a default refute_has would
+      # retry until the legitimate server patch arrives and then fail.
+      refute_has(
+        session,
+        css("#slow-region option", text: "Ontario", visible: :any, wait: 0)
+      )
+
       assert_has(session, region_option("slow-region", "California"))
 
       # After the round-trip both agree on the Canadian list.
