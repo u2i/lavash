@@ -41,8 +41,13 @@ defmodule Lavash.Optimistic.TranspilerTest do
 
     test "map literals" do
       assert Transpiler.to_js("%{}") == "{}"
-      assert Transpiler.to_js("%{a: 1}") == "{:a: 1}"
-      assert Transpiler.to_js("%{a: 1, b: 2}") == "{:a: 1, :b: 2}"
+      assert Transpiler.to_js("%{a: 1}") == ~s|{"a": 1}|
+      assert Transpiler.to_js("%{a: 1, b: 2}") == ~s|{"a": 1, "b": 2}|
+    end
+
+    test "map literals with expression values" do
+      assert Transpiler.to_js(~s|%{role: "user", content: String.trim(@input)}|) ==
+               ~s|{"role": "user", "content": (state.input.trim())}|
     end
   end
 

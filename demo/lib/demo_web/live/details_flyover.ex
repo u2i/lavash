@@ -31,11 +31,8 @@ defmodule DemoWeb.DetailsFlyover do
     width :md
   end
 
-  actions do
-    action :close do
-      set :open, false
-    end
-  end
+  # No explicit :close action needed — the Flyover plugin injects one that
+  # sets the open field to nil (nil = closed; `false` would NOT close it).
 
   template do
     ~H"""
