@@ -788,7 +788,9 @@ defmodule Lavash.Optimistic.Transpiler do
     else
       js_pairs =
         Enum.map(pairs, fn {key, value} ->
-          js_key = if is_atom(key), do: inspect(key), else: ast_to_js(key)
+          # Atom keys become quoted JS string keys: %{role: "x"} -> {"role": "x"}.
+          # inspect(key) would emit Elixir atom syntax (`:role:`) — invalid JS.
+          js_key = if is_atom(key), do: inspect(to_string(key)), else: ast_to_js(key)
           "#{js_key}: #{ast_to_js(value)}"
         end)
 

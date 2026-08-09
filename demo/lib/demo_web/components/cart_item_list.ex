@@ -19,8 +19,9 @@ defmodule DemoWeb.Components.CartItemList do
   # Cart items as array of maps: %{id, quantity, unit_price, product: %{...}}
   state :items, {:array, :map}, from: :ephemeral, default: []
 
-  # Bound to parent's flyover open state - allows closing from within
-  state :open, :boolean, from: :ephemeral, default: false
+  # Bound to parent's flyover open state - allows closing from within.
+  # Overlay convention: nil = closed, truthy = open (`false` does NOT close).
+  state :open, :any, from: :ephemeral, default: nil
 
   # Calculations for display
   calculate :item_count, rx(Enum.reduce(@items || [], 0, fn item, acc -> acc + item.quantity end))
@@ -53,7 +54,7 @@ defmodule DemoWeb.Components.CartItemList do
     end
 
     action :close do
-      set :open, false
+      set :open, nil
     end
   end
 
