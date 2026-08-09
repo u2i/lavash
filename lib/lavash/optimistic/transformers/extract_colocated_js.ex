@@ -272,7 +272,7 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
         end)
 
       # Build animated field metadata for JS
-      # Format: [{ field: "open", phaseField: "open_phase", async: null, preserveDom: false, duration: 200 }, ...]
+      # Format: [{ field: "open", phaseField: "open_phase", async: null, duration: 200 }, ...]
       animated_metadata = build_animated_metadata(animated_fields)
 
       fns_str = Enum.join(fns, ",\n")
@@ -307,7 +307,6 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
         field: to_string(config.field),
         phaseField: to_string(config.phase_field),
         async: config.async && to_string(config.async),
-        preserveDom: config.preserve_dom,
         duration: config.duration,
         type: config.type && to_string(config.type)
       }
