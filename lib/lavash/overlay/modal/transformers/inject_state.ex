@@ -113,15 +113,23 @@ defmodule Lavash.Overlay.Modal.Transformers.InjectState do
     close_set = %Lavash.Actions.Set{field: open_field, value: nil}
 
     if existing_close do
-      # Merge our set into the existing close action
-      updated_close = %{existing_close | sets: [close_set | existing_close.sets || []]}
+      # Merge our set into the existing close action — unless it already
+      # sets the open field itself (avoids a duplicate set, which shows
+      # up as a duplicate object key in the transpiled JS delta).
+      existing_sets = existing_close.sets || []
 
-      Transformer.replace_entity(
-        dsl_state,
-        [:actions],
-        updated_close,
-        &(&1.name == :close)
-      )
+      if Enum.any?(existing_sets, &(&1.field == open_field)) do
+        dsl_state
+      else
+        updated_close = %{existing_close | sets: [close_set | existing_sets]}
+
+        Transformer.replace_entity(
+          dsl_state,
+          [:actions],
+          updated_close,
+          &(&1.name == :close)
+        )
+      end
     else
       # Create new close action
       close_action = %Lavash.Actions.Action{
