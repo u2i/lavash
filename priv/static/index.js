@@ -30,6 +30,7 @@ export {
   overlays,
   getState,
   getHooks,
+  registerColocated,
   SyncedVar,
   OverlayAnimator
 } from "./lavash.js";
