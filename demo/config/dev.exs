@@ -52,7 +52,10 @@ config :demo, DemoWeb.Endpoint,
 # Watch static and templates for browser reloading.
 # Also watch the lavash path dependency for development
 config :demo, DemoWeb.Endpoint,
-  reloadable_compilers: [:elixir, :app, :phoenix_colocated],
+  # :phoenix_live_view rebuilds the colocated-JS manifest after elixir
+  # recompiles. (There is no :phoenix_colocated compiler — a wrong name
+  # here is silently ignored and the manifest goes stale on live reload.)
+  reloadable_compilers: [:elixir, :app, :phoenix_live_view],
   reloadable_apps: [:demo, :lavash],
   live_reload: [
     web_console_logger: true,

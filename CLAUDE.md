@@ -53,7 +53,7 @@ The demo app has these configurations:
 
 - `config :phoenix_live_view, :colocated_js, target_directory: "assets/vendor/phoenix-colocated"` - writes hooks where esbuild can see them
 - `reloadable_apps: [:demo, :lavash]` - Phoenix recompiles lavash on changes
-- `reloadable_compilers: [:elixir, :app, :phoenix_colocated]` - includes the colocated hooks compiler
+- `reloadable_compilers: [:elixir, :app, :phoenix_live_view]` - includes the colocated hooks compiler (the compiler is named `:phoenix_live_view`; there is no `:phoenix_colocated` compiler)
 - esbuild `NODE_PATH` includes `assets/vendor/` to resolve `phoenix-colocated/lavash`
 
 ### Manual recompile (if needed)
