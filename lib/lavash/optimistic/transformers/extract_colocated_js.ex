@@ -12,6 +12,8 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
 
   use Spark.Dsl.Transformer
 
+  require Logger
+
   alias Lavash.Component.CompilerHelpers
   alias Lavash.Form.ValidationJs
   alias Lavash.Optimistic.ActionJs
@@ -222,8 +224,15 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
          subtree_derives: subtree_derives,
          module: module
        }) do
-    calculation_fns =
-      Enum.map(calculations, &generate_calculation_js(&1, defrx_map)) |> Enum.filter(& &1)
+    # Demote untranspilable optimistic calcs to server-only, loudly:
+    # a calc whose transpiled body contains the untranspilable marker
+    # would evaluate to `undefined` client-side and clobber the
+    # server-computed value on every recompute (issue #43). Demoted
+    # calcs are excluded from the generated fns, derive names, AND the
+    # dependency graph — the server value stays authoritative and
+    # client-readable.
+    {calculations, calculation_fns} =
+      split_transpilable_calculations(calculations, defrx_map, module)
 
     action_fns = Enum.map(optimistic_actions, &generate_action_js/1) |> Enum.filter(& &1)
 
@@ -439,7 +448,20 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
               js_expr
           end
 
-        "#{key}: #{js_expr}"
+        if Lavash.Optimistic.Transpiler.untranspilable_output?(js_expr) do
+          # Shipping this would apply `undefined` to the field on every
+          # optimistic run of the action (issue #43). Skip the set —
+          # the server still applies it — and say so.
+          Logger.warning(
+            "[lavash] set :#{field} in an optimistic action uses rx(#{source}) which is " <>
+              "not transpilable; the set is skipped client-side and only applies after " <>
+              "the server round-trip."
+          )
+
+          nil
+        else
+          "#{key}: #{js_expr}"
+        end
 
       :unknown ->
         nil
@@ -466,6 +488,32 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
     """
   end
 
+  # Transpile each optimistic calculation; calcs whose JS contains the
+  # untranspilable marker are demoted (dropped from the client bundle)
+  # with a warning. Returns {kept_calculations, generated_fns} so the
+  # caller builds derive names and the graph from the SAME kept set.
+  defp split_transpilable_calculations(calculations, defrx_map, module) do
+    {kept, fns} =
+      Enum.reduce(calculations, {[], []}, fn calc, {kept, fns} ->
+        case generate_calculation_js(calc, defrx_map) do
+          {:ok, js} ->
+            {[calc | kept], [js | fns]}
+
+          {:untranspilable, _js} ->
+            Logger.warning(
+              "[lavash] #{inspect(module)}: calculate :#{calc.name} is marked optimistic " <>
+                "but rx(#{calc.rx.source}) is not transpilable; demoting to server-only. " <>
+                "The value still updates via server patches. Mark it `optimistic: false` " <>
+                "to silence this warning."
+            )
+
+            {kept, fns}
+        end
+      end)
+
+    {Enum.reverse(kept), Enum.reverse(fns)}
+  end
+
   defp generate_calculation_js(calc, defrx_map) do
     name = calc.name
     source = calc.rx.source
@@ -477,11 +525,17 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
     js_expr = Lavash.Optimistic.Transpiler.to_js(expanded_source)
     method_key = Lavash.Optimistic.Transpiler.js_field_key(name)
 
-    """
+    js = """
       #{method_key}(state) {
         return #{js_expr};
       }
     """
+
+    if Lavash.Optimistic.Transpiler.untranspilable_output?(js_expr) do
+      {:untranspilable, js}
+    else
+      {:ok, js}
+    end
   end
 
   # Expand defrx function calls in the source string

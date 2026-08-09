@@ -39,6 +39,33 @@ defmodule Lavash.Optimistic.TranspilerTest do
       assert Transpiler.to_js(~s|["a", "b"]|) == ~s|["a", "b"]|
     end
 
+    test "unless negates the condition" do
+      assert Transpiler.to_js(~s|unless @open, do: "hidden", else: ""|) ==
+               ~s|(!(state.open) ? "hidden" : "")|
+
+      assert Transpiler.to_js(~s|unless @open, do: "hidden"|) ==
+               ~s|(!(state.open) ? "hidden" : null)|
+    end
+
+    test "unless inside string concatenation (issue #43 regression)" do
+      # The checkout address-list class expression: must keep both the
+      # prefix and the negation.
+      js = Transpiler.to_js(~s|"space-y-2" <> unless @ship_to_expanded, do: " hidden", else: ""|)
+      assert js == ~s|("space-y-2" + (!(state.ship_to_expanded) ? " hidden" : ""))|
+      refute Transpiler.untranspilable_output?(js)
+    end
+
+    test "unless validates as transpilable" do
+      assert Transpiler.validate(~s|unless @open, do: "hidden", else: ""|) == :ok
+      assert Transpiler.validate(~s|unless @open, do: "hidden"|) == :ok
+    end
+
+    test "untranspilable_output? detects the fallback marker" do
+      assert Transpiler.to_js("Ash.read!(@q)") |> Transpiler.untranspilable_output?()
+      refute Transpiler.untranspilable_output?(Transpiler.to_js("@count + 1"))
+      refute Transpiler.untranspilable_output?(nil)
+    end
+
     test "map literals" do
       assert Transpiler.to_js("%{}") == "{}"
       assert Transpiler.to_js("%{a: 1}") == ~s|{"a": 1}|

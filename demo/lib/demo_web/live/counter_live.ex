@@ -6,8 +6,10 @@ defmodule DemoWeb.CounterLive do
 
   calculate :doubled, rx(@count * @multiplier)
 
-  # Async calculation - simulates slow computation, returns AsyncResult
-  calculate :fact, rx(factorial_slow(max(@count, 0))), async: true
+  # Async calculation - simulates slow computation, returns AsyncResult.
+  # optimistic: false — the computation is server-only by design; the
+  # client reads the server-fed AsyncResult.
+  calculate :fact, rx(factorial_slow(max(@count, 0))), async: true, optimistic: false
 
   actions do
     action :increment do
