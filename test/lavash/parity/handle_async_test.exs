@@ -19,22 +19,47 @@ defmodule Lavash.Parity.HandleAsyncTest do
     {"lavash", "/parity/lavash/handle_async"}
   ]
 
+  # `render_async(view, timeout)` only waits for async work that has
+  # ALREADY been registered — under full-suite CPU load the async can
+  # start after the check, making render_async return immediately and
+  # the assertion flake (issue #42). Poll with a deadline instead:
+  # has_element?/3 re-renders, so the loop observes the resolution
+  # whenever it lands.
+  defp assert_eventually(fun, timeout \\ 5_000) do
+    deadline = System.monotonic_time(:millisecond) + timeout
+    poll_until(fun, deadline)
+  end
+
+  defp poll_until(fun, deadline) do
+    cond do
+      fun.() ->
+        :ok
+
+      System.monotonic_time(:millisecond) < deadline ->
+        Process.sleep(50)
+        poll_until(fun, deadline)
+
+      true ->
+        # Final call outside the rescue window so the failure message
+        # comes from the actual assertion.
+        assert fun.()
+    end
+  end
+
   for {label, path} <- @paths do
     @path path
 
     describe "assign_async → AsyncResult template branch (#{label})" do
       test "report resolves and renders", %{conn: conn} do
         {:ok, view, _html} = live(conn, @path)
-        render_async(view, 500)
-        assert has_element?(view, "#report", "Report ready")
+        assert_eventually(fn -> has_element?(view, "#report", "Report ready") end)
       end
     end
 
     describe "start_async + handle_async (#{label})" do
       test "fetch_count result lands in handle_async and assigns", %{conn: conn} do
         {:ok, view, _html} = live(conn, @path)
-        render_async(view, 500)
-        assert has_element?(view, "#fetch-count", "42")
+        assert_eventually(fn -> has_element?(view, "#fetch-count", "42") end)
       end
     end
   end

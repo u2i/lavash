@@ -299,6 +299,29 @@ defmodule Lavash.Optimistic.Transpiler do
     "(#{cond_js} ? #{do_js} : null)"
   end
 
+  # max/min -> Math.max/Math.min
+  def ast_to_js({:max, _, [a, b]}) do
+    "Math.max(#{ast_to_js(a)}, #{ast_to_js(b)})"
+  end
+
+  def ast_to_js({:min, _, [a, b]}) do
+    "Math.min(#{ast_to_js(a)}, #{ast_to_js(b)})"
+  end
+
+  # unless -> negated ternary
+  def ast_to_js({:unless, _, [condition, [do: do_clause, else: else_clause]]}) do
+    cond_js = ast_to_js(condition)
+    do_js = ast_to_js(do_clause)
+    else_js = ast_to_js(else_clause)
+    "(!(#{cond_js}) ? #{do_js} : #{else_js})"
+  end
+
+  def ast_to_js({:unless, _, [condition, [do: do_clause]]}) do
+    cond_js = ast_to_js(condition)
+    do_js = ast_to_js(do_clause)
+    "(!(#{cond_js}) ? #{do_js} : null)"
+  end
+
   # cond -> nested ternaries
   # cond do
   #   condition1 -> result1
@@ -798,10 +821,23 @@ defmodule Lavash.Optimistic.Transpiler do
     end
   end
 
+  @untranspilable_marker "undefined /* untranspilable"
+
   # Fallback - return undefined for untranspilable expressions
   def ast_to_js(other) do
     safe_repr = inspect(other) |> String.replace(~r/[{}:\[\]]/, "_")
-    "(undefined /* untranspilable: #{safe_repr} */)"
+    "(#{@untranspilable_marker}: #{safe_repr} */)"
+  end
+
+  @doc """
+  True when a transpiled JS string contains the untranspilable-fallback
+  marker anywhere in it. Emission paths (calcs, action sets, attr
+  derives) use this to demote to server-only WITH a warning instead of
+  shipping JS that evaluates to `undefined` — see issue #43.
+  """
+  @spec untranspilable_output?(String.t() | nil) :: boolean()
+  def untranspilable_output?(js) do
+    is_binary(js) and String.contains?(js, @untranspilable_marker)
   end
 
   # Helper to insert piped value into a function call
@@ -887,6 +923,21 @@ defmodule Lavash.Optimistic.Transpiler do
     end
   end
 
+  def validate_ast({:unless, _, [condition, [do: do_clause, else: else_clause]]}) do
+    with :ok <- validate_ast(condition),
+         :ok <- validate_ast(do_clause),
+         :ok <- validate_ast(else_clause) do
+      :ok
+    end
+  end
+
+  def validate_ast({:unless, _, [condition, [do: do_clause]]}) do
+    with :ok <- validate_ast(condition),
+         :ok <- validate_ast(do_clause) do
+      :ok
+    end
+  end
+
   # cond expression
   def validate_ast({:cond, _, [[do: clauses]]}) do
     Enum.reduce_while(clauses, :ok, fn {:->, _, [[condition], result]}, _acc ->
@@ -897,6 +948,14 @@ defmodule Lavash.Optimistic.Transpiler do
         error -> {:halt, error}
       end
     end)
+  end
+
+  # max/2 and min/2
+  def validate_ast({op, _, [left, right]}) when op in [:max, :min] do
+    with :ok <- validate_ast(left),
+         :ok <- validate_ast(right) do
+      :ok
+    end
   end
 
   # rem/2

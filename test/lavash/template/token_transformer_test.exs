@@ -916,4 +916,60 @@ defmodule Lavash.Template.TokenTransformerTest do
       refute log =~ "not a declared state field"
     end
   end
+
+  describe "reactive attr derive injection" do
+    # Issue #43: derives must attach only to the element whose exact
+    # attribute expression they were extracted from. Matching by
+    # dependency overlap attached a sibling's derive to any element
+    # sharing an optimistic field — the checkout address list inherited
+    # the toggle arrow's "hidden" class derive and vanished.
+
+    @span_expr ~s|if @ship_to_expanded, do: "hidden"|
+    @div_expr ~s|"space-y-2" <> some_helper(@ship_to_expanded)|
+
+    defp arrow_derive do
+      %{
+        name: "__attr_0_class",
+        js_expr: ~s|(state.ship_to_expanded ? "hidden" : null)|,
+        deps: ["ship_to_expanded"],
+        attr: "class",
+        source: @span_expr
+      }
+    end
+
+    defp attr_names(attrs), do: Enum.map(attrs, fn {name, _value, _meta} -> name end)
+
+    test "injects onto the element with the exact source expression" do
+      tokens = [tag("span", [expr_attr("class", @span_expr)])]
+      metadata = optimistic_metadata([:ship_to_expanded], attr_derives: [arrow_derive()])
+
+      assert [{:block, :tag, "span", attrs, _, _, _}] = transform(tokens, metadata)
+      assert "data-lavash-attr-class" in attr_names(attrs)
+    end
+
+    test "matches with normalized whitespace" do
+      tokens = [tag("span", [expr_attr("class", "  if @ship_to_expanded,\n  do: \"hidden\"  ")])]
+      metadata = optimistic_metadata([:ship_to_expanded], attr_derives: [arrow_derive()])
+
+      assert [{:block, :tag, "span", attrs, _, _, _}] = transform(tokens, metadata)
+      assert "data-lavash-attr-class" in attr_names(attrs)
+    end
+
+    test "does not inject onto a different expression sharing the same dep (issue #43)" do
+      tokens = [tag("div", [expr_attr("class", @div_expr)])]
+      metadata = optimistic_metadata([:ship_to_expanded], attr_derives: [arrow_derive()])
+
+      assert [{:block, :tag, "div", attrs, _, _, _}] = transform(tokens, metadata)
+      refute "data-lavash-attr-class" in attr_names(attrs)
+    end
+
+    test "legacy derives without a source fall back to dep matching" do
+      derive = arrow_derive() |> Map.delete(:source)
+      tokens = [tag("div", [expr_attr("class", @div_expr)])]
+      metadata = optimistic_metadata([:ship_to_expanded], attr_derives: [derive])
+
+      assert [{:block, :tag, "div", attrs, _, _, _}] = transform(tokens, metadata)
+      assert "data-lavash-attr-class" in attr_names(attrs)
+    end
+  end
 end

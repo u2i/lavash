@@ -37,6 +37,8 @@ defmodule Lavash.Optimistic.Transformers.AnalyzeOptimisticTemplate do
 
   use Spark.Dsl.Transformer
 
+  require Logger
+
   alias Spark.Dsl.Transformer
 
   def after?(Lavash.Component.Transformers.AnalyzeTemplate), do: true
@@ -68,7 +70,8 @@ defmodule Lavash.Optimistic.Transformers.AnalyzeOptimisticTemplate do
     defrx_map = Lavash.Optimistic.Transformers.ExpandDefrx.get_defrx_map(dsl_state)
 
     # Extract attr derives from the raw source string
-    dsl_state = maybe_extract_attr_derives(dsl_state, template_source, all_optimistic_names)
+    dsl_state =
+      maybe_extract_attr_derives(dsl_state, template_source, all_optimistic_names, module)
 
     # Extract subtree derives and inject data-lavash-html onto block nodes.
     # This also validates that every optimistic-dependent expression in a
@@ -130,9 +133,9 @@ defmodule Lavash.Optimistic.Transformers.AnalyzeOptimisticTemplate do
   # Attr derive extraction
   # ============================================
 
-  defp maybe_extract_attr_derives(dsl_state, template_source, all_optimistic_names) do
+  defp maybe_extract_attr_derives(dsl_state, template_source, all_optimistic_names, module) do
     if template_source do
-      attr_derives = extract_attr_derives(template_source, all_optimistic_names)
+      attr_derives = extract_attr_derives(template_source, all_optimistic_names, module)
 
       if attr_derives != [] do
         Transformer.persist(dsl_state, :lavash_attr_derives, attr_derives)
@@ -144,7 +147,7 @@ defmodule Lavash.Optimistic.Transformers.AnalyzeOptimisticTemplate do
     end
   end
 
-  defp extract_attr_derives(template_source, optimistic_names) do
+  defp extract_attr_derives(template_source, optimistic_names, module) do
     Regex.scan(~r/(disabled|class|hidden)=\{([^}]+)\}/, template_source)
     |> Enum.with_index()
     |> Enum.flat_map(fn {[_full, attr_name, expr], index} ->
@@ -164,11 +167,24 @@ defmodule Lavash.Optimistic.Transformers.AnalyzeOptimisticTemplate do
                 name: derive_name,
                 js_expr: js_expr,
                 deps: Enum.map(deps, &to_string/1),
-                attr: attr_name
+                attr: attr_name,
+                # Exact source of the extracted expression — the token
+                # transformer matches derives to elements by this, never
+                # by dependency overlap (issue #43).
+                source: normalize_expr_source(expr)
               }
             ]
 
-          :error ->
+          {:error, reason} ->
+            # Loud demotion: the attribute references optimistic state
+            # but can't run client-side. It stays server-rendered —
+            # correct, just not instant — and the author should know.
+            Logger.warning(
+              "[lavash] #{inspect(module)}: #{attr_name}={#{String.trim(expr)}} references " <>
+                "optimistic state but is not transpilable (#{reason}); the attribute stays " <>
+                "server-rendered and will not update optimistically."
+            )
+
             []
         end
       else
@@ -317,15 +333,28 @@ defmodule Lavash.Optimistic.Transformers.AnalyzeOptimisticTemplate do
   end
 
   defp try_transpile(expr) do
-    js = Lavash.Optimistic.Transpiler.to_js(String.trim(expr))
+    trimmed = String.trim(expr)
+    js = Lavash.Optimistic.Transpiler.to_js(trimmed)
 
-    if js && !String.contains?(js, "undefined /* untranspilable") do
-      {:ok, js}
-    else
-      :error
+    cond do
+      is_nil(js) ->
+        {:error, "no output"}
+
+      Lavash.Optimistic.Transpiler.untranspilable_output?(js) ->
+        case Lavash.Optimistic.Transpiler.validate(trimmed) do
+          {:error, reason} -> {:error, reason}
+          :ok -> {:error, "unsupported construct"}
+        end
+
+      true ->
+        {:ok, js}
     end
   rescue
-    _ -> :error
+    e -> {:error, Exception.message(e)}
+  end
+
+  defp normalize_expr_source(expr) do
+    expr |> String.replace(~r/\s+/, " ") |> String.trim()
   end
 
   # ============================================

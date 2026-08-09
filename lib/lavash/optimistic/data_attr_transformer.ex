@@ -381,10 +381,7 @@ defmodule Lavash.Optimistic.DataAttrTransformer do
       else
         case AttrHelpers.get_attr_value(acc, derive.attr) do
           {:expr, expr, _meta} ->
-            deps = derive.deps
-            has_dep = Enum.any?(deps, fn dep -> String.contains?(expr, "@#{dep}") end)
-
-            if has_dep do
+            if derive_matches_expr?(derive, expr) do
               AttrHelpers.add_attr_if_missing(acc, lavash_attr, {:string, derive.name})
             else
               acc
@@ -395,6 +392,28 @@ defmodule Lavash.Optimistic.DataAttrTransformer do
         end
       end
     end)
+  end
+
+  # A derive belongs to an element only when it was extracted from this
+  # element's exact attribute expression. Matching by dependency overlap
+  # (the old behavior) attached a derive from ANOTHER element whenever
+  # two attr expressions shared an optimistic field — e.g. an element
+  # whose own expression was untranspilable (and therefore had no
+  # derive) inherited a sibling's derive and had its attribute
+  # overwritten with the sibling's value (issue #43: the checkout
+  # address list got the toggle arrow's "hidden" class).
+  defp derive_matches_expr?(%{source: source}, expr) when is_binary(source) do
+    normalize_expr(expr) == source
+  end
+
+  # Legacy derives without a recorded source (externally produced):
+  # fall back to the dependency-overlap heuristic.
+  defp derive_matches_expr?(derive, expr) do
+    Enum.any?(derive.deps, fn dep -> String.contains?(expr, "@#{dep}") end)
+  end
+
+  defp normalize_expr(expr) do
+    expr |> String.replace(~r/\s+/, " ") |> String.trim()
   end
 
   # ============================================
