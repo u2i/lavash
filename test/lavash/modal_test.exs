@@ -1,6 +1,38 @@
 defmodule Lavash.ModalTest do
   use Lavash.ConnCase, async: false
 
+  describe "close_on_escape / close_on_backdrop configuration" do
+    # Regression for issue #24: RenderGenerator read the persisted option
+    # with `|| true`, so a configured `false` became `false || true` and
+    # both options were impossible to turn off.
+
+    test "close_on_escape false renders panel without escape handler", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/magic/modal-no-close-host")
+
+      panel = view |> element("#test-modal-no-close-modal-panel_content") |> render()
+      refute panel =~ "phx-window-keydown"
+      refute panel =~ "phx-key"
+    end
+
+    test "close_on_backdrop false renders overlay without click handler", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/magic/modal-no-close-host")
+
+      overlay = view |> element("#test-modal-no-close-modal-overlay") |> render()
+      refute overlay =~ "phx-click"
+    end
+
+    test "defaults still render escape and backdrop handlers", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/magic/modal-host")
+
+      panel = view |> element("#test-modal-modal-panel_content") |> render()
+      assert panel =~ "phx-window-keydown"
+      assert panel =~ ~s(phx-key="Escape")
+
+      overlay = view |> element("#test-modal-modal-overlay") |> render()
+      assert overlay =~ "phx-click"
+    end
+  end
+
   describe "modal render optimization" do
     setup %{conn: conn} do
       # Register the test process so the modal component can find it

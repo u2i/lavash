@@ -65,8 +65,20 @@ defmodule Lavash.Overlay.Flyover.RenderGenerator do
     env = Transformer.get_persisted(dsl_state, :env)
     open_field = Transformer.get_persisted(dsl_state, :flyover_open_field) || :open
     slide_from = Transformer.get_persisted(dsl_state, :flyover_slide_from) || :right
-    close_on_escape = Transformer.get_persisted(dsl_state, :flyover_close_on_escape) || true
-    close_on_backdrop = Transformer.get_persisted(dsl_state, :flyover_close_on_backdrop) || true
+    # `false` is a valid configured value — only default to true when unset,
+    # so don't use `||` here (false || true would discard the user's config)
+    close_on_escape =
+      case Transformer.get_persisted(dsl_state, :flyover_close_on_escape) do
+        nil -> true
+        value -> value
+      end
+
+    close_on_backdrop =
+      case Transformer.get_persisted(dsl_state, :flyover_close_on_backdrop) do
+        nil -> true
+        value -> value
+      end
+
     width = Transformer.get_persisted(dsl_state, :flyover_width) || :md
     height = Transformer.get_persisted(dsl_state, :flyover_height) || :md
     async_assign = Transformer.get_persisted(dsl_state, :flyover_async_assign)
