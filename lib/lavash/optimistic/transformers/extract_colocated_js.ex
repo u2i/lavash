@@ -215,7 +215,7 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
          optimistic_actions: optimistic_actions,
          attr_derives: attr_derives,
          subtree_derives: subtree_derives,
-         module: _module
+         module: module
        }) do
     calculation_fns =
       Enum.map(calculations, &generate_calculation_js(&1, defrx_map)) |> Enum.filter(& &1)
@@ -289,13 +289,22 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
           dependents: graph_entries.dependents
         })
 
+      # The module self-registers into window.Lavash.optimistic at import
+      # time, so a bare side-effect import of the colocated manifest
+      # (`import "phoenix-colocated/my_app"`) is all an app needs — no
+      # registerColocated/registerOptimistic wiring. The window guards
+      # make import order relative to the lavash package irrelevant.
       """
-      export default {
+      const fns = {
       #{fns_str}#{if fns_str != "", do: ",", else: ""}
       __derives__: #{derives_str},
       __graph__: #{graph_json},
       __animated__: #{animated_str}
       };
+      window.Lavash = window.Lavash || {};
+      window.Lavash.optimistic = window.Lavash.optimistic || {};
+      window.Lavash.optimistic[#{Jason.encode!(inspect(module))}] = fns;
+      export default fns;
       """
     end
   end
