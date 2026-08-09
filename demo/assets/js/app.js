@@ -30,15 +30,17 @@ window.morphdom = morphdom
 // Lavash: import the decorator factory + helpers. Importing `lavash`
 // also installs the layer-2 sync listeners (`phx:_lavash_sync` etc.)
 // as a side effect, so we don't need to wire those up manually.
-import { lavash, defaultConcerns, getHooks, getState } from "lavash"
+import { lavash, defaultConcerns, getHooks, getState, registerColocated } from "lavash"
 
 // Generated optimistic fns — auto-extracted at compile time by
-// phoenix-colocated. The lavash package's own colocated JS runs its
-// own registerOptimistic at load time; demo-defined optimistic fns
-// (e.g. `optimistic: true` state in demo components) live in the
-// demo's colocated bundle.
-import "phoenix-colocated/lavash"
-import "phoenix-colocated/demo"
+// phoenix-colocated, exported by each manifest under `optimistic`,
+// keyed by module name. They MUST be registered into the lavash
+// runtime: a bare side-effect import registers nothing, and every
+// optimistic action silently degrades to a server round-trip.
+import * as lavashColocated from "phoenix-colocated/lavash"
+import * as demoColocated from "phoenix-colocated/demo"
+registerColocated(lavashColocated)
+registerColocated(demoColocated)
 
 // Plain LiveView demo hooks (hand-coded, no DSL)
 import PlainCounter from "./plain_counter_hook.js"

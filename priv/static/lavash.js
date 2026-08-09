@@ -41,6 +41,33 @@ window.Lavash.registerOptimistic = function(moduleName, fns) {
   window.Lavash.optimistic[moduleName] = fns;
 };
 
+/**
+ * Register a phoenix-colocated manifest's generated optimistic functions.
+ *
+ * The colocated manifest exports the per-module optimistic fns under the
+ * `optimistic` named export, keyed by module name. They must land in
+ * `window.Lavash.optimistic` for the hook's loadGeneratedFunctions to
+ * find them — WITHOUT this call, a bare side-effect import of the
+ * manifest silently registers nothing and every optimistic action
+ * degrades to a server round-trip (looks fine locally, laggy under
+ * real latency).
+ *
+ * Usage:
+ *
+ *     import * as colocated from "phoenix-colocated/my_app";
+ *     import { registerColocated } from "lavash";
+ *     registerColocated(colocated);
+ *
+ * Accepts the whole namespace object (tolerates a manifest with no
+ * optimistic entries) or the optimistic map itself.
+ */
+export function registerColocated(manifest) {
+  const fns = manifest?.optimistic || manifest || {};
+  for (const [moduleName, moduleFns] of Object.entries(fns)) {
+    window.Lavash.optimistic[moduleName] = moduleFns;
+  }
+}
+
 // ----- Public API -----
 
 export { lavash } from "./pipeline.js";
