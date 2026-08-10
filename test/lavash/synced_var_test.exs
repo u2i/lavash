@@ -3,16 +3,22 @@ defmodule Lavash.SyncedVarTest do
   Unit tests for priv/static/synced_var.js, run in Deno via DenoRider.
 
   Covers pure logic the browser e2e can't pin down deterministically:
-  deepEqual value semantics and the mount-time seed() state (issue #30).
+  deepEqual value semantics, the mount-time seed() state (issue #30),
+  and the shared animation-speed multiplier (issue #28).
   """
   use ExUnit.Case, async: false
 
   @moduletag :integration
 
-  # Strip ES module syntax so the file evaluates as a plain script.
+  # Strip ES module syntax so the files evaluate as plain scripts.
   @source File.read!("priv/static/synced_var.js")
           |> String.replace("export default", "// export default")
           |> String.replace("export ", "")
+
+  @animator_source File.read!("priv/static/overlay_animator.js")
+                   |> String.replace(~r/^import .*$/m, "")
+                   |> String.replace("export default", "// export default")
+                   |> String.replace("export ", "")
 
   setup_all do
     {:ok, pid} = DenoRider.start()
@@ -163,6 +169,73 @@ defmodule Lavash.SyncedVarTest do
         )
 
       assert result == %{"changed" => false, "pending" => false, "phase" => "visible"}
+    end
+  end
+
+  describe "animationSpeed (issue #28)" do
+    test "defaults to 1; reads window.Lavash.ANIMATION_SPEED; rejects invalid values", ctx do
+      result =
+        run_js(
+          """
+          const before = animationSpeed();
+          window.Lavash = window.Lavash || {};
+          window.Lavash.ANIMATION_SPEED = 0.1;
+          const slowed = animationSpeed();
+          window.Lavash.ANIMATION_SPEED = 0;
+          const zero = animationSpeed();
+          window.Lavash.ANIMATION_SPEED = "fast";
+          const nonNumber = animationSpeed();
+          delete window.Lavash.ANIMATION_SPEED;
+          return { before, slowed, zero, nonNumber };
+          """,
+          ctx
+        )
+
+      assert result == %{"before" => 1, "slowed" => 0.1, "zero" => 1, "nonNumber" => 1}
+    end
+
+    test "OverlayAnimator duration scales live with the multiplier", %{pid: pid} do
+      js = """
+      (function() {
+        globalThis.window = globalThis.window || {};
+        #{@source}
+        #{@animator_source}
+        const el = { id: "m", querySelector: () => null };
+        const anim = new OverlayAnimator(el, { type: "modal", duration: 200 });
+        const normal = anim.duration;
+        window.Lavash.ANIMATION_SPEED = 0.5;
+        const slowed = anim.duration;
+        delete window.Lavash.ANIMATION_SPEED;
+        return { normal, slowed };
+      })()
+      """
+
+      assert {:ok, result} = DenoRider.eval(js, pid: pid)
+      assert result == %{"normal" => 200, "slowed" => 400}
+    end
+
+    test "phase-machine fallback timeout scales with the multiplier", ctx do
+      # 2x speed → the entering fallback (duration/speed + 50) fires at
+      # ~150ms instead of ~250ms. Sample the phase at ~200ms: only the
+      # scaled timeout has already advanced entering → visible.
+      result =
+        run_js(
+          """
+          window.Lavash = window.Lavash || {};
+          window.Lavash.ANIMATION_SPEED = 2;
+          const sv = new SyncedVar(null, { animated: { duration: 200 } });
+          sv.setOptimistic("open");
+          return new Promise((resolve) => {
+            setTimeout(() => {
+              delete window.Lavash.ANIMATION_SPEED;
+              resolve(sv.getPhase());
+            }, 200);
+          });
+          """,
+          ctx
+        )
+
+      assert result == "visible"
     end
   end
 end

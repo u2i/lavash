@@ -74,7 +74,12 @@ class EnteringPhase extends Phase {
   onEnter() {
     this.sv._setPhase("entering");
     this.sv._notifyDelegate("onEntering");
-    this._timeout = setTimeout(() => this.onTransitionEnd(), this.sv._animDuration + 50);
+    // Fallback if no transitionend fires; scaled like the animation itself
+    // so the debug speed knob keeps phases and visuals in sync (issue #28).
+    this._timeout = setTimeout(
+      () => this.onTransitionEnd(),
+      this.sv._animDuration / animationSpeed() + 50
+    );
   }
   onExit() {
     if (this._timeout) clearTimeout(this._timeout);
@@ -131,9 +136,13 @@ class ExitingPhase extends Phase {
   onEnter() {
     this.sv._setPhase("exiting");
     this.sv._notifyDelegate("onExiting");
-    this._timeout = setTimeout(() => {
-      this.sv._transitionTo(this.sv._phases.idle);
-    }, this.sv._animDuration + 50);
+    // Fallback timeout scaled like the animation itself (issue #28).
+    this._timeout = setTimeout(
+      () => {
+        this.sv._transitionTo(this.sv._phases.idle);
+      },
+      this.sv._animDuration / animationSpeed() + 50
+    );
   }
   onExit() {
     if (this._timeout) clearTimeout(this._timeout);
@@ -141,6 +150,20 @@ class ExitingPhase extends Phase {
   onOpen() {
     this.sv._transitionTo(this.sv._phases.entering);
   }
+}
+
+/**
+ * Debug: global animation speed multiplier (1 = normal, 0.1 = 10x slower,
+ * 2 = 2x faster). Shared by OverlayAnimator's transition durations and the
+ * phase machine's fallback timeouts so slowed-down animations and phase
+ * transitions stay in sync (issue #28). Read at use time, so it can be
+ * flipped live from the console:
+ *
+ *   window.Lavash.ANIMATION_SPEED = 0.1
+ */
+export function animationSpeed() {
+  const s = globalThis.window?.Lavash?.ANIMATION_SPEED;
+  return typeof s === "number" && s > 0 ? s : 1;
 }
 
 export function deepEqual(a, b) {

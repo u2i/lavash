@@ -1,5 +1,4 @@
-// Debug: Animation speed multiplier (1 = normal, 0.1 = 10x slower, 2 = 2x faster)
-const ANIMATION_SPEED = 1;
+import { animationSpeed } from "./synced_var.js";
 
 const OVERLAY_OPACITY = "0.5";
 
@@ -47,9 +46,6 @@ export class OverlayAnimator {
     this.type = config.type || "modal";
     this.slideFrom = config.slideFrom || "right";
 
-    // Apply speed multiplier: lower = slower (0.1 = 10x slower)
-    this.duration = (config.duration || 200) / ANIMATION_SPEED;
-
     this._initAnimationConfig();
 
     // Cache element references
@@ -75,6 +71,16 @@ export class OverlayAnimator {
     this._transitionHandler = null;
     this._completionTimer = null;
     this._sizeLockApplied = false;
+  }
+
+  /**
+   * Animation duration with the shared debug speed multiplier applied
+   * (issue #28). A getter so `window.Lavash.ANIMATION_SPEED` can be
+   * flipped live from the console — every transition string and fallback
+   * timer reads the current value.
+   */
+  get duration() {
+    return (this.config.duration || 200) / animationSpeed();
   }
 
   /**
