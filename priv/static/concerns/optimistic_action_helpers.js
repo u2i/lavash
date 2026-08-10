@@ -78,6 +78,15 @@ export function runOptimisticAction(actionName, value, hook) {
 
   if (!fn) return;
 
+  // Actions with appends are provisional: the predicted row carries a
+  // temp key, so the next server push (the same event's re-read, with
+  // the real record) must replace it rather than be rejected as a
+  // mismatched prediction. seed() applies the value without marking
+  // the var pending.
+  const provisional =
+    hook.moduleName &&
+    (window.Lavash.optimistic[hook.moduleName]?.__provisional__ || []).includes(actionName);
+
   hook.clientVersion++;
 
   try {
@@ -89,7 +98,11 @@ export function runOptimisticAction(actionName, value, hook) {
       const syncedVar = hook.store.get(key, null, (newVal) => {
         hook.state[key] = newVal;
       });
-      syncedVar.setOptimistic(val);
+      if (provisional) {
+        syncedVar.seed(val);
+      } else {
+        syncedVar.setOptimistic(val);
+      }
       changedFields.push(key);
     }
 

@@ -110,6 +110,34 @@ defmodule Lavash.ClientStateTest do
       assert Ash.get!(Item, item.id).quantity == 3
     end
 
+    test "mutate's :remove branch destroys at the boundary", %{conn: conn} do
+      cart = unique_cart()
+      item = create_item!(cart, "Beans", 1, "4.00")
+
+      {:ok, view, _html} = live(conn, "/magic/client-cart?cart_id=#{cart}")
+
+      html = view |> element("#item-#{item.id} button", "-") |> render_click()
+
+      refute html =~ "item-#{item.id}"
+      assert {:error, _} = Ash.get(Item, item.id)
+    end
+
+    test "append creates the record and the response carries the real row", %{conn: conn} do
+      cart = unique_cart()
+
+      {:ok, view, _html} = live(conn, "/magic/client-cart?cart_id=#{cart}")
+
+      html = view |> element("#add-widget") |> render_click()
+
+      assert html =~ "Widget"
+      refute html =~ "__lavash_tmp_"
+
+      [item] = Item |> Ash.Query.for_read(:for_cart, %{cart_id: cart}) |> Ash.read!()
+      assert item.name == "Widget"
+      assert item.quantity == 1
+      assert html =~ item.id
+    end
+
     test "remove's response drops the row and destroys the record", %{conn: conn} do
       cart = unique_cart()
       item = create_item!(cart, "Beans", 1, "4.00")
@@ -167,6 +195,56 @@ defmodule Lavash.ClientStateTest do
           actions do
             action :clear do
               set :items, []
+            end
+          end
+
+          template do
+            ~H"<div>{inspect(@items)}</div>"
+          end
+        end
+      end
+    end
+
+    test "mutate targeting a non-projection field is rejected" do
+      assert_raise Spark.Error.DslError, ~r/does not target a client_state projection/, fn ->
+        defmodule MutateNonProjection do
+          use Lavash.LiveView
+
+          state :cart_id, :string, from: :url
+          state :things, {:array, :map}, from: :ephemeral, default: []
+
+          actions do
+            action :bump, [:id] do
+              mutate :things, :update, rx(%{quantity: @item.quantity + 1})
+            end
+          end
+
+          template do
+            ~H"<div>{inspect(@things)}</div>"
+          end
+        end
+      end
+    end
+
+    test "mutate without the projection key as an action param is rejected" do
+      assert_raise Spark.Error.DslError, ~r/needs the projection key/, fn ->
+        defmodule MutateMissingKey do
+          use Lavash.LiveView
+
+          state :cart_id, :string, from: :url
+
+          read :cart_items, Lavash.Test.Magic.ClientCart.Item, :for_cart do
+            argument :cart_id, state(:cart_id)
+            async false
+
+            client_state :items do
+              fields [:id, :quantity]
+            end
+          end
+
+          actions do
+            action :bump do
+              mutate :items, :update_quantity, rx(%{quantity: @item.quantity + 1})
             end
           end
 

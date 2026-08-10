@@ -27,15 +27,15 @@ defmodule Lavash.Action.Runtime do
   end
 
   @doc """
-  Marks the backing reads of `map_by`-targeted client_state
-  projections dirty, so the cascade re-reads them in this event.
-
-  `map_by` is a client-side prediction; the durable mutation is the
-  resource write the action performs in `pre_run`. Re-reading in the
-  same event means the diff the client receives carries post-write
-  truth — confirming the prediction instead of pushing a stale list.
+  Executes an action's `mutate`/`remove`/`append` ops (the durable
+  Ash writes + broadcast) and marks their backing reads dirty, so
+  the cascade re-reads them in this event. The diff the client
+  receives then carries post-write truth — confirming the client's
+  prediction instead of pushing a stale list.
   """
-  def refresh_client_projections(socket, action, module) do
+  def apply_client_state_mutations(socket, action, params, module) do
+    socket = Lavash.ClientState.apply_mutations(socket, action, params, module)
+
     case Lavash.ClientState.reads_to_refresh(module, action) do
       [] -> socket
       reads -> LSocket.mark_dirty(socket, reads)

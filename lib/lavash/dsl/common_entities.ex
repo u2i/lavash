@@ -69,7 +69,7 @@ defmodule Lavash.Dsl.CommonEntities do
         key: [
           type: :atom,
           default: :id,
-          doc: "The identity field used by `map_by` to address individual entries"
+          doc: "The identity field `mutate`/`remove` use to address individual entries"
         ],
         fields: [
           type: {:list, :any},
@@ -256,36 +256,95 @@ defmodule Lavash.Dsl.CommonEntities do
   end
 
   @doc """
-  MapBy entity for actions — key-based array mutations.
-
-  Finds items in an array by a key field and applies a transformation.
-  The `@item` variable references the matched item in the rx() expression.
-  Return `:remove` to filter the item out.
+  Mutate entity for actions — keyed mutation of a client_state
+  projection row, declared once and evaluated on both sides. See
+  `Lavash.Actions.Mutate`.
   """
-  def map_by_entity do
+  def mutate_entity do
     %Spark.Dsl.Entity{
-      name: :map_by,
-      target: Lavash.Actions.MapBy,
-      args: [:field, :key, :transform],
+      name: :mutate,
+      target: Lavash.Actions.Mutate,
+      args: [:field, :action, :transform],
       schema: [
         field: [
           type: :atom,
           required: true,
-          doc: "The array field to map over"
+          doc: "The client_state projection field to mutate"
         ],
-        key: [
+        action: [
           type: :atom,
           required: true,
-          doc: "The key field to match items by (e.g., :id)"
+          doc: "The Ash update action driven by the transform's params map"
         ],
         transform: [
-          type: :any,
+          type: {:struct, Lavash.Rx},
           required: true,
           doc: """
-          Function that transforms the matched item: `fn item, key_value -> new_item end`.
-          Return `:remove` to filter the item out.
+          `rx()` expression over `@item` (the matched row) returning a
+          params map or `:remove`. Client-side the result merges into the
+          projected row (the prediction); server-side it drives the Ash
+          action on the authoritative record (`:remove` destroys it).
 
-          Example: `map_by :items, :id, fn item, _id -> %{item | quantity: item.quantity + 1} end`
+          Example: `mutate :items, :update_quantity, rx(%{quantity: @item.quantity + 1})`
+          """
+        ]
+      ]
+    }
+  end
+
+  @doc """
+  Remove entity for actions — keyed removal of a client_state
+  projection row. See `Lavash.Actions.Remove`.
+  """
+  def remove_entity do
+    %Spark.Dsl.Entity{
+      name: :remove,
+      target: Lavash.Actions.Remove,
+      args: [:field],
+      schema: [
+        field: [
+          type: :atom,
+          required: true,
+          doc: "The client_state projection field to remove from"
+        ],
+        action: [
+          type: :atom,
+          doc: "The Ash destroy action to use (defaults to the primary destroy)"
+        ]
+      ]
+    }
+  end
+
+  @doc """
+  Append entity for actions — optimistic insert into a client_state
+  projection. See `Lavash.Actions.Append`.
+  """
+  def append_entity do
+    %Spark.Dsl.Entity{
+      name: :append,
+      target: Lavash.Actions.Append,
+      args: [:field, :action, :transform],
+      schema: [
+        field: [
+          type: :atom,
+          required: true,
+          doc: "The client_state projection field to append to"
+        ],
+        action: [
+          type: :atom,
+          required: true,
+          doc: "The Ash create action driven by the transform's attribute map"
+        ],
+        transform: [
+          type: {:struct, Lavash.Rx},
+          required: true,
+          doc: """
+          `rx()` expression over state fields and action params returning the
+          new row's attribute map. Client-side the result (plus a temp key)
+          becomes a provisional row; server-side it is filtered to the create
+          action's accepted attributes and drives `Ash.create`.
+
+          Example: `append :items, :add, rx(%{cart_id: @cart_id, name: @name, quantity: 1})`
           """
         ]
       ]

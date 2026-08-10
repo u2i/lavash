@@ -3,11 +3,11 @@ defmodule DemoWeb.Components.CartItemList do
   Self-sufficient optimistic cart item list.
 
   Owns the whole cart data loop: reads the cart's items (pubsub-
-  invalidated), projects them to the client via `client_state`,
-  predicts mutations client-side with `map_by`, and persists them
-  with Ash writes in `pre_run` — so the same event's re-read
-  confirms the prediction, and the broadcast updates every other
-  session looking at the same cart.
+  invalidated), projects them to the client via `client_state`, and
+  mutates them with `mutate`/`remove` — each op is one declaration
+  that predicts client-side, drives the Ash action server-side,
+  broadcasts, and re-reads in the same event so the prediction is
+  confirmed and every other session converges.
 
   Parents only pass `cart_id` (and bind `open` for flyover close):
 
@@ -57,49 +57,17 @@ defmodule DemoWeb.Components.CartItemList do
 
   actions do
     action :increment, [:id] do
-      map_by :items, :id, "fn item, _id -> %{item | quantity: item.quantity + 1} end"
-
-      pre_run fn socket ->
-        item = Ash.get!(CartItem, socket.assigns.id)
-
-        item
-        |> Ash.Changeset.for_update(:update_quantity, %{quantity: item.quantity + 1})
-        |> Ash.update!()
-
-        Lavash.PubSub.broadcast(CartItem)
-        socket
-      end
+      mutate :items, :update_quantity, rx(%{quantity: @item.quantity + 1})
     end
 
     action :decrement, [:id] do
-      map_by :items,
-             :id,
-             "fn item, _id -> if item.quantity <= 1, do: :remove, else: %{item | quantity: item.quantity - 1} end"
-
-      pre_run fn socket ->
-        item = Ash.get!(CartItem, socket.assigns.id)
-
-        if item.quantity <= 1 do
-          Ash.destroy!(item)
-        else
-          item
-          |> Ash.Changeset.for_update(:update_quantity, %{quantity: item.quantity - 1})
-          |> Ash.update!()
-        end
-
-        Lavash.PubSub.broadcast(CartItem)
-        socket
-      end
+      mutate :items,
+             :update_quantity,
+             rx(if @item.quantity <= 1, do: :remove, else: %{quantity: @item.quantity - 1})
     end
 
     action :remove, [:id] do
-      map_by :items, :id, :remove
-
-      pre_run fn socket ->
-        CartItem |> Ash.get!(socket.assigns.id) |> Ash.destroy!()
-        Lavash.PubSub.broadcast(CartItem)
-        socket
-      end
+      remove :items
     end
 
     action :close do

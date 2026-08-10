@@ -29,6 +29,7 @@ defmodule Lavash.Transformers.ExpandFields do
 
     read_specs = extract_read_specs(dsl_state)
     projection_specs = extract_client_state_specs(dsl_state, module)
+    validate_projection_ops!(dsl_state, module)
     form_specs = extract_form_specs(dsl_state)
     calc_specs = extract_calc_specs(dsl_state, module)
     specs = read_specs ++ projection_specs ++ form_specs ++ calc_specs
@@ -92,6 +93,51 @@ defmodule Lavash.Transformers.ExpandFields do
         async: false,
         reads: []
       }
+    end)
+  end
+
+  # mutate/remove/append must target a declared client_state projection,
+  # and keyed ops (mutate/remove) need the projection's key as an action
+  # param so the server can fetch the record.
+  defp validate_projection_ops!(dsl_state, module) do
+    reads = Transformer.get_entities(dsl_state, [:reads]) || []
+    actions = Transformer.get_entities(dsl_state, [:actions]) || []
+
+    projections =
+      reads
+      |> Enum.flat_map(fn read -> Enum.map(read.client_states || [], &{&1.name, &1}) end)
+      |> Map.new()
+
+    Enum.each(actions, fn action ->
+      keyed_ops =
+        Enum.map(Map.get(action, :mutates) || [], &{:mutate, &1}) ++
+          Enum.map(Map.get(action, :removes) || [], &{:remove, &1})
+
+      append_ops = Enum.map(Map.get(action, :appends) || [], &{:append, &1})
+
+      Enum.each(keyed_ops ++ append_ops, fn {kind, op} ->
+        case Map.get(projections, op.field) do
+          nil ->
+            raise Spark.Error.DslError,
+              module: module,
+              path: [:actions, action.name],
+              message:
+                "`#{kind} #{inspect(op.field)}` does not target a client_state " <>
+                  "projection — declare one on a read first"
+
+          cs ->
+            if kind != :append and cs.key not in (action.params || []) do
+              raise Spark.Error.DslError,
+                module: module,
+                path: [:actions, action.name],
+                message:
+                  "`#{kind} #{inspect(op.field)}` needs the projection key " <>
+                    "#{inspect(cs.key)} as an action param (e.g. `action " <>
+                    "#{inspect(action.name)}, [#{inspect(cs.key)}]`) so the server " <>
+                    "can fetch the record"
+            end
+        end
+      end)
     end)
   end
 

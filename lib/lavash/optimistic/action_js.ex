@@ -14,13 +14,13 @@ defmodule Lavash.Optimistic.ActionJs do
   """
   def action_is_optimistic?(action) do
     has_set = (action.sets || []) != []
-    has_map_by = (action.map_bys || []) != []
+    has_projection_op = Lavash.ClientState.mutated_fields(action) != []
 
     # `run` is now post-cascade socket-shape (side-effect-only, not
     # transpilable). `pre_run` could in principle be transpiled to JS
     # the same way the old assigns-shape `run` was — that path isn't
     # wired yet, so for now optimistic eligibility is purely set-driven.
-    has_set or has_map_by
+    has_set or has_projection_op
   end
 
   @doc """

@@ -12,7 +12,7 @@ EVENT ARRIVES (phx-click, phx-submit, etc.)
 │  PRE-CASCADE                    │
 │    set :foo, rx(...)            │  declarative state writes
 │    pre_run fn socket -> socket  │  imperative pre-cascade hook
-│    map_by ...                   │  keyed array mutations
+│    mutate/remove/append         │  client_state projection writes
 └─────────────────────────────────┘
       │  marks fields dirty
       ▼

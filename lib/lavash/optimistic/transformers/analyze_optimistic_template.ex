@@ -121,9 +121,7 @@ defmodule Lavash.Optimistic.Transformers.AnalyzeOptimisticTemplate do
       actions
       |> Enum.flat_map(fn action ->
         sets = action.sets || []
-        map_bys = action.map_bys || []
-
-        Enum.map(sets, & &1.field) ++ Enum.map(map_bys, & &1.field)
+        Enum.map(sets, & &1.field) ++ Lavash.ClientState.mutated_fields(action)
       end)
 
     MapSet.new(calc_names ++ state_names ++ form_derive_names ++ action_field_names)
