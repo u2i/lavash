@@ -121,13 +121,15 @@ defmodule Lavash.Component.Dsl do
   # ============================================
 
   @read_argument_entity CommonEntities.read_argument_entity()
+  @client_state_entity CommonEntities.client_state_entity()
 
   @read_entity %Spark.Dsl.Entity{
     name: :read,
     target: Lavash.Read,
     args: [:name, :resource, {:optional, :action}],
     entities: [
-      arguments: [@read_argument_entity]
+      arguments: [@read_argument_entity],
+      client_states: [@client_state_entity]
     ],
     schema: [
       name: [
@@ -159,6 +161,16 @@ defmodule Lavash.Component.Dsl do
         Transform results into dropdown options format [{label, value}, ...].
         Specify label: :field_name and value: :field_name (default :id).
         Example: as_options label: :name, value: :id
+        """
+      ],
+      invalidate: [
+        type: {:in, [:pubsub]},
+        doc: """
+        Enable PubSub invalidation for this read. Components register
+        their read resources with the host LiveView, which subscribes
+        and forwards invalidations — so this is the default behavior
+        for component reads; the option documents intent and keeps the
+        read DSL uniform with LiveViews.
         """
       ],
       invalidate_on: [

@@ -250,6 +250,10 @@ defmodule Lavash.Transformers.ValidateTemplate do
     reads = Transformer.get_entities(dsl_state, [:reads]) || []
     read_names = Enum.map(reads, & &1.name)
 
+    # client_state projections land on assigns as derived lists
+    projection_names =
+      Enum.flat_map(reads, fn read -> Enum.map(read.client_states || [], & &1.name) end)
+
     forms = Transformer.get_entities(dsl_state, [:forms]) || []
     form_names = Enum.flat_map(forms, &form_assigns/1)
 
@@ -268,6 +272,7 @@ defmodule Lavash.Transformers.ValidateTemplate do
         calc_names ++
         async_names ++
         read_names ++
+        projection_names ++
         form_names ++
         overlay_assigns ++
         @phoenix_injected_assigns ++

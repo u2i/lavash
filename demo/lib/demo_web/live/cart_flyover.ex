@@ -7,8 +7,9 @@ defmodule DemoWeb.CartFlyover do
 
   Architecture:
   - Flyover DSL handles panel behavior (slide animation, backdrop, open/close)
-  - CartItemList component handles item mutations optimistically
-  - Parent LiveView owns the cart data and database mutations
+  - CartItemList owns the cart data loop: pubsub-invalidated read,
+    optimistic `map_by` predictions, and Ash writes — parents only
+    pass `cart_id`
   """
   use Lavash.Component, extensions: [Lavash.Overlay.Flyover.Dsl]
 
@@ -22,7 +23,7 @@ defmodule DemoWeb.CartFlyover do
   end
 
   # Props from parent LiveView
-  prop :items, :list, default: []
+  prop :cart_id, :string, required: true
   prop :item_count, :integer, default: 0
 
   template do
@@ -39,12 +40,12 @@ defmodule DemoWeb.CartFlyover do
         <.flyover_close_button id={@__flyover_id__} myself={@myself} />
       </div>
 
-      <!-- Cart Items - Component for optimistic updates (includes footer with subtotal) -->
+      <!-- Cart Items - self-sufficient component (includes footer with subtotal) -->
       <.lavash_component
         module={DemoWeb.Components.CartItemList}
         id="cart-item-list"
-        bind={[items: :items, open: :open]}
-        items={@items}
+        bind={[open: :open]}
+        cart_id={@cart_id}
         open={@open}
         myself={@myself}
       />

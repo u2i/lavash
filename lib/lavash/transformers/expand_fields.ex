@@ -28,9 +28,10 @@ defmodule Lavash.Transformers.ExpandFields do
     module = Transformer.get_persisted(dsl_state, :module)
 
     read_specs = extract_read_specs(dsl_state)
+    projection_specs = extract_client_state_specs(dsl_state, module)
     form_specs = extract_form_specs(dsl_state)
     calc_specs = extract_calc_specs(dsl_state, module)
-    specs = read_specs ++ form_specs ++ calc_specs
+    specs = read_specs ++ projection_specs ++ form_specs ++ calc_specs
     dsl_state = Transformer.persist(dsl_state, :lavash_field_specs, specs)
 
     {:ok, dsl_state}
@@ -50,6 +51,79 @@ defmodule Lavash.Transformers.ExpandFields do
         extract_read_query_spec(read, state_names)
       end
     end)
+  end
+
+  # --- Client-state projection extraction ---
+
+  defp extract_client_state_specs(dsl_state, module) do
+    reads = Transformer.get_entities(dsl_state, [:reads]) || []
+    states = Transformer.get_entities(dsl_state, [:states]) || []
+    calcs = Transformer.get_entities(dsl_state, [:calculations]) || []
+    actions = Transformer.get_entities(dsl_state, [:actions]) || []
+    taken_names = MapSet.new(Enum.map(states, & &1.name) ++ Enum.map(calcs, & &1.name))
+
+    set_fields =
+      actions
+      |> Enum.flat_map(fn action -> Enum.map(action.sets || [], &{&1.field, action.name}) end)
+      |> Map.new()
+
+    reads
+    |> Enum.flat_map(fn read -> Enum.map(read.client_states || [], &{read, &1}) end)
+    |> Enum.map(fn {read, cs} ->
+      validate_client_state!(module, read, cs, taken_names)
+
+      if set_action = Map.get(set_fields, cs.name) do
+        raise Spark.Error.DslError,
+          module: module,
+          path: [:actions, set_action],
+          message:
+            "`set #{inspect(cs.name)}` targets a client_state projection — projections " <>
+              "are server-side derives; mutate the underlying resource (in `pre_run`) " <>
+              "and let the read re-run instead"
+      end
+
+      %{
+        type: :client_projection,
+        name: cs.name,
+        read_name: read.name,
+        key: cs.key,
+        fields: cs.fields,
+        depends_on: [read.name],
+        async: false,
+        reads: []
+      }
+    end)
+  end
+
+  defp validate_client_state!(module, read, cs, taken_names) do
+    cond do
+      read.id ->
+        raise Spark.Error.DslError,
+          module: module,
+          path: [:reads, read.name],
+          message:
+            "client_state #{inspect(cs.name)} requires a query read (list result); " <>
+              "#{inspect(read.name)} is a get-by-id read"
+
+      read.async != false ->
+        raise Spark.Error.DslError,
+          module: module,
+          path: [:reads, read.name],
+          message:
+            "client_state #{inspect(cs.name)} requires `async false` on read " <>
+              "#{inspect(read.name)} — the projection ships in the initial render"
+
+      MapSet.member?(taken_names, cs.name) ->
+        raise Spark.Error.DslError,
+          module: module,
+          path: [:reads, read.name],
+          message:
+            "client_state name #{inspect(cs.name)} collides with a declared state " <>
+              "field or calculation"
+
+      true ->
+        :ok
+    end
   end
 
   defp extract_read_by_id_spec(read) do
@@ -423,6 +497,21 @@ defmodule Lavash.Transformers.ExpandFields do
           nil -> nil
           id -> get_record_by_id(resource, id, action, actor)
         end
+      end
+    }
+  end
+
+  defp spec_to_field(%{type: :client_projection} = spec, _module) do
+    read_name = spec.read_name
+    fields = spec.fields
+
+    %Lavash.Derived.Field{
+      name: spec.name,
+      depends_on: spec.depends_on,
+      async: false,
+      reads: [],
+      compute: fn deps ->
+        Lavash.ClientState.project(Map.get(deps, read_name), fields)
       end
     }
   end

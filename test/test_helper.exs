@@ -23,6 +23,10 @@ Application.put_env(:lavash, Lavash.TestEndpoint,
 
 Application.put_env(:phoenix, :json_library, Jason)
 
+# Cross-process resource invalidation (Lavash.PubSub.broadcast/1
+# no-ops without this) — exercised by the client_state fixtures.
+Application.put_env(:lavash, :pubsub, Lavash.PubSub)
+
 {:ok, _} =
   Supervisor.start_link(
     [

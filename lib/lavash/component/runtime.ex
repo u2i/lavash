@@ -554,6 +554,8 @@ defmodule Lavash.Component.Runtime do
       # Pre-cascade: state mutations
       |> ActionRuntime.apply_sets(action.sets || [], params, module)
       |> ActionRuntime.apply_pre_runs(action.name, action.pre_runs || [], params, module)
+      # map_by'd client_state projections re-read post-write in this cascade
+      |> ActionRuntime.refresh_client_projections(action, module)
       # Cascade settles all calcs once
       |> Reactive.recompute()
       # Post-cascade: socket-level ops + side effects

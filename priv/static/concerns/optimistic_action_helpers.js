@@ -30,12 +30,16 @@ export function handleClick(e, hook) {
     }
   }
 
-  runOptimisticAction(actionName, value, hook);
-
-  // Clear LiveView's element lock so rapid clicks on the same element work.
-  target.removeAttribute("data-phx-ref-src");
-  target.removeAttribute("data-phx-ref-lock");
+  // Defer the prediction one macrotask: applying it synchronously
+  // re-renders any data-lavash-html subtree the clicked element sits
+  // in, detaching it from the document BEFORE Phoenix's bubble-phase
+  // click delegate runs — which silently kills the server push. One
+  // tick later the event has fully propagated (the push is out) and
+  // the prediction still lands orders of magnitude before the reply.
   setTimeout(() => {
+    runOptimisticAction(actionName, value, hook);
+
+    // Clear LiveView's element lock so rapid clicks on the same element work.
     target.removeAttribute("data-phx-ref-src");
     target.removeAttribute("data-phx-ref-lock");
   }, 0);
