@@ -6,6 +6,13 @@
  * management, async data detection, and FLIP animation capture.
  */
 
+import {
+  overlayOpened,
+  overlayVisible,
+  overlayClosed,
+  overlayDestroyed
+} from "./overlay_a11y.js";
+
 /**
  * Initialize animated fields from metadata.
  * Sets up SyncedVars, OverlayAnimator delegates, and event listeners.
@@ -29,6 +36,10 @@ export function initAnimatedFields(hook) {
   for (const config of animatedConfigs) {
     const field = config.field;
 
+    // Filled in below once the chrome element is located; the phase
+    // callback closes over it for a11y stack/focus management.
+    const a11y = { chromeEl: null, panelEl: null };
+
     // Register animated config on store
     hook.store.registerAnimated(field, {
       animated: { duration: config.duration || 200, async: config.async || null },
@@ -45,6 +56,19 @@ export function initAnimatedFields(hook) {
         // server→client→client as the phase machine drives it.
         if (config.type === "modal" || config.type === "flyover") {
           hook.el.setAttribute(`data-${config.type}-phase`, phase);
+
+          // A11y stack: push + focus on leaving idle, re-anchor focus
+          // once visible (async content may have replaced the loading
+          // nodes), pop + restore on return to idle.
+          if (a11y.chromeEl && a11y.panelEl) {
+            if (phase === "entering" || phase === "loading") {
+              overlayOpened(a11y.chromeEl, a11y.panelEl);
+            } else if (phase === "visible") {
+              overlayVisible(a11y.chromeEl, a11y.panelEl);
+            } else if (phase === "idle") {
+              overlayClosed(a11y.chromeEl);
+            }
+          }
         }
       },
     });
@@ -62,6 +86,9 @@ export function initAnimatedFields(hook) {
         chromeEl = document.getElementById(chromeId);
 
         if (chromeEl) {
+          a11y.chromeEl = chromeEl;
+          a11y.panelEl = document.getElementById(`${chromeId}-panel_content`);
+
           const overlayOpts = {
             type: config.type,
             duration: config.duration || 200,
@@ -212,6 +239,7 @@ export function destroyOverlays(animatedStates, modalEventListeners, store) {
     for (const { el, open, close } of modalEventListeners) {
       el.removeEventListener("open-panel", open);
       el.removeEventListener("close-panel", close);
+      overlayDestroyed(el);
     }
   }
 

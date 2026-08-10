@@ -51,6 +51,18 @@ defmodule Lavash.Overlay.Modal.Helpers do
   attr(:close_on_backdrop, :boolean, default: true)
   attr(:max_width, :atom, default: :md)
   attr(:duration, :integer, default: 200)
+
+  attr(:label, :string,
+    default: nil,
+    doc:
+      "Accessible name for the dialog (aria-label). Prefer labelled_by when a visible heading exists."
+  )
+
+  attr(:labelled_by, :string,
+    default: nil,
+    doc: "DOM id of the element naming the dialog (aria-labelledby), e.g. the modal's heading"
+  )
+
   slot(:inner_block, required: true)
   slot(:loading, doc: "Loading content shown during optimistic open")
 
@@ -78,6 +90,7 @@ defmodule Lavash.Overlay.Modal.Helpers do
       phx-mounted={JS.ignore_attributes(["class", "style"])}
       phx-target={@myself}
       data-open-value={inspect(@open)}
+      data-close-on-escape={to_string(@close_on_escape)}
     >
       <%!-- Backdrop overlay - client controls opacity and visibility --%>
       <div
@@ -89,14 +102,21 @@ defmodule Lavash.Overlay.Modal.Helpers do
 
       <%!-- Panel - client controls opacity/scale/transform via inline styles --%>
       <%!-- Animation classes (opacity-0, scale-95) removed - client owns animation state via style attr --%>
+      <%!-- Escape is handled client-side by the overlay a11y stack
+           (topmost overlay only, bound only while open) — see
+           priv/static/concerns/overlay_a11y.js. tabindex=-1 lets the
+           panel take initial focus when it has no focusable children. --%>
       <div
         id={"#{@id}-panel_content"}
         phx-mounted={JS.ignore_attributes(["class", "style"])}
         class={"inline-grid z-10 bg-base-100 rounded-lg shadow-xl overflow-hidden #{@max_width_class} w-full"}
         style="opacity: 0; transform: scale(0.95)"
         phx-click={JS.dispatch("phx:noop")}
-        phx-window-keydown={@close_on_escape && @on_close}
-        phx-key={@close_on_escape && "Escape"}
+        role="dialog"
+        aria-modal="true"
+        aria-label={@label}
+        aria-labelledby={@labelled_by}
+        tabindex="-1"
       >
         <%!-- Loading content - client controls visibility via class/style --%>
         <div

@@ -6,12 +6,13 @@ defmodule Lavash.ModalTest do
     # with `|| true`, so a configured `false` became `false || true` and
     # both options were impossible to turn off.
 
-    test "close_on_escape false renders panel without escape handler", %{conn: conn} do
+    test "close_on_escape false is exposed to the client escape handler", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/magic/modal-no-close-host")
 
-      panel = view |> element("#test-modal-no-close-modal-panel_content") |> render()
-      refute panel =~ "phx-window-keydown"
-      refute panel =~ "phx-key"
+      # Escape is handled client-side by the overlay a11y stack, which
+      # reads data-close-on-escape from the chrome root.
+      chrome = view |> element("#test-modal-no-close-modal") |> render()
+      assert chrome =~ ~s(data-close-on-escape="false")
     end
 
     test "close_on_backdrop false renders overlay without click handler", %{conn: conn} do
@@ -24,12 +25,24 @@ defmodule Lavash.ModalTest do
     test "defaults still render escape and backdrop handlers", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/magic/modal-host")
 
-      panel = view |> element("#test-modal-modal-panel_content") |> render()
-      assert panel =~ "phx-window-keydown"
-      assert panel =~ ~s(phx-key="Escape")
+      chrome = view |> element("#test-modal-modal") |> render()
+      assert chrome =~ ~s(data-close-on-escape="true")
 
       overlay = view |> element("#test-modal-modal-overlay") |> render()
       assert overlay =~ "phx-click"
+    end
+  end
+
+  describe "dialog accessibility markup (issue #29)" do
+    test "panel renders role=dialog with aria-modal and tabindex", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/magic/modal-host")
+
+      panel = view |> element("#test-modal-modal-panel_content") |> render()
+      assert panel =~ ~s(role="dialog")
+      assert panel =~ ~s(aria-modal="true")
+      assert panel =~ ~s(tabindex="-1")
+      # Escape is no longer a server binding on every panel
+      refute panel =~ "phx-window-keydown"
     end
   end
 
