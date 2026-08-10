@@ -38,7 +38,7 @@ defmodule Demo.MixProject do
       {:phoenix, "~> 1.8.0-rc.1", override: true},
       {:phoenix_html, "~> 4.1"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},
-      {:phoenix_live_view, "~> 1.2-rc"},
+      {:phoenix_live_view, "~> 1.2"},
       {:phoenix_ecto, "~> 4.4"},
       {:ash, "~> 3.0"},
       {:ash_phoenix, "~> 2.0"},
