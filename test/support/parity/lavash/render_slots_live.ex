@@ -10,15 +10,10 @@ defmodule Lavash.Parity.Lavash.RenderSlotsLive do
   `state` declaration — neither affects how function components
   with slots work.
   """
+  # No `use Phoenix.Component` needed: Lavash.LiveView's __using__
+  # splices `use Phoenix.LiveView` into this module body, so attr/slot
+  # work directly (issue #20 regression guard — do not re-add).
   use Lavash.LiveView
-  # Lavash's `use Lavash.LiveView` invokes `use Phoenix.LiveView`
-  # inside a Spark.Dsl handle_opts eval context, which doesn't
-  # install Phoenix.Component's @on_definition hook for `attr` /
-  # `slot`. Users who define function components with slots in
-  # the same module need to re-`use Phoenix.Component`
-  # explicitly. (Tracked as a parity gap; the fix is upstream
-  # of lavash — Spark's handle_opts eval model.)
-  use Phoenix.Component
 
   state :name, :string, default: "world", optimistic: true
 
