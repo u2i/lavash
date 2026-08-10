@@ -7,8 +7,8 @@ defmodule DemoWeb.Storefront.ProductLive do
     router: DemoWeb.Router,
     statics: DemoWeb.static_paths()
 
-  alias Demo.Catalog.Product
   alias Demo.Cart.{Cart, CartItem}
+  alias Demo.Catalog.Product
 
   # Product loaded on mount from path param
   state :product, :any, from: :ephemeral

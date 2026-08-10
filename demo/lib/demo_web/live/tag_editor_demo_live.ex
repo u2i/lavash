@@ -19,6 +19,9 @@ defmodule DemoWeb.TagEditorDemoLive do
   # Optimistic calculation - transpiles to both Elixir and JavaScript
   calculate :tag_count, rx(length(@tags))
 
+  # length/1 is deliberate in rx(): it's in the transpiler's supported
+  # set, while `== []` would transpile to JS reference equality.
+  # credo:disable-for-lines:8 Credo.Check.Warning.ExpensiveEmptyEnumCheck
   calculate :tag_summary,
             rx(
               if(length(@tags) == 0,

@@ -1,7 +1,7 @@
 defmodule DemoWeb.Admin.DashboardLive do
   use DemoWeb, :live_view
 
-  alias Demo.Catalog.{Product, Category}
+  alias Demo.Catalog.{Category, Product}
   alias Demo.Orders.Order
 
   def mount(_params, _session, socket) do

@@ -22,8 +22,8 @@ defmodule DemoWeb.Storefront.CheckoutLive do
     statics: DemoWeb.static_paths()
 
   alias Demo.Cart.{Cart, CartItem}
-  alias Demo.Orders.{Order, Address}
   alias Demo.Forms.Payment
+  alias Demo.Orders.{Address, Order}
 
   # ─────────────────────────────────────────────────────────────
   # State

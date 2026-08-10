@@ -7,8 +7,8 @@ defmodule DemoWeb.Storefront.ProductsLive do
     router: DemoWeb.Router,
     statics: DemoWeb.static_paths()
 
-  alias Demo.Catalog.{Product, Category}
   alias Demo.Cart.{Cart, CartItem}
+  alias Demo.Catalog.{Category, Product}
 
   # ============================================
   # Filter State

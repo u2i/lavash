@@ -49,6 +49,8 @@ defmodule DemoWeb.StreamingChatLive do
   # so post-cascade `run` can read it after `:input` has been cleared.
   state :pending_prompt, :string, default: ""
 
+  # length/1 is deliberate in rx() — see the transpiler's supported set.
+  # credo:disable-for-next-line Credo.Check.Warning.ExpensiveEmptyEnumCheck
   calculate :has_messages?, rx(length(@messages) > 0)
   calculate :input_valid?, rx(String.trim(@input) != "" and not @streaming?)
 

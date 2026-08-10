@@ -48,6 +48,9 @@ defmodule DemoWeb.Components.CartItemList do
               end)
             )
 
+  # length/1 is deliberate in rx() — `== []` would transpile to JS
+  # reference equality.
+  # credo:disable-for-next-line Credo.Check.Warning.ExpensiveEmptyEnumCheck
   calculate :is_empty, rx(length(@items || []) == 0)
 
   # Chained calculations
