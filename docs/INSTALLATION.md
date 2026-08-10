@@ -15,39 +15,28 @@ Configure PubSub for cross-process invalidation:
 config :lavash, pubsub: MyApp.PubSub
 ```
 
-## Compiler setup (required for optimistic JS)
+## Colocated JS (required for optimistic behavior)
 
-Lavash generates each component's optimistic JavaScript at compile
-time via Phoenix's colocated-JS system. That system's compiler must be
-registered, **listed first** (it works by installing an after-compiler
-callback on `:elixir`, so it has to run before `:elixir` does):
+Lavash ships each component's generated optimistic JavaScript through
+Phoenix LiveView's [colocated JS](https://hexdocs.pm/phoenix_live_view/Phoenix.LiveView.ColocatedJS.html)
+system — the same mechanism as colocated hooks. Follow LiveView's
+setup (the `:phoenix_live_view` mix compiler, the `reloadable_compilers`
+entry in dev, and your bundler's `NODE_PATH`); recent `mix phx.new`
+projects have it out of the box.
 
-```elixir
-# mix.exs
-def project do
-  [
-    compilers: [:phoenix_live_view] ++ Mix.compilers(),
-    ...
-  ]
-end
+The lavash-specific part: import **both** manifests in `app.js` —
+your app's and lavash's own. The generated modules self-register on
+import, so these bare side-effect imports are all the wiring needed:
+
+```javascript
+import "phoenix-colocated/lavash";
+import "phoenix-colocated/my_app";
 ```
 
-And in dev, so live reload keeps the generated-JS manifest fresh:
-
-```elixir
-# config/dev.exs
-config :my_app, MyAppWeb.Endpoint,
-  reloadable_compilers: [:elixir, :app, :phoenix_live_view]
-```
-
-> #### Warning {: .warning}
->
-> The compiler is named `:phoenix_live_view` — there is no
-> `:phoenix_colocated` compiler. Unknown names in
-> `reloadable_compilers` are **silently ignored** by Phoenix, and the
-> symptom is subtle: live reload regenerates the per-module JS files
-> but never rebuilds the manifest that imports them, so the browser
-> keeps running stale optimistic code (or none at all).
+This setup is load-bearing for optimism specifically: if the compiler
+or the imports are missing, nothing errors — every optimistic action
+silently degrades to a server round-trip. The app looks fine on
+localhost and is visibly laggy under real latency.
 
 ## Client setup
 
@@ -56,11 +45,6 @@ To enable lavash on the client side in `app.js`:
 ```javascript
 import { lavash, defaultConcerns, getHooks, getState } from "lavash";
 
-// Generated optimistic functions, extracted at compile time. Each
-// module self-registers when imported — these bare side-effect
-// imports are all the wiring needed. WITHOUT them, every optimistic
-// action silently degrades to a server round-trip: the app looks
-// fine on localhost and is visibly laggy under real latency.
 import "phoenix-colocated/lavash";
 import "phoenix-colocated/my_app";
 
@@ -70,18 +54,6 @@ const liveSocket = new LiveSocket("/live", Socket, {
   params: () => ({ _csrf_token: csrfToken, _lavash_state: getState() }),
   hooks: getHooks(lavashDecorator, MyAppHooks)
 });
-```
-
-For esbuild to resolve the `phoenix-colocated/*` imports, its
-`NODE_PATH` must include the build directory where the compiler writes
-them:
-
-```elixir
-# config/config.exs — in your esbuild profile
-env: %{
-  "NODE_PATH" =>
-    Enum.join([Path.expand("../deps", __DIR__), Mix.Project.build_path()], ":")
-}
 ```
 
 `lavash({ concerns })` returns a decorator that wraps every hook
