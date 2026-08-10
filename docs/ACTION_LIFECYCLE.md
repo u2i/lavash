@@ -25,7 +25,6 @@ EVENT ARRIVES (phx-click, phx-submit, etc.)
 ┌─────────────────────────────────┐
 │  POST-CASCADE                   │
 │    run fn socket -> socket end  │  imperative; reads settled state
-│    socket_run (legacy alias)    │
 │    effect fn socket -> :ok end  │  fire-and-forget side effects
 │    submits                      │  form submission (async)
 │    flashes                      │  declarative; reads settled state

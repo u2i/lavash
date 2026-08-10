@@ -27,8 +27,8 @@ defmodule DemoWeb.NavFlyover do
   # Configure flyover behavior
   flyover do
     open_field :open
-    slide_from :left
-    width :sm
+    slide_from(:left)
+    width(:sm)
   end
 
   template do

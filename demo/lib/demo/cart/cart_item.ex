@@ -12,7 +12,7 @@ defmodule Demo.Cart.CartItem do
 
   sqlite do
     table "cart_items"
-    repo Demo.Repo
+    repo(Demo.Repo)
   end
 
   attributes do

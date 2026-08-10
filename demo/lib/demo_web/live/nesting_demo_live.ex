@@ -132,8 +132,16 @@ defmodule DemoWeb.NestingDemoLive do
       <div class="mt-8 bg-info/10 p-4 rounded-lg text-sm">
         <h4 class="font-semibold mb-2">How it works</h4>
         <ul class="list-disc list-inside space-y-1 text-base-content/70">
-          <li><strong>Client-side:</strong> Changes bubble up via <code>lavash-set</code> events to parent hooks</li>
-          <li><strong>Server-side:</strong> Uses <code>send_update/2</code> with CID to route to parent Lavash.Components</li>
+          <li>
+            <strong>Client-side:</strong>
+            Changes bubble up via <code>lavash-set</code>
+            events to parent hooks
+          </li>
+          <li>
+            <strong>Server-side:</strong>
+            Uses <code>send_update/2</code>
+            with CID to route to parent Lavash.Components
+          </li>
           <li>Lavash.Components check their binding map and propagate to their parent if bound</li>
           <li>Chain continues until reaching a LiveView, which receives the final value</li>
           <li>All calculations in the LiveView reactive graph update automatically</li>

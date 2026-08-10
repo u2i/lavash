@@ -2,7 +2,7 @@ defmodule Lavash.Test.Explicit.CounterLive do
   @moduledoc """
   Counter using Lavash.LiveView.Explicit — the non-DSL on-ramp. State and
   derives are declared via `reactive do ... end`; `put_state/3` mutates
-  + recomputes in one call. No Spark DSL, no ~L template, no JS hook;
+  + recomputes in one call. No Spark DSL, no template pipeline, no JS hook;
   this is what "using lavash without the DSL" actually looks like.
   """
   use Lavash.LiveView.Explicit

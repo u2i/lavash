@@ -89,8 +89,10 @@ defmodule DemoWeb.Admin.OrderDetailLive do
         </div>
 
         <!-- Status actions -->
-        <div :if={@can_mark_paid? or @can_mark_shipped? or @can_mark_delivered? or @can_cancel?}
-             class="card bg-base-200">
+        <div
+          :if={@can_mark_paid? or @can_mark_shipped? or @can_mark_delivered? or @can_cancel?}
+          class="card bg-base-200"
+        >
           <div class="card-body">
             <h2 class="card-title">Update status</h2>
             <div class="flex flex-wrap gap-2">

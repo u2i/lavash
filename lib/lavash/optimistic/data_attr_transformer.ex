@@ -406,11 +406,7 @@ defmodule Lavash.Optimistic.DataAttrTransformer do
     normalize_expr(expr) == source
   end
 
-  # Legacy derives without a recorded source (externally produced):
-  # fall back to the dependency-overlap heuristic.
-  defp derive_matches_expr?(derive, expr) do
-    Enum.any?(derive.deps, fn dep -> String.contains?(expr, "@#{dep}") end)
-  end
+  defp derive_matches_expr?(_derive, _expr), do: false
 
   defp normalize_expr(expr) do
     expr |> String.replace(~r/\s+/, " ") |> String.trim()

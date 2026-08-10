@@ -102,7 +102,10 @@ defmodule DemoWeb.Admin.OrdersLive do
         </button>
         <button
           phx-click="filter_delivered"
-          class={["btn btn-sm", if(@status_filter == :delivered, do: "btn-success", else: "btn-ghost")]}
+          class={[
+            "btn btn-sm",
+            if(@status_filter == :delivered, do: "btn-success", else: "btn-ghost")
+          ]}
         >
           Delivered
         </button>

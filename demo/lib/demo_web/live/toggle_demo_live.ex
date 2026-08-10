@@ -40,7 +40,8 @@ defmodule DemoWeb.ToggleDemoLive do
 
       <div class="bg-blue-50 p-4 rounded-lg mb-6 text-sm">
         <p class="text-blue-800">
-          <strong>How it works:</strong> Enable latency simulation (bottom right), then toggle switches.
+          <strong>How it works:</strong>
+          Enable latency simulation (bottom right), then toggle switches.
           The switch flips instantly (optimistic), while server content updates after the round-trip.
           Rapid toggles are handled correctly - stale server patches are rejected.
         </p>
@@ -158,16 +159,21 @@ defmodule DemoWeb.ToggleDemoLive do
           <h2 class="font-semibold mb-3">Architecture: SyncedVar</h2>
           <div class="text-sm">
             <p class="mb-2">
-              Each toggle uses a <code class="bg-base-200 px-1 rounded">SyncedVar</code> instance to track:
+              Each toggle uses a <code class="bg-base-200 px-1 rounded">SyncedVar</code>
+              instance to track:
             </p>
             <ul class="list-disc list-inside space-y-1 ml-2">
               <li><code>value</code> - the optimistic client value</li>
               <li><code>confirmedValue</code> - last server-confirmed value</li>
-              <li><code>version</code> / <code>confirmedVersion</code> - for detecting stale patches</li>
+              <li>
+                <code>version</code> / <code>confirmedVersion</code> - for detecting stale patches
+              </li>
             </ul>
             <p class="mt-3">
-              When you toggle rapidly, <code>setOptimistic()</code> bumps the version.
-              Server patches are only accepted via <code>serverSet()</code> if no operations are pending.
+              When you toggle rapidly, <code>setOptimistic()</code>
+              bumps the version.
+              Server patches are only accepted via <code>serverSet()</code>
+              if no operations are pending.
             </p>
           </div>
         </div>

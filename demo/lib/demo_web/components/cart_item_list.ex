@@ -42,15 +42,19 @@ defmodule DemoWeb.Components.CartItemList do
 
   actions do
     action :increment, [:id] do
-      map_by :items, :id, "fn item, _id -> %{item | quantity: item.quantity + 1} end"
+      map_by(:items, :id, "fn item, _id -> %{item | quantity: item.quantity + 1} end")
     end
 
     action :decrement, [:id] do
-      map_by :items, :id, "fn item, _id -> if item.quantity <= 1, do: :remove, else: %{item | quantity: item.quantity - 1} end"
+      map_by(
+        :items,
+        :id,
+        "fn item, _id -> if item.quantity <= 1, do: :remove, else: %{item | quantity: item.quantity - 1} end"
+      )
     end
 
     action :remove, [:id] do
-      map_by :items, :id, :remove
+      map_by(:items, :id, :remove)
     end
 
     action :close do
@@ -61,9 +65,16 @@ defmodule DemoWeb.Components.CartItemList do
   template do
     ~H"""
     <div class="flex-1 flex flex-col overflow-hidden">
-      <div :if={@is_empty} class="flex flex-col items-center justify-center flex-1 text-base-content/50 p-8">
+      <div
+        :if={@is_empty}
+        class="flex flex-col items-center justify-center flex-1 text-base-content/50 p-8"
+      >
         <svg class="w-16 h-16 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-width="1.5" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+          <path
+            stroke-linecap="round"
+            stroke-width="1.5"
+            d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"
+          />
         </svg>
         <p class="text-lg font-medium">Your cart is empty</p>
         <p class="text-sm mt-1">Add some coffee to get started</p>
@@ -74,7 +85,12 @@ defmodule DemoWeb.Components.CartItemList do
           <!-- Product image placeholder -->
           <div class="w-20 h-20 bg-base-200 rounded-lg flex-shrink-0 overflow-hidden flex items-center justify-center text-base-content/30">
             <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="1.5"
+                d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"
+              />
             </svg>
           </div>
 
@@ -103,7 +119,12 @@ defmodule DemoWeb.Components.CartItemList do
                 phx-value-id={item.id}
               >
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M12 4v16m8-8H4"
+                  />
                 </svg>
               </button>
               <button

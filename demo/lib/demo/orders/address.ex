@@ -6,7 +6,7 @@ defmodule Demo.Orders.Address do
 
   sqlite do
     table "addresses"
-    repo Demo.Repo
+    repo(Demo.Repo)
   end
 
   # Register the address's owning user so a save/update/delete
@@ -48,8 +48,17 @@ defmodule Demo.Orders.Address do
 
     create :save do
       accept [
-        :label, :first_name, :last_name, :company, :address,
-        :apartment, :city, :state, :zip, :country, :phone
+        :label,
+        :first_name,
+        :last_name,
+        :company,
+        :address,
+        :apartment,
+        :city,
+        :state,
+        :zip,
+        :country,
+        :phone
       ]
 
       change relate_actor(:user)
@@ -57,8 +66,17 @@ defmodule Demo.Orders.Address do
 
     update :update do
       accept [
-        :label, :first_name, :last_name, :company, :address,
-        :apartment, :city, :state, :zip, :country, :phone
+        :label,
+        :first_name,
+        :last_name,
+        :company,
+        :address,
+        :apartment,
+        :city,
+        :state,
+        :zip,
+        :country,
+        :phone
       ]
     end
 

@@ -1,6 +1,7 @@
 defmodule Lavash.Test.Magic.DomDirectivesLive do
   @moduledoc """
-  Fixture exercising each data-lavash-* directive. The ~L sigil auto-injects
+  Fixture exercising each data-lavash-* directive. The template transformer
+  auto-injects
   the wrapper spans and class-toggling attrs so we get a real render through
   the lavash template pipeline.
   """

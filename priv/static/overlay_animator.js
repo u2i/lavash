@@ -655,7 +655,3 @@ export class OverlayAnimator {
 // Expose globally
 window.Lavash = window.Lavash || {};
 window.Lavash.OverlayAnimator = OverlayAnimator;
-
-// Keep backwards compatibility aliases
-window.Lavash.ModalAnimator = OverlayAnimator;
-window.Lavash.FlyoverAnimator = OverlayAnimator;

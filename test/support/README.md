@@ -6,7 +6,7 @@ split into two parallel implementations of the same observable behavior:
 ## `magic/` — DSL-driven
 
 Uses the full Lavash DSL: `use Lavash.LiveView`, `state`, `calculate`, `rx`,
-`actions do ... end`, `~L` templates with auto-injected `data-lavash-*`
+`actions do ... end`, `template do` blocks with auto-injected `data-lavash-*`
 attributes. The template transformer and the LavashOptimistic JS hook do
 most of the work.
 

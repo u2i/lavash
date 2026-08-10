@@ -62,7 +62,11 @@ defmodule DemoWeb.Admin.ProductsLive do
               <form phx-change="set_category_id">
                 <select name="value" class="select select-bordered w-full">
                   <option value="">All Categories</option>
-                  <option :for={{name, id} <- @category_options} value={id} selected={@category_id == id}>
+                  <option
+                    :for={{name, id} <- @category_options}
+                    value={id}
+                    selected={@category_id == id}
+                  >
                     {name}
                   </option>
                 </select>
@@ -109,7 +113,11 @@ defmodule DemoWeb.Admin.ProductsLive do
               <td>{category_name(@category_options, product.category_id)}</td>
               <td>${Decimal.to_string(product.price)}</td>
               <td>
-                <span class={["badge", product.in_stock && "badge-success", !product.in_stock && "badge-error"]}>
+                <span class={[
+                  "badge",
+                  product.in_stock && "badge-success",
+                  !product.in_stock && "badge-error"
+                ]}>
                   {if product.in_stock, do: "In Stock", else: "Out"}
                 </span>
               </td>

@@ -65,11 +65,33 @@ defmodule Demo.Catalog.Product do
     defaults [:read, :destroy]
 
     create :create do
-      accept [:name, :description, :price, :weight_oz, :origin, :roast_level, :tasting_notes, :in_stock, :rating, :category_id]
+      accept [
+        :name,
+        :description,
+        :price,
+        :weight_oz,
+        :origin,
+        :roast_level,
+        :tasting_notes,
+        :in_stock,
+        :rating,
+        :category_id
+      ]
     end
 
     update :update do
-      accept [:name, :description, :price, :weight_oz, :origin, :roast_level, :tasting_notes, :in_stock, :rating, :category_id]
+      accept [
+        :name,
+        :description,
+        :price,
+        :weight_oz,
+        :origin,
+        :roast_level,
+        :tasting_notes,
+        :in_stock,
+        :rating,
+        :category_id
+      ]
     end
 
     read :list do

@@ -115,13 +115,15 @@ defmodule DemoWeb.LiveViewDemos.PlainCounterLive do
     <div
       id="plain-counter"
       phx-hook="PlainCounter"
-      data-state={Jason.encode!(%{
-        count: @count,
-        multiplier: @multiplier,
-        doubled: @doubled,
-        fact: @fact,
-        fact_loading: @fact_loading
-      })}
+      data-state={
+        Jason.encode!(%{
+          count: @count,
+          multiplier: @multiplier,
+          doubled: @doubled,
+          fact: @fact,
+          fact_loading: @fact_loading
+        })
+      }
       data-url-fields={Jason.encode!(["count"])}
       class="max-w-md mx-auto mt-10 p-6 card bg-base-200"
     >
@@ -164,7 +166,8 @@ defmodule DemoWeb.LiveViewDemos.PlainCounterLive do
         <div class="flex items-center justify-between">
           <span class="text-base-content/70">
             <span data-display="count">{@count}</span>
-            x <span data-display="multiplier">{@multiplier}</span> =
+            x <span data-display="multiplier">{@multiplier}</span>
+            =
           </span>
           <span data-display="doubled" class="font-mono font-bold text-lg">{@doubled}</span>
         </div>

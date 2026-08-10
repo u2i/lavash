@@ -12,7 +12,7 @@ defmodule DemoWeb.Storefront.CheckoutLive do
   import Lavash.LiveView.Helpers, only: [lavash_component: 1]
 
   # Import credit card validators (expanded inline, transpiled to JS)
-  import_rx Demo.Validators.CreditCard
+  import_rx(Demo.Validators.CreditCard)
 
   use Phoenix.VerifiedRoutes,
     endpoint: DemoWeb.Endpoint,
@@ -73,7 +73,7 @@ defmodule DemoWeb.Storefront.CheckoutLive do
 
   form :payment, Payment do
     create :pay
-    skip_constraints [:card_number, :expiry, :cvv]
+    skip_constraints([:card_number, :expiry, :cvv])
   end
 
   # ─────────────────────────────────────────────────────────────
@@ -90,17 +90,29 @@ defmodule DemoWeb.Storefront.CheckoutLive do
             ),
             optimistic: false
 
-  calculate :tax, rx(Decimal.mult(@subtotal, Decimal.new("0.08")) |> Decimal.round(2)), optimistic: false
+  calculate :tax, rx(Decimal.mult(@subtotal, Decimal.new("0.08")) |> Decimal.round(2)),
+    optimistic: false
 
   calculate :shipping,
-            rx(if Decimal.compare(@subtotal, Decimal.new("35.00")) == :lt, do: Decimal.new("8.00"), else: Decimal.new("0.00")),
+            rx(
+              if Decimal.compare(@subtotal, Decimal.new("35.00")) == :lt,
+                do: Decimal.new("8.00"),
+                else: Decimal.new("0.00")
+            ),
             optimistic: false
 
   calculate :total, rx(Decimal.add(Decimal.add(@subtotal, @tax), @shipping)), optimistic: false
 
   calculate :subtotal_display, rx("$" <> Decimal.to_string(@subtotal)), optimistic: false
   calculate :tax_display, rx("$" <> Decimal.to_string(@tax)), optimistic: false
-  calculate :shipping_display, rx(if Decimal.compare(@shipping, Decimal.new("0")) == :eq, do: "Free", else: "$" <> Decimal.to_string(@shipping)), optimistic: false
+
+  calculate :shipping_display,
+            rx(
+              if Decimal.compare(@shipping, Decimal.new("0")) == :eq,
+                do: "Free",
+                else: "$" <> Decimal.to_string(@shipping)
+            ), optimistic: false
+
   calculate :total_display, rx("$" <> Decimal.to_string(@total)), optimistic: false
 
   # ─────────────────────────────────────────────────────────────
@@ -112,18 +124,36 @@ defmodule DemoWeb.Storefront.CheckoutLive do
 
   calculate :is_visa, rx(String.starts_with?(@card_number_digits, "4"))
   calculate :is_mastercard, rx(String.starts_with?(@card_number_digits, "5"))
-  calculate :is_amex, rx(String.starts_with?(@card_number_digits, "34") or String.starts_with?(@card_number_digits, "37"))
+
+  calculate :is_amex,
+            rx(
+              String.starts_with?(@card_number_digits, "34") or
+                String.starts_with?(@card_number_digits, "37")
+            )
+
   calculate :is_discover, rx(String.starts_with?(@card_number_digits, "6011"))
   calculate :has_card_type, rx(@is_visa or @is_mastercard or @is_amex or @is_discover)
 
   calculate :card_type_display,
-    rx(
-      if @is_visa do "Visa"
-      else if @is_mastercard do "Mastercard"
-      else if @is_amex do "American Express"
-      else if @is_discover do "Discover"
-      else "" end end end end
-    )
+            rx(
+              if @is_visa do
+                "Visa"
+              else
+                if @is_mastercard do
+                  "Mastercard"
+                else
+                  if @is_amex do
+                    "American Express"
+                  else
+                    if @is_discover do
+                      "Discover"
+                    else
+                      ""
+                    end
+                  end
+                end
+              end
+            )
 
   calculate :show_visa, rx(@is_visa or not @has_card_type)
   calculate :show_mastercard, rx(@is_mastercard or not @has_card_type)
@@ -135,11 +165,13 @@ defmodule DemoWeb.Storefront.CheckoutLive do
   # ─────────────────────────────────────────────────────────────
 
   calculate :card_number_valid,
-    rx(@payment_card_number_valid && valid_card_number?(@card_number_digits, @is_amex))
+            rx(@payment_card_number_valid && valid_card_number?(@card_number_digits, @is_amex))
 
   extend_errors :payment_card_number_errors do
-    error rx(!valid_card_number?(@card_number_digits, @is_amex) && @payment_card_number_valid),
+    error(
+      rx(!valid_card_number?(@card_number_digits, @is_amex) && @payment_card_number_valid),
       "Enter a valid card number"
+    )
   end
 
   calculate :expiry_raw, rx(@payment_params["expiry"] || "")
@@ -147,8 +179,10 @@ defmodule DemoWeb.Storefront.CheckoutLive do
   calculate :expiry_valid, rx(@payment_expiry_valid && valid_expiry?(@expiry_digits))
 
   extend_errors :payment_expiry_errors do
-    error rx(!valid_expiry?(@expiry_digits) && @payment_expiry_valid),
+    error(
+      rx(!valid_expiry?(@expiry_digits) && @payment_expiry_valid),
       "Enter a valid expiration date"
+    )
   end
 
   calculate :cvv_raw, rx(@payment_params["cvv"] || "")
@@ -156,15 +190,19 @@ defmodule DemoWeb.Storefront.CheckoutLive do
   calculate :cvv_valid, rx(@payment_cvv_valid && valid_cvv?(@cvv_digits, @is_amex))
 
   extend_errors :payment_cvv_errors do
-    error rx(!valid_cvv?(@cvv_digits, @is_amex) && @payment_cvv_valid),
+    error(
+      rx(!valid_cvv?(@cvv_digits, @is_amex) && @payment_cvv_valid),
       "Enter a valid security code"
+    )
   end
 
   # ─────────────────────────────────────────────────────────────
   # Combined Validity
   # ─────────────────────────────────────────────────────────────
 
-  calculate :card_form_valid, rx(@card_number_valid && @expiry_valid && @cvv_valid && @payment_name_valid)
+  calculate :card_form_valid,
+            rx(@card_number_valid && @expiry_valid && @cvv_valid && @payment_name_valid)
+
   calculate :is_card_payment, rx(@payment_method == "card")
   calculate :form_valid, rx(if(@is_card_payment, do: @card_form_valid, else: true))
 
@@ -175,7 +213,9 @@ defmodule DemoWeb.Storefront.CheckoutLive do
 
   def find_selected_address([], _), do: nil
   def find_selected_address(addresses, nil), do: List.first(addresses)
-  def find_selected_address(addresses, id), do: Enum.find(addresses, List.first(addresses), &(&1.id == id))
+
+  def find_selected_address(addresses, id),
+    do: Enum.find(addresses, List.first(addresses), &(&1.id == id))
 
   calculate :has_address, rx(@selected_address != nil), optimistic: false
   calculate :can_place, rx(@form_valid and @has_address and not @is_empty)
@@ -202,7 +242,7 @@ defmodule DemoWeb.Storefront.CheckoutLive do
     end
 
     action :select_address, [:id] do
-      set :selected_address_id, &(&1.params.id)
+      set :selected_address_id, & &1.params.id
     end
 
     action :add_address do
@@ -227,16 +267,18 @@ defmodule DemoWeb.Storefront.CheckoutLive do
           |> String.slice(-4, 4)
 
         case Order
-             |> Ash.Changeset.for_create(:place, %{
-               cart_id: assigns.cart_id,
-               subtotal: assigns.subtotal,
-               tax: assigns.tax,
-               shipping: assigns.shipping,
-               total: assigns.total,
-               payment_method: assigns.payment_method,
-               card_last_four: card_last_four,
-               shipping_address_id: assigns.selected_address && assigns.selected_address.id
-             }, actor: user)
+             |> Ash.Changeset.for_create(
+               :place,
+               %{
+                 cart_id: assigns.cart_id,
+                 subtotal: assigns.subtotal,
+                 tax: assigns.tax,
+                 shipping: assigns.shipping,
+                 total: assigns.total,
+                 payment_method: assigns.payment_method,
+                 card_last_four: card_last_four,
+                 shipping_address_id: assigns.selected_address && assigns.selected_address.id
+               }, actor: user)
              |> Ash.create() do
           {:ok, order} ->
             Lavash.Socket.put_state(state, :order_placed_id, order.id)
@@ -257,15 +299,17 @@ defmodule DemoWeb.Storefront.CheckoutLive do
         assigns = state.assigns
 
         case Order
-             |> Ash.Changeset.for_create(:place, %{
-               cart_id: assigns.cart_id,
-               subtotal: assigns.subtotal,
-               tax: assigns.tax,
-               shipping: assigns.shipping,
-               total: assigns.total,
-               payment_method: "paypal",
-               shipping_address_id: assigns.selected_address && assigns.selected_address.id
-             }, actor: user)
+             |> Ash.Changeset.for_create(
+               :place,
+               %{
+                 cart_id: assigns.cart_id,
+                 subtotal: assigns.subtotal,
+                 tax: assigns.tax,
+                 shipping: assigns.shipping,
+                 total: assigns.total,
+                 payment_method: "paypal",
+                 shipping_address_id: assigns.selected_address && assigns.selected_address.id
+               }, actor: user)
              |> Ash.create() do
           {:ok, order} ->
             Lavash.Socket.put_state(state, :order_placed_id, order.id)
@@ -327,7 +371,8 @@ defmodule DemoWeb.Storefront.CheckoutLive do
               <div class="text-6xl mb-4 text-success">&#10003;</div>
               <h2 class="text-2xl font-bold mb-2">Order Placed!</h2>
               <p class="text-base-content/70 mb-2">
-                Order <code class="bg-base-200 px-2 py-1 rounded">{String.slice(@order_placed_id, 0, 8)}</code>
+                Order
+                <code class="bg-base-200 px-2 py-1 rounded">{String.slice(@order_placed_id, 0, 8)}</code>
               </p>
               <div class="bg-base-200 rounded-xl p-4 mb-4">
                 <div class="flex justify-between mb-2">
@@ -382,9 +427,20 @@ defmodule DemoWeb.Storefront.CheckoutLive do
                   <div class="space-y-3">
                     <div class="flex items-center justify-between">
                       <div class="text-sm font-semibold">Ship to</div>
-                      <button phx-click="toggle_ship_to" class="btn btn-ghost btn-sm" aria-label="Toggle">
-                        <span data-lavash-visible="ship_to_expanded" class={unless @ship_to_expanded, do: "hidden"}>&#9652;</span>
-                        <span data-lavash-visible="ship_to_expanded" data-lavash-toggle="ship_to_expanded|hidden|" class={if @ship_to_expanded, do: "hidden"}>&#9662;</span>
+                      <button
+                        phx-click="toggle_ship_to"
+                        class="btn btn-ghost btn-sm"
+                        aria-label="Toggle"
+                      >
+                        <span
+                          data-lavash-visible="ship_to_expanded"
+                          class={unless @ship_to_expanded, do: "hidden"}
+                        >&#9652;</span>
+                        <span
+                          data-lavash-visible="ship_to_expanded"
+                          data-lavash-toggle="ship_to_expanded|hidden|"
+                          class={if @ship_to_expanded, do: "hidden"}
+                        >&#9662;</span>
                       </button>
                     </div>
 
@@ -404,21 +460,34 @@ defmodule DemoWeb.Storefront.CheckoutLive do
                           phx-value-id={address.id}
                         >
                           <div class="flex items-center gap-3">
-                            <input type="radio" name="address" class="radio radio-primary radio-sm"
-                              checked={@selected_address && @selected_address.id == address.id} />
+                            <input
+                              type="radio"
+                              name="address"
+                              class="radio radio-primary radio-sm"
+                              checked={@selected_address && @selected_address.id == address.id}
+                            />
                             <div>
-                              <div class="font-semibold">{address.first_name} {address.last_name}, {address.address}</div>
-                              <div class="text-sm opacity-70">{address.city}, {address.state} {address.zip}</div>
+                              <div class="font-semibold">
+                                {address.first_name} {address.last_name}, {address.address}
+                              </div>
+                              <div class="text-sm opacity-70">
+                                {address.city}, {address.state} {address.zip}
+                              </div>
                             </div>
                           </div>
-                          <button class="btn btn-ghost btn-sm text-base-content/70 hover:text-primary"
-                            phx-click="edit_address" phx-value-id={address.id}>Edit</button>
+                          <button
+                            class="btn btn-ghost btn-sm text-base-content/70 hover:text-primary"
+                            phx-click="edit_address"
+                            phx-value-id={address.id}
+                          >Edit</button>
                         </div>
                       <% end %>
                     </div>
 
-                    <a class="link link-primary inline-flex items-center gap-2 text-sm font-semibold cursor-pointer"
-                      phx-click="add_address">
+                    <a
+                      class="link link-primary inline-flex items-center gap-2 text-sm font-semibold cursor-pointer"
+                      phx-click="add_address"
+                    >
                       <span class="text-lg leading-none">+</span> Add a new address
                     </a>
                   </div>
@@ -440,65 +509,126 @@ defmodule DemoWeb.Storefront.CheckoutLive do
                     </div>
 
                     <!-- Credit Card Option -->
-                    <div class="rounded-lg border border-base-300 p-4 cursor-pointer transition-all"
-                      data-lavash-toggle="is_card_payment|border-primary ring-1 ring-primary|border-base-300">
+                    <div
+                      class="rounded-lg border border-base-300 p-4 cursor-pointer transition-all"
+                      data-lavash-toggle="is_card_payment|border-primary ring-1 ring-primary|border-base-300"
+                    >
                       <div class="flex items-center gap-3 cursor-pointer" phx-click="select_card">
-                        <input type="radio" name="payment_method" class="radio radio-primary"
-                          checked={@payment_method == "card"} />
+                        <input
+                          type="radio"
+                          name="payment_method"
+                          class="radio radio-primary"
+                          checked={@payment_method == "card"}
+                        />
                         <span class="font-semibold">Credit card</span>
                         <span class="ml-auto flex items-center gap-1">
-                          <span data-lavash-visible="has_card_type"
+                          <span
+                            data-lavash-visible="has_card_type"
                             class={"text-sm font-medium text-primary" <> unless @has_card_type, do: " hidden", else: ""}
                           >{@card_type_display}</span>
-                          <span data-lavash-visible="show_visa" class={"badge badge-outline badge-sm" <> unless @show_visa, do: " hidden", else: ""}>VISA</span>
-                          <span data-lavash-visible="show_mastercard" class={"badge badge-outline badge-sm" <> unless @show_mastercard, do: " hidden", else: ""}>MC</span>
-                          <span data-lavash-visible="show_amex" class={"badge badge-outline badge-sm" <> unless @show_amex, do: " hidden", else: ""}>AMEX</span>
-                          <span data-lavash-visible="show_discover" class={"badge badge-outline badge-sm" <> unless @show_discover, do: " hidden", else: ""}>DISC</span>
+                          <span
+                            data-lavash-visible="show_visa"
+                            class={"badge badge-outline badge-sm" <> unless @show_visa, do: " hidden", else: ""}
+                          >VISA</span>
+                          <span
+                            data-lavash-visible="show_mastercard"
+                            class={"badge badge-outline badge-sm" <> unless @show_mastercard, do: " hidden", else: ""}
+                          >MC</span>
+                          <span
+                            data-lavash-visible="show_amex"
+                            class={"badge badge-outline badge-sm" <> unless @show_amex, do: " hidden", else: ""}
+                          >AMEX</span>
+                          <span
+                            data-lavash-visible="show_discover"
+                            class={"badge badge-outline badge-sm" <> unless @show_discover, do: " hidden", else: ""}
+                          >DISC</span>
                         </span>
                       </div>
 
-                      <.form for={@payment} id="payment-form" phx-change="validate_payment" phx-submit="place_order"
+                      <.form
+                        for={@payment}
+                        id="payment-form"
+                        phx-change="validate_payment"
+                        phx-submit="place_order"
                         data-lavash-visible="is_card_payment"
-                        class={"mt-4 space-y-3" <> if @payment_method != "card", do: " hidden", else: ""}>
-                        <.input field={@payment[:card_number]} label="Card number"
-                          valid={@card_number_valid} valid_field="card_number_valid"
+                        class={"mt-4 space-y-3" <> if @payment_method != "card", do: " hidden", else: ""}
+                      >
+                        <.input
+                          field={@payment[:card_number]}
+                          label="Card number"
+                          valid={@card_number_valid}
+                          valid_field="card_number_valid"
                           errors={@payment_card_number_errors}
-                          autocomplete="cc-number" inputmode="numeric" format="credit-card" />
+                          autocomplete="cc-number"
+                          inputmode="numeric"
+                          format="credit-card"
+                        />
 
                         <div class="grid grid-cols-2 gap-3">
-                          <.input field={@payment[:expiry]} label="Expiration (MM/YY)"
-                            valid={@expiry_valid} valid_field="expiry_valid"
+                          <.input
+                            field={@payment[:expiry]}
+                            label="Expiration (MM/YY)"
+                            valid={@expiry_valid}
+                            valid_field="expiry_valid"
                             errors={@payment_expiry_errors}
-                            autocomplete="cc-exp" inputmode="numeric" maxlength="5" format="expiry" />
-                          <.input field={@payment[:cvv]} label="Security code"
-                            valid={@cvv_valid} valid_field="cvv_valid"
+                            autocomplete="cc-exp"
+                            inputmode="numeric"
+                            maxlength="5"
+                            format="expiry"
+                          />
+                          <.input
+                            field={@payment[:cvv]}
+                            label="Security code"
+                            valid={@cvv_valid}
+                            valid_field="cvv_valid"
                             errors={@payment_cvv_errors}
-                            autocomplete="cc-csc" inputmode="numeric" maxlength="4" />
+                            autocomplete="cc-csc"
+                            inputmode="numeric"
+                            maxlength="4"
+                          />
                         </div>
 
-                        <.input field={@payment[:name]} label="Name on card"
-                          valid={@payment_name_valid} errors={@payment_name_errors}
-                          autocomplete="cc-name" />
+                        <.input
+                          field={@payment[:name]}
+                          label="Name on card"
+                          valid={@payment_name_valid}
+                          errors={@payment_name_errors}
+                          autocomplete="cc-name"
+                        />
 
                         <label class="flex items-center gap-3 cursor-pointer pt-1">
-                          <input type="checkbox" class="checkbox checkbox-sm"
-                            checked={@use_shipping_as_billing} phx-click="toggle_billing_address" />
+                          <input
+                            type="checkbox"
+                            class="checkbox checkbox-sm"
+                            checked={@use_shipping_as_billing}
+                            phx-click="toggle_billing_address"
+                          />
                           <span class="text-sm">Use shipping address as billing address</span>
                         </label>
 
-                        <button type="submit" data-lavash-enabled="form_valid" class="btn btn-lg w-full"
-                          data-lavash-toggle="form_valid|btn-primary|btn-disabled">
+                        <button
+                          type="submit"
+                          data-lavash-enabled="form_valid"
+                          class="btn btn-lg w-full"
+                          data-lavash-toggle="form_valid|btn-primary|btn-disabled"
+                        >
                           Pay ${Decimal.to_string(@total)}
                         </button>
                       </.form>
                     </div>
 
                     <!-- PayPal Option -->
-                    <div class="flex items-center gap-3 rounded-lg border p-4 cursor-pointer transition-all"
+                    <div
+                      class="flex items-center gap-3 rounded-lg border p-4 cursor-pointer transition-all"
                       phx-click="select_paypal"
-                      data-lavash-toggle="is_card_payment|border-base-300|border-primary ring-1 ring-primary">
-                      <input type="radio" name="payment_method" class="radio radio-primary"
-                        checked={@payment_method == "paypal"} />
+                      data-lavash-toggle="is_card_payment|border-base-300|border-primary ring-1 ring-primary"
+                    >
+                      <input
+                        type="radio"
+                        name="payment_method"
+                        class="radio radio-primary"
+                        checked={@payment_method == "paypal"}
+                      />
                       <span class="font-semibold">PayPal</span>
                       <span class="ml-auto text-sm font-bold">
                         <span class="text-[#003087]">Pay</span><span class="text-[#009cde]">Pal</span>
@@ -525,18 +655,32 @@ defmodule DemoWeb.Storefront.CheckoutLive do
                           <div class="avatar">
                             <div class="w-14 rounded-lg bg-base-200 flex items-center justify-center">
                               <svg viewBox="0 0 24 24" class="h-8 w-8 opacity-40" fill="none">
-                                <path d="M7 7h10v14H7V7Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
-                                <path d="M9 7V5h6v2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                                <path
+                                  d="M7 7h10v14H7V7Z"
+                                  stroke="currentColor"
+                                  stroke-width="1.5"
+                                  stroke-linejoin="round"
+                                />
+                                <path
+                                  d="M9 7V5h6v2"
+                                  stroke="currentColor"
+                                  stroke-width="1.5"
+                                  stroke-linecap="round"
+                                />
                               </svg>
                             </div>
                           </div>
-                          <div class="badge badge-neutral badge-sm absolute -right-2 -top-2">{item.quantity}</div>
+                          <div class="badge badge-neutral badge-sm absolute -right-2 -top-2">
+                            {item.quantity}
+                          </div>
                         </div>
                         <div class="flex-1">
                           <div class="font-bold">{item.product.name}</div>
                           <div class="text-sm opacity-70">{item.product.origin}</div>
                         </div>
-                        <div class="text-sm font-bold">${Decimal.to_string(Decimal.mult(item.unit_price, item.quantity))}</div>
+                        <div class="text-sm font-bold">
+                          ${Decimal.to_string(Decimal.mult(item.unit_price, item.quantity))}
+                        </div>
                       </div>
                     <% end %>
 
@@ -570,12 +714,22 @@ defmodule DemoWeb.Storefront.CheckoutLive do
                 <div class="p-4 bg-base-100 rounded-lg border border-base-300">
                   <h3 class="font-semibold text-base-content mb-2">Test Card Numbers</h3>
                   <ul class="text-sm text-base-content/70 space-y-1 font-mono">
-                    <li><span class="text-base-content font-semibold">Visa:</span> 4242 4242 4242 4242</li>
-                    <li><span class="text-base-content font-semibold">MC:</span> 5555 5555 5555 4444</li>
-                    <li><span class="text-base-content font-semibold">Amex:</span> 3782 822463 10005</li>
-                    <li><span class="text-base-content font-semibold">Disc:</span> 6011 1111 1111 1117</li>
+                    <li>
+                      <span class="text-base-content font-semibold">Visa:</span> 4242 4242 4242 4242
+                    </li>
+                    <li>
+                      <span class="text-base-content font-semibold">MC:</span> 5555 5555 5555 4444
+                    </li>
+                    <li>
+                      <span class="text-base-content font-semibold">Amex:</span> 3782 822463 10005
+                    </li>
+                    <li>
+                      <span class="text-base-content font-semibold">Disc:</span> 6011 1111 1111 1117
+                    </li>
                   </ul>
-                  <p class="text-xs text-base-content/50 mt-2">Use any future date and any 3-4 digit CVV</p>
+                  <p class="text-xs text-base-content/50 mt-2">
+                    Use any future date and any 3-4 digit CVV
+                  </p>
                 </div>
               </aside>
             </div>

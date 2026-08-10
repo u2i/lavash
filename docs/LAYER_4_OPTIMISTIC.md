@@ -76,10 +76,10 @@ defmodule MyAppWeb.ProductModal do
     end
   end
 
-  render fn assigns ->
-    ~L"""
+  template do
+    ~H"""
     <div class="p-6">
-      <.modal_close_button myself={@myself} />
+      <.modal_close_button id={@__modal_id__} myself={@myself} />
       <!-- form content -->
     </div>
     """

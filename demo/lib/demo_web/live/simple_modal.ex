@@ -38,7 +38,9 @@ defmodule DemoWeb.SimpleModal do
 
   # Load a random product to display (simulates async data)
   read :product, Product do
-    id fn _state -> Demo.Catalog.Product |> Ash.Query.limit(1) |> Ash.read_one!() |> then(& &1.id) end
+    id fn _state ->
+      Demo.Catalog.Product |> Ash.Query.limit(1) |> Ash.read_one!() |> then(& &1.id)
+    end
   end
 
   # No explicit :close action needed — the Modal plugin injects one that

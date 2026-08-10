@@ -120,12 +120,12 @@ defmodule Demo.Forms.Address do
 
       # Only return addresses if session_id is provided, otherwise empty
       filter expr(
-        if is_nil(^arg(:session_id)) do
-          false
-        else
-          session_id == ^arg(:session_id)
-        end
-      )
+               if is_nil(^arg(:session_id)) do
+                 false
+               else
+                 session_id == ^arg(:session_id)
+               end
+             )
     end
   end
 

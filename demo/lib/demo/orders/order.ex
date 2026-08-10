@@ -5,7 +5,7 @@ defmodule Demo.Orders.Order do
 
   sqlite do
     table "orders"
-    repo Demo.Repo
+    repo(Demo.Repo)
   end
 
   attributes do

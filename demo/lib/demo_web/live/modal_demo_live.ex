@@ -30,7 +30,9 @@ defmodule DemoWeb.ModalDemoLive do
 
       <div class="bg-white rounded-lg shadow p-6 mb-8">
         <h2 class="font-semibold text-lg mb-4">Simple Modal</h2>
-        <p class="text-gray-600 mb-4">Click the button to open a basic modal. The modal opens optimistically (immediately) without waiting for the server.</p>
+        <p class="text-gray-600 mb-4">
+          Click the button to open a basic modal. The modal opens optimistically (immediately) without waiting for the server.
+        </p>
         <button
           class="btn btn-primary"
           phx-click="open_modal"

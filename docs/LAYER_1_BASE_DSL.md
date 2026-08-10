@@ -82,13 +82,6 @@ of the auto-injected attributes are layer-4 concerns — they only fire on
 fields marked `optimistic: true` — but the template transformer itself
 is a layer-1 piece of compile-time plumbing.
 
-### `~L` (legacy shape)
-
-`render fn assigns -> ~L"..." end` is still supported and produces the
-same compiled output as `template do ~H"..."end`. The `~L` shape predates
-the template block and is the only path that supports `render_loading fn`
-for animated overlays. New code should prefer `template do ~H`.
-
 ### Diagnostics
 
 The transformer warns at compile time when:

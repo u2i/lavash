@@ -182,7 +182,8 @@ defmodule Lavash.Form do
     run_action(changeset, Keyword.get(opts, :actor))
   end
 
-  # Also support AshPhoenix.Form directly for backwards compatibility
+  # AshPhoenix.Form directly — also the delegation target for the
+  # Phoenix.HTML.Form clause below.
   def submit(%AshPhoenix.Form{} = form, opts) do
     actor = Keyword.get(opts, :actor)
     AshPhoenix.Form.submit(form, actor: actor)

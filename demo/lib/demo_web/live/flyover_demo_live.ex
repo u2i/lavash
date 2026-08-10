@@ -85,7 +85,9 @@ defmodule DemoWeb.FlyoverDemoLive do
       <div class="bg-white rounded-lg shadow p-6 mb-8">
         <h2 class="font-semibold text-lg mb-4">Features</h2>
         <ul class="list-disc list-inside space-y-2 text-gray-600">
-          <li><strong>Optimistic Animations:</strong> Panel slides immediately, no waiting for server</li>
+          <li>
+            <strong>Optimistic Animations:</strong> Panel slides immediately, no waiting for server
+          </li>
           <li><strong>Multiple Directions:</strong> Slide from left, right, top, or bottom</li>
           <li><strong>Configurable Size:</strong> Width for horizontal, height for vertical</li>
           <li><strong>Backdrop:</strong> Optional click-to-close overlay</li>
