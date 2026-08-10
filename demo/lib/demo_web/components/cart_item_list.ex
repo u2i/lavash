@@ -42,19 +42,17 @@ defmodule DemoWeb.Components.CartItemList do
 
   actions do
     action :increment, [:id] do
-      map_by(:items, :id, "fn item, _id -> %{item | quantity: item.quantity + 1} end")
+      map_by :items, :id, "fn item, _id -> %{item | quantity: item.quantity + 1} end"
     end
 
     action :decrement, [:id] do
-      map_by(
-        :items,
-        :id,
-        "fn item, _id -> if item.quantity <= 1, do: :remove, else: %{item | quantity: item.quantity - 1} end"
-      )
+      map_by :items,
+             :id,
+             "fn item, _id -> if item.quantity <= 1, do: :remove, else: %{item | quantity: item.quantity - 1} end"
     end
 
     action :remove, [:id] do
-      map_by(:items, :id, :remove)
+      map_by :items, :id, :remove
     end
 
     action :close do

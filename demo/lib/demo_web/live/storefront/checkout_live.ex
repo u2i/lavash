@@ -12,7 +12,7 @@ defmodule DemoWeb.Storefront.CheckoutLive do
   import Lavash.LiveView.Helpers, only: [lavash_component: 1]
 
   # Import credit card validators (expanded inline, transpiled to JS)
-  import_rx(Demo.Validators.CreditCard)
+  import_rx Demo.Validators.CreditCard
 
   use Phoenix.VerifiedRoutes,
     endpoint: DemoWeb.Endpoint,
@@ -111,7 +111,8 @@ defmodule DemoWeb.Storefront.CheckoutLive do
               if Decimal.compare(@shipping, Decimal.new("0")) == :eq,
                 do: "Free",
                 else: "$" <> Decimal.to_string(@shipping)
-            ), optimistic: false
+            ),
+            optimistic: false
 
   calculate :total_display, rx("$" <> Decimal.to_string(@total)), optimistic: false
 
@@ -278,7 +279,9 @@ defmodule DemoWeb.Storefront.CheckoutLive do
                  payment_method: assigns.payment_method,
                  card_last_four: card_last_four,
                  shipping_address_id: assigns.selected_address && assigns.selected_address.id
-               }, actor: user)
+               },
+               actor: user
+             )
              |> Ash.create() do
           {:ok, order} ->
             Lavash.Socket.put_state(state, :order_placed_id, order.id)
@@ -309,7 +312,9 @@ defmodule DemoWeb.Storefront.CheckoutLive do
                  total: assigns.total,
                  payment_method: "paypal",
                  shipping_address_id: assigns.selected_address && assigns.selected_address.id
-               }, actor: user)
+               },
+               actor: user
+             )
              |> Ash.create() do
           {:ok, order} ->
             Lavash.Socket.put_state(state, :order_placed_id, order.id)
@@ -434,7 +439,7 @@ defmodule DemoWeb.Storefront.CheckoutLive do
                       >
                         <span
                           data-lavash-visible="ship_to_expanded"
-                          class={unless @ship_to_expanded, do: "hidden"}
+                          class={if !@ship_to_expanded, do: "hidden"}
                         >&#9652;</span>
                         <span
                           data-lavash-visible="ship_to_expanded"

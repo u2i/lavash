@@ -40,7 +40,7 @@ defmodule DemoWeb.FormValidationDemoLive do
   # Extend the auto-generated email errors with custom @ check
   # The error shows when the condition is true (i.e., when invalid)
   extend_errors :registration_email_errors do
-    error(rx(not String.contains?(@registration_params["email"] || "", "@")), "Must contain @")
+    error rx(not String.contains?(@registration_params["email"] || "", "@")), "Must contain @"
   end
 
   # Email validity now just uses the extended validation
