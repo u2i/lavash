@@ -167,7 +167,12 @@ defmodule DemoWeb.Components.CartItemList do
           <span>Total</span>
           <span>${@grand_total}</span>
         </div>
-        <a href="/storefront/checkout" class="btn btn-primary w-full">Checkout</a>
+        <%!-- Live navigation, not a plain anchor: it rides the same
+             channel as any just-clicked mutate event, so in-flight cart
+             writes commit (in order) before the checkout view mounts.
+             A hard <a href> would tear the socket down and could lose
+             an optimistically-rendered write. --%>
+        <.link navigate="/storefront/checkout" class="btn btn-primary w-full">Checkout</.link>
         <button
           type="button"
           class="btn btn-ghost w-full"
