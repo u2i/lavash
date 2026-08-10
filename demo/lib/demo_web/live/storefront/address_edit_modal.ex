@@ -10,7 +10,7 @@ defmodule DemoWeb.Storefront.AddressEditModal do
 
   alias Demo.Orders.Address
 
-  import_rx(DemoWeb.AddressRegions)
+  import_rx DemoWeb.AddressRegions
 
   modal do
     open_field :open

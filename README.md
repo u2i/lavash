@@ -301,7 +301,6 @@ end
 |---|---|
 | `set :field, rx(...)` | Set field via a reactive expression (transpilable) |
 | `set :field, value` | Set field to a literal value |
-| `update :field, fun` | Transform field with a function (server-only) |
 | `effect fn` | Execute side effects |
 | `run fn` | Run a function over `socket` (full LV API available) |
 | `submit :form` | Submit a form |
@@ -314,7 +313,7 @@ end
 | `invoke id, :action` | Invoke an action on a child component |
 
 `set :field, rx(...)` transpiles to JS for optimistic updates (layer 4).
-`update`, `effect`, `submit`, `run`, `push_patch`, `redirect`,
+`effect`, `submit`, `run`, `push_patch`, `redirect`,
 `push_event`, `flash`, `fire`, `invoke` always go through the server.
 
 ### Templates and auto-injection

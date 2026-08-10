@@ -19,7 +19,7 @@ defmodule DemoWeb.CheckoutDemoLive do
 
   # Import credit card validators (valid_card_number?, valid_expiry?, valid_cvv?)
   # These are expanded inline at each call site and transpiled to JS
-  import_rx(Demo.Validators.CreditCard)
+  import_rx Demo.Validators.CreditCard
 
   alias Demo.Forms.{Address, Payment}
 
@@ -354,7 +354,7 @@ defmodule DemoWeb.CheckoutDemoLive do
                     >
                       <span
                         data-lavash-visible="ship_to_expanded"
-                        class={unless @ship_to_expanded, do: "hidden"}
+                        class={if !@ship_to_expanded, do: "hidden"}
                       >▴</span>
                       <span
                         data-lavash-visible="ship_to_expanded"

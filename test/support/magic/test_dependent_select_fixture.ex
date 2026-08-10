@@ -71,7 +71,7 @@ defmodule Lavash.Test.Magic.DependentSelectLive do
   """
   use Lavash.LiveView
 
-  import_rx(Lavash.Test.Magic.Regions)
+  import_rx Lavash.Test.Magic.Regions
 
   # Explicitly optimistic so the LiveView renders the LavashOptimistic
   # hook wrapper and the params live in client state (same pattern as

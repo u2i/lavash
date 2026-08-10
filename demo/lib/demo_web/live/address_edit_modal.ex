@@ -31,7 +31,7 @@ defmodule DemoWeb.AddressEditModal do
   # Session ID from parent for scoping addresses
   prop :session_id, :string, required: true
 
-  import_rx(DemoWeb.AddressRegions)
+  import_rx DemoWeb.AddressRegions
 
   # Region select derives from the chosen country (issue #39). This
   # modal keeps the <.select> component (server-rendered options), so
