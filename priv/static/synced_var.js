@@ -26,6 +26,7 @@
  *   onVisible(syncedVar)   - fully visible
  *   onExiting(syncedVar)   - start exit animation
  *   onIdle(syncedVar)      - back to closed
+ *   onSeedOpen(syncedVar)  - mount-time seed of a server-rendered-open value (instant styles)
  *   onAsyncReady(syncedVar) - async data arrived (loading or visible)
  *   onContentReadyDuringEnter(syncedVar) - async arrived during enter
  *   onUpdated(syncedVar, phase) - LiveView patch applied
@@ -142,13 +143,24 @@ class ExitingPhase extends Phase {
   }
 }
 
-function deepEqual(a, b) {
+export function deepEqual(a, b) {
   if (a === b) return true;
   if (a == null || b == null) return a == b;
   if (Array.isArray(a) && Array.isArray(b)) {
     if (a.length !== b.length) return false;
     for (let i = 0; i < a.length; i++) {
       if (!deepEqual(a[i], b[i])) return false;
+    }
+    return true;
+  }
+  if (Array.isArray(a) || Array.isArray(b)) return false;
+  if (typeof a === "object" && typeof b === "object") {
+    const keysA = Object.keys(a);
+    const keysB = Object.keys(b);
+    if (keysA.length !== keysB.length) return false;
+    for (const key of keysA) {
+      if (!Object.prototype.hasOwnProperty.call(b, key)) return false;
+      if (!deepEqual(a[key], b[key])) return false;
     }
     return true;
   }
@@ -198,6 +210,36 @@ export class SyncedVar {
   }
 
   // --- Value methods ---
+
+  /**
+   * Seed a server-rendered initial value as *confirmed* state (issue #30).
+   *
+   * Unlike setOptimistic, this bumps no version — the var stays
+   * non-pending, so the next server patch doesn't have to "confirm"
+   * a value the server itself rendered. For animated vars with an
+   * open (non-null) value, the phase machine jumps straight to
+   * visible/loading with instant styles: a server-rendered-open
+   * overlay is already open, so replaying the enter animation on
+   * every mount (including reconnects) is visual noise.
+   */
+  seed(newValue) {
+    const oldValue = this.value;
+    this.value = newValue;
+    this.confirmedValue = newValue;
+    this._lastServerValue = newValue;
+    console.debug(`[SV:${this.label}] seed: ${JSON.stringify(oldValue)} → ${JSON.stringify(newValue)}, v=${this.version}, cv=${this.confirmedVersion}`);
+    this.onChange?.(newValue, oldValue, "server");
+
+    if (this.animated && newValue != null) {
+      const targetName = this._animAsync && !this.isAsyncReady ? "loading" : "visible";
+      // Bypass _transitionTo: entering the target phase through the
+      // machine would notify the delegate's animated handler. Set the
+      // phase directly and let the delegate apply final styles instantly.
+      this._currentPhase = this._phases[targetName];
+      this._setPhase(targetName);
+      this._notifyDelegate("onSeedOpen");
+    }
+  }
 
   /**
    * Optimistic set without server push.

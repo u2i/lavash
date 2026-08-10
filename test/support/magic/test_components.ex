@@ -185,6 +185,33 @@ defmodule Lavash.Test.Magic.ModalHostLive do
   end
 end
 
+defmodule Lavash.Test.Magic.ModalSsrHostLive do
+  @moduledoc """
+  Test fixture: host whose modal open state comes from the URL, so
+  visiting `?modal_item=42` server-renders the modal already open.
+  Exercises the mount-time seed path (issue #30): the open value must
+  arrive confirmed (no pending window) and must not replay the enter
+  animation.
+  """
+  use Lavash.LiveView
+  import Lavash.LiveView.Helpers, only: [lavash_component: 1]
+
+  state :modal_item, :string, from: :url, default: nil
+
+  def render(assigns) do
+    ~H"""
+    <div>
+      <.lavash_component
+        module={Lavash.Test.Magic.ModalComponent}
+        id="test-modal"
+        item_id={@modal_item}
+        bind={[item_id: :modal_item]}
+      />
+    </div>
+    """
+  end
+end
+
 defmodule Lavash.Test.Magic.ModalNoCloseComponent do
   @moduledoc """
   Test fixture: modal with `close_on_escape false` and

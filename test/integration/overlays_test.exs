@@ -68,4 +68,31 @@ defmodule Lavash.Integration.OverlaysTest do
     |> assert_has(css("#modal-async-content"))
     |> assert_has(css("#modal-async-body", text: "Loaded item 42"))
   end
+
+  describe "server-rendered-open modal (issue #30)" do
+    test "mount seeds the open value and skips the enter animation", %{session: session} do
+      # The open value comes from the URL, so the modal is open in the
+      # server-rendered HTML. The hook must seed it as confirmed and jump
+      # the phase machine straight to visible — the ~200ms enter animation
+      # never runs. wait: 150 is deliberately shorter than the enter
+      # duration: the pre-seed behavior (idle → entering → visible at
+      # 200ms+) cannot pass it, while the seeded jump is immediate.
+      session
+      |> visit("/magic/modal-ssr-host?modal_item=42")
+      |> assert_has(css(~s([data-modal-phase="visible"]), wait: 150))
+      |> assert_has(css("#modal-content h2", text: "Editing item 42"))
+    end
+
+    test "seeded modal still closes cleanly", %{session: session} do
+      # Guards the seed against leaving the phase machine in a state the
+      # close path can't drive (seed bypasses the normal idle → entering
+      # transition).
+      session
+      |> visit("/magic/modal-ssr-host?modal_item=42")
+      |> assert_has(css("#modal-content"))
+      |> click(css("#modal-content button"))
+
+      refute Wallabidi.Browser.has?(session, Wallabidi.Query.css("#modal-content"))
+    end
+  end
 end

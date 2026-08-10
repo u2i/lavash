@@ -26,6 +26,7 @@ defmodule Lavash.TestRouter do
     live("/modal-host", ModalHostLive)
     live("/modal-no-close-host", ModalNoCloseHostLive)
     live("/modal-async-host", ModalAsyncHostLive)
+    live("/modal-ssr-host", ModalSsrHostLive)
     live("/bindings-direct", BindingDirectHostLive)
     live("/bindings-nested", BindingNestedHostLive)
     live("/bindings-siblings", BindingSiblingsHostLive)
