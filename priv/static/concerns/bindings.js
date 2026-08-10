@@ -14,6 +14,7 @@ import {
   refreshFromParent as _refreshFromParent,
   propagateBoundFieldsToParent as _propagateBoundFieldsToParent
 } from "./binding_helpers.js";
+import { debugEnabled } from "../debug.js";
 
 export const bindings = {
   name: "bindings",
@@ -68,7 +69,7 @@ function onLavashSet(e, hook) {
   const { field, value, serverHandled } = e.detail;
   if (!field) return;
 
-  console.debug(
+  if (debugEnabled()) console.debug(
     `[lavash:bindings] handleLavashSet: field=${field}, value=${JSON.stringify(value)}, serverHandled=${serverHandled}`
   );
 
@@ -108,5 +109,5 @@ function onLavashSet(e, hook) {
     return;
   }
 
-  console.debug("[LavashOptimistic] Field", field, "not owned by this hook, letting event propagate");
+  if (debugEnabled()) console.debug("[LavashOptimistic] Field", field, "not owned by this hook, letting event propagate");
 }

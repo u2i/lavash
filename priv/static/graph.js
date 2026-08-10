@@ -5,6 +5,8 @@
  * Used by LavashOptimistic for client-side reactive recomputation.
  */
 
+import { debugEnabled } from "./debug.js";
+
 /**
  * BFS to find all fields transitively affected by `changedFields`.
  *
@@ -101,7 +103,7 @@ export function recomputeGraph(graph, fns, state, changedFields = null) {
       try {
         state[name] = fn(state);
       } catch (err) {
-        if (typeof console !== "undefined" && console.debug) {
+        if (debugEnabled()) {
           console.debug(`[Lavash] Error computing derive ${name}:`, err.message);
         }
       }

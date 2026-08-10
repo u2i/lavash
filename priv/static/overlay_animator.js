@@ -1,4 +1,5 @@
 import { animationSpeed } from "./synced_var.js";
+import { debugEnabled } from "./debug.js";
 
 const OVERLAY_OPACITY = "0.5";
 
@@ -151,7 +152,7 @@ export class OverlayAnimator {
     ) {
       return;
     }
-    console.debug(
+    if (debugEnabled()) console.debug(
       `[OverlayAnimator:${this.type}] apply: phase=${phase}, open=${t.open}, contentReady=${t.contentReady}, hidden=${t.hidden}, animate=${animate}`
     );
     this._applied = t;
@@ -525,7 +526,7 @@ export class OverlayAnimator {
     const contentLoaded = mainInner && mainInner.children.length > 0;
     const phase = animated.getPhase();
 
-    console.debug(
+    if (debugEnabled()) console.debug(
       `[OverlayAnimator:${this.type}] onUpdated: phase=${phase}, contentLoaded=${!!contentLoaded}, asyncReady=${animated.isAsyncReady}`
     );
 
@@ -574,7 +575,7 @@ export class OverlayAnimator {
     const rect = panel.getBoundingClientRect();
     // Skip if panel has zero dimensions (hidden or not laid out)
     if (rect.width === 0 || rect.height === 0) {
-      console.debug(
+      if (debugEnabled()) console.debug(
         `[OverlayAnimator:${this.type}] _createGhosts: skipping - panel has zero dimensions`
       );
       return;
