@@ -30,13 +30,8 @@ export {
   overlays,
   getState,
   getHooks,
-  registerColocated,
   SyncedVar,
   OverlayAnimator
 } from "./lavash.js";
 
 export { SyncedVar as SyncedVarClass, SyncedVarStore } from "./synced_var.js";
-
-// Backward-compat aliases
-export { OverlayAnimator as ModalAnimator } from "./overlay_animator.js";
-export { OverlayAnimator as FlyoverAnimator } from "./overlay_animator.js";

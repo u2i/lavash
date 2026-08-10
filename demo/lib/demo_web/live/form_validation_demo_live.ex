@@ -40,7 +40,7 @@ defmodule DemoWeb.FormValidationDemoLive do
   # Extend the auto-generated email errors with custom @ check
   # The error shows when the condition is true (i.e., when invalid)
   extend_errors :registration_email_errors do
-    error rx(not String.contains?(@registration_params["email"] || "", "@")), "Must contain @"
+    error(rx(not String.contains?(@registration_params["email"] || "", "@")), "Must contain @")
   end
 
   # Email validity now just uses the extended validation
@@ -190,9 +190,19 @@ defmodule DemoWeb.FormValidationDemoLive do
       <div class="mt-8 p-4 bg-gray-50 rounded-lg">
         <h3 class="font-semibold text-gray-700 mb-2">How it works</h3>
         <ul class="text-sm text-gray-600 space-y-1">
-          <li>• Ash resource with <code class="bg-gray-200 px-1 rounded">constraints</code> (min_length, min, allow_nil?)</li>
-          <li>• <code class="bg-gray-200 px-1 rounded">form :registration, Registration</code> auto-generates fields</li>
-          <li>• <code class="bg-gray-200 px-1 rounded">registration_*_valid</code> and <code class="bg-gray-200 px-1 rounded">registration_*_errors</code> from constraints</li>
+          <li>
+            • Ash resource with <code class="bg-gray-200 px-1 rounded">constraints</code>
+            (min_length, min, allow_nil?)
+          </li>
+          <li>
+            • <code class="bg-gray-200 px-1 rounded">form :registration, Registration</code>
+            auto-generates fields
+          </li>
+          <li>
+            • <code class="bg-gray-200 px-1 rounded">registration_*_valid</code>
+            and <code class="bg-gray-200 px-1 rounded">registration_*_errors</code>
+            from constraints
+          </li>
           <li>• Error messages derived from Ash constraint values</li>
           <li>• Client validates instantly, server validates on submit</li>
         </ul>

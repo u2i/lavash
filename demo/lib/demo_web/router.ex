@@ -26,9 +26,9 @@ defmodule DemoWeb.Router do
     pipe_through :browser
 
     sign_in_route(auth_routes_prefix: "/auth")
-    sign_out_route AuthController
-    auth_routes AuthController, Demo.Accounts.User, path: "/auth"
-    reset_route auth_routes_prefix: "/auth"
+    sign_out_route(AuthController)
+    auth_routes(AuthController, Demo.Accounts.User, path: "/auth")
+    reset_route(auth_routes_prefix: "/auth")
   end
 
   # Demos index (home page)

@@ -305,8 +305,8 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
 
       # The module self-registers into window.Lavash.optimistic at import
       # time, so a bare side-effect import of the colocated manifest
-      # (`import "phoenix-colocated/my_app"`) is all an app needs — no
-      # registerColocated/registerOptimistic wiring. The window guards
+      # (`import "phoenix-colocated/my_app"`) is all an app needs. The
+      # window guards
       # make import order relative to the lavash package irrelevant.
       """
       const fns = {

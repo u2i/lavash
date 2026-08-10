@@ -36,8 +36,8 @@ radius and which are not.
 
 **What it is.** The Spark DSL surface that maps to vanilla Phoenix.LiveView
 constructs: `mount do`, `messages do message ... end end`, `actions do action
-... end end` with imperative bodies, `template do ~H"..."` or `render fn
-assigns -> ~L"..." end`, `when_connected`, `on_mount`, `async`/`fire`,
+... end end` with imperative bodies, `template do ~H"..."` blocks,
+`when_connected`, `on_mount`, `async`/`fire`,
 components (`prop`, `slot`), and the seven-step transformer pipeline
 (`TokenizeTemplate` → `AnalyzeTemplate` → `ExtractColocatedJs` →
 `CompileComponent`/`CompileLiveView`, plus `ValidateDsl` / `ValidateTemplate`).
@@ -133,7 +133,6 @@ means "primarily B, but writes to S" or similar — see notes.
 | `lib/lavash/application.ex` | B | OTP application module (currently only reads `:pubsub` config). |
 | `lib/lavash/json.ex` | O | JSON encoder for client-bound state (tuples → arrays, atoms → strings). Used only on the optimistic transport. |
 | `lib/lavash/pub_sub.ex` | B | Cross-process resource invalidation broadcasts on form submit. Layer-1 plumbing for Ash forms. |
-| `lib/lavash/sigil.ex` | B | `~L` sigil; no-op marker macro picked up by `TokenizeTemplate`. |
 | `lib/lavash/type.ex` | S | Bidirectional URL ↔ Elixir conversion. Pure layer-2 — needed for URL hydration and `_lavash_sync` payload encoding. |
 | `lib/lavash/graph.ex` | R | Pure graph algorithms (BFS reachability, topo sort). Used by rx graph, the colocated transformer's JS metadata, and the JS hook. |
 | `lib/lavash/assigns.ex` | B/S | Projects metadata into assigns (form metadata, component state propagation, `__lavash_parent_version__`). The version-reading line is a back-edge into layer 4. |
@@ -193,7 +192,7 @@ means "primarily B, but writes to S" or similar — see notes.
 
 | File | Layer | Notes |
 | --- | --- | --- |
-| `lib/lavash/live_view.ex` | B | `use Lavash.LiveView`; wires DSL, `~L`, optimistic hook. |
+| `lib/lavash/live_view.ex` | B | `use Lavash.LiveView`; wires DSL, template macros, optimistic hook. |
 | `lib/lavash/live_view/explicit.ex` | R | Non-DSL entry for the reactive engine. Pure layer 3 — explicitly excludes optimism. |
 | `lib/lavash/live_view/runtime.ex` | B+S+R+O | The runtime. Mount/handle_params/handle_event/handle_info pipeline; calls hydrate (layer 2), `Reactive.recompute` (layer 3), and `wrap_render` (layer 4). This is necessarily a multi-layer module — it's the place all four converge. |
 | `lib/lavash/live_view/compiler.ex` | O | `collect_optimistic_fields`, `generate_optimistic_actions`, synthetic setter actions for optimistic state. |
@@ -213,9 +212,7 @@ means "primarily B, but writes to S" or similar — see notes.
 | `lib/lavash/component/helpers.ex` | O | `optimistic_state/2` for components; component state hydration via connect_params. |
 | `lib/lavash/component/js_generator.ex` | O | HEEx node → JS template literal for subtree derives. |
 | `lib/lavash/component/optimistic_wrapper.ex` | O | Wraps render output in a `LavashOptimistic` hook root div. |
-| `lib/lavash/component/render.ex` | B | `render fn assigns -> ~L"..." end` struct. |
-| `lib/lavash/component/render_import.ex` | B | Re-exports `render/1`, `render_loading/1`. |
-| `lib/lavash/component/template.ex` | B | Deprecated string-template struct. |
+| `lib/lavash/component/render_import.ex` | B | Re-exports `template/1`, `template_loading/1` for the component DSL. |
 | `lib/lavash/component/state.ex` | B/S | Component state-binding struct. |
 | `lib/lavash/component/calculate.ex` | R | Component `calculate` entity. Carries an `optimistic: true` default — layer-3 entity with a layer-4 field. |
 | `lib/lavash/component/optimistic_action.ex` | O | Optimistic action entity. |
@@ -272,7 +269,7 @@ means "primarily B, but writes to S" or similar — see notes.
 | `lib/lavash/template.ex` | B | Parses HEEx into `{:element, ...}` tree for analysis. |
 | `lib/lavash/template/ast_transformer.ex` | B | Injects `__lavash_client_bindings__` into `.lavash_component` calls. |
 | `lib/lavash/template/compiled.ex` | B | Compiled template struct (source-preserving). |
-| `lib/lavash/template/render_macro.ex` | B | `render fn assigns -> ~L"..." end` macro. |
+| `lib/lavash/template/render_macro.ex` | B | `template do ~H"..." end` / `template_loading do` macros. |
 | `lib/lavash/template/token_transformer.ex` | B+O | The big mixed-layer transformer. Auto-injects `data-lavash-display` spans for bare `{@field}` (layer 4), wraps for visibility/enabled (layer 4), AND does layer-1-shape work (binding chain propagation). |
 
 ### Transformers (cross-cutting)
@@ -409,7 +406,7 @@ means "primarily B, but writes to S" or similar — see notes.
                   ┌──────────────────────────────────────┐
                   │         Layer 1: base                │
                   │  Dsl, transformers, TagEngine,       │
-                  │  actions, lifecycle, render, sigil,  │
+                  │  actions, lifecycle, template macros,│
                   │  Spark.Heex spike, forms (Ash)       │
                   └──────────────────────────────────────┘
                                   │ depends on

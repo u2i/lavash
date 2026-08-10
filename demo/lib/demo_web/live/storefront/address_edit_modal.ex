@@ -10,7 +10,7 @@ defmodule DemoWeb.Storefront.AddressEditModal do
 
   alias Demo.Orders.Address
 
-  import_rx DemoWeb.AddressRegions
+  import_rx(DemoWeb.AddressRegions)
 
   modal do
     open_field :open
@@ -88,7 +88,13 @@ defmodule DemoWeb.Storefront.AddressEditModal do
         <.modal_close_button id={@__modal_id__} myself={@myself} />
       </div>
 
-      <.form for={@address_form} phx-change="validate_address_form" phx-submit="save" phx-target={@myself} class="space-y-4">
+      <.form
+        for={@address_form}
+        phx-change="validate_address_form"
+        phx-submit="save"
+        phx-target={@myself}
+        class="space-y-4"
+      >
         <.select
           field={@address_form[:country]}
           label="Country/Region"
@@ -97,8 +103,16 @@ defmodule DemoWeb.Storefront.AddressEditModal do
         />
 
         <div class="grid grid-cols-2 gap-4">
-          <.input field={@address_form[:first_name]} label="First name" errors={@address_form_first_name_errors} />
-          <.input field={@address_form[:last_name]} label="Last name" errors={@address_form_last_name_errors} />
+          <.input
+            field={@address_form[:first_name]}
+            label="First name"
+            errors={@address_form_first_name_errors}
+          />
+          <.input
+            field={@address_form[:last_name]}
+            label="Last name"
+            errors={@address_form_last_name_errors}
+          />
         </div>
 
         <.input field={@address_form[:company]} label="Company (optional)" />
@@ -135,8 +149,12 @@ defmodule DemoWeb.Storefront.AddressEditModal do
         <.input field={@address_form[:phone]} label="Phone (optional)" type="tel" />
 
         <div class="flex gap-3 pt-4 border-t">
-          <button type="submit" disabled={not @address_form_valid} phx-disable-with="Saving..."
-            class={"flex-1 btn " <> if(@address_form_valid, do: "btn-primary", else: "btn-disabled")}>
+          <button
+            type="submit"
+            disabled={not @address_form_valid}
+            phx-disable-with="Saving..."
+            class={"flex-1 btn " <> if(@address_form_valid, do: "btn-primary", else: "btn-disabled")}
+          >
             {if @address_form_action == :create, do: "Save address", else: "Update address"}
           </button>
           <button type="button" phx-click="close" class="btn btn-outline">Cancel</button>
@@ -145,5 +163,4 @@ defmodule DemoWeb.Storefront.AddressEditModal do
     </div>
     """
   end
-
 end

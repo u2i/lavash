@@ -115,7 +115,7 @@ defmodule Lavash.Dsl.CommonEntities do
           The value to set. Can be:
           - A literal value: `set :count, 0`
           - An rx() expression with @field syntax: `set :count, rx(@count + 1)`
-          - A function (legacy): `set :count, &(&1.params.value)`
+          - A function (server-only escape hatch): `set :count, &(&1.params.value)`
 
           Using rx() is preferred as it enables both server-side evaluation
           and JavaScript transpilation for optimistic updates.
@@ -371,9 +371,9 @@ defmodule Lavash.Dsl.CommonEntities do
         required: true,
         doc: "The reactive expression wrapped in rx()"
       ],
-      # `optimistic:` is a layer-4 concern — moved to
-      # `Lavash.Optimistic.SchemaExtension.calculate_schema/0` and
-      # appended below for backward compatibility. See
+      # `optimistic:` is a layer-4 concern — it lives in
+      # `Lavash.Optimistic.SchemaExtension.calculate_schema/0` and is
+      # appended below so the layers compose into one schema. See
       # docs/ARCHITECTURE.md punchlist item #3.
       async: [
         type: :boolean,

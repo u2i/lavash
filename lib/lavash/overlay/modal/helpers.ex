@@ -61,7 +61,7 @@ defmodule Lavash.Overlay.Modal.Helpers do
     # LavashOptimistic on the parent wrapper handles this event
     on_close = JS.dispatch("close-panel", to: "##{assigns.id}")
 
-    # All modal chrome animations are handled by LavashOptimistic via ModalAnimator
+    # All modal chrome animations are handled by LavashOptimistic via OverlayAnimator
     # Chrome elements have JS.ignore_attributes(["class", "style"]) for direct manipulation
 
     assigns =

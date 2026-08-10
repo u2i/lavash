@@ -6,7 +6,7 @@ defmodule Demo.Accounts.Token do
 
   sqlite do
     table "tokens"
-    repo Demo.Repo
+    repo(Demo.Repo)
   end
 
   actions do

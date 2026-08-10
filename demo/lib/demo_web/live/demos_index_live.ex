@@ -123,12 +123,9 @@ defmodule DemoWeb.DemosIndexLive do
 
       <div class="mt-12 text-center text-sm text-base-content/50">
         <p>
-          Built with
-          <a href="https://hexdocs.pm/lavash" class="link">Lavash</a>
-          +
-          <a href="https://ash-hq.org" class="link">Ash</a>
-          +
-          <a href="https://phoenixframework.org" class="link">Phoenix</a>
+          Built with <a href="https://hexdocs.pm/lavash" class="link">Lavash</a>
+          + <a href="https://ash-hq.org" class="link">Ash</a>
+          + <a href="https://phoenixframework.org" class="link">Phoenix</a>
         </p>
       </div>
     </div>

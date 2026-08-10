@@ -17,8 +17,8 @@ defmodule DemoWeb.CartFlyover do
 
   flyover do
     open_field :open
-    slide_from :right
-    width :md
+    slide_from(:right)
+    width(:md)
   end
 
   # Props from parent LiveView

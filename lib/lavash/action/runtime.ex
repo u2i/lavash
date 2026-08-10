@@ -32,7 +32,7 @@ defmodule Lavash.Action.Runtime do
   Each set has a field and a value. The value can be:
   - A literal value
   - An rx() struct (reactive expression with @field syntax)
-  - A function that receives `%{params: params, state: state}` (legacy)
+  - A function that receives `%{params: params, state: state}` (server-only escape hatch)
 
   Values are coerced to the field's declared type.
   """

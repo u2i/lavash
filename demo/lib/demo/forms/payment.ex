@@ -67,4 +67,3 @@ defmodule Demo.Forms.Payment do
     validate present(:name), message: "Enter the name on your card"
   end
 end
-

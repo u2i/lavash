@@ -30,7 +30,7 @@ defmodule Lavash.Optimistic.SchemaExtension do
   calculate schema. Controls whether the calc's `rx()` body is also
   transpiled to JS and run client-side.
 
-  Default `true` for backward compatibility — most calcs are
+  Default `true` — most calcs are
   transpilable. Layer-2-only consumers (a hypothetical
   `Lavash.LiveView.Base`) would replace this with `optimistic: []`
   in their schema-extension module, making every calc server-only.

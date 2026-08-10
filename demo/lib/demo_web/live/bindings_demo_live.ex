@@ -72,14 +72,17 @@ defmodule DemoWeb.BindingsDemoLive do
             Count (Level 1 calc): <code class="bg-gray-200 px-2 py-1 rounded">{@selected_count}</code>
           </p>
           <p class="text-gray-600">
-            Has selection (Level 2 calc): <code class="bg-gray-200 px-2 py-1 rounded">{@has_selection}</code>
+            Has selection (Level 2 calc):
+            <code class="bg-gray-200 px-2 py-1 rounded">{@has_selection}</code>
           </p>
           <p class="text-gray-600">
             Summary (Level 3 calc): <code class="bg-gray-200 px-2 py-1 rounded">{@summary_text}</code>
           </p>
         </div>
         <p class="text-sm text-gray-500 mt-4">
-          The ChipSet component binds its <code>selected</code> to the parent's <code>:roast</code> state.
+          The ChipSet component binds its <code>selected</code>
+          to the parent's <code>:roast</code>
+          state.
           When you toggle chips, the parent state updates and the calculation chain recomputes in order.
         </p>
       </div>

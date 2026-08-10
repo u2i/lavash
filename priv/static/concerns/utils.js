@@ -38,7 +38,7 @@ export function getStateAtPath(state, path) {
 }
 
 /**
- * Check if an element is inside a nested child hook (e.g., ClientComponent).
+ * Check if an element is inside a nested child hook (e.g., a child lavash component).
  * We should not manipulate elements inside child hooks — they manage their own state.
  */
 export function isInsideChildHook(el, rootEl) {

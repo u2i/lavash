@@ -94,7 +94,7 @@ defmodule Lavash.Overlay.Flyover.Helpers do
     # LavashOptimistic on the parent wrapper handles this event
     on_close = JS.dispatch("close-panel", to: "##{assigns.id}")
 
-    # All flyover chrome animations are handled by LavashOptimistic via FlyoverAnimator
+    # All flyover chrome animations are handled by LavashOptimistic via OverlayAnimator
     # Chrome elements have JS.ignore_attributes(["class", "style"]) for direct manipulation
 
     assigns =

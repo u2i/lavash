@@ -39,7 +39,10 @@ defmodule DemoWeb.StorefrontLive do
         <h2 class="text-2xl font-bold text-center mb-6">Featured Roasts</h2>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
           <%= for product <- @featured do %>
-            <a href={~p"/storefront/products/#{product.id}"} class="card bg-base-200 hover:shadow-xl transition-all hover:-translate-y-1">
+            <a
+              href={~p"/storefront/products/#{product.id}"}
+              class="card bg-base-200 hover:shadow-xl transition-all hover:-translate-y-1"
+            >
               <figure class="px-4 pt-4">
                 <img
                   src={"https://images.unsplash.com/photo-1559056199-641a0ac8b55e?w=400&q=80&seed=#{product.id}"}
@@ -108,18 +111,13 @@ defmodule DemoWeb.StorefrontLive do
 
       <section class="text-center py-8 border-t border-base-300">
         <p class="text-xs text-base-content/40">
-          Demo store built with
-          <a href="https://hexdocs.pm/lavash" class="link">Lavash</a>
-          +
-          <a href="https://ash-hq.org" class="link">Ash</a>
-          +
-          <a href="https://phoenixframework.org" class="link">Phoenix</a>
-          ·
-          <a href={~p"/"} class="link">Technical Demos</a>
+          Demo store built with <a href="https://hexdocs.pm/lavash" class="link">Lavash</a>
+          + <a href="https://ash-hq.org" class="link">Ash</a>
+          + <a href="https://phoenixframework.org" class="link">Phoenix</a>
+          · <a href={~p"/"} class="link">Technical Demos</a>
         </p>
       </section>
     </div>
     """
   end
-
 end

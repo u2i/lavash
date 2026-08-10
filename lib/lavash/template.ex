@@ -44,8 +44,8 @@ defmodule Lavash.Template do
   end
 
   @doc """
-  Converts a LV 1.2 node tree (or `%Parser{}`) into the legacy `:element`
-  tree shape:
+  Converts a LV 1.2 node tree (or `%Parser{}`) into lavash's internal
+  `:element` tree shape:
 
   - `{:element, tag, attrs, children, meta}` for HTML elements
   - `{:text, content}` for text nodes

@@ -963,13 +963,13 @@ defmodule Lavash.Template.TokenTransformerTest do
       refute "data-lavash-attr-class" in attr_names(attrs)
     end
 
-    test "legacy derives without a source fall back to dep matching" do
+    test "derives without a recorded source never match" do
       derive = arrow_derive() |> Map.delete(:source)
       tokens = [tag("div", [expr_attr("class", @div_expr)])]
       metadata = optimistic_metadata([:ship_to_expanded], attr_derives: [derive])
 
       assert [{:block, :tag, "div", attrs, _, _, _}] = transform(tokens, metadata)
-      assert "data-lavash-attr-class" in attr_names(attrs)
+      refute "data-lavash-attr-class" in attr_names(attrs)
     end
   end
 end

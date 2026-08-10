@@ -44,7 +44,8 @@ defmodule DemoWeb.TagEditorDemoLive do
 
       <div class="bg-blue-50 p-4 rounded-lg mb-6 text-sm">
         <p class="text-blue-800">
-          <strong>How it works:</strong> Enable latency simulation (bottom right), then add/remove tags.
+          <strong>How it works:</strong>
+          Enable latency simulation (bottom right), then add/remove tags.
           Tags appear/disappear instantly (optimistic structural change), while server content
           updates after the round-trip.
         </p>

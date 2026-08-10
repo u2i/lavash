@@ -240,7 +240,12 @@ defmodule DemoWeb.Storefront.ProductLive do
           phx-click="open_cart"
         >
           <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"
+            />
           </svg>
           <span
             :if={@cart_item_count > 0}
@@ -274,19 +279,26 @@ defmodule DemoWeb.Storefront.ProductLive do
           <p class="text-base-content/80">{@product.description}</p>
 
           <div class="flex items-center gap-2">
-            <span class="text-amber-500 text-lg">{"★" |> String.duplicate(round(Decimal.to_float(@product.rating)))}</span>
+            <span class="text-amber-500 text-lg">{"★"
+            |> String.duplicate(round(Decimal.to_float(@product.rating)))}</span>
             <span class="text-base-content/70">{Decimal.to_string(@product.rating)} / 5</span>
           </div>
 
           <div class="card bg-base-200">
             <div class="card-body p-4">
-              <h3 class="font-semibold text-sm uppercase tracking-wide text-base-content/60">Tasting Notes</h3>
+              <h3 class="font-semibold text-sm uppercase tracking-wide text-base-content/60">
+                Tasting Notes
+              </h3>
               <p class="mt-1">{@product.tasting_notes}</p>
             </div>
           </div>
 
           <div class="flex items-center gap-4">
-            <span class={["badge badge-lg", @product.in_stock && "badge-success", !@product.in_stock && "badge-error"]}>
+            <span class={[
+              "badge badge-lg",
+              @product.in_stock && "badge-success",
+              !@product.in_stock && "badge-error"
+            ]}>
               {if @product.in_stock, do: "In Stock", else: "Sold Out"}
             </span>
             <span class="text-sm text-base-content/60">{@product.weight_oz}oz bag</span>

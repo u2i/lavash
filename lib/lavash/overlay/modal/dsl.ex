@@ -77,7 +77,7 @@ defmodule Lavash.Overlay.Modal.Dsl do
     ]
   }
 
-  # render/1 and render_loading/1 are now provided by Lavash.Component.RenderImport
+  # template/1 and template_loading/1 are provided by Lavash.Component.RenderImport
   # (via Spark imports in Component.Dsl) and stored in @__lavash_renders__.
   # The GenerateRender transformer reads from that attribute.
 

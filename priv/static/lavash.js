@@ -35,35 +35,10 @@ import { getState } from "./state_sync.js";
 window.Lavash = window.Lavash || {};
 window.Lavash.SyncedVar = SyncedVar;
 window.Lavash.OverlayAnimator = OverlayAnimator;
+// Generated colocated modules self-register here at import time; a bare
+// side-effect import of the manifest (`import "phoenix-colocated/my_app"`)
+// is all an app needs.
 window.Lavash.optimistic = window.Lavash.optimistic || {};
-
-window.Lavash.registerOptimistic = function(moduleName, fns) {
-  window.Lavash.optimistic[moduleName] = fns;
-};
-
-/**
- * Register a phoenix-colocated manifest's generated optimistic functions.
- *
- * NOTE: normally unnecessary — lavash-generated colocated modules
- * self-register into `window.Lavash.optimistic` at import time, so a
- * bare side-effect import of the manifest
- * (`import "phoenix-colocated/my_app"`) is all an app needs. This
- * helper remains for manual setups (e.g. manifests produced by older
- * lavash versions, or registering a hand-built fns map):
- *
- *     import * as colocated from "phoenix-colocated/my_app";
- *     import { registerColocated } from "lavash";
- *     registerColocated(colocated);
- *
- * Accepts the whole namespace object (tolerates a manifest with no
- * optimistic entries) or the optimistic map itself.
- */
-export function registerColocated(manifest) {
-  const fns = manifest?.optimistic || manifest || {};
-  for (const [moduleName, moduleFns] of Object.entries(fns)) {
-    window.Lavash.optimistic[moduleName] = moduleFns;
-  }
-}
 
 // ----- Public API -----
 

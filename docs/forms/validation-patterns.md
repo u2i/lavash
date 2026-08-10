@@ -25,8 +25,8 @@ defmodule MyApp.UserFormLive do
     end
   end
 
-  render fn assigns ->
-    ~L"""
+  template do
+    ~H"""
     <.form for={@user_form} phx-submit="save">
       <.input
         field={@user_form[:name]}
@@ -281,8 +281,8 @@ defmodule MyApp.CheckoutLive do
     end
   end
 
-  render fn assigns ->
-    ~L"""
+  template do
+    ~H"""
     <.form for={@payment_form} phx-submit="save" class="space-y-4">
       <.input
         field={@payment_form[:card_number]}

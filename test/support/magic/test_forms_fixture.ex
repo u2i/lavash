@@ -48,7 +48,8 @@ end
 
 defmodule Lavash.Test.Magic.FormLive do
   @moduledoc """
-  Fixture for forms tests. Uses ~H (not ~L) and explicit phx-change/phx-submit
+  Fixture for forms tests. Uses a plain `render/1` with ~H (bypassing the
+  template pipeline) and explicit phx-change/phx-submit
   binding so the test runs without the LavashOptimistic JS hook.
   """
   use Lavash.LiveView

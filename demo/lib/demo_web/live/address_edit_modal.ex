@@ -31,7 +31,7 @@ defmodule DemoWeb.AddressEditModal do
   # Session ID from parent for scoping addresses
   prop :session_id, :string, required: true
 
-  import_rx DemoWeb.AddressRegions
+  import_rx(DemoWeb.AddressRegions)
 
   # Region select derives from the chosen country (issue #39). This
   # modal keeps the <.select> component (server-rendered options), so
@@ -85,7 +85,13 @@ defmodule DemoWeb.AddressEditModal do
         <.modal_close_button id={@__modal_id__} myself={@myself} />
       </div>
 
-      <.form for={@address_form} phx-change="validate" phx-submit="save" phx-target={@myself} class="space-y-4">
+      <.form
+        for={@address_form}
+        phx-change="validate"
+        phx-submit="save"
+        phx-target={@myself}
+        class="space-y-4"
+      >
         <!-- Country dropdown -->
         <.select
           field={@address_form[:country]}
@@ -197,7 +203,7 @@ defmodule DemoWeb.AddressEditModal do
     create :save
     update :update
     # Skip client-side validation for session_id - it's injected at save time from props
-    skip_constraints [:session_id]
+    skip_constraints([:session_id])
   end
 
   actions do
@@ -209,12 +215,13 @@ defmodule DemoWeb.AddressEditModal do
       # Only inject session_id for create (update already has it from the loaded record)
       set :address_form_params, fn %{state: state} ->
         # Check if we're in create mode - address will be nil or an AsyncResult with nil result
-        is_create = case state.address do
-          nil -> true
-          %Phoenix.LiveView.AsyncResult{ok?: true, result: nil} -> true
-          %Phoenix.LiveView.AsyncResult{ok?: false} -> true
-          _ -> false
-        end
+        is_create =
+          case state.address do
+            nil -> true
+            %Phoenix.LiveView.AsyncResult{ok?: true, result: nil} -> true
+            %Phoenix.LiveView.AsyncResult{ok?: false} -> true
+            _ -> false
+          end
 
         if is_create do
           # Create mode - inject session_id
@@ -224,6 +231,7 @@ defmodule DemoWeb.AddressEditModal do
           state.address_form_params || %{}
         end
       end
+
       submit :address_form, on_success: :on_saved
     end
 
@@ -232,5 +240,4 @@ defmodule DemoWeb.AddressEditModal do
       set :open, nil
     end
   end
-
 end

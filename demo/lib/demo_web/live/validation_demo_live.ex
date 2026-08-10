@@ -27,7 +27,8 @@ defmodule DemoWeb.ValidationDemoLive do
     create :create_account
   end
 
-  calculate :form_valid, rx(@account_username_valid and @account_email_valid and @account_password_valid)
+  calculate :form_valid,
+            rx(@account_username_valid and @account_email_valid and @account_password_valid)
 
   actions do
     action :save do
@@ -159,12 +160,16 @@ defmodule DemoWeb.ValidationDemoLive do
             &mdash; <strong class="text-blue-600">instant</strong> "must be at least 3 characters"
           </li>
           <li>
-            Type <code class="bg-gray-200 px-1 rounded">admin</code> in username
-            &mdash; length passes instantly, then <strong class="text-purple-600">server</strong> returns "is already taken"
+            Type <code class="bg-gray-200 px-1 rounded">admin</code>
+            in username
+            &mdash; length passes instantly, then <strong class="text-purple-600">server</strong>
+            returns "is already taken"
           </li>
           <li>
-            Type <code class="bg-gray-200 px-1 rounded">notanemail</code> in email
-            &mdash; <strong class="text-purple-600">server</strong> returns "must be a valid email address"
+            Type <code class="bg-gray-200 px-1 rounded">notanemail</code>
+            in email
+            &mdash; <strong class="text-purple-600">server</strong>
+            returns "must be a valid email address"
           </li>
           <li>
             Type <code class="bg-gray-200 px-1 rounded">short</code> in password
@@ -188,8 +193,8 @@ defmodule DemoWeb.ValidationDemoLive do
             Arrive after debounced round-trip.
           </li>
           <li>
-            Both sources merge into the same
-            <code class="bg-gray-200 px-1 rounded">_errors</code> derive per field.
+            Both sources merge into the same <code class="bg-gray-200 px-1 rounded">_errors</code>
+            derive per field.
             JS owns display; server re-renders never wipe error state.
           </li>
         </ul>

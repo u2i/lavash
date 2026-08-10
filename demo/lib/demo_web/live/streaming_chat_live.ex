@@ -165,7 +165,8 @@ defmodule DemoWeb.StreamingChatLive do
             "max-w-md px-4 py-2 rounded-lg whitespace-pre-wrap",
             if(msg.role == "user",
               do: "bg-blue-500 text-white",
-              else: "bg-gray-100 text-gray-900")
+              else: "bg-gray-100 text-gray-900"
+            )
           ]}>
             {msg.content}
           </div>
