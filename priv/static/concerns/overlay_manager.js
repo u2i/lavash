@@ -102,10 +102,14 @@ export function initAnimatedFields(hook) {
         });
       };
 
+      // Canonical close path (issue #26): every close affordance dispatches
+      // close-panel, and this handler pushes the :close *action* — versioned
+      // through SyncedVar — rather than the raw setter, so user sets merged
+      // into :close run on backdrop/Escape/close-button closes too.
       const closeHandler = () => {
         const sv = hook.store.get(field);
         sv.set(null, (p, cb) => {
-          hook.pushEventTo(chromeEl, setterAction, { ...p, value: null }, cb);
+          hook.pushEventTo(chromeEl, "close", { ...p }, cb);
         });
         hook.propagateBoundFieldsToParent([field]);
       };

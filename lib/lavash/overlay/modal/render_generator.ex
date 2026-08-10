@@ -138,10 +138,10 @@ defmodule Lavash.Overlay.Modal.RenderGenerator do
         # Build modal ID from component ID
         modal_id = "#{Map.get(var!(assigns), :id, "modal")}-modal"
 
-        # Build the on_close JS command for use in render functions
-        on_close =
-          Phoenix.LiveView.JS.dispatch("close-panel", to: "##{modal_id}")
-          |> Phoenix.LiveView.JS.push("close", target: var!(assigns).myself)
+        # Build the on_close JS command for use in render functions.
+        # close-panel is the single canonical close path — the JS close
+        # handler pushes the versioned :close action (issue #26).
+        on_close = Phoenix.LiveView.JS.dispatch("close-panel", to: "##{modal_id}")
 
         # Build optimistic state for data attribute
         optimistic_state = Lavash.Component.Helpers.optimistic_state(__MODULE__, var!(assigns))
