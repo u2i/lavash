@@ -41,6 +41,7 @@ defmodule Lavash.TestRouter do
     live("/checkbox-bind", CheckboxBindLive)
     live("/dependent-select", DependentSelectLive)
     live("/client-cart", ClientCartLive)
+    live("/stacked-modals", StackedModalsHostLive)
   end
 
   # Parallel "explicit" path: plain Phoenix.LiveView, no Lavash DSL.

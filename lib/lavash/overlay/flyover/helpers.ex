@@ -61,6 +61,18 @@ defmodule Lavash.Overlay.Flyover.Helpers do
   attr(:async_assign, :atom, default: nil, doc: "Async assign to wait for before showing content")
   attr(:myself, :any, required: true, doc: "The component's @myself")
   attr(:close_on_escape, :boolean, default: true)
+
+  attr(:label, :string,
+    default: nil,
+    doc:
+      "Accessible name for the dialog (aria-label). Prefer labelled_by when a visible heading exists."
+  )
+
+  attr(:labelled_by, :string,
+    default: nil,
+    doc: "DOM id of the element naming the dialog (aria-labelledby), e.g. the flyover's heading"
+  )
+
   attr(:close_on_backdrop, :boolean, default: true)
   attr(:width, :atom, default: :md)
   attr(:height, :atom, default: :md)
@@ -114,6 +126,7 @@ defmodule Lavash.Overlay.Flyover.Helpers do
       phx-target={@myself}
       data-open-value={inspect(@open)}
       data-slide-from={to_string(@slide_from)}
+      data-close-on-escape={to_string(@close_on_escape)}
     >
       <%!-- Backdrop overlay - client controls opacity and visibility --%>
       <div
@@ -127,6 +140,10 @@ defmodule Lavash.Overlay.Flyover.Helpers do
       <%!-- Panel - client controls transform via inline styles --%>
       <%!-- Animation classes removed - client owns animation state via style attr --%>
       <%!-- Uses CSS grid to stack loading and main content for crossfade --%>
+      <%!-- Escape is handled client-side by the overlay a11y stack
+           (topmost overlay only, bound only while open) — see
+           priv/static/concerns/overlay_a11y.js. tabindex=-1 lets the
+           panel take initial focus when it has no focusable children. --%>
       <div
         id={"#{@id}-panel_content"}
         phx-mounted={JS.ignore_attributes(["class", "style"])}
@@ -134,8 +151,11 @@ defmodule Lavash.Overlay.Flyover.Helpers do
         style={"transform: #{@transform_value}"}
         phx-click="noop"
         phx-target={@myself}
-        phx-window-keydown={@close_on_escape && @on_close}
-        phx-key={@close_on_escape && "Escape"}
+        role="dialog"
+        aria-modal="true"
+        aria-label={@label}
+        aria-labelledby={@labelled_by}
+        tabindex="-1"
       >
         <%!-- Loading content - client controls visibility via class/style --%>
         <%!-- Stacked in same grid cell as main content for crossfade effect --%>
