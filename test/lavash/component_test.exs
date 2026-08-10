@@ -17,6 +17,15 @@ defmodule Lavash.ComponentTest do
     end
   end
 
+  describe "attr/slot function components (issue #20)" do
+    test "attr/slot declared in a Lavash.Component module render without use Phoenix.Component",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/magic/component-host")
+
+      assert has_element?(view, ~s(.labeled-box[data-label="count-box"] #counter-count))
+    end
+  end
+
   describe "component actions" do
     test "increment updates ephemeral state", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/magic/component-host")

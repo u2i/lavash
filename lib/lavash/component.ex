@@ -55,19 +55,33 @@ defmodule Lavash.Component do
   use Spark.Dsl,
     default_extensions: [extensions: [Lavash.Component.Dsl]]
 
+  # Spark's generated __using__ runs handle_opts through Code.eval_quoted,
+  # which cannot install Phoenix.Component's @on_definition hook — so
+  # attr/slot in user modules would fail (issue #20). Override the
+  # (defoverridable) __using__ to splice the Phoenix.LiveComponent setup
+  # into the caller's module body with real `use` semantics, then
+  # delegate to Spark for everything else.
+  defmacro __using__(opts) do
+    [
+      quote do
+        # Replicate Phoenix.LiveComponent's __using__ but override sigil_H
+        import Phoenix.LiveView
+        @behaviour Phoenix.LiveComponent
+        @before_compile Phoenix.LiveView.Renderer
+
+        use Phoenix.Component,
+            Keyword.merge([global_prefixes: []], Keyword.take(unquote(opts), [:global_prefixes]))
+
+        @doc false
+        def __live__, do: %{kind: :component, layout: false}
+      end,
+      super(opts)
+    ]
+  end
+
   @impl Spark.Dsl
-  def handle_opts(opts) do
+  def handle_opts(_opts) do
     quote do
-      # Replicate Phoenix.LiveComponent's __using__ but override sigil_H
-      import Phoenix.LiveView
-      @behaviour Phoenix.LiveComponent
-      @before_compile Phoenix.LiveView.Renderer
-      use Phoenix.Component,
-          Keyword.merge([global_prefixes: []], Keyword.take(unquote(opts), [:global_prefixes]))
-
-      @doc false
-      def __live__, do: %{kind: :component, layout: false}
-
       # Mark module type for sigil context detection
       @__lavash_module_type__ :component
 

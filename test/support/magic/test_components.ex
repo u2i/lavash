@@ -30,10 +30,24 @@ defmodule Lavash.Test.Magic.CounterComponent do
     {:ok, socket}
   end
 
+  # Issue #20 regression guard: attr/slot function components must work
+  # directly inside a `use Lavash.Component` module without an explicit
+  # `use Phoenix.Component` (do not add one).
+  attr :label, :string, required: true
+  slot :inner_block, required: true
+
+  def labeled_box(assigns) do
+    ~H"""
+    <div class="labeled-box" data-label={@label}>{render_slot(@inner_block)}</div>
+    """
+  end
+
   def render(assigns) do
     ~H"""
     <div id={@id}>
-      <span id={"#{@id}-count"}>{@count}</span>
+      <.labeled_box label="count-box">
+        <span id={"#{@id}-count"}>{@count}</span>
+      </.labeled_box>
       <span id={"#{@id}-doubled"}>{@doubled}</span>
       <button id={"#{@id}-inc"} phx-click="increment" phx-target={@myself}>+</button>
       <button id={"#{@id}-dec"} phx-click="decrement" phx-target={@myself}>-</button>
