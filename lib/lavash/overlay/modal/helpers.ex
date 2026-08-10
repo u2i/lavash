@@ -126,8 +126,9 @@ defmodule Lavash.Overlay.Modal.Helpers do
   @doc """
   A close button for modal headers using DaisyUI button classes.
 
-  The button dispatches a `close-panel` event to trigger the ghost animation,
-  then pushes the "close" event to the server.
+  The button only dispatches a `close-panel` event; the optimistic hook's
+  close handler animates the close and makes the versioned server push
+  through SyncedVar. No direct server event is sent from the button.
 
   ## Example
 

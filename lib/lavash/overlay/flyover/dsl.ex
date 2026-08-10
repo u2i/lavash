@@ -82,7 +82,9 @@ defmodule Lavash.Overlay.Flyover.Dsl do
         type: :atom,
         required: false,
         doc:
-          "The async assign to wrap with async_result. The unwrapped data is available as @form."
+          "The async assign to wrap with async_result. Inside the template, " <>
+            "the assign's own name holds the unwrapped data (e.g. `async_assign " <>
+            ":edit_form` makes `@edit_form` the resolved value)."
       ]
     ]
   }

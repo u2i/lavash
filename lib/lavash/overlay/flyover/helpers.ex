@@ -167,8 +167,9 @@ defmodule Lavash.Overlay.Flyover.Helpers do
   @doc """
   A close button for flyover headers using DaisyUI button classes.
 
-  The button dispatches a `close-panel` event to trigger the slide animation,
-  then pushes the "close" event to the server.
+  The button only dispatches a `close-panel` event; the optimistic hook's
+  close handler animates the slide-out and makes the versioned server push
+  through SyncedVar. No direct server event is sent from the button.
 
   ## Example
 
