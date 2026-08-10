@@ -11,6 +11,8 @@ defmodule DemoWeb.Storefront.CheckoutLive do
   import Lavash.Optimistic.Components
   import Lavash.LiveView.Helpers, only: [lavash_component: 1]
 
+  require Logger
+
   # Import credit card validators (expanded inline, transpiled to JS)
   import_rx Demo.Validators.CreditCard
 
@@ -80,7 +82,10 @@ defmodule DemoWeb.Storefront.CheckoutLive do
   # Cart Calculations
   # ─────────────────────────────────────────────────────────────
 
-  calculate :is_empty, rx(@cart_items == nil or @cart_items == [])
+  # optimistic: false — depends on @cart_items, a server-side Ash read
+  # that never exists in client state; a client-side recompute can only
+  # crash (undefined.length). Same class as the cart_item_count fix.
+  calculate :is_empty, rx(@cart_items == nil or @cart_items == []), optimistic: false
 
   calculate :subtotal,
             rx(
@@ -219,7 +224,12 @@ defmodule DemoWeb.Storefront.CheckoutLive do
     do: Enum.find(addresses, List.first(addresses), &(&1.id == id))
 
   calculate :has_address, rx(@selected_address != nil), optimistic: false
-  calculate :can_place, rx(@form_valid and @has_address and not @is_empty)
+
+  # optimistic: false — @has_address and @is_empty are server-side calcs,
+  # so the client can never compute this correctly. The Pay buttons are
+  # gated server-side via disabled={not @can_place}; validity updates
+  # arrive with the same cadence as typing (phx-change round-trips).
+  calculate :can_place, rx(@form_valid and @has_address and not @is_empty), optimistic: false
 
   # ─────────────────────────────────────────────────────────────
   # Actions
@@ -258,71 +268,63 @@ defmodule DemoWeb.Storefront.CheckoutLive do
       submit :payment, on_success: :do_place_order, on_error: :on_payment_error
     end
 
+    # `run` (not `effect`): effects receive a plain state map and their
+    # return value is discarded, so an effect can neither read
+    # socket.assigns nor put_state. `run` takes and returns the socket.
     action :do_place_order do
-      effect fn state ->
-        user = state.assigns.current_user
-        assigns = state.assigns
-
-        card_last_four =
-          (assigns.card_number_digits || "")
-          |> String.slice(-4, 4)
-
-        case Order
-             |> Ash.Changeset.for_create(
-               :place,
-               %{
-                 cart_id: assigns.cart_id,
-                 subtotal: assigns.subtotal,
-                 tax: assigns.tax,
-                 shipping: assigns.shipping,
-                 total: assigns.total,
-                 payment_method: assigns.payment_method,
-                 card_last_four: card_last_four,
-                 shipping_address_id: assigns.selected_address && assigns.selected_address.id
-               },
-               actor: user
-             )
-             |> Ash.create() do
-          {:ok, order} ->
-            Lavash.Socket.put_state(state, :order_placed_id, order.id)
-
-          {:error, _} ->
-            state
-        end
-      end
+      run fn socket -> place_order(socket, socket.assigns.payment_method) end
     end
 
     action :on_payment_error do
-      # Form errors displayed via Ash form validation
+      run fn socket ->
+        Phoenix.LiveView.put_flash(
+          socket,
+          :error,
+          "Please check your payment details and try again."
+        )
+      end
     end
 
     action :pay_with_paypal do
-      effect fn state ->
-        user = state.assigns.current_user
-        assigns = state.assigns
+      run fn socket -> place_order(socket, "paypal") end
+    end
+  end
 
-        case Order
-             |> Ash.Changeset.for_create(
-               :place,
-               %{
-                 cart_id: assigns.cart_id,
-                 subtotal: assigns.subtotal,
-                 tax: assigns.tax,
-                 shipping: assigns.shipping,
-                 total: assigns.total,
-                 payment_method: "paypal",
-                 shipping_address_id: assigns.selected_address && assigns.selected_address.id
-               },
-               actor: user
-             )
-             |> Ash.create() do
-          {:ok, order} ->
-            Lavash.Socket.put_state(state, :order_placed_id, order.id)
+  defp place_order(socket, payment_method) do
+    assigns = socket.assigns
 
-          {:error, _} ->
-            state
-        end
+    card_last_four =
+      if payment_method == "card" do
+        (assigns.card_number_digits || "") |> String.slice(-4, 4)
       end
+
+    case Order
+         |> Ash.Changeset.for_create(
+           :place,
+           %{
+             cart_id: assigns.cart_id,
+             subtotal: assigns.subtotal,
+             tax: assigns.tax,
+             shipping: assigns.shipping,
+             total: assigns.total,
+             payment_method: payment_method,
+             card_last_four: card_last_four,
+             shipping_address_id: assigns.selected_address && assigns.selected_address.id
+           },
+           actor: assigns.current_user
+         )
+         |> Ash.create() do
+      {:ok, order} ->
+        Lavash.Socket.put_state(socket, :order_placed_id, order.id)
+
+      {:error, error} ->
+        Logger.error("Order placement failed: #{inspect(error)}")
+
+        Phoenix.LiveView.put_flash(
+          socket,
+          :error,
+          "We couldn't place your order. Please try again."
+        )
     end
   end
 
@@ -369,6 +371,7 @@ defmodule DemoWeb.Storefront.CheckoutLive do
   template do
     ~H"""
     <div class="bg-base-200 min-h-screen">
+      <DemoWeb.Layouts.flash_group flash={@flash} />
       <main class="mx-auto max-w-6xl p-4 lg:p-8">
         <%= if @order_placed_id do %>
           <div class="card border border-base-300 bg-base-100 shadow-sm max-w-lg mx-auto">
@@ -613,9 +616,8 @@ defmodule DemoWeb.Storefront.CheckoutLive do
 
                         <button
                           type="submit"
-                          data-lavash-enabled="form_valid"
-                          class="btn btn-lg w-full"
-                          data-lavash-toggle="form_valid|btn-primary|btn-disabled"
+                          disabled={not @can_place}
+                          class={"btn btn-lg w-full " <> if @can_place, do: "btn-primary", else: "btn-disabled"}
                         >
                           Pay ${Decimal.to_string(@total)}
                         </button>
@@ -641,7 +643,11 @@ defmodule DemoWeb.Storefront.CheckoutLive do
                     </div>
 
                     <%= if @payment_method == "paypal" do %>
-                      <button phx-click="pay_with_paypal" class="btn btn-lg w-full btn-primary">
+                      <button
+                        phx-click="pay_with_paypal"
+                        disabled={not @can_place}
+                        class={"btn btn-lg w-full " <> if @can_place, do: "btn-primary", else: "btn-disabled"}
+                      >
                         Pay with PayPal
                       </button>
                     <% end %>

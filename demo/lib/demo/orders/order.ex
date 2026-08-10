@@ -56,7 +56,7 @@ defmodule Demo.Orders.Order do
 
           cart_items =
             Demo.Cart.CartItem
-            |> Ash.ActionInput.for_action(:for_cart, %{cart_id: cart_id})
+            |> Ash.Query.for_read(:for_cart, %{cart_id: cart_id})
             |> Ash.read!()
 
           Enum.each(cart_items, fn item ->
