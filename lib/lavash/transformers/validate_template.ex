@@ -75,6 +75,14 @@ defmodule Lavash.Transformers.ValidateTemplate do
 
   def after?(Lavash.Component.Transformers.AnalyzeTemplate), do: true
   def after?(Lavash.Transformers.ValidateDsl), do: true
+  # The overlay render generators persist :modal_render_template /
+  # :flyover_render_template, which overlay_assigns/1 reads to whitelist
+  # the injected assigns (@__modal_id__, @__flyover_id__). Without an
+  # explicit edge the topo sort's tie-break decides — and it differs
+  # across Elixir versions (1.18 ran this validator first, flagging
+  # @__flyover_id__ as undeclared; 1.19 happened to order it correctly).
+  def after?(Lavash.Overlay.Modal.Transformers.GenerateRender), do: true
+  def after?(Lavash.Overlay.Flyover.Transformers.GenerateRender), do: true
   def after?(_), do: false
 
   def before?(Lavash.Component.Transformers.CompileComponent), do: true

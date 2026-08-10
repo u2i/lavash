@@ -32,14 +32,7 @@ defmodule DemoWeb.ConnCase do
   end
 
   setup tags do
-    # Standard sandbox ownership for every test: shared with all
-    # processes (LiveViews, tasks) unless the test is async. Ad-hoc
-    # `start_owner!(shared: true)` in individual test files is a trap —
-    # stopping a shared owner leaves the pool in :manual mode, breaking
-    # any later test that relied on :automatic checkout.
-    pid = Ecto.Adapters.SQL.Sandbox.start_owner!(Demo.Repo, shared: not tags[:async])
-    on_exit(fn -> Ecto.Adapters.SQL.Sandbox.stop_owner(pid) end)
-
+    Demo.DataCase.setup_sandbox(tags)
     {:ok, conn: Phoenix.ConnTest.build_conn()}
   end
 end
