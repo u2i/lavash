@@ -40,6 +40,9 @@ window.Lavash.OverlayAnimator = OverlayAnimator;
 // is all an app needs.
 window.Lavash.optimistic = window.Lavash.optimistic || {};
 
+// Diagnostic logging is off by default; flip on from the console with
+// `window.Lavash.debug = true` (see debug.js).
+
 // ----- Public API -----
 
 export { lavash } from "./pipeline.js";

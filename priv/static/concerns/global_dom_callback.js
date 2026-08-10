@@ -9,6 +9,8 @@
  * Each concern is accessed via the hook instance found on the closest hook root element.
  */
 
+import { debugEnabled } from "../debug.js";
+
 let installed = false;
 
 /**
@@ -64,7 +66,7 @@ export function installGlobalDomCallback(liveSocket) {
         } else {
           toEl.classList.add('opacity-60', 'cursor-not-allowed');
         }
-        console.debug(`[LavashOptimistic] onBeforeElUpdated: Applied client state for data-lavash-enabled="${fieldName}" (enabled=${enabled})`);
+        if (debugEnabled()) console.debug(`[LavashOptimistic] onBeforeElUpdated: Applied client state for data-lavash-enabled="${fieldName}" (enabled=${enabled})`);
       }
 
       const visibleField = fromEl.getAttribute('data-lavash-visible');
@@ -75,13 +77,13 @@ export function installGlobalDomCallback(liveSocket) {
         } else {
           toEl.classList.add('hidden');
         }
-        console.debug(`[LavashOptimistic] onBeforeElUpdated: Applied client state for data-lavash-visible="${visibleField}" (visible=${visible})`);
+        if (debugEnabled()) console.debug(`[LavashOptimistic] onBeforeElUpdated: Applied client state for data-lavash-visible="${visibleField}" (visible=${visible})`);
       }
 
       const displayField = fromEl.getAttribute('data-lavash-display');
       if (displayField && hook.hasPendingSources(displayField)) {
         toEl.textContent = hook.state[displayField] ?? '';
-        console.debug(`[LavashOptimistic] onBeforeElUpdated: Applied client state for data-lavash-display="${displayField}"`);
+        if (debugEnabled()) console.debug(`[LavashOptimistic] onBeforeElUpdated: Applied client state for data-lavash-display="${displayField}"`);
       }
 
       const memberSpec = fromEl.getAttribute('data-lavash-member');
@@ -103,7 +105,7 @@ export function installGlobalDomCallback(liveSocket) {
       if (errorsField && hook.hasPendingSources(errorsField)) {
         toEl.innerHTML = fromEl.innerHTML;
         toEl.className = fromEl.className;
-        console.debug(`[LavashOptimistic] onBeforeElUpdated: Preserved DOM for data-lavash-errors="${errorsField}" (stale)`);
+        if (debugEnabled()) console.debug(`[LavashOptimistic] onBeforeElUpdated: Preserved DOM for data-lavash-errors="${errorsField}" (stale)`);
       }
     }
 
@@ -126,11 +128,11 @@ export function installGlobalDomCallback(liveSocket) {
           const toHasInner = toEl.querySelector(`#${innerId}`);
 
           if (fromHasInner && !toHasInner) {
-            console.debug(`[lavash:dom] preserving content for ${field} (phase=${phase}, stale server close)`);
+            if (debugEnabled()) console.debug(`[lavash:dom] preserving content for ${field} (phase=${phase}, stale server close)`);
             return false;
           }
 
-          console.debug(`[lavash:dom] overlay ${field} (phase=${phase}): fromHasInner=${!!fromHasInner}, toHasInner=${!!toHasInner} → allowing update`);
+          if (debugEnabled()) console.debug(`[lavash:dom] overlay ${field} (phase=${phase}): fromHasInner=${!!fromHasInner}, toHasInner=${!!toHasInner} → allowing update`);
         }
       }
     }
