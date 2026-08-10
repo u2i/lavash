@@ -74,25 +74,6 @@ defmodule DemoWeb.Storefront.ProductsLive do
             rx(@roast != [] or @category != [] or @in_stock or @search != ""),
             optimistic: false
 
-  # Transform cart items to JSON-serializable maps for CartItemList component
-  calculate :cart_items_json, rx(serialize_cart_items(@cart_items)), optimistic: false
-
-  def serialize_cart_items(items) do
-    Enum.map(items || [], fn item ->
-      %{
-        id: item.id,
-        quantity: item.quantity,
-        unit_price: Decimal.to_string(item.unit_price),
-        product: %{
-          id: item.product.id,
-          name: item.product.name,
-          origin: item.product.origin,
-          roast_level: to_string(item.product.roast_level)
-        }
-      }
-    end)
-  end
-
   # Cart calculations
   # optimistic: false — depends on @cart_items, a server-side Ash read
   # that never exists in client state; a client-side recompute can only
@@ -172,54 +153,7 @@ defmodule DemoWeb.Storefront.ProductsLive do
         Lavash.PubSub.broadcast(CartItem)
       end
     end
-
-    action :update_cart_item, [:item_id, :delta] do
-      set :_pending_item_id, & &1.params.item_id
-      set :_pending_delta, &parse_delta(&1.params.delta)
-
-      effect fn state ->
-        item_id = state[:_pending_item_id]
-        delta = state[:_pending_delta]
-
-        case Ash.get(CartItem, item_id) do
-          {:ok, item} ->
-            new_qty = item.quantity + delta
-
-            if new_qty <= 0 do
-              Ash.destroy!(item)
-            else
-              item
-              |> Ash.Changeset.for_update(:update_quantity, %{quantity: new_qty})
-              |> Ash.update!()
-            end
-
-          _ ->
-            nil
-        end
-
-        Lavash.PubSub.broadcast(CartItem)
-      end
-    end
-
-    action :remove_cart_item, [:item_id] do
-      set :_pending_item_id, & &1.params.item_id
-
-      effect fn state ->
-        item_id = state[:_pending_item_id]
-
-        case Ash.get(CartItem, item_id) do
-          {:ok, item} -> Ash.destroy!(item)
-          _ -> nil
-        end
-
-        Lavash.PubSub.broadcast(CartItem)
-      end
-    end
   end
-
-  defp parse_delta(nil), do: 0
-  defp parse_delta(d) when is_integer(d), do: d
-  defp parse_delta(d) when is_binary(d), do: String.to_integer(d)
 
   mount do
     run fn socket -> find_or_create_cart(socket) end
@@ -459,7 +393,7 @@ defmodule DemoWeb.Storefront.ProductsLive do
       <.lavash_component
         module={DemoWeb.CartFlyover}
         id="cart-flyover"
-        items={@cart_items_json}
+        cart_id={@cart_id}
         item_count={@cart_item_count}
         open={@cart_open}
         bind={[open: :cart_open]}

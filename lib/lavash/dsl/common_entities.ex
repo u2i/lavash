@@ -49,6 +49,42 @@ defmodule Lavash.Dsl.CommonEntities do
   # ============================================
 
   @doc """
+  Client-state projection entity for query reads.
+
+  Projects the read's record list into a JSON-safe list of maps
+  shipped to the client as optimistic state. See
+  `Lavash.Read.ClientState` for semantics and limitations.
+  """
+  def client_state_entity do
+    %Spark.Dsl.Entity{
+      name: :client_state,
+      target: Lavash.Read.ClientState,
+      args: [:name],
+      schema: [
+        name: [
+          type: :atom,
+          required: true,
+          doc: "The client state field name the projected list is exposed as"
+        ],
+        key: [
+          type: :atom,
+          default: :id,
+          doc: "The identity field used by `map_by` to address individual entries"
+        ],
+        fields: [
+          type: {:list, :any},
+          required: true,
+          doc: """
+          Allowlist of fields to project. Atoms name the resource's own
+          attributes; keyword tails project one level of loaded
+          relationships: `fields [:id, :quantity, product: [:id, :name]]`.
+          """
+        ]
+      ]
+    }
+  end
+
+  @doc """
   Argument entity for read and derive blocks.
   """
   def read_argument_entity do

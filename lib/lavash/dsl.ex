@@ -163,12 +163,15 @@ defmodule Lavash.Dsl do
 
   @read_argument_entity CommonEntities.read_argument_entity()
 
+  @client_state_entity CommonEntities.client_state_entity()
+
   @read_entity %Spark.Dsl.Entity{
     name: :read,
     target: Lavash.Read,
     args: [:name, :resource, {:optional, :action}],
     entities: [
-      arguments: [@read_argument_entity]
+      arguments: [@read_argument_entity],
+      client_states: [@client_state_entity]
     ],
     schema: [
       name: [

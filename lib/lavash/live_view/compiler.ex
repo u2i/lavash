@@ -32,7 +32,16 @@ defmodule Lavash.LiveView.Compiler do
         f.name in action_touched_fields and f.name not in explicit_names
       end)
 
-    explicitly_optimistic ++ auto_optimistic
+    # client_state projections ship to the client like optimistic state
+    # (they appear in data-lavash-state and are map_by-able client-side)
+    # but stay server-side derives — they are not State.Fields, so they
+    # get no setters and no hydration.
+    projection_fields =
+      Enum.map(Lavash.ClientState.projections(module), fn proj ->
+        %{name: proj.name, type: {:array, :map}, optimistic: true, from: :client_projection}
+      end)
+
+    explicitly_optimistic ++ auto_optimistic ++ projection_fields
   end
 
   @doc """

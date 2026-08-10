@@ -1,27 +1,42 @@
 defmodule DemoWeb.Components.CartItemList do
   @moduledoc """
-  Optimistic cart item list component.
+  Self-sufficient optimistic cart item list.
 
-  Handles incrementing/decrementing item quantities, removing items,
-  and automatic subtotal recalculation — all with instant client-side updates.
+  Owns the whole cart data loop: reads the cart's items (pubsub-
+  invalidated), projects them to the client via `client_state`,
+  predicts mutations client-side with `map_by`, and persists them
+  with Ash writes in `pre_run` — so the same event's re-read
+  confirms the prediction, and the broadcast updates every other
+  session looking at the same cart.
 
-  ## Usage
+  Parents only pass `cart_id` (and bind `open` for flyover close):
 
       <.lavash_component
         module={DemoWeb.Components.CartItemList}
         id="cart-items"
-        bind={[items: :cart_items_json]}
-        items={@cart_items_json}
+        cart_id={@cart_id}
       />
   """
   use Lavash.Component
 
-  # Cart items as array of maps: %{id, quantity, unit_price, product: %{...}}
-  state :items, {:array, :map}, from: :ephemeral, default: []
+  alias Demo.Cart.CartItem
+
+  prop :cart_id, :string, required: true
 
   # Bound to parent's flyover open state - allows closing from within.
   # Overlay convention: nil = closed, truthy = open (`false` does NOT close).
   state :open, :any, from: :ephemeral, default: nil
+
+  read :cart_items, CartItem, :for_cart do
+    argument :cart_id, prop(:cart_id)
+    async false
+    invalidate :pubsub
+
+    client_state :items do
+      key :id
+      fields [:id, :quantity, :unit_price, product: [:id, :name, :origin, :roast_level]]
+    end
+  end
 
   # Calculations for display
   calculate :item_count, rx(Enum.reduce(@items || [], 0, fn item, acc -> acc + item.quantity end))
@@ -43,16 +58,48 @@ defmodule DemoWeb.Components.CartItemList do
   actions do
     action :increment, [:id] do
       map_by :items, :id, "fn item, _id -> %{item | quantity: item.quantity + 1} end"
+
+      pre_run fn socket ->
+        item = Ash.get!(CartItem, socket.assigns.id)
+
+        item
+        |> Ash.Changeset.for_update(:update_quantity, %{quantity: item.quantity + 1})
+        |> Ash.update!()
+
+        Lavash.PubSub.broadcast(CartItem)
+        socket
+      end
     end
 
     action :decrement, [:id] do
       map_by :items,
              :id,
              "fn item, _id -> if item.quantity <= 1, do: :remove, else: %{item | quantity: item.quantity - 1} end"
+
+      pre_run fn socket ->
+        item = Ash.get!(CartItem, socket.assigns.id)
+
+        if item.quantity <= 1 do
+          Ash.destroy!(item)
+        else
+          item
+          |> Ash.Changeset.for_update(:update_quantity, %{quantity: item.quantity - 1})
+          |> Ash.update!()
+        end
+
+        Lavash.PubSub.broadcast(CartItem)
+        socket
+      end
     end
 
     action :remove, [:id] do
       map_by :items, :id, :remove
+
+      pre_run fn socket ->
+        CartItem |> Ash.get!(socket.assigns.id) |> Ash.destroy!()
+        Lavash.PubSub.broadcast(CartItem)
+        socket
+      end
     end
 
     action :close do

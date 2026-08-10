@@ -318,6 +318,7 @@ defmodule Lavash.Component.Transformers.CompileComponent do
     actions = Transformer.get_entities(dsl_state, [:actions]) || []
     calculations = Transformer.get_entities(dsl_state, [:calculations]) || []
     props = Transformer.get_entities(dsl_state, [:props]) || []
+    reads = Transformer.get_entities(dsl_state, [:reads]) || []
 
     optimistic_fields =
       states
@@ -340,7 +341,22 @@ defmodule Lavash.Component.Transformers.CompileComponent do
       end)
       |> Map.new()
 
-    optimistic_fields = Map.merge(optimistic_fields, implicit_form_fields)
+    # client_state projections look like optimistic fields to the
+    # template transformer (display spans, toggles, subtree derives)
+    client_projection_fields =
+      reads
+      |> Enum.flat_map(fn read ->
+        Enum.map(read.client_states || [], fn cs ->
+          {cs.name,
+           %{name: cs.name, type: {:array, :map}, optimistic: true, from: :client_projection}}
+        end)
+      end)
+      |> Map.new()
+
+    optimistic_fields =
+      optimistic_fields
+      |> Map.merge(implicit_form_fields)
+      |> Map.merge(client_projection_fields)
 
     # All declared state fields (including non-optimistic ones), plus
     # props (in components). Used by the token transformer to diagnose

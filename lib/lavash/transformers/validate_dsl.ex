@@ -64,6 +64,12 @@ defmodule Lavash.Transformers.ValidateDsl do
     prop_names = MapSet.new(props, & &1.name)
     form_field_names = forms |> Enum.flat_map(&form_field_names/1) |> MapSet.new()
 
+    # client_state projections resolve at runtime like reads do
+    projection_names =
+      reads
+      |> Enum.flat_map(fn read -> Enum.map(read.client_states || [], & &1.name) end)
+      |> MapSet.new()
+
     # Anything that resolves at runtime to a value the action body /
     # calculate body can read: declared state, declared calc, reads,
     # props (components), form-derived fields.
@@ -73,6 +79,7 @@ defmodule Lavash.Transformers.ValidateDsl do
       |> MapSet.union(read_names)
       |> MapSet.union(prop_names)
       |> MapSet.union(form_field_names)
+      |> MapSet.union(projection_names)
 
     # `set` targets: declared state OR form-synthesized state fields
     # (e.g. `<form>_params` is an ephemeral state field the form
