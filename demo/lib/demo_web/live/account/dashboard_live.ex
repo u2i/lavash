@@ -14,7 +14,7 @@ defmodule DemoWeb.Account.DashboardLive do
     router: DemoWeb.Router,
     statics: DemoWeb.static_paths()
 
-  alias Demo.Orders.{Order, Address}
+  alias Demo.Orders.{Address, Order}
 
   state :_user_id, :string, from: :ephemeral
   state :current_user, :map, from: :assigns, assigns_key: :current_user
