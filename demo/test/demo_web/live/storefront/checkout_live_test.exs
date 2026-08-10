@@ -9,11 +9,7 @@ defmodule DemoWeb.Storefront.CheckoutLiveTest do
     "name" => "Test User"
   }
 
-  setup do
-    pid = Ecto.Adapters.SQL.Sandbox.start_owner!(Demo.Repo, shared: true)
-    on_exit(fn -> Ecto.Adapters.SQL.Sandbox.stop_owner(pid) end)
-    :ok
-  end
+  # Sandbox ownership comes from DemoWeb.ConnCase.
 
   # Drives a first regular request through the EnsureUser plug so an
   # anonymous user exists in the session, then returns {conn, user}.

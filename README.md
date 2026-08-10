@@ -1,5 +1,7 @@
 # Lavash
 
+[![CI](https://github.com/u2i/lavash/actions/workflows/ci.yml/badge.svg)](https://github.com/u2i/lavash/actions/workflows/ci.yml)
+
 Declarative state, reactivity, and optimistic UI for Phoenix LiveView. Lavash
 is a Spark DSL on top of `Phoenix.LiveView` that turns the usual grab-bag of
 assigns, `handle_event` clauses, `handle_info` callbacks, and hand-written
