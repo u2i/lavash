@@ -56,7 +56,7 @@ defmodule MyAppWeb.ProductModal do
   import Lavash.Overlay.Modal.Helpers
 
   modal do
-    open_field :product_id  # nil = closed
+    open_field :product_id  # nil = closed, any non-nil value = open
     close_on_escape true
     close_on_backdrop true
     async_assign :edit_form
@@ -90,3 +90,11 @@ end
 The overlay runs through phases (`idle → entering → [loading] → visible →
 exiting → idle`); the optimistic JS hook drives the transitions
 client-side.
+
+> #### Closed means `nil`, not `false` {: .warning}
+>
+> The overlay convention on both sides of the wire is: `nil` = closed,
+> **any** non-nil value = open — including `false`. A close action
+> written as `set :open, false` compiles and runs but never closes the
+> overlay. Either rely on the plugin-injected `:close` action (which
+> sets the open field to `nil`), or set `nil` explicitly.
