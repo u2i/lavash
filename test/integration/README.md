@@ -21,7 +21,8 @@ prove the framework works.
 | `overlays_test.exs` | Modal/flyover open, async load, close, escape, backdrop |
 | `dom_directives_test.exs` | All `data-lavash-*` annotations render + update |
 | `bindings_test.exs` | Parent/child component binding chains propagate |
-| `arrays_and_keyed_test.exs` | `map_by` keyed array mutations preserve DOM identity |
+| `arrays_and_keyed_test.exs` | Array state mutations preserve DOM identity |
+| `client_state_test.exs` | `client_state` projections: `mutate`/`remove`/`append` predictions, same-event confirmation, cross-session PubSub |
 | `checkbox_bind_test.exs` | Checkbox/radio/select binding (regression) |
 | `url_state_test.exs` | URL ↔ state two-way sync via `history.replaceState` |
 | `reconnect_test.exs` | `from: :socket` state survives websocket reconnect |

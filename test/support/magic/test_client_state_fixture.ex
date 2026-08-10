@@ -60,9 +60,10 @@ end
 defmodule Lavash.Test.Magic.ClientCartLive do
   @moduledoc """
   Fixture exercising `client_state` projections: a query read
-  projected onto the client as optimistic state, with a `map_by`
-  prediction whose durable write happens in `pre_run` and is
-  confirmed by the same event's re-read.
+  projected onto the client as optimistic state, mutated through the
+  `mutate`/`remove`/`append` ops — each predicts client-side, drives
+  the Ash write server-side, and is confirmed by the same event's
+  re-read.
   """
   use Lavash.LiveView
 
@@ -85,28 +86,23 @@ defmodule Lavash.Test.Magic.ClientCartLive do
 
   actions do
     action :increment, [:id] do
-      map_by :items, :id, "fn item, _id -> %{item | quantity: item.quantity + 1} end"
+      mutate :items, :update_quantity, rx(%{quantity: @item.quantity + 1})
+    end
 
-      pre_run fn socket ->
-        item = Ash.get!(Item, socket.assigns.id)
-
-        item
-        |> Ash.Changeset.for_update(:update_quantity, %{quantity: item.quantity + 1})
-        |> Ash.update!()
-
-        Lavash.PubSub.broadcast(Item)
-        socket
-      end
+    action :decrement, [:id] do
+      mutate :items,
+             :update_quantity,
+             rx(if @item.quantity <= 1, do: :remove, else: %{quantity: @item.quantity - 1})
     end
 
     action :remove, [:id] do
-      map_by :items, :id, :remove
+      remove :items
+    end
 
-      pre_run fn socket ->
-        Item |> Ash.get!(socket.assigns.id) |> Ash.destroy!()
-        Lavash.PubSub.broadcast(Item)
-        socket
-      end
+    action :add_item, [:name] do
+      append :items,
+             :create,
+             rx(%{cart_id: @cart_id, name: @name, quantity: 1, unit_price: "2.50"})
     end
   end
 
@@ -115,10 +111,13 @@ defmodule Lavash.Test.Magic.ClientCartLive do
     <div id="client-cart">
       <span id="count">{@item_count}</span>
       <div :for={item <- @items} class="cart-row" id={"item-#{item.id}"}>
+        <span class="row-name">{item.name}</span>
         <span class="qty">{item.quantity}</span>
         <button phx-click="increment" phx-value-id={item.id}>+</button>
+        <button phx-click="decrement" phx-value-id={item.id}>-</button>
         <button phx-click="remove" phx-value-id={item.id}>x</button>
       </div>
+      <button id="add-widget" phx-click="add_item" phx-value-name="Widget">add</button>
     </div>
     """
   end

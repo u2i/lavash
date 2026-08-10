@@ -16,7 +16,9 @@ defmodule Lavash.Optimistic.ActionJsTest do
       navigates: Keyword.get(opts, :navigates, []),
       flashes: Keyword.get(opts, :flashes, []),
       invokes: Keyword.get(opts, :invokes, []),
-      map_bys: Keyword.get(opts, :map_bys, [])
+      mutates: Keyword.get(opts, :mutates, []),
+      removes: Keyword.get(opts, :removes, []),
+      appends: Keyword.get(opts, :appends, [])
     }
   end
 
@@ -30,15 +32,15 @@ defmodule Lavash.Optimistic.ActionJsTest do
       assert ActionJs.action_is_optimistic?(a)
     end
 
-    test "true when action has map_bys" do
-      a = action(map_bys: [%{field: :items}])
+    test "true when action has projection ops" do
+      a = action(mutates: [%{field: :items}])
       assert ActionJs.action_is_optimistic?(a)
     end
 
-    test "false when action has only post-cascade runs (no sets/map_bys)" do
+    test "false when action has only post-cascade runs (no sets/projection ops)" do
       # Post-#117: `run` is socket-shape and side-effect-only,
       # not transpilable to JS. Optimistic eligibility is now
-      # purely set/map_by-driven (see #119 for the planned
+      # purely set/projection-op-driven (see #119 for the planned
       # `pre_run` transpile path).
       a = action(runs: [%{fun: :some_fun}], reads: [:product])
       refute ActionJs.action_is_optimistic?(a)

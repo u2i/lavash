@@ -20,8 +20,7 @@ defmodule Lavash.LiveView.Compiler do
       |> Enum.filter(&Lavash.Optimistic.ActionJs.action_is_optimistic?/1)
       |> Enum.flat_map(fn action ->
         sets = action.sets || []
-        map_bys = action.map_bys || []
-        Enum.map(sets, & &1.field) ++ Enum.map(map_bys, & &1.field)
+        Enum.map(sets, & &1.field) ++ Lavash.ClientState.mutated_fields(action)
       end)
       |> MapSet.new()
 
@@ -33,7 +32,7 @@ defmodule Lavash.LiveView.Compiler do
       end)
 
     # client_state projections ship to the client like optimistic state
-    # (they appear in data-lavash-state and are map_by-able client-side)
+    # (they appear in data-lavash-state and are mutable client-side)
     # but stay server-side derives — they are not State.Fields, so they
     # get no setters and no hydration.
     projection_fields =

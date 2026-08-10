@@ -44,43 +44,64 @@ calculate :subtotal, rx(Enum.reduce(@items || [], 0.0, ...))
 
 actions do
   action :increment, [:id] do
-    # client-side prediction — applied instantly
-    map_by :items, :id, "fn item, _id -> %{item | quantity: item.quantity + 1} end"
+    mutate :items, :update_quantity, rx(%{quantity: @item.quantity + 1})
+  end
 
-    # durable write — pre-cascade, so the SAME event re-reads and the
-    # diff the client receives already carries post-write truth
-    pre_run fn socket ->
-      item = Ash.get!(CartItem, socket.assigns.id)
-      item |> Ash.Changeset.for_update(:update_quantity, %{quantity: item.quantity + 1}) |> Ash.update!()
-      Lavash.PubSub.broadcast(CartItem)
-      socket
-    end
+  action :decrement, [:id] do
+    mutate :items, :update_quantity,
+           rx(if @item.quantity <= 1, do: :remove, else: %{quantity: @item.quantity - 1})
+  end
+
+  action :remove, [:id] do
+    remove :items
+  end
+
+  action :add, [:name] do
+    append :items, :create, rx(%{cart_id: @cart_id, name: @name, quantity: 1})
   end
 end
 ```
 
 The projected field is a **derive on the server** — always recomputed
-from the read, never mutated by actions (`set` targeting it is a
-compile error; `map_by` on it is client-only) — and **mutable
-optimistic state on the client**. The reconciliation story:
+from the read, never mutated directly (`set` targeting it is a compile
+error) — and **mutable optimistic state on the client**. Mutations go
+through three ops, each a single declaration evaluated on both sides:
 
-1. Click → the transpiled `map_by` mutates the client copy instantly;
-   calcs and subtree derives over it re-render.
-2. The event reaches the server; `pre_run` writes the resource; the
-   backing read is auto-marked dirty (because the action `map_by`s a
-   projected field) and re-runs in the same cascade.
+- `mutate :field, :ash_action, rx(...)` — the rx sees the matched row
+  as `@item` and returns a params map or `:remove`. Client-side the
+  result merges into the projected row (the instant prediction);
+  server-side it drives the named Ash action on the authoritative
+  record (`:remove` destroys it). The row is matched by the
+  projection's `key`, taken from the action's same-named param.
+- `remove :field` — keyed destroy (optional `action:` names the
+  destroy action).
+- `append :field, :create_action, rx(...)` — the rx returns the new
+  row's attributes. Client-side it becomes a *provisional* row with a
+  temp key (applied non-pending, so the re-read's real record replaces
+  it); server-side it drives `Ash.create`, filtered to the action's
+  accepted attributes.
+
+The reconciliation story:
+
+1. Click → the transpiled prediction mutates the client copy
+   instantly; calcs and subtree derives over it re-render.
+2. The event reaches the server; the op performs the Ash write, the
+   resource is broadcast, and the backing read is auto-marked dirty —
+   it re-runs in the same cascade.
 3. The reply's diff carries the post-write list — the client's
    SyncedVar sees a matching value and **confirms** the prediction
    (or corrects it, if the server disagreed).
-4. `Lavash.PubSub.broadcast/1` invalidates the read in every other
-   session on the same data; their SyncedVars have no pending
-   prediction, so the fresh list is accepted directly.
+4. The broadcast invalidates the read in every other session on the
+   same data; their SyncedVars have no pending prediction, so the
+   fresh list is accepted directly.
 
 Limitations: the backing read must be a query read (list result) with
 `async false`; `fields` is an explicit allowlist (atoms for own
 attributes, `assoc: [...]` for one level of loaded relationships);
 values are wire-encoded (Decimal → string, atom → string, dates →
-ISO 8601).
+ISO 8601). Keep `mutate` transforms to identity-encoded fields
+(numbers, booleans, strings) — the client sees the projected row, the
+server sees the raw record, and encoded fields differ between them.
 
 ## Auto-injected DOM annotations
 

@@ -177,6 +177,14 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
     # Read subtree derives (auto-extracted :if/:for over optimistic state)
     subtree_derives = Transformer.get_persisted(dsl_state, :lavash_subtree_derives) || []
 
+    # Projection field -> key, for mutate/remove row matching
+    projection_keys =
+      (Transformer.get_entities(dsl_state, [:reads]) || [])
+      |> Enum.flat_map(fn read ->
+        Enum.map(read.client_states || [], fn cs -> {cs.name, cs.key} end)
+      end)
+      |> Map.new()
+
     if calculations == [] and forms == [] and animated_fields == [] and optimistic_actions == [] and
          attr_derives == [] and subtree_derives == [] do
       nil
@@ -190,6 +198,7 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
         optimistic_actions: optimistic_actions,
         attr_derives: attr_derives,
         subtree_derives: subtree_derives,
+        projection_keys: projection_keys,
         module: module
       })
     end
@@ -222,6 +231,7 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
          optimistic_actions: optimistic_actions,
          attr_derives: attr_derives,
          subtree_derives: subtree_derives,
+         projection_keys: projection_keys,
          module: module
        }) do
     # Demote untranspilable optimistic calcs to server-only, loudly:
@@ -234,7 +244,10 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
     {calculations, calculation_fns} =
       split_transpilable_calculations(calculations, defrx_map, module)
 
-    action_fns = Enum.map(optimistic_actions, &generate_action_js/1) |> Enum.filter(& &1)
+    action_fns =
+      optimistic_actions
+      |> Enum.map(&generate_action_js(&1, projection_keys))
+      |> Enum.filter(& &1)
 
     {form_validation_fns, form_error_fns, validation_derives, error_derives} =
       generate_form_validation_js(forms, extend_errors, defrx_map)
@@ -293,6 +306,16 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
       derives_str = Jason.encode!(derive_names)
       animated_str = Jason.encode!(animated_metadata)
 
+      # Actions with appends apply their delta provisionally (seed, not
+      # setOptimistic): the provisional row carries a temp key, so the
+      # same event's re-read — with the real record — must be accepted,
+      # not rejected as a mismatched prediction.
+      provisional_str =
+        optimistic_actions
+        |> Enum.filter(&((Map.get(&1, :appends) || []) != []))
+        |> Enum.map(&to_string(&1.name))
+        |> Jason.encode!()
+
       # Flatten deps map: %{"name" => %{deps: [...]}} -> %{"name" => [...]}
       flat_deps = Map.new(graph_entries.deps, fn {name, %{deps: d}} -> {name, d} end)
 
@@ -313,7 +336,8 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
       #{fns_str}#{if fns_str != "", do: ",", else: ""}
       __derives__: #{derives_str},
       __graph__: #{graph_json},
-      __animated__: #{animated_str}
+      __animated__: #{animated_str},
+      __provisional__: #{provisional_str}
       };
       window.Lavash = window.Lavash || {};
       window.Lavash.optimistic = window.Lavash.optimistic || {};
@@ -339,45 +363,52 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
   # Generate JS for an action
   # Non-transpilable sets (lambdas, complex expressions) are skipped —
   # the transpilable ones still run client-side for instant UI updates
-  defp generate_action_js(action) do
+  defp generate_action_js(action, projection_keys) do
     name = action.name
     sets = action.sets || []
-    map_bys = action.map_bys || []
     params = action.params || []
 
     # Generate JS expressions, filtering out non-transpilable ones
     set_exprs = sets |> Enum.map(&generate_set_js(&1, params)) |> Enum.filter(& &1)
-    map_by_stmts = map_bys |> Enum.map(&generate_map_by_js/1) |> Enum.filter(& &1)
 
-    all_exprs = set_exprs
+    projection_ops =
+      Enum.map(Map.get(action, :mutates) || [], &generate_mutate_js(&1, params, projection_keys)) ++
+        Enum.map(Map.get(action, :removes) || [], &generate_remove_js(&1, projection_keys)) ++
+        Enum.map(
+          Map.get(action, :appends) || [],
+          &generate_append_js(&1, params, projection_keys)
+        )
 
-    if all_exprs == [] and map_by_stmts == [] do
+    projection_stmts = Enum.filter(projection_ops, & &1)
+
+    if set_exprs == [] and projection_stmts == [] do
       nil
     else
       param_str = if params != [], do: ", value", else: ""
       method_key = Lavash.Optimistic.Transpiler.js_field_key(name)
 
-      if map_by_stmts != [] do
-        # map_by actions mutate arrays in-place and return the full delta
-        stmts = Enum.join(map_by_stmts, "\n")
-        # Collect field names from map_by operations for the return delta
-        map_by_fields =
-          Enum.map(map_bys, fn mb ->
-            "#{Lavash.Optimistic.Transpiler.js_field_key(mb.field)}: #{Lavash.Optimistic.Transpiler.js_field_access("state", mb.field)}"
-          end)
-          |> Enum.uniq()
+      if projection_stmts != [] do
+        # Projection ops mutate the list in-place and return the full delta
+        stmts = Enum.join(projection_stmts, "\n")
 
-        set_delta = if all_exprs != [], do: Enum.join(all_exprs, ", ") <> ", ", else: ""
-        map_by_delta = Enum.join(map_by_fields, ", ")
+        projection_fields =
+          Lavash.ClientState.mutated_fields(action)
+          |> Enum.uniq()
+          |> Enum.map(fn field ->
+            "#{Lavash.Optimistic.Transpiler.js_field_key(field)}: #{Lavash.Optimistic.Transpiler.js_field_access("state", field)}"
+          end)
+
+        set_delta = if set_exprs != [], do: Enum.join(set_exprs, ", ") <> ", ", else: ""
+        projection_delta = Enum.join(projection_fields, ", ")
 
         """
           #{method_key}(state#{param_str}) {
         #{stmts}
-            return { #{set_delta}#{map_by_delta} };
+            return { #{set_delta}#{projection_delta} };
           }
         """
       else
-        expr_pairs = Enum.join(all_exprs, ", ")
+        expr_pairs = Enum.join(set_exprs, ", ")
 
         """
           #{method_key}(state#{param_str}) {
@@ -388,34 +419,86 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
     end
   end
 
-  defp generate_map_by_js(map_by) do
-    field = map_by.field
-    key = map_by.key
-    key_str = to_string(key)
-    transform = map_by.transform
+  # The transform rx sees the matched row as @item. Transpiled, @item
+  # refs become `state.item` accesses — we evaluate the expression with
+  # a shadowed state that has the row injected, so both @item and
+  # ordinary state refs resolve.
+  defp generate_mutate_js(mutate, params, projection_keys) do
+    field = mutate.field
+    key = projection_key_js(projection_keys, field)
     state_field = Lavash.Optimistic.Transpiler.js_field_access("state", field)
-    item_key = Lavash.Optimistic.Transpiler.js_field_access("item", key_str)
+    transform_js = transpile_projection_rx(mutate.transform, params, "mutate :#{field}")
 
-    cond do
-      transform == :remove ->
-        "    #{state_field} = (#{state_field} || []).filter(item => #{item_key} !== value);"
+    if transform_js do
+      """
+          #{state_field} = (#{state_field} || []).map(item => {
+            if (String(#{key}) === String(value)) {
+              const result = ((state) => (#{transform_js}))({ ...state, item: item });
+              return result === 'remove' ? null : { ...item, ...result };
+            }
+            return item;
+          }).filter(item => item !== null);
+      """
+    else
+      nil
+    end
+  end
 
-      is_binary(transform) ->
-        item_transform_js =
-          Lavash.Component.CompilerHelpers.fn_source_to_js_item_transform(transform)
+  defp generate_remove_js(remove, projection_keys) do
+    key = projection_key_js(projection_keys, remove.field)
+    state_field = Lavash.Optimistic.Transpiler.js_field_access("state", remove.field)
 
-        """
-            #{state_field} = (#{state_field} || []).map(item => {
-              if (String(#{item_key}) === String(value)) {
-                const result = #{item_transform_js};
-                return result === 'remove' ? null : result;
-              }
-              return item;
-            }).filter(item => item !== null);
-        """
+    "    #{state_field} = (#{state_field} || []).filter(item => String(#{key}) !== String(value));"
+  end
 
-      true ->
-        nil
+  # The provisional row gets a temp key; runOptimisticAction applies
+  # provisional deltas via seed() (non-pending), so the same event's
+  # re-read — carrying the real record — is accepted, not rejected.
+  defp generate_append_js(append, params, projection_keys) do
+    field = append.field
+    key_name = Map.get(projection_keys, field, :id)
+    state_field = Lavash.Optimistic.Transpiler.js_field_access("state", field)
+    transform_js = transpile_projection_rx(append.transform, params, "append :#{field}")
+
+    if transform_js do
+      """
+          #{state_field} = [ ...(#{state_field} || []),
+            { #{Lavash.Optimistic.Transpiler.js_field_key(key_name)}: "__lavash_tmp_" + Date.now() + "_" + Math.floor(Math.random() * 1e6),
+              ...(#{transform_js}) } ];
+      """
+    else
+      nil
+    end
+  end
+
+  defp projection_key_js(projection_keys, field) do
+    key_name = Map.get(projection_keys, field, :id)
+    Lavash.Optimistic.Transpiler.js_field_access("item", to_string(key_name))
+  end
+
+  defp transpile_projection_rx(%Lavash.Rx{source: source}, params, label) do
+    js_expr = Lavash.Optimistic.Transpiler.to_js(source)
+
+    js_expr =
+      case params do
+        [param] ->
+          param_ref = Lavash.Optimistic.Transpiler.js_field_access("state", param)
+          String.replace(js_expr, param_ref, "value")
+
+        _ ->
+          js_expr
+      end
+
+    if Lavash.Optimistic.Transpiler.untranspilable_output?(js_expr) do
+      Logger.warning(
+        "[lavash] #{label} uses rx(#{source}) which is not transpilable; the " <>
+          "prediction is skipped client-side and the list only updates after " <>
+          "the server round-trip."
+      )
+
+      nil
+    else
+      js_expr
     end
   end
 

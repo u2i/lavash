@@ -1,7 +1,7 @@
 defmodule Lavash.Integration.ClientStateTest do
   @moduledoc """
   client_state projections end-to-end (ClientCartLive fixture): an
-  Ash resource list mapped onto the client, `map_by` predictions
+  Ash resource list mapped onto the client, `mutate`/`remove`/`append` predictions
   applied instantly, confirmed by the same event's post-write
   re-read, and propagated to other sessions via PubSub.
 
@@ -34,7 +34,7 @@ defmodule Lavash.Integration.ClientStateTest do
     css("#item-#{item_id} .qty", text: text)
   end
 
-  test "map_by predicts instantly; the server write confirms it", %{session: session} do
+  test "mutate predicts instantly; the server write confirms it", %{session: session} do
     cart = unique_cart()
     item = create_item!(cart, "Beans", 2, "9.50")
 
@@ -90,6 +90,44 @@ defmodule Lavash.Integration.ClientStateTest do
       session = WLV.await_patch(session)
       refute_has(session, css("#item-#{item.id}", wait: 0))
       assert {:error, _} = Ash.get(Item, item.id)
+    after
+      _ = WLV.clear_latency(session)
+    end
+  end
+
+  test "append shows a provisional row instantly and converges to the real record", %{
+    session: session
+  } do
+    cart = unique_cart()
+    create_item!(cart, "Beans", 1, "4.00")
+
+    session =
+      session
+      |> visit("/magic/client-cart?cart_id=#{cart}")
+      |> WLV.set_latency(@latency_ms)
+
+    session = assert_has(session, css(".cart-row", count: 1))
+
+    try do
+      session = click(session, css("#add-widget"), await: :defer)
+
+      # Provisional row rendered deep inside the lag window.
+      session = assert_has(session, css(".row-name", text: "Widget"))
+      session = assert_has(session, css(".cart-row", count: 2))
+
+      # After the round-trip the row is the real record (temp id gone)
+      # and it persisted.
+      session = WLV.await_patch(session)
+      session = assert_has(session, css(".row-name", text: "Widget"))
+      refute_has(session, css("[id*='__lavash_tmp_']", wait: 0))
+
+      [item] =
+        Item
+        |> Ash.Query.for_read(:for_cart, %{cart_id: cart})
+        |> Ash.read!()
+        |> Enum.filter(&(&1.name == "Widget"))
+
+      assert_has(session, css("#item-#{item.id}"))
     after
       _ = WLV.clear_latency(session)
     end

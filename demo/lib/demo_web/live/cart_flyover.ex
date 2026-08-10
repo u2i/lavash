@@ -8,8 +8,8 @@ defmodule DemoWeb.CartFlyover do
   Architecture:
   - Flyover DSL handles panel behavior (slide animation, backdrop, open/close)
   - CartItemList owns the cart data loop: pubsub-invalidated read,
-    optimistic `map_by` predictions, and Ash writes — parents only
-    pass `cart_id`
+    optimistic `mutate`/`remove` predictions, and Ash writes —
+    parents only pass `cart_id`
   """
   use Lavash.Component, extensions: [Lavash.Overlay.Flyover.Dsl]
 

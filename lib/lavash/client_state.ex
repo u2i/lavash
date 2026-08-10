@@ -38,21 +38,118 @@ defmodule Lavash.ClientState do
   end
 
   @doc """
+  The projection fields an action mutates via `mutate`/`remove`/`append`.
+
+  Uses `Map.get` — injected actions (overlay `:noop`, synthetic setters)
+  can be plain maps without these keys.
+  """
+  def mutated_fields(action) do
+    Enum.map(Map.get(action, :mutates) || [], & &1.field) ++
+      Enum.map(Map.get(action, :removes) || [], & &1.field) ++
+      Enum.map(Map.get(action, :appends) || [], & &1.field)
+  end
+
+  @doc """
   Returns the backing read names for projections targeted by an
-  action's `map_by` ops. The runtime marks these dirty pre-cascade
-  so the same event's diff carries post-write truth — the client's
-  prediction confirms against it instead of a stale list.
+  action's `mutate`/`remove`/`append` ops. The runtime marks these
+  dirty pre-cascade so the same event's diff carries post-write
+  truth — the client's prediction confirms against it instead of a
+  stale list.
   """
   def reads_to_refresh(module, action) do
-    map_by_fields = MapSet.new(action.map_bys || [], & &1.field)
+    fields = MapSet.new(mutated_fields(action))
 
-    if MapSet.size(map_by_fields) == 0 do
+    if MapSet.size(fields) == 0 do
       []
     else
       module
       |> projections()
-      |> Enum.filter(&MapSet.member?(map_by_fields, &1.name))
+      |> Enum.filter(&MapSet.member?(fields, &1.name))
       |> Enum.map(& &1.read)
+      |> Enum.uniq()
+    end
+  end
+
+  @doc """
+  Executes an action's `mutate`/`remove`/`append` ops against their
+  Ash resources. Runs pre-cascade (after sets/pre_runs, before the
+  reactive recompute), so the re-read triggered by
+  `reads_to_refresh/2` sees post-write data in the same event.
+
+  Broadcasts each touched resource once via `Lavash.PubSub` so
+  other sessions' reads invalidate.
+  """
+  def apply_mutations(socket, action, params, module) do
+    ops =
+      Enum.map(Map.get(action, :mutates) || [], &{:mutate, &1}) ++
+        Enum.map(Map.get(action, :removes) || [], &{:remove, &1}) ++
+        Enum.map(Map.get(action, :appends) || [], &{:append, &1})
+
+    if ops == [] do
+      socket
+    else
+      projections_by_field = Map.new(projections(module), &{&1.name, &1})
+      state = Lavash.Socket.full_state(socket) |> Map.merge(params)
+
+      touched =
+        Enum.map(ops, fn {kind, op} ->
+          proj = Map.fetch!(projections_by_field, op.field)
+          apply_mutation(kind, op, proj, state, params, module)
+          proj.resource
+        end)
+
+      touched |> Enum.uniq() |> Enum.each(&Lavash.PubSub.broadcast/1)
+      socket
+    end
+  end
+
+  defp apply_mutation(:mutate, op, proj, state, params, module) do
+    record = fetch_record!(proj, params)
+
+    case eval_rx(module, op.transform, Map.put(state, :item, record)) do
+      :remove ->
+        Ash.destroy!(record)
+
+      attrs when is_map(attrs) ->
+        record
+        |> Ash.Changeset.for_update(op.action, attrs)
+        |> Ash.update!()
+    end
+  end
+
+  defp apply_mutation(:remove, op, proj, _state, params, _module) do
+    record = fetch_record!(proj, params)
+
+    if op.action do
+      record |> Ash.Changeset.for_destroy(op.action) |> Ash.destroy!()
+    else
+      Ash.destroy!(record)
+    end
+  end
+
+  defp apply_mutation(:append, op, proj, state, _params, module) do
+    attrs = eval_rx(module, op.transform, state)
+    accepted = accepted_attrs(proj.resource, op.action)
+    attrs = if accepted, do: Map.take(attrs, accepted), else: attrs
+
+    proj.resource
+    |> Ash.Changeset.for_create(op.action, attrs)
+    |> Ash.create!()
+  end
+
+  defp fetch_record!(proj, params) do
+    key_value = Map.fetch!(params, proj.key)
+    Ash.get!(proj.resource, key_value)
+  end
+
+  defp eval_rx(module, %Lavash.Rx{ast: ast}, state) do
+    Lavash.Rx.Cache.compile_rx(module, ast).(state)
+  end
+
+  defp accepted_attrs(resource, action_name) do
+    case Ash.Resource.Info.action(resource, action_name) do
+      %{accept: accept} when is_list(accept) -> accept
+      _ -> nil
     end
   end
 

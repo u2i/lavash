@@ -12,7 +12,7 @@ defmodule Lavash.Actions.Action do
 
   - `set :foo, rx(...)` - declarative state writes
   - `pre_run fn socket -> socket end` - imperative pre-cascade hook
-  - `map_by ...` - keyed array mutations
+  - `mutate`/`remove`/`append` - keyed client_state projection mutations
 
   ## Post-cascade ops (observe and emit)
 
@@ -32,7 +32,9 @@ defmodule Lavash.Actions.Action do
     :sets,
     :pre_runs,
     :runs,
-    :map_bys,
+    :mutates,
+    :removes,
+    :appends,
     :effects,
     :submits,
     :navigates,

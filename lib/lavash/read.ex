@@ -46,7 +46,7 @@ defmodule Lavash.Read.ClientState do
   JSON-safe list of maps and shipped to the client as optimistic
   state. The projected field is a **derive** on the server (always
   recomputed from the read — never mutated by actions) and mutable
-  optimistic state on the client (`map_by` predictions apply to it
+  optimistic state on the client (`mutate`/`remove`/`append` predictions apply to it
   instantly; the next server push of the re-read confirms or
   corrects them).
 

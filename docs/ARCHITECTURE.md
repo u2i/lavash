@@ -230,7 +230,9 @@ means "primarily B, but writes to S" or similar — see notes.
 | `lib/lavash/actions/effect.ex` | B | `effect` op. |
 | `lib/lavash/actions/flash.ex` | B | `flash` op. |
 | `lib/lavash/actions/invoke.ex` | B | `invoke` (call child action). |
-| `lib/lavash/actions/map_by.ex` | B/O | `map_by` op — keyed array mutation. Has optimistic JS but the entity itself is just a struct. |
+| `lib/lavash/actions/mutate.ex` | B/O | `mutate` op — keyed client_state row mutation, one rx evaluated on both sides. |
+| `lib/lavash/actions/remove.ex` | B/O | `remove` op — keyed client_state row destroy. |
+| `lib/lavash/actions/append.ex` | B/O | `append` op — provisional client_state row insert. |
 | `lib/lavash/actions/navigate.ex` | B | |
 | `lib/lavash/actions/push_event.ex` | B | |
 | `lib/lavash/actions/push_patch.ex` | B | |
