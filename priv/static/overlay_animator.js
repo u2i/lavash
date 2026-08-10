@@ -462,6 +462,16 @@ export class OverlayAnimator {
   }
 
   /**
+   * Called when a server-rendered-open overlay is seeded at mount
+   * (issue #30): apply the final styles for the seeded phase instantly —
+   * the overlay is already open, so no enter animation should play.
+   */
+  onSeedOpen(syncedVar) {
+    this._sv = syncedVar;
+    this.applyPhaseStyles(syncedVar.getPhase(), { animate: false });
+  }
+
+  /**
    * Called when entering the "exiting" phase. Ghosts are cloned from the
    * current visual state before the real elements are hidden.
    */

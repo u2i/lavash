@@ -388,10 +388,11 @@ defmodule Lavash.LiveViewTest do
           {:ok, _view, _html} = live(conn, "/magic/url-mismatch")
         end)
 
-      # Scope to the URL-mismatch warning specifically: capture_log sees
-      # the global logger, so unrelated [lavash] warnings from modules
-      # compiling concurrently in other async tests must not fail this.
-      refute log =~ "looked for param"
+      # Scope to this fixture's own field: capture_log sees the global
+      # logger, so "looked for param" warnings legitimately emitted by
+      # other fixtures mounting in concurrent async tests (e.g. :tab in
+      # the parity suite) must not fail this.
+      refute log =~ "state :subject_handle"
     end
   end
 

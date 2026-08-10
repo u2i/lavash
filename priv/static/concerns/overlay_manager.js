@@ -88,7 +88,17 @@ export function initAnimatedFields(hook) {
       onChange: (newVal) => { hook.state[field] = newVal; },
     });
     if (delegate) syncedVar.setDelegate(delegate);
-    if (currentValue != null) syncedVar.setOptimistic(currentValue);
+    if (currentValue != null) {
+      // A non-null value at mount is server-rendered truth: seed it as
+      // confirmed (no pending window) and skip the enter animation
+      // (issue #30). If the overlay's async data is already loaded,
+      // seed lands in visible rather than loading.
+      if (config.async) {
+        const asyncAction = hook.state[`${config.async}_action`];
+        if (asyncAction && asyncAction !== "loading") syncedVar.isAsyncReady = true;
+      }
+      syncedVar.seed(currentValue);
+    }
 
     // Set up open/close event listeners on chrome element
     if (chromeEl) {
