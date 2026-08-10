@@ -21,6 +21,8 @@ defmodule Lavash.Optimistic.Transpiler do
 
   ### Control Flow
   - `if cond, do: x, else: y` → ternary operator
+  - `unless cond, do: x, else: y` → negated ternary
+  - `cond do ... end` → chained ternaries
 
   ### State References
   - `@variable` → `state.variable`
@@ -41,7 +43,16 @@ defmodule Lavash.Optimistic.Transpiler do
 
   ### Utility Functions
   - `length/1`, `is_nil/1`, `humanize/1`, `get_in/2`
+  - `max/2`, `min/2` → `Math.max`/`Math.min`, `rem/2` → `%`
   - `valid_card_number?/1` (custom validation)
+
+  ## Untranspilable expressions
+
+  Anything outside the supported set transpiles to an
+  `undefined /* untranspilable */` marker. Emission paths check for it
+  (`untranspilable_output?/1`) and demote loudly instead of shipping
+  it: optimistic calculations fall back to server-only with a compile
+  warning, and untranspilable action sets are skipped client-side.
 
   ## Usage
 
