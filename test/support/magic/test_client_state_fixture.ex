@@ -104,6 +104,14 @@ defmodule Lavash.Test.Magic.ClientCartLive do
              :create,
              rx(%{cart_id: @cart_id, name: @name, quantity: 1, unit_price: "2.50"})
     end
+
+    action :upsert_item, [:name] do
+      upsert :items,
+        match: [:name],
+        on_conflict: {:update_quantity, rx(%{quantity: @item.quantity + 1})},
+        on_insert:
+          {:create, rx(%{cart_id: @cart_id, name: @name, quantity: 1, unit_price: "2.50"})}
+    end
   end
 
   template do
@@ -118,6 +126,7 @@ defmodule Lavash.Test.Magic.ClientCartLive do
         <button phx-click="remove" phx-value-id={item.id}>x</button>
       </div>
       <button id="add-widget" phx-click="add_item" phx-value-name="Widget">add</button>
+      <button id="upsert-widget" phx-click="upsert_item" phx-value-name="Widget">upsert</button>
     </div>
     """
   end

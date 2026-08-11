@@ -175,6 +175,34 @@ defmodule Lavash.ClientStateTest do
       assert item.name == "Widget"
     end
 
+    test "upsert's conflict branch updates the matched record (no new row)", %{conn: conn} do
+      cart = unique_cart()
+      item = create_item!(cart, "Widget", 2, "2.50")
+
+      {:ok, view, _html} = live(conn, "/magic/client-cart?cart_id=#{cart}")
+
+      html = view |> element("#upsert-widget") |> render_click()
+
+      assert html =~ ~s(<span class="qty">3</span>)
+      assert Ash.get!(Item, item.id).quantity == 3
+
+      # Still one row — matched, not duplicated.
+      assert [_] = Item |> Ash.Query.for_read(:for_cart, %{cart_id: cart}) |> Ash.read!()
+    end
+
+    test "upsert's insert branch creates under the client-generated id", %{conn: conn} do
+      cart = unique_cart()
+      client_id = Ash.UUID.generate()
+
+      {:ok, view, _html} = live(conn, "/magic/client-cart?cart_id=#{cart}")
+
+      ids = Jason.encode!(%{"Lavash.Test.Magic.ClientCartLive:upsert_item:items" => client_id})
+      html = view |> element("#upsert-widget") |> render_click(%{"_lavash_ids" => ids})
+
+      assert Ash.get!(Item, client_id).name == "Widget"
+      assert html =~ "item-#{client_id}"
+    end
+
     test "remove's response drops the row and destroys the record", %{conn: conn} do
       cart = unique_cart()
       item = create_item!(cart, "Beans", 1, "4.00")
@@ -282,6 +310,38 @@ defmodule Lavash.ClientStateTest do
           actions do
             action :bump do
               mutate :items, :update_quantity, rx(%{quantity: @item.quantity + 1})
+            end
+          end
+
+          template do
+            ~H"<div>{inspect(@items)}</div>"
+          end
+        end
+      end
+    end
+
+    test "upsert matching on a non-projected field is rejected" do
+      assert_raise Spark.Error.DslError, ~r/not projected own fields/, fn ->
+        defmodule UpsertUnprojectedMatch do
+          use Lavash.LiveView
+
+          state :cart_id, :string, from: :url
+
+          read :cart_items, Lavash.Test.Magic.ClientCart.Item, :for_cart do
+            argument :cart_id, state(:cart_id)
+            async false
+
+            client_state :items do
+              fields [:id, :quantity]
+            end
+          end
+
+          actions do
+            action :add, [:name] do
+              upsert :items,
+                match: [:name],
+                on_conflict: {:update_quantity, rx(%{quantity: @item.quantity + 1})},
+                on_insert: {:create, rx(%{cart_id: @cart_id, name: @name, quantity: 1})}
             end
           end
 

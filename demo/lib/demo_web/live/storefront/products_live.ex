@@ -79,10 +79,11 @@ defmodule DemoWeb.Storefront.ProductsLive do
 
     # Add to cart: opens the flyover optimistically and invokes the
     # flyover's :add_item. The product's display fields ride along
-    # (from phx-value-* on the card button) so the flyover's append
-    # can predict a COMPLETE provisional row — badge, row, and totals
-    # all tick before the server replies. Server-side the append runs
-    # the deduping CartItem.:add (which snapshots the real price).
+    # (from phx-value-* on the card button) so the flyover's upsert
+    # can predict a COMPLETE row either way — an existing product's
+    # quantity ticks, a new one appears — badge, row, and totals all
+    # move before the server replies (`:create_row` snapshots the
+    # authoritative price).
     action :add_to_cart, [:product_id, :name, :origin, :unit_price] do
       set :cart_open, true
 

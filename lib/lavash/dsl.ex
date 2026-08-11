@@ -375,6 +375,7 @@ defmodule Lavash.Dsl do
   @mutate_entity CommonEntities.mutate_entity()
   @remove_entity CommonEntities.remove_entity()
   @append_entity CommonEntities.append_entity()
+  @upsert_entity CommonEntities.upsert_entity()
   @effect_entity CommonEntities.effect_entity()
   @submit_entity CommonEntities.submit_entity()
 
@@ -494,6 +495,7 @@ defmodule Lavash.Dsl do
       mutates: [@mutate_entity],
       removes: [@remove_entity],
       appends: [@append_entity],
+      upserts: [@upsert_entity],
       effects: [@effect_entity],
       submits: [@submit_entity],
       navigates: [@navigate_entity],

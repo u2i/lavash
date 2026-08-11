@@ -59,13 +59,20 @@ actions do
   action :add, [:name] do
     append :items, :create, rx(%{cart_id: @cart_id, name: @name, quantity: 1})
   end
+
+  action :add_by_key, [:product_id, :qty] do
+    upsert :items,
+      match: [:product_id],
+      on_conflict: {:update_quantity, rx(%{quantity: @item.quantity + @qty})},
+      on_insert: {:create, rx(%{cart_id: @cart_id, product_id: @product_id, quantity: @qty})}
+  end
 end
 ```
 
 The projected field is a **derive on the server** — always recomputed
 from the read, never mutated directly (`set` targeting it is a compile
 error) — and **mutable optimistic state on the client**. Mutations go
-through three ops, each a single declaration evaluated on both sides:
+through four ops, each a single declaration evaluated on both sides:
 
 - `mutate :field, :ash_action, rx(...)` — the rx sees the matched row
   as `@item` and returns a params map or `:remove`. Client-side the
@@ -76,10 +83,32 @@ through three ops, each a single declaration evaluated on both sides:
 - `remove :field` — keyed destroy (optional `action:` names the
   destroy action).
 - `append :field, :create_action, rx(...)` — the rx returns the new
-  row's attributes. Client-side it becomes a *provisional* row with a
-  temp key (applied non-pending, so the re-read's real record replaces
-  it); server-side it drives `Ash.create`, filtered to the action's
-  accepted attributes.
+  row's attributes. The row's id is **client-generated**
+  (`crypto.randomUUID()`, minted at click time and carried on the
+  event), and the server creates the record under it — so the
+  provisional row keeps its identity when the re-read lands, and
+  follow-up mutations on a just-added row address the real record
+  immediately. Server-side the attrs are filtered to the create
+  action's accepted attributes and drive `Ash.create`.
+- `upsert :field, match: [...], on_conflict: {action, rx}, on_insert:
+  {action, rx}` — insert-or-update by a *semantic* identity (a cart
+  keyed by product). A row whose `match` fields equal the action's
+  params/state values is updated with the `on_conflict` params
+  (`@item` bound, `:remove` drops it); otherwise the `on_insert` row
+  is inserted, append-style under a client-generated id. Predicting
+  the *merge* when the row exists is the point — an `append` +
+  server-side dedup flashes a duplicate row that then collapses.
+  Match fields must be projected own fields. The dedup rule lives in
+  the lavash action, so back the semantic identity with an Ash
+  `identity` when duplicates must be impossible.
+
+Which op models which list is a question of **who can author the
+row**: a self-contained fact the client fully knows (a todo) is
+`append`; a row merged by a domain key against state that other
+sessions race (a cart line) is `upsert`, whose branch decision and
+server-derived fields (price snapshots) can be corrected by the
+re-read; a row only the server can compute isn't predictable at all —
+render a loading state, not a prediction.
 
 The reconciliation story:
 
@@ -113,7 +142,7 @@ action :add_to_cart, [:product_id] do
 end
 ```
 
-The flyover's `:add_item` append then bumps its projected badge
+The flyover's `:add_item` upsert then bumps its projected badge
 instantly. If the target hook isn't mounted, the client half no-ops
 and the server half still applies.
 
@@ -138,8 +167,9 @@ error**:
 - an untranspilable rx `set` inside an optimistic action (the
   server-only function form `set :f, fn ctx -> ... end` remains the
   sanctioned escape hatch)
-- an untranspilable `mutate`/`append` transform (these have no
-  `optimistic: false` escape — the prediction *is* the op's client half)
+- an untranspilable `mutate`/`append`/`upsert` transform (these have
+  no `optimistic: false` escape — the prediction *is* the op's client
+  half)
 
 Each error message prescribes its fix. Opportunistically-extracted
 attr derives stay warnings — `class={...}` never declared optimism, so

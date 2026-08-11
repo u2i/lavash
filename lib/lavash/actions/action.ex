@@ -35,6 +35,7 @@ defmodule Lavash.Actions.Action do
     :mutates,
     :removes,
     :appends,
+    :upserts,
     :effects,
     :submits,
     :navigates,

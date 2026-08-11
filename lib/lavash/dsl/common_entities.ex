@@ -352,6 +352,57 @@ defmodule Lavash.Dsl.CommonEntities do
   end
 
   @doc """
+  Upsert entity for actions — match-based insert-or-update of a
+  client_state projection row. See `Lavash.Actions.Upsert`.
+  """
+  def upsert_entity do
+    %Spark.Dsl.Entity{
+      name: :upsert,
+      target: Lavash.Actions.Upsert,
+      args: [:field],
+      schema: [
+        field: [
+          type: :atom,
+          required: true,
+          doc: "The client_state projection field to upsert into"
+        ],
+        match: [
+          type: {:list, :atom},
+          required: true,
+          doc: """
+          Projected fields forming the row's semantic identity. A row
+          whose match fields equal the action's params/state values of
+          the same names is updated; otherwise a row is inserted. Match
+          fields must be in the projection's own `fields` so the client
+          can match against its copy.
+          """
+        ],
+        on_conflict: [
+          type: {:tuple, [:atom, {:struct, Lavash.Rx}]},
+          required: true,
+          doc: """
+          `{update_action, rx()}` applied when a row matches. The rx sees
+          the matched row as `@item` and returns the update params map
+          (or `:remove` to drop the row). Client-side the result merges
+          into the projected row; server-side it drives the Ash update.
+          """
+        ],
+        on_insert: [
+          type: {:tuple, [:atom, {:struct, Lavash.Rx}]},
+          required: true,
+          doc: """
+          `{create_action, rx()}` applied when no row matches. The rx
+          returns the new row's attribute map — client-side it becomes
+          the predicted row (under a client-generated id shared with the
+          server), server-side it is filtered to the create action's
+          accepted attributes and drives `Ash.create`.
+          """
+        ]
+      ]
+    }
+  end
+
+  @doc """
   Effect entity for actions - runs a side effect function.
   """
   def effect_entity do

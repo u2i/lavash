@@ -155,6 +155,87 @@ defmodule Lavash.Integration.ClientStateTest do
     end
   end
 
+  test "upsert predicts the merge on a matched row — no duplicate-row flicker", %{
+    session: session
+  } do
+    cart = unique_cart()
+    item = create_item!(cart, "Widget", 2, "2.50")
+
+    session =
+      session
+      |> visit("/magic/client-cart?cart_id=#{cart}")
+      |> WLV.set_latency(@latency_ms)
+
+    session = assert_has(session, qty(item.id, "2"))
+
+    try do
+      # Watch the row count the whole way: with `append` this click
+      # would flash 1 → 2 → 1 (provisional row, then server dedup).
+      # Upsert must predict the increment on the existing row instead.
+      execute_script(
+        session,
+        """
+        window.__rowCounts = [];
+        window.__rowObserver = new MutationObserver(() => {
+          window.__rowCounts.push(document.querySelectorAll(".cart-row").length);
+        });
+        window.__rowObserver.observe(document.getElementById("client-cart"),
+          { childList: true, subtree: true, characterData: true });
+        return true;
+        """,
+        fn v -> send(self(), {:eval, v}) end
+      )
+
+      receive do
+        {:eval, _} -> :ok
+      after
+        2_000 -> :ok
+      end
+
+      session = click(session, css("#upsert-widget"), await: :defer)
+
+      # In-window: the existing row's qty ticked, count still 1.
+      session = assert_has(session, qty(item.id, "3"))
+      session = assert_has(session, css(".cart-row", count: 1))
+
+      session = WLV.await_patch(session)
+      session = assert_has(session, qty(item.id, "3"))
+      assert Ash.get!(Item, item.id).quantity == 3
+
+      counts = eval(session, "window.__rowCounts.join(',')")
+      refute counts =~ "2", "row count flashed a duplicate: [#{counts}]"
+    after
+      _ = WLV.clear_latency(session)
+    end
+  end
+
+  test "upsert inserts with stable identity when nothing matches", %{session: session} do
+    cart = unique_cart()
+
+    session =
+      session
+      |> visit("/magic/client-cart?cart_id=#{cart}")
+      |> WLV.set_latency(@latency_ms)
+
+    try do
+      session = click(session, css("#upsert-widget"), await: :defer)
+
+      # Provisional row in-window under the client-minted UUID…
+      session = assert_has(session, css(".row-name", text: "Widget"))
+      provisional_id = eval(session, ~s{document.querySelector(".cart-row").id})
+      assert "item-" <> provisional_uuid = provisional_id
+      assert {:ok, _} = Ecto.UUID.cast(provisional_uuid)
+
+      # …which is the id the record persisted under.
+      session = WLV.await_patch(session)
+      [item] = Item |> Ash.Query.for_read(:for_cart, %{cart_id: cart}) |> Ash.read!()
+      assert item.id == provisional_uuid
+      assert_has(session, qty(item.id, "1"))
+    after
+      _ = WLV.clear_latency(session)
+    end
+  end
+
   test "another session on the same cart updates via PubSub", %{session: session_a} do
     cart = unique_cart()
     item = create_item!(cart, "Beans", 2, "9.50")
