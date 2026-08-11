@@ -162,6 +162,35 @@ export function handleActionInputKeydown(e, hook) {
  * @param {any} value - The phx-value-* parameter
  * @param {Object} hook - The hook instance
  */
+// Row ids a provisional prediction added or mutated: ids present in
+// the new array but absent from the old (appends, client-minted id),
+// plus ids whose row object changed (upsert on_conflict merge). Non-
+// array values contribute no row ids — the field-level annotation
+// still covers them.
+function diffChangedRowIds(oldVal, newVal) {
+  if (!Array.isArray(newVal)) return [];
+  const oldRows = new Map(
+    (Array.isArray(oldVal) ? oldVal : [])
+      .filter(r => r && r.id != null)
+      .map(r => [String(r.id), r])
+  );
+  const ids = [];
+  for (const row of newVal) {
+    if (!row || row.id == null) continue;
+    const id = String(row.id);
+    const prev = oldRows.get(id);
+    if (!prev || !shallowRowEqual(prev, row)) ids.push(id);
+  }
+  return ids;
+}
+
+function shallowRowEqual(a, b) {
+  const keysA = Object.keys(a);
+  const keysB = Object.keys(b);
+  if (keysA.length !== keysB.length) return false;
+  return keysA.every(k => a[k] === b[k]);
+}
+
 export function runOptimisticAction(actionName, value, hook) {
   let fn = hook.fns[actionName];
 
@@ -198,16 +227,26 @@ export function runOptimisticAction(actionName, value, hook) {
   hook.clientVersion++;
 
   try {
+    // Snapshot BEFORE running the prediction: projection ops assign
+    // into state inside the generated fn (replacing array references),
+    // so hook.state already holds the predicted arrays by the time the
+    // delta comes back. The shallow copy keeps the pre-prediction
+    // references as the diff base for provisional row ids (issue #72).
+    const stateBefore = provisional ? { ...hook.state } : null;
     const delta = fn(hook.state, value);
 
     const changedFields = [];
     for (const [key, val] of Object.entries(delta)) {
+      // Which projected rows did this prediction add or mutate? Their
+      // ids drive row-level provisional annotations — client-minted
+      // append ids make the identity stable across predict and confirm.
+      const changedIds = provisional ? diffChangedRowIds(stateBefore[key], val) : [];
       hook.state[key] = val;
       const syncedVar = hook.store.get(key, null, (newVal) => {
         hook.state[key] = newVal;
       });
       if (provisional) {
-        syncedVar.seed(val);
+        syncedVar.seed(val, { provisional: true, changedIds });
       } else {
         syncedVar.setOptimistic(val);
       }

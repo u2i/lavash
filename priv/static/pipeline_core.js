@@ -25,6 +25,7 @@ import {
 } from "./concerns/utils.js";
 import { installGlobalDomCallback } from "./concerns/global_dom_callback.js";
 import { updateDOM, notifyChildren } from "./concerns/dom_updater.js";
+import { refreshSyncAnnotations } from "./concerns/sync_annotations.js";
 import { loadGeneratedFunctions } from "./concerns/function_loader.js";
 import { captureBeforeUpdate } from "./concerns/overlay_manager.js";
 import { runStage } from "./pipeline.js";
@@ -124,6 +125,13 @@ function attachHookMethods(hook) {
     return this.store ? this.store.getPendingPaths().length : 0;
   };
 
+  // "Is anything on screen unconfirmed?" — pending optimistic sets OR
+  // provisional append/upsert seeds (issue #72). Also the predicate a
+  // navigation guard for in-flight writes wants (issue #63).
+  hook.hasUnresolved = function() {
+    return this.store ? this.store.hasUnresolved : false;
+  };
+
   hook.notifyChildren = function() {
     notifyChildren(this.el, this);
   };
@@ -148,6 +156,10 @@ function attachHookMethods(hook) {
       isFormSubmitted: this._lavashFormsIsSubmitted || (() => false),
       isOptimistic
     });
+    // Derive sync-state annotations from the store AFTER content
+    // rendering, every cycle — optimistic and server-patch alike — so
+    // they always reflect current SyncedVar state (issue #72).
+    refreshSyncAnnotations(this);
     this.notifyChildren();
   };
 }

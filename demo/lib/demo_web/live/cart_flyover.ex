@@ -177,7 +177,11 @@ defmodule DemoWeb.CartFlyover do
         </div>
 
         <div :if={!@is_empty} class="flex-1 overflow-auto divide-y divide-base-200">
-          <div :for={item <- @items} class="p-4 flex gap-4">
+          <%!-- data-lavash-id opts the row into provisional marking:
+               a predicted (appended/upserted) row gets
+               data-lavash-provisional until the re-read confirms it —
+               the demo CSS dims it (issue #72). --%>
+          <div :for={item <- @items} class="p-4 flex gap-4" data-lavash-id={item.id}>
             <div class="w-20 h-20 bg-base-200 rounded-lg flex-shrink-0 overflow-hidden flex items-center justify-center text-base-content/30">
               <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path

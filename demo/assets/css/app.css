@@ -177,3 +177,31 @@
 [data-phx-session] { display: contents }
 
 /* This file is for your main application CSS */
+
+/* ── Sync-state affordances (lavash issue #72) ─────────────────────
+   Lavash annotates, apps style. The transition-delay is the point:
+   annotations appear the instant a prediction is applied, but the
+   visible affordance waits ~250ms — a fast round-trip confirms before
+   the delay elapses, so nothing ever flashes. Clearing is immediate
+   (the delay lives only on the unresolved state). */
+
+/* Provisional (predicted, unconfirmed) projected rows dim slightly. */
+[data-lavash-id] {
+  transition: opacity 0.15s ease;
+}
+[data-lavash-provisional] {
+  opacity: 0.55;
+  transition-delay: 0.25s;
+}
+
+/* Header sync dot: visible while ANY hook on the page has unresolved
+   predictions. Watches the whole tree via :has() — each hook root only
+   reflects its own vars. */
+#sync-dot {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+body:has([data-lavash-syncing]) #sync-dot {
+  opacity: 1;
+  transition-delay: 0.25s;
+}

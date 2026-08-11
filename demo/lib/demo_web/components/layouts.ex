@@ -44,6 +44,13 @@ defmodule DemoWeb.Layouts do
         <div class="flex-none">
           <ul class="flex px-1 space-x-2 sm:space-x-4 items-center">
             <li>
+              <%!-- Visible (via CSS :has) while any hook on the page has
+                   unresolved predictions — data-lavash-syncing, issue #72. --%>
+              <span id="sync-dot" title="Syncing…" aria-hidden="true" class="flex items-center">
+                <span class="w-2 h-2 rounded-full bg-warning animate-pulse"></span>
+              </span>
+            </li>
+            <li>
               <a href={~p"/storefront/products"} class="btn btn-ghost">Shop</a>
             </li>
             <li class="hidden sm:block">
