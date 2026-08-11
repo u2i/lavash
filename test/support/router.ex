@@ -44,6 +44,7 @@ defmodule Lavash.TestRouter do
     live("/stacked-modals", StackedModalsHostLive)
     live("/mount-url", MountUrlLive)
     live("/mount-url/:thing_id", MountUrlLive)
+    live("/filters", FilterLive)
     live("/trigger-flyover", TriggerFlyoverHostLive)
   end
 

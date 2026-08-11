@@ -152,8 +152,20 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
 
     actions = Transformer.get_entities(dsl_state, [:actions]) || []
 
+    # Synthetic set_* actions transpile like declared ones — a
+    # phx-click/phx-change driving a setter gets the same optimistic
+    # client half (state delta + derives + URL sync). Declared actions
+    # win name collisions, mirroring the runtime's declared-first
+    # lookup in __lavash__(:actions).
+    declared_names = MapSet.new(actions, & &1.name)
+
+    setter_actions =
+      (Transformer.get_entities(dsl_state, [:states]) || [])
+      |> Lavash.LiveView.Compiler.setter_actions_for_fields()
+      |> Enum.reject(&MapSet.member?(declared_names, &1.name))
+
     optimistic_actions =
-      actions
+      (actions ++ setter_actions)
       |> Enum.filter(&ActionJs.action_is_optimistic?/1)
 
     calculations =
@@ -785,8 +797,13 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
       end)
       |> Enum.map(& &1.name)
 
+    # Synthetic set_* actions transpile too (see generate_js_from_dsl),
+    # so setter-touched fields are client state — the visible set must
+    # agree with what actually ships.
+    setter_actions = Lavash.LiveView.Compiler.setter_actions_for_fields(states)
+
     action_touched =
-      actions
+      (actions ++ setter_actions)
       |> Enum.filter(&ActionJs.action_is_optimistic?/1)
       |> Enum.flat_map(fn action ->
         Enum.map(action.sets || [], & &1.field) ++ Lavash.ClientState.mutated_fields(action)

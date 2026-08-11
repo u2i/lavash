@@ -13,7 +13,13 @@ defmodule Lavash.LiveView.Compiler do
   def collect_optimistic_fields(module) do
     states = module.__lavash__(:states)
     explicitly_optimistic = Enum.filter(states, &Lavash.State.Field.optimistic?/1)
-    actions = module.__lavash__(:declared_actions)
+
+    # Synthetic set_* actions count: they transpile like declared ones,
+    # so a field with setter: true is client-mutable and must ship in
+    # client state even when no declared action touches it (a page
+    # whose only interactions are input-driven setters — the
+    # /demos/products shape — previously got no wrapper at all).
+    actions = module.__lavash__(:declared_actions) ++ setter_actions_for_fields(states)
 
     action_touched_fields =
       actions
@@ -47,7 +53,19 @@ defmodule Lavash.LiveView.Compiler do
   Generate synthetic setter actions for state fields with setter: true or optimistic: true.
   """
   def generate_setter_actions(module) do
-    module.__lavash__(:states)
+    setter_actions_for_fields(module.__lavash__(:states))
+  end
+
+  @doc """
+  Fields-based variant of `generate_setter_actions/1` for compile-time
+  callers that hold the state entities rather than a compiled module —
+  the colocated-JS transformer uses this so the synthetic setters get
+  a transpiled client half like any declared action (they previously
+  existed only server-side, so `phx-click`/`phx-change` driving a
+  `set_*` action was never optimistic and never synced the URL).
+  """
+  def setter_actions_for_fields(states) do
+    states
     |> Enum.filter(fn
       %Lavash.State.Field{} = f -> f.setter || Lavash.State.Field.optimistic?(f)
       _ -> false
@@ -94,17 +112,25 @@ defmodule Lavash.LiveView.Compiler do
     }
   end
 
+  # Tri-state: "" and nil mean UNSET (nil), not false — a select's
+  # "All" option must clear the filter, and nil-vs-false matters
+  # elsewhere too (overlay open convention: nil closes, false doesn't).
   defp setter_value(:boolean) do
     state_var = Macro.var(:state, nil)
 
     %Lavash.Rx{
-      source: "@value == \"true\" or @value == true",
+      source:
+        "if(@value == \"\" or @value == nil, do: nil, else: @value == \"true\" or @value == true)",
       ast:
-        quote(
-          do:
-            Map.get(unquote(state_var), :value) == "true" or
-              Map.get(unquote(state_var), :value) == true
-        ),
+        quote do
+          value = Map.get(unquote(state_var), :value)
+
+          if value == "" or value == nil do
+            nil
+          else
+            value == "true" or value == true
+          end
+        end,
       deps: [:value]
     }
   end
