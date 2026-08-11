@@ -102,7 +102,7 @@ defmodule DemoWeb.StorefrontLive do
           />
           <div class="absolute inset-0 bg-gradient-to-t from-base-100/90 to-transparent"></div>
         </div>
-        <h1 class="text-5xl font-bold">Lavash Coffee</h1>
+        <h1 class="text-4xl md:text-5xl font-bold">Lavash Coffee</h1>
         <p class="text-xl text-base-content/70 mt-4 max-w-2xl mx-auto">
           Small batch, ethically sourced beans roasted fresh daily.
           From farm to cup, we obsess over every detail.

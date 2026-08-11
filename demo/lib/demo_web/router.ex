@@ -43,7 +43,9 @@ defmodule DemoWeb.Router do
   scope "/storefront", DemoWeb do
     pipe_through [:browser, :ensure_user]
 
-    live_session :storefront, on_mount: {DemoWeb.LiveUserAuth, :live_user_ensure} do
+    live_session :storefront,
+      layout: {DemoWeb.Layouts, :app},
+      on_mount: {DemoWeb.LiveUserAuth, :live_user_ensure} do
       live "/", StorefrontLive
       live "/products", Storefront.ProductsLive
       live "/products/:product_id", Storefront.ProductLive

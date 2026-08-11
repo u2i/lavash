@@ -13,46 +13,50 @@ defmodule DemoWeb.Layouts do
 
   def app(assigns) do
     ~H"""
-    <header class="navbar px-4 sm:px-6 lg:px-8">
-      <div class="flex-1">
-        <a href="/" class="flex-1 flex items-center gap-2">
-          <span class="text-2xl">☕</span>
-          <span class="font-semibold">Lavash Coffee</span>
-        </a>
-      </div>
-      <div class="flex-none">
-        <ul class="flex flex-column px-1 space-x-4 items-center">
-          <li>
-            <a href={~p"/storefront/products"} class="btn btn-ghost">Shop</a>
-          </li>
-          <li>
-            <a href={~p"/account"} class="btn btn-ghost">Account</a>
-          </li>
-          <li>
-            <a href={~p"/admin"} class="btn btn-ghost btn-sm">Admin</a>
-          </li>
-          <li>
-            <.theme_toggle />
-          </li>
-          <%= if @current_user do %>
-            <li class="text-sm">
-              {@current_user.email}
+    <header class="border-b border-base-300/50">
+      <nav class="navbar mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
+        <div class="flex-1">
+          <a href={~p"/storefront"} class="flex items-center gap-2">
+            <span class="text-2xl">☕</span>
+            <span class="font-semibold">Lavash Coffee</span>
+          </a>
+        </div>
+        <div class="flex-none">
+          <ul class="flex px-1 space-x-4 items-center">
+            <li>
+              <a href={~p"/storefront/products"} class="btn btn-ghost">Shop</a>
+            </li>
+            <li class="hidden sm:block">
+              <a href={~p"/account"} class="btn btn-ghost">Account</a>
+            </li>
+            <li class="hidden sm:block">
+              <a href={~p"/admin"} class="btn btn-ghost btn-sm">Admin</a>
             </li>
             <li>
-              <a href={~p"/sign-out"} class="btn btn-ghost">Sign out</a>
+              <.theme_toggle />
             </li>
-          <% else %>
-            <li>
-              <a href={~p"/sign-in"} class="btn btn-primary">Sign in</a>
-            </li>
-          <% end %>
-        </ul>
-      </div>
+            <%!-- Anonymous carts get a real user row behind the scenes —
+                 don't greet them with a placeholder email. --%>
+            <%= if @current_user && !@current_user.anonymous do %>
+              <li class="hidden sm:block text-sm">
+                {@current_user.email}
+              </li>
+              <li>
+                <a href={~p"/sign-out"} class="btn btn-ghost">Sign out</a>
+              </li>
+            <% else %>
+              <li>
+                <a href={~p"/sign-in"} class="btn btn-primary">Sign in</a>
+              </li>
+            <% end %>
+          </ul>
+        </div>
+      </nav>
     </header>
 
-    <main class="px-4 py-20 sm:px-6 lg:px-8">
-      <div class="mx-auto max-w-4xl space-y-4">
-        {render_slot(@inner_block)}
+    <main class="px-4 py-8 sm:px-6 lg:px-8">
+      <div class="mx-auto max-w-6xl">
+        {@inner_content}
       </div>
     </main>
 
