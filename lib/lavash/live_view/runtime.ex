@@ -54,7 +54,7 @@ defmodule Lavash.LiveView.Runtime do
     end
   end
 
-  def mount(module, _params, session, socket) do
+  def mount(module, params, session, socket) do
     # Get connect params if available (contains client-synced socket state)
     connect_params =
       if Phoenix.LiveView.connected?(socket) do
@@ -95,6 +95,21 @@ defmodule Lavash.LiveView.Runtime do
       |> State.hydrate_assigns(module)
       |> State.hydrate_ephemeral(module)
       |> State.hydrate_forms(module)
+
+    # Hydrate URL state from mount params so `mount do ... end` bodies
+    # see path/query values — standard LiveView passes params to
+    # mount/3, and discarding them here meant a mount-time
+    # `socket.assigns[:some_url_field]` was always nil (the
+    # ProductLive bounce: nil product_id → not-found → push_navigate
+    # back to the index). handle_params re-hydrates on every patch;
+    # the initial double hydration is idempotent. Child LiveViews not
+    # mounted at the router get :not_mounted_at_router here — skip.
+    socket =
+      if is_map(params) do
+        State.hydrate_url(socket, module, params)
+      else
+        socket
+      end
 
     # Run the user's `mount do ... end` lifecycle block (async-field
     # init + op-sequence). Pulled in here rather than at the top-level

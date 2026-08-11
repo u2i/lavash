@@ -42,6 +42,8 @@ defmodule Lavash.TestRouter do
     live("/dependent-select", DependentSelectLive)
     live("/client-cart", ClientCartLive)
     live("/stacked-modals", StackedModalsHostLive)
+    live("/mount-url", MountUrlLive)
+    live("/mount-url/:thing_id", MountUrlLive)
   end
 
   # Parallel "explicit" path: plain Phoenix.LiveView, no Lavash DSL.
