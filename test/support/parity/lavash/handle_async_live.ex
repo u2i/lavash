@@ -20,7 +20,7 @@ defmodule Lavash.Parity.Lavash.HandleAsyncLive do
   """
   use Lavash.LiveView
 
-  calculate :report, rx(slow_load()), async: true
+  calculate :report, rx(slow_load()), async: true, optimistic: false
 
   async :fetch_count do
     run fn _assigns ->

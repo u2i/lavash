@@ -35,8 +35,11 @@ defmodule DemoWeb.Storefront.ProductLive do
   end
 
   # Cart calculations
+  # optimistic: false — @cart_items is a server-side read that never
+  # exists in client state (the #41/#45 bug class, now a compile error).
   calculate :cart_item_count,
-            rx(Enum.reduce(@cart_items, 0, fn item, acc -> acc + item.quantity end))
+            rx(Enum.reduce(@cart_items, 0, fn item, acc -> acc + item.quantity end)),
+            optimistic: false
 
   calculate :quantity_gt_1, rx(@quantity > 1)
 

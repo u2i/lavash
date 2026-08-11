@@ -103,6 +103,32 @@ ISO 8601). Keep `mutate` transforms to identity-encoded fields
 (numbers, booleans, strings) — the client sees the projected row, the
 server sees the raw record, and encoded fields differ between them.
 
+## Strictness: broken optimistic promises fail the build
+
+`optimistic: true` (the default for calcs) is a stated intent that the
+code runs client-side. Code that can't fulfill it is a **compile
+error**:
+
+- an optimistic calc whose rx body isn't transpilable
+- an optimistic calc depending on fields that never exist in client
+  state (server-side reads, non-optimistic state) — it would throw on
+  every client recompute
+- an untranspilable rx `set` inside an optimistic action (the
+  server-only function form `set :f, fn ctx -> ... end` remains the
+  sanctioned escape hatch)
+- an untranspilable `mutate`/`append` transform (these have no
+  `optimistic: false` escape — the prediction *is* the op's client half)
+
+Each error message prescribes its fix. Opportunistically-extracted
+attr derives stay warnings — `class={...}` never declared optimism, so
+a server-rendered fallback is legitimate.
+
+Transitional escape hatch (restores warn-and-demote):
+
+```elixir
+config :lavash, :untranspilable_optimistic, :warn
+```
+
 ## Auto-injected DOM annotations
 
 The layer-4 reach into HEEx is the family of `data-lavash-*` attributes

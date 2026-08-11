@@ -35,7 +35,7 @@ defmodule Lavash.Test.Magic.AssignsLive do
   # field's default is "guest" so we can prove the fallback path.
   state :missing, :string, from: :assigns, default: "guest"
 
-  calculate :greeting, rx("Hello, " <> @user.name)
+  calculate :greeting, rx("Hello, " <> @user.name), optimistic: false
 
   def render(assigns) do
     ~H"""

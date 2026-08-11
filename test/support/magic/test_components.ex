@@ -279,7 +279,7 @@ defmodule Lavash.Test.Magic.ModalAsyncComponent do
     async_assign :item
   end
 
-  calculate :item, rx(slow_load(@item_id)), async: true
+  calculate :item, rx(slow_load(@item_id)), async: true, optimistic: false
 
   def slow_load(nil), do: nil
 

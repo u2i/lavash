@@ -105,7 +105,8 @@ defmodule Lavash.Transformers.ValidateDsl do
     Transformer.get_entities(dsl_state, path) || []
   end
 
-  defp form_field_names(form) do
+  @doc false
+  def form_field_names(form) do
     base = form.name
 
     # The form itself is exposed under its declared name (e.g.

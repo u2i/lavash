@@ -22,7 +22,7 @@ defmodule Lavash.Test.Magic.CheckboxBindLive do
   use Lavash.LiveView
 
   state :confirmed, :boolean, from: :ephemeral, default: false, optimistic: true
-  state :submitted, :boolean, from: :ephemeral, default: false
+  state :submitted, :boolean, from: :ephemeral, default: false, optimistic: true
 
   calculate :ready_to_submit, rx(@confirmed and not @submitted)
 
