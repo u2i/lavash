@@ -194,20 +194,17 @@
   transition-delay: 0.25s;
 }
 
-/* Header sync dot: visible while ANY hook on the page has unresolved
+/* Sync indicator: visible while ANY hook on the page has unresolved
    predictions. Watches the whole tree via :has() — each hook root only
-   reflects its own vars.
-
-   z-index above the overlay chrome (flyovers/modals wrap at z-50):
-   adding to cart opens the flyover, which is exactly when the dot is
-   interesting — it must not vanish behind the backdrop. */
-#sync-dot {
+   reflects its own vars. The element lives in the root layout as a
+   fixed, top-of-stack pill (like the latency toggle), so it is
+   independent of every page layer — overlays and backdrops can't
+   hide it. */
+#sync-indicator {
   opacity: 0;
   transition: opacity 0.15s ease;
-  position: relative;
-  z-index: 60;
 }
-body:has([data-lavash-syncing]) #sync-dot {
+body:has([data-lavash-syncing]) #sync-indicator {
   opacity: 1;
   transition-delay: 0.25s;
 }

@@ -39,5 +39,19 @@
         <span id="latency-label">Lag</span>
       </button>
     </div>
+    <%!-- Sync indicator (lavash issue #72): fixed and top-of-stack, so it
+         is independent of every page layer — overlays, backdrops, and
+         layouts can't hide it. Purely CSS-driven: app.css shows it via
+         body:has([data-lavash-syncing]) while any hook on the page has
+         unresolved predictions, with a delay so fast confirms never
+         flash. Lives in the root layout, outside LiveView patching. --%>
+    <div
+      id="sync-indicator"
+      class="fixed bottom-4 right-28 px-3 py-2 text-xs font-medium bg-gray-800 text-warning rounded shadow-lg flex items-center gap-2 pointer-events-none"
+      style="z-index: 99999;"
+      aria-hidden="true"
+    >
+      <span class="w-2 h-2 rounded-full bg-warning animate-pulse"></span> Syncing
+    </div>
   </body>
 </html>
