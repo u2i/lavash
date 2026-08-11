@@ -15,6 +15,7 @@
 
 import {
   handleClick as _handleClick,
+  handleChange as _handleChange,
   runOptimisticAction as _runOptimisticAction
 } from "./optimistic_action_helpers.js";
 
@@ -36,9 +37,14 @@ export const optimisticActions = {
    */
   mounted(hook) {
     hook._optimisticActions = {
-      clickListener: (e) => _handleClick(e, hook)
+      clickListener: (e) => _handleClick(e, hook),
+      changeListener: (e) => _handleChange(e, hook)
     };
     hook.el.addEventListener("click", hook._optimisticActions.clickListener, true);
+    // input fires per keystroke on text inputs; change on selects and
+    // checkboxes. Both route to the same phx-change interception.
+    hook.el.addEventListener("input", hook._optimisticActions.changeListener, true);
+    hook.el.addEventListener("change", hook._optimisticActions.changeListener, true);
 
     // External API: inline component scripts dispatch through this.
     hook.runOptimisticAction = function(actionName, value) {
@@ -52,6 +58,10 @@ export const optimisticActions = {
   destroyed(hook) {
     if (hook._optimisticActions?.clickListener) {
       hook.el.removeEventListener("click", hook._optimisticActions.clickListener, true);
+    }
+    if (hook._optimisticActions?.changeListener) {
+      hook.el.removeEventListener("input", hook._optimisticActions.changeListener, true);
+      hook.el.removeEventListener("change", hook._optimisticActions.changeListener, true);
     }
     hook._optimisticActions = null;
     hook.runOptimisticAction = null;

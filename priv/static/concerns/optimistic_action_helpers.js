@@ -75,6 +75,44 @@ export function handleClick(e, hook) {
 }
 
 /**
+ * Handle an input/change event on a form carrying phx-change.
+ * Mirrors handleClick for the input path: if the phx-change action has
+ * a client-side optimistic implementation, run it with the input's
+ * value so the prediction (state delta, derives, URL sync) lands
+ * immediately — Phoenix's own delegate still pushes the server event,
+ * with phx-debounce applying only to that push, not to the prediction.
+ *
+ * Only fires for the setter convention (a single input named "value",
+ * the shape auto-generated set_* actions consume). Inputs owned by the
+ * bound-field machinery (data-lavash-bind) are left to it.
+ *
+ * @param {Event} e - input or change event
+ * @param {Object} hook - The hook instance
+ */
+export function handleChange(e, hook) {
+  const input = e.target;
+  if (!input || input.name !== "value" || input.dataset?.lavashBind) return;
+
+  const form = input.closest("[phx-change]");
+  if (!form || !hook.el.contains(form)) return;
+
+  // Skip inputs belonging to a nested child hook — its own listener runs.
+  const owner = input.closest("[data-lavash-state]");
+  if (owner && owner !== hook.el) return;
+
+  const actionName = form.getAttribute("phx-change");
+  if (!hook.fns[actionName]) return;
+
+  const value = input.type === "checkbox" ? input.checked : input.value;
+
+  // Deferred one macrotask for the same reason as handleClick: the
+  // prediction may re-render a subtree containing this input, and
+  // detaching it before Phoenix's bubble-phase delegate runs would
+  // kill the server push.
+  setTimeout(() => runOptimisticAction(actionName, value, hook), 0);
+}
+
+/**
  * Run an optimistic action by name.
  * Looks up the function, applies the state delta, and triggers
  * derive recomputation, DOM update, and URL sync.
