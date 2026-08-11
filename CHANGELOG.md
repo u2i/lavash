@@ -6,6 +6,36 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Sync-state DOM annotations** (#72). Optimistic predictions are now
+  distinguishable from confirmed state via attributes derived from
+  SyncedVar state on every render: `data-lavash-syncing` +
+  `aria-busy="true"` on the hook root while any of the hook's own vars
+  is unresolved (pending optimistic set OR provisional append/upsert
+  seed); `data-lavash-pending` on elements bound to an unresolved field
+  (directly or through the derive graph); `data-lavash-provisional` on
+  predicted rows inside projected subtrees — opt in by rendering
+  `data-lavash-id={row.id}` on the row template. Provisional seeds
+  resolve on the same-event re-read; `hook.hasUnresolved()` exposes the
+  predicate (also what #63's navigation guard needs). No default
+  styling — a page indicator can watch
+  `body:has([data-lavash-syncing])`, and the recommended CSS delays the
+  visible affordance ~250ms so fast round-trips never flash it (see
+  the demo's header sync dot + dimmed provisional cart rows).
+
+### Fixed
+
+- **Bound fields no longer stay pending forever after parent→child
+  refresh.** `refreshFromParent` marked the mirrored value as an
+  optimistic set — but no confirming push ever comes for a mirror, so
+  the var (and now the `data-lavash-syncing` indicator) stayed
+  unresolved indefinitely; it also compared by identity, re-marking
+  array/object values changed on every parent render. Plain vars now
+  `seed()` (confirmed, non-pending) under a `deepEqual` guard; animated
+  vars keep the phase-machine path (their pending state resolves on the
+  next patch).
+
 ### Changed
 
 - **BREAKING: bindable component fields must be declared `from: :bound`**

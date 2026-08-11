@@ -251,13 +251,27 @@ export class SyncedVar {
    * visible/loading with instant styles: a server-rendered-open
    * overlay is already open, so replaying the enter animation on
    * every mount (including reconnects) is visual noise.
+   *
+   * Provisional seeds (issue #72): append/upsert predictions seed
+   * (never pend — the same-event re-read must replace, not fight, the
+   * predicted rows), so `isPending` can't surface them. Pass
+   * `{ provisional: true, changedIds: [...] }` to mark the var
+   * unresolved until ANY server value arrives for its path — the
+   * re-read is authoritative either way. `changedIds` records which
+   * rows were predicted (client-minted or conflict-mutated) so the
+   * DOM annotator can mark them individually.
    */
-  seed(newValue) {
+  seed(newValue, opts = {}) {
     const oldValue = this.value;
     this.value = newValue;
     this.confirmedValue = newValue;
     this._lastServerValue = newValue;
-    if (debugEnabled()) console.debug(`[SV:${this.label}] seed: ${JSON.stringify(oldValue)} → ${JSON.stringify(newValue)}, v=${this.version}, cv=${this.confirmedVersion}`);
+    if (opts.provisional) {
+      this.isProvisional = true;
+      this.provisionalIds = this.provisionalIds || new Set();
+      for (const id of opts.changedIds || []) this.provisionalIds.add(id);
+    }
+    if (debugEnabled()) console.debug(`[SV:${this.label}] seed: ${JSON.stringify(oldValue)} → ${JSON.stringify(newValue)}, v=${this.version}, cv=${this.confirmedVersion}, provisional=${!!this.isProvisional}`);
     this.onChange?.(newValue, oldValue, "server");
 
     if (this.animated && newValue != null) {
@@ -340,6 +354,14 @@ export class SyncedVar {
    * Returns true if value changed.
    */
   serverSet(newValue) {
+    // Any server arrival for this path resolves a provisional seed —
+    // the same-event re-read is authoritative whether it confirms the
+    // predicted rows or replaces them (issue #72).
+    if (this.isProvisional) {
+      this.isProvisional = false;
+      this.provisionalIds = null;
+      if (debugEnabled()) console.debug(`[SV:${this.label}] provisional RESOLVED by server value`);
+    }
     if (this.animated) {
       return this._serverSetAnimated(newValue);
     }
@@ -450,6 +472,16 @@ export class SyncedVar {
 
   get isPending() {
     return this.version !== this.confirmedVersion;
+  }
+
+  /**
+   * Anything unconfirmed: an optimistic set awaiting its confirm OR a
+   * provisional (append/upsert) seed awaiting the same-event re-read.
+   * The "is the truth on screen?" predicate (issue #72; #63 wants the
+   * same answer for navigation guarding).
+   */
+  get isUnresolved() {
+    return this.isPending || !!this.isProvisional;
   }
 
   getValue() {
@@ -583,14 +615,32 @@ export class SyncedVarStore {
     return Object.values(this.vars).some(v => v.isPending);
   }
 
+  get hasUnresolved() {
+    return Object.values(this.vars).some(v => v.isUnresolved);
+  }
+
   getPendingPaths() {
     return Object.entries(this.vars)
       .filter(([_, v]) => v.isPending)
       .map(([p]) => p);
   }
 
+  getUnresolvedPaths() {
+    return Object.entries(this.vars)
+      .filter(([_, v]) => v.isUnresolved)
+      .map(([p]) => p);
+  }
+
   isPending(path) {
     return this.vars[path]?.isPending ?? false;
+  }
+
+  isUnresolved(path) {
+    return this.vars[path]?.isUnresolved ?? false;
+  }
+
+  provisionalIds(path) {
+    return this.vars[path]?.provisionalIds || null;
   }
 
   clearPending(path) {

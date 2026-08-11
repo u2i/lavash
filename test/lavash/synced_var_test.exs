@@ -238,4 +238,95 @@ defmodule Lavash.SyncedVarTest do
       assert result == "visible"
     end
   end
+
+  describe "provisional seeds (issue #72)" do
+    test "provisional seed is unresolved but NOT pending, and records row ids", ctx do
+      result =
+        run_js(
+          """
+          const sv = new SyncedVar([]);
+          sv.seed([{id: "u1", name: "Widget"}], { provisional: true, changedIds: ["u1"] });
+          return {
+            pending: sv.isPending,
+            unresolved: sv.isUnresolved,
+            ids: Array.from(sv.provisionalIds)
+          };
+          """,
+          ctx
+        )
+
+      assert result == %{"pending" => false, "unresolved" => true, "ids" => ["u1"]}
+    end
+
+    test "any server arrival resolves a provisional seed", ctx do
+      result =
+        run_js(
+          """
+          const sv = new SyncedVar([]);
+          sv.seed([{id: "u1"}], { provisional: true, changedIds: ["u1"] });
+          sv.serverSet([{id: "real-1"}]);
+          return { unresolved: sv.isUnresolved, ids: sv.provisionalIds };
+          """,
+          ctx
+        )
+
+      assert result == %{"unresolved" => false, "ids" => nil}
+    end
+
+    test "plain seed (SSR mount seeding, issue #30) stays resolved", ctx do
+      result =
+        run_js(
+          """
+          const sv = new SyncedVar(null);
+          sv.seed("open");
+          return sv.isUnresolved;
+          """,
+          ctx
+        )
+
+      refute result
+    end
+
+    test "consecutive provisional seeds merge their row ids", ctx do
+      result =
+        run_js(
+          """
+          const sv = new SyncedVar([]);
+          sv.seed([{id: "a"}], { provisional: true, changedIds: ["a"] });
+          sv.seed([{id: "a"}, {id: "b"}], { provisional: true, changedIds: ["b"] });
+          return Array.from(sv.provisionalIds).sort();
+          """,
+          ctx
+        )
+
+      assert result == ["a", "b"]
+    end
+
+    test "store hasUnresolved counts pending AND provisional; hasPending only pending", ctx do
+      result =
+        run_js(
+          """
+          const store = new SyncedVarStore();
+          store.get("rows", []).seed([{id: "u1"}], { provisional: true, changedIds: ["u1"] });
+          const before = { pending: store.hasPending, unresolved: store.hasUnresolved,
+                           paths: store.getUnresolvedPaths() };
+          store.get("count", 0).setOptimistic(5);
+          const during = { pending: store.hasPending, unresolved: store.hasUnresolved };
+          store.serverUpdate({ rows: [{id: "real"}], count: 5 });
+          const after = { pending: store.hasPending, unresolved: store.hasUnresolved };
+          return { before, during, after };
+          """,
+          ctx
+        )
+
+      assert result["before"] == %{
+               "pending" => false,
+               "unresolved" => true,
+               "paths" => ["rows"]
+             }
+
+      assert result["during"] == %{"pending" => true, "unresolved" => true}
+      assert result["after"] == %{"pending" => false, "unresolved" => false}
+    end
+  end
 end

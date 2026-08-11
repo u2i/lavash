@@ -118,7 +118,7 @@ defmodule Lavash.Test.Magic.ClientCartLive do
     ~H"""
     <div id="client-cart">
       <span id="count">{@item_count}</span>
-      <div :for={item <- @items} class="cart-row" id={"item-#{item.id}"}>
+      <div :for={item <- @items} class="cart-row" id={"item-#{item.id}"} data-lavash-id={item.id}>
         <span class="row-name">{item.name}</span>
         <span class="qty">{item.quantity}</span>
         <button phx-click="increment" phx-value-id={item.id}>+</button>
