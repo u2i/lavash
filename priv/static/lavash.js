@@ -43,6 +43,17 @@ window.Lavash.optimistic = window.Lavash.optimistic || {};
 // Diagnostic logging is off by default; flip on from the console with
 // `window.Lavash.debug = true` (see debug.js).
 
+// The client half of the `invoke` op: run a named optimistic action on
+// another component's hook (looked up by component id in the registry
+// pipeline_core maintains). Generated action JS calls this so a page
+// action's prediction can include a child component's prediction —
+// e.g. add-to-cart bumping the cart flyover's projected badge — in
+// the same tick. The server half routes via send_update as before.
+window.Lavash.invokeOptimistic = function (targetId, actionName, params) {
+  const hook = window.Lavash.hooks && window.Lavash.hooks[targetId];
+  hook?.runOptimisticAction?.(actionName, params);
+};
+
 // ----- Public API -----
 
 export { lavash } from "./pipeline.js";

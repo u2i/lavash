@@ -125,6 +125,10 @@ export function lavash({ concerns = [] } = {}) {
         }
 
         this._lavashConcerns = null;
+
+        if (this.lavashHookId && window.Lavash?.hooks?.[this.lavashHookId] === this) {
+          delete window.Lavash.hooks[this.lavashHookId];
+        }
       }
 
       hook.destroyed?.call(this);

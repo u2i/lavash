@@ -95,6 +95,28 @@ The reconciliation story:
    same data; their SyncedVars have no pending prediction, so the
    fresh list is accepted directly.
 
+### Cross-component predictions (`invoke`'s client half)
+
+A page action can `invoke` a component's projection op, and the
+prediction crosses the hook boundary: the transpiled page action runs
+the target component's optimistic fn in the same tick as its own sets
+(via a client-side hook registry), while the server half routes
+through `send_update` as always:
+
+```elixir
+action :add_to_cart, [:product_id] do
+  set :cart_open, true
+
+  invoke "cart-flyover", :add_item,
+    module: MyAppWeb.CartFlyover,
+    params: [product_id: {:param, :product_id}, qty: 1]
+end
+```
+
+The flyover's `:add_item` append then bumps its projected badge
+instantly. If the target hook isn't mounted, the client half no-ops
+and the server half still applies.
+
 Limitations: the backing read must be a query read (list result) with
 `async false`; `fields` is an explicit allowlist (atoms for own
 attributes, `assoc: [...]` for one level of loaded relationships);

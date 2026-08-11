@@ -7,7 +7,7 @@ defmodule DemoWeb.Storefront.ProductLive do
     router: DemoWeb.Router,
     statics: DemoWeb.static_paths()
 
-  alias Demo.Cart.{Cart, CartItem}
+  alias Demo.Cart.Cart
   alias Demo.Catalog.Product
 
   # Product loaded on mount from path param
@@ -20,12 +20,6 @@ defmodule DemoWeb.Storefront.ProductLive do
 
   # Quantity selector — bumped/dec'd via two actions, used by add_to_cart.
   state :quantity, :integer, from: :ephemeral, default: 1, optimistic: true
-
-  # Action-scratch state. The update/remove cart actions stash the
-  # operating item id and delta here before reading it back in the
-  # `run` body.
-  state :_pending_item_id, :string, from: :ephemeral, default: nil
-  state :_pending_delta, :integer, from: :ephemeral, default: nil
 
   # The cart itself is fully owned by DemoWeb.CartFlyover (trigger +
   # badge + panel) — this page only knows the cart_id.
@@ -44,39 +38,15 @@ defmodule DemoWeb.Storefront.ProductLive do
     action :add_to_cart do
       set :cart_open, true
 
-      effect fn state ->
-        cart_id = state.cart_id
-        product_id = state.product_id
-        qty_to_add = state.quantity || 1
-
-        # Query directly — this page no longer holds a cart read
-        existing =
-          CartItem
-          |> Ash.Query.for_read(:for_cart, %{cart_id: cart_id})
-          |> Ash.read!()
-          |> Enum.find(fn item -> item.product_id == product_id end)
-
-        if existing do
-          existing
-          |> Ash.Changeset.for_update(:update_quantity, %{
-            quantity: existing.quantity + qty_to_add
-          })
-          |> Ash.update!()
-        else
-          CartItem
-          |> Ash.Changeset.for_create(:add, %{
-            cart_id: cart_id,
-            product_id: product_id,
-            quantity: qty_to_add
-          })
-          |> Ash.create!()
-        end
-
-        Lavash.PubSub.broadcast(CartItem)
-      end
-
-      # Reset back to 1 after adding so the next add starts fresh.
-      set :quantity, 1
+      # Client: invoke's optimistic half bumps the flyover's projected
+      # badge with the selected quantity instantly. Server: the append
+      # runs the deduping CartItem.:add and broadcasts.
+      #
+      # No quantity reset here: server-side `set`s apply before
+      # `invoke`s, so a reset would clobber the qty the invoke reads.
+      invoke "cart-flyover", :add_item,
+        module: DemoWeb.CartFlyover,
+        params: [product_id: {:state, :product_id}, qty: {:state, :quantity}]
     end
   end
 

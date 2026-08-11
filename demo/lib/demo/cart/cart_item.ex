@@ -43,7 +43,20 @@ defmodule Demo.Cart.CartItem do
   actions do
     defaults [:read, :destroy]
 
+    # Public add: create-or-increment (manual). Adding a product already
+    # in the cart bumps its quantity instead of duplicating the row —
+    # dedup lives in the domain layer, so every caller (pages, the cart
+    # flyover's `append`) gets it for free.
     create :add do
+      accept [:quantity]
+      argument :cart_id, :uuid, allow_nil?: false
+      argument :product_id, :uuid, allow_nil?: false
+
+      manual Demo.Cart.CreateOrIncrementCartItem
+    end
+
+    # Raw row creation used by :add's manual implementation.
+    create :create_row do
       accept [:quantity]
       argument :cart_id, :uuid, allow_nil?: false
       argument :product_id, :uuid, allow_nil?: false

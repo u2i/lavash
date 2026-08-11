@@ -54,6 +54,17 @@ defmodule DemoWeb.CartFlyover do
   calculate :item_count,
             rx(Enum.reduce(@badge_items || [], 0, fn item, acc -> acc + item.quantity end))
 
+  actions do
+    # Invoked by the pages' add_to_cart (server via send_update, client
+    # via invoke's optimistic half): the appended provisional row bumps
+    # the badge count instantly; the CartItem.:add manual create
+    # dedups (create-or-increment) server-side, and the re-read
+    # replaces the provisional row with truth.
+    action :add_item, [:product_id, :qty] do
+      append :badge_items, :add, rx(%{cart_id: @cart_id, product_id: @product_id, quantity: @qty})
+    end
+  end
+
   template_trigger do
     ~H"""
     <span class="btn btn-ghost btn-circle relative">
