@@ -445,7 +445,18 @@ defmodule Lavash.Reactive do
       end)
     end
 
-    LSocket.put_derived(socket, field, AsyncResult.loading())
+    # Standard LiveView re-assign semantics: a re-run keeps the previous
+    # result available while loading (`.loading` set, `.result` intact),
+    # so templates can render the stale value dimmed instead of
+    # swapping to a bare spinner. First run has no result — plain
+    # loading state.
+    loading =
+      case socket.assigns[field] do
+        %AsyncResult{ok?: true} = prev -> AsyncResult.loading(prev)
+        _ -> AsyncResult.loading()
+      end
+
+    LSocket.put_derived(socket, field, loading)
   end
 
   # Auto-wrap Ash.Changeset results into Lavash.Form for template rendering

@@ -23,8 +23,14 @@ defmodule DemoWeb.ProductsLive do
   # Products - auto-maps state fields to :list action arguments
   # The action's arguments (search, category_id, in_stock, etc.) match our state field names
   # invalidate: :pubsub enables fine-grained PubSub invalidation using notify_on from the resource
+  #
+  # Async: filter changes re-run the query in a task. While loading,
+  # the AsyncResult keeps the previous list (standard re-assign
+  # semantics), so the grid renders the stale results dimmed under a
+  # spinner instead of blanking — filters stay instant (optimistic URL
+  # state), only the result area shows the wait.
   read :products, Product, :list do
-    async false
+    async true
     invalidate :pubsub
   end
 
@@ -35,7 +41,10 @@ defmodule DemoWeb.ProductsLive do
     as_options label: :name, value: :id
   end
 
-  # Result count computed from products
+  # Result count computed from products. The compute receives the
+  # unwrapped list (the cascade unwraps ok AsyncResults for deps), and
+  # the result re-wraps as an AsyncResult because a dep was async —
+  # hence the unwrap helpers at render time.
   calculate :result_count, rx(length(@products)), optimistic: false
 
   calculate :has_filters,
@@ -186,13 +195,18 @@ defmodule DemoWeb.ProductsLive do
         <div class="col-span-3">
           <div class="flex items-center justify-between mb-4">
             <p class="text-gray-600">
-              Showing <span class="font-semibold">{@result_count}</span> products
+              Showing <span class="font-semibold">{unwrap_count(@result_count)}</span> products
             </p>
+            <span :if={loading?(@products)} class="loading loading-spinner loading-sm text-indigo-600">
+            </span>
           </div>
 
-          <div class="grid grid-cols-3 gap-4">
+          <div class={[
+            "grid grid-cols-3 gap-4 transition-opacity",
+            loading?(@products) && "opacity-40 pointer-events-none"
+          ]}>
             <div
-              :for={product <- @products}
+              :for={product <- unwrap_list(@products)}
               class="bg-white rounded-lg shadow p-4 hover:shadow-md transition-shadow"
             >
               <div class="flex items-start justify-between">
@@ -227,7 +241,18 @@ defmodule DemoWeb.ProductsLive do
             </div>
           </div>
 
-          <div :if={@result_count == 0} class="text-center py-12 bg-white rounded-lg shadow">
+          <div
+            :if={loading?(@products) and unwrap_list(@products) == []}
+            class="text-center py-12 bg-white rounded-lg shadow"
+          >
+            <span class="loading loading-spinner loading-lg text-indigo-600"></span>
+            <p class="text-gray-500 mt-4">Loading products…</p>
+          </div>
+
+          <div
+            :if={not loading?(@products) and unwrap_count(@result_count) == 0}
+            class="text-center py-12 bg-white rounded-lg shadow"
+          >
             <p class="text-gray-500 text-lg">No products match your filters</p>
             <button
               phx-click="clear_filters"
@@ -268,6 +293,20 @@ defmodule DemoWeb.ProductsLive do
 
   defp maybe_add(params, _key, value, default) when value == default, do: params
   defp maybe_add(params, key, value, _default), do: Map.put(params, key, value)
+
+  # Async read render helpers: @products is an AsyncResult; while
+  # loading it retains the previous list (re-assign semantics), so the
+  # grid can stay populated and dimmed.
+  defp loading?(%Phoenix.LiveView.AsyncResult{loading: l}), do: l != nil
+  defp loading?(_), do: false
+
+  defp unwrap_list(%Phoenix.LiveView.AsyncResult{result: list}) when is_list(list), do: list
+  defp unwrap_list(list) when is_list(list), do: list
+  defp unwrap_list(_), do: []
+
+  defp unwrap_count(%Phoenix.LiveView.AsyncResult{result: n}) when is_integer(n), do: n
+  defp unwrap_count(n) when is_integer(n), do: n
+  defp unwrap_count(_), do: 0
 
   # Works with [{name, id}, ...] format from as_options
   defp category_name(options, category_id) do
