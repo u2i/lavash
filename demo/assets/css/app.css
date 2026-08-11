@@ -196,10 +196,16 @@
 
 /* Header sync dot: visible while ANY hook on the page has unresolved
    predictions. Watches the whole tree via :has() — each hook root only
-   reflects its own vars. */
+   reflects its own vars.
+
+   z-index above the overlay chrome (flyovers/modals wrap at z-50):
+   adding to cart opens the flyover, which is exactly when the dot is
+   interesting — it must not vanish behind the backdrop. */
 #sync-dot {
   opacity: 0;
   transition: opacity 0.15s ease;
+  position: relative;
+  z-index: 60;
 }
 body:has([data-lavash-syncing]) #sync-dot {
   opacity: 1;
