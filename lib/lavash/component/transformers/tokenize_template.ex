@@ -32,6 +32,7 @@ defmodule Lavash.Component.Transformers.TokenizeTemplate do
       lavash_renders = Module.get_attribute(env.module, :__lavash_renders__) || []
       {template_source, sigil_line} = resolve_template_source_and_line(lavash_renders)
       {loading_source, loading_line} = resolve_loading_source_and_line(lavash_renders)
+      {trigger_source, trigger_line} = resolve_trigger_source_and_line(lavash_renders)
 
       if is_nil(template_source) do
         {:ok, dsl_state}
@@ -41,6 +42,7 @@ defmodule Lavash.Component.Transformers.TokenizeTemplate do
           |> Transformer.persist(:lavash_template_source, template_source)
           |> persist_tokens(:lavash_template_tokens, template_source, sigil_line, env)
           |> tokenize_loading(loading_source, loading_line, env)
+          |> tokenize_trigger(trigger_source, trigger_line, env)
 
         {:ok, dsl_state}
       end
@@ -56,6 +58,18 @@ defmodule Lavash.Component.Transformers.TokenizeTemplate do
     dsl_state
     |> Transformer.persist(:lavash_loading_source, loading_source)
     |> persist_tokens(:lavash_loading_tokens, loading_source, loading_line, env)
+  end
+
+  # Tokenize the overlay trigger template (from `template_trigger do ~H end`)
+  # into its own slot — rendered outside the panel chrome by the overlay
+  # render generators, through the same token pipeline (so optimistic
+  # display spans etc. are injected in trigger content too).
+  defp tokenize_trigger(dsl_state, nil, _line, _env), do: dsl_state
+
+  defp tokenize_trigger(dsl_state, trigger_source, trigger_line, env) do
+    dsl_state
+    |> Transformer.persist(:lavash_trigger_source, trigger_source)
+    |> persist_tokens(:lavash_trigger_tokens, trigger_source, trigger_line, env)
   end
 
   defp persist_tokens(dsl_state, key, source, sigil_line, env) do
@@ -88,6 +102,10 @@ defmodule Lavash.Component.Transformers.TokenizeTemplate do
 
   defp resolve_loading_source_and_line(lavash_renders) do
     resolve_render_source(lavash_renders, :__loading_fn__)
+  end
+
+  defp resolve_trigger_source_and_line(lavash_renders) do
+    resolve_render_source(lavash_renders, :__trigger_fn__)
   end
 
   defp resolve_render_source(lavash_renders, key) do

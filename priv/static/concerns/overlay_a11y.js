@@ -72,7 +72,17 @@ export function overlayOpened(chromeEl, panelEl) {
 
   stack.push({ chromeEl, panelEl, previousFocus: document.activeElement });
   installListeners();
+  setTriggerExpanded(chromeEl, true);
   focusInto(panelEl);
+}
+
+// Keep the declared trigger's aria-expanded current through optimistic
+// open/close — the server-rendered value lags the round trip.
+function setTriggerExpanded(chromeEl, expanded) {
+  const trigger = document.querySelector(
+    `[data-lavash-overlay-trigger="${chromeEl.id}"]`
+  );
+  if (trigger) trigger.setAttribute("aria-expanded", String(expanded));
 }
 
 /**
@@ -96,6 +106,7 @@ export function overlayClosed(chromeEl) {
 
   const [entry] = stack.splice(idx, 1);
   if (stack.length === 0) removeListeners();
+  setTriggerExpanded(chromeEl, false);
 
   const prev = entry.previousFocus;
   if (prev && document.contains(prev) && typeof prev.focus === "function") {

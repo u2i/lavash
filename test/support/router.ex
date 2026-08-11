@@ -44,6 +44,7 @@ defmodule Lavash.TestRouter do
     live("/stacked-modals", StackedModalsHostLive)
     live("/mount-url", MountUrlLive)
     live("/mount-url/:thing_id", MountUrlLive)
+    live("/trigger-flyover", TriggerFlyoverHostLive)
   end
 
   # Parallel "explicit" path: plain Phoenix.LiveView, no Lavash DSL.

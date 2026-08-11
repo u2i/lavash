@@ -19,4 +19,11 @@ defmodule Lavash.Component.RenderImport do
     {source, line} = Lavash.Template.RenderMacro.__extract_heex_source__!(block, __CALLER__)
     Lavash.Template.RenderMacro.__build_loading_attr__(source, line)
   end
+
+  # Re-export `template_trigger do ~H"..." end` — the overlay trigger rendered
+  # outside the panel chrome. See `Lavash.Template.RenderMacro.template_trigger/1`.
+  defmacro template_trigger(do: block) do
+    {source, line} = Lavash.Template.RenderMacro.__extract_heex_source__!(block, __CALLER__)
+    Lavash.Template.RenderMacro.__build_trigger_attr__(source, line)
+  end
 end

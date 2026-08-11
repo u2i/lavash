@@ -197,6 +197,31 @@ The overlay runs through phases (`idle → entering → [loading] → visible �
 exiting → idle`); the optimistic JS hook drives the transitions
 client-side.
 
+### Triggers (`template_trigger`)
+
+An overlay component can own its trigger — rendered **outside** the
+panel chrome, in normal page flow, wrapped in a button that opens the
+overlay optimistically and carries the dialog ARIA contract
+(`aria-haspopup="dialog"`, `aria-expanded` kept current client-side,
+`aria-controls`):
+
+```elixir
+template_trigger do
+  ~H"""
+  <span class="btn btn-ghost">Cart ({@item_count})</span>
+  """
+end
+```
+
+Trigger content goes through the same template pipeline as everything
+else (optimistic display spans, toggles), so a badge computed from a
+`client_state` projection updates instantly. Keep the content
+non-interactive (spans/icons — the wrapper is the button), and note
+the generated open sets the open field to `true`; overlays whose open
+field carries a value (an id) still open via actions. With a trigger,
+parents place the component where the trigger belongs and pass data —
+no icon markup, open action, or count plumbing of their own.
+
 > #### Closed means `nil`, not `false` {: .warning}
 >
 > The overlay convention on both sides of the wire is: `nil` = closed,

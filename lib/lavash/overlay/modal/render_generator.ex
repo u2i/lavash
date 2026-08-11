@@ -25,6 +25,7 @@ defmodule Lavash.Overlay.Modal.RenderGenerator do
       case field do
         :modal_render_template -> {:lavash_template_tokens, :lavash_template_source}
         :modal_render_loading_template -> {:lavash_loading_tokens, :lavash_loading_source}
+        :modal_render_trigger_template -> {:lavash_trigger_tokens, :lavash_trigger_source}
       end
 
     pre_tokens = Spark.Dsl.Transformer.get_persisted(dsl_state, tokens_key)
@@ -85,6 +86,7 @@ defmodule Lavash.Overlay.Modal.RenderGenerator do
     # Get render templates - may be {:render_ast, escaped_fn} or direct functions
     render_template = Transformer.get_persisted(dsl_state, :modal_render_template)
     loading_template = Transformer.get_persisted(dsl_state, :modal_render_loading_template)
+    trigger_template = Transformer.get_persisted(dsl_state, :modal_render_trigger_template)
 
     # Get animated fields config at compile time for JS consumption
     animated_fields = Transformer.get_persisted(dsl_state, :lavash_animated_fields) || []
@@ -116,6 +118,19 @@ defmodule Lavash.Overlay.Modal.RenderGenerator do
         env
       )
 
+    trigger_fn_code =
+      if trigger_template do
+        generate_render_fn_code(
+          trigger_template,
+          :modal_render_trigger_template,
+          module,
+          dsl_state,
+          env
+        )
+      else
+        quote do: nil
+      end
+
     quote do
       # Track helpers.ex so changes trigger recompilation of this module
       @external_resource unquote(helpers_path)
@@ -130,6 +145,7 @@ defmodule Lavash.Overlay.Modal.RenderGenerator do
         # Define render functions - either from unquoted AST or runtime lookup
         render_fn = unquote(render_fn_code)
         loading_fn = unquote(loading_fn_code)
+        trigger_fn = unquote(trigger_fn_code)
         async_assign_field = unquote(async_assign)
 
         # Default loading function
@@ -175,6 +191,7 @@ defmodule Lavash.Overlay.Modal.RenderGenerator do
           |> Phoenix.Component.assign(:__modal_close_on_backdrop__, unquote(close_on_backdrop))
           |> Phoenix.Component.assign(:__modal_max_width__, unquote(max_width))
           |> Phoenix.Component.assign(:__modal_render__, render_fn)
+          |> Phoenix.Component.assign(:__modal_trigger__, trigger_fn)
           |> Phoenix.Component.assign(:__modal_loading__, loading_fn || default_loading_fn)
           |> Phoenix.Component.assign(:__modal_async_assign__, async_assign_field)
           |> Phoenix.Component.assign(:__lavash_module__, module_name)
@@ -196,6 +213,13 @@ defmodule Lavash.Overlay.Modal.RenderGenerator do
           data-modal-phase={@__modal_phase__}
           class="contents"
         >
+          <Lavash.Overlay.TriggerHelper.overlay_trigger
+            :if={@__modal_trigger__}
+            overlay_id={@__modal_id__}
+            open={@__modal_open__}
+            render={@__modal_trigger__}
+            all_assigns={assigns}
+          />
           <.modal_chrome
             id={@__modal_id__}
             module={@__modal_module__}

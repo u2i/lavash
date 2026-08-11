@@ -27,27 +27,12 @@ defmodule DemoWeb.Storefront.ProductLive do
   state :_pending_item_id, :string, from: :ephemeral, default: nil
   state :_pending_delta, :integer, from: :ephemeral, default: nil
 
-  # Cart reads
-  read :cart_items, CartItem, :for_cart do
-    argument :cart_id, state(:cart_id)
-    async false
-    invalidate :pubsub
-  end
-
-  # Cart calculations
-  # optimistic: false — @cart_items is a server-side read that never
-  # exists in client state (the #41/#45 bug class, now a compile error).
-  calculate :cart_item_count,
-            rx(Enum.reduce(@cart_items, 0, fn item, acc -> acc + item.quantity end)),
-            optimistic: false
+  # The cart itself is fully owned by DemoWeb.CartFlyover (trigger +
+  # badge + panel) — this page only knows the cart_id.
 
   calculate :quantity_gt_1, rx(@quantity > 1)
 
   actions do
-    action :open_cart do
-      set :cart_open, true
-    end
-
     action :inc_quantity do
       set :quantity, rx(@quantity + 1)
     end
@@ -64,8 +49,11 @@ defmodule DemoWeb.Storefront.ProductLive do
         product_id = state.product_id
         qty_to_add = state.quantity || 1
 
+        # Query directly — this page no longer holds a cart read
         existing =
-          state.cart_items
+          CartItem
+          |> Ash.Query.for_read(:for_cart, %{cart_id: cart_id})
+          |> Ash.read!()
           |> Enum.find(fn item -> item.product_id == product_id end)
 
         if existing do
@@ -172,26 +160,15 @@ defmodule DemoWeb.Storefront.ProductLive do
         <a href={~p"/storefront/products"} class="btn btn-ghost btn-sm">
           &larr; Back to Coffees
         </a>
-        <!-- Cart Button -->
-        <button
-          class="btn btn-ghost btn-circle relative"
-          phx-click="open_cart"
-        >
-          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"
-            />
-          </svg>
-          <span
-            :if={@cart_item_count > 0}
-            class="badge badge-sm badge-primary absolute -top-1 -right-1"
-          >
-            {@cart_item_count}
-          </span>
-        </button>
+        <%!-- Cart: trigger (icon + optimistic badge) AND flyover panel,
+             all owned by the component — this page just places it. --%>
+        <.lavash_component
+          module={DemoWeb.CartFlyover}
+          id="cart-flyover"
+          cart_id={@cart_id}
+          open={@cart_open}
+          bind={[open: :cart_open]}
+        />
       </div>
 
       <div class="grid md:grid-cols-2 gap-8">
@@ -276,16 +253,6 @@ defmodule DemoWeb.Storefront.ProductLive do
           </div>
         </div>
       </div>
-
-      <!-- Cart Flyover -->
-      <.lavash_component
-        module={DemoWeb.CartFlyover}
-        id="cart-flyover"
-        cart_id={@cart_id}
-        item_count={@cart_item_count}
-        open={@cart_open}
-        bind={[open: :cart_open]}
-      />
     </div>
     """
   end
