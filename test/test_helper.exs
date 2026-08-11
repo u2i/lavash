@@ -27,6 +27,11 @@ Application.put_env(:phoenix, :json_library, Jason)
 # no-ops without this) — exercised by the client_state fixtures.
 Application.put_env(:lavash, :pubsub, Lavash.PubSub)
 
+# Deterministic LiveView crash trigger (_lavash_dev_crash event, issue
+# #76) — the crash-remount e2e tests need a way to kill the LV process
+# from the browser.
+Application.put_env(:lavash, :dev_crash_event, true)
+
 {:ok, _} =
   Supervisor.start_link(
     [

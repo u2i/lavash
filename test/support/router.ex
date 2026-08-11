@@ -46,6 +46,7 @@ defmodule Lavash.TestRouter do
     live("/mount-url/:thing_id", MountUrlLive)
     live("/filters", FilterLive)
     live("/tag-editor", TagHostLive)
+    live("/socket-counter", SocketCounterLive)
     live("/trigger-flyover", TriggerFlyoverHostLive)
   end
 

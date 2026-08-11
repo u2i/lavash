@@ -8,6 +8,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Dev crash trigger + crash-remount coverage** (#76). With
+  `config :lavash, :dev_crash_event, true` (off by default; never
+  enable in prod), a `_lavash_dev_crash` event raises inside the
+  LiveView so the process dies and the client remounts — a
+  deterministic way to exercise the reconnect story. The demo grows
+  Crash and Drop buttons next to the latency toggle, and new browser
+  tests pin the remount contract: `from: :socket` state survives via
+  the `_lavash_state` reconnect cache, ephemeral state resets, and
+  URL-open overlays come back in the visible phase.
+
 - **Sync-state DOM annotations** (#72). Optimistic predictions are now
   distinguishable from confirmed state via attributes derived from
   SyncedVar state on every render: `data-lavash-syncing` +
