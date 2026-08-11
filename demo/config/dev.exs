@@ -1,5 +1,12 @@
 import Config
 
+# Dev tools: lets the Crash button in the root layout kill the current
+# LiveView process (_lavash_dev_crash event) to demonstrate the
+# remount path — reconnect cache, SyncedVar re-seeding, SSR-open
+# overlay survival (lavash issue #76). Dev-only by construction: this
+# flag exists in no other env.
+config :lavash, :dev_crash_event, true
+
 # Configure your database
 config :demo, Demo.Repo,
   database: Path.expand("../demo_dev.db", __DIR__),

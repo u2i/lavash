@@ -38,6 +38,22 @@
       >
         <span id="latency-label">Lag</span>
       </button>
+      <button
+        id="disconnect-button"
+        class="fixed bottom-16 right-4 px-3 py-2 text-xs font-medium bg-gray-800 text-white rounded shadow-lg hover:bg-gray-700"
+        style="z-index: 99999;"
+        title="Drop the socket and auto-reconnect after 1.5s — client-side transport failure"
+      >
+        <span id="disconnect-label">Drop</span>
+      </button>
+      <button
+        id="crash-button"
+        class="fixed bottom-28 right-4 px-3 py-2 text-xs font-medium bg-gray-800 text-white rounded shadow-lg hover:bg-gray-700"
+        style="z-index: 99999;"
+        title="Kill the LiveView process server-side — exercises the full remount path (reconnect cache, re-seeding, overlay survival)"
+      >
+        Crash
+      </button>
     </div>
     <%!-- Sync indicator (lavash issue #72): fixed and top-of-stack, so it
          is independent of every page layer — overlays, backdrops, and

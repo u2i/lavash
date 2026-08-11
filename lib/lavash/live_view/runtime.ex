@@ -235,6 +235,16 @@ defmodule Lavash.LiveView.Runtime do
   end
 
   def handle_event(module, event, params, socket) do
+    # Dev tool (issue #76): a deterministic way to kill the LiveView
+    # process so the remount path — _lavash_state in connect_params,
+    # SyncedVar re-seeding, SSR-open overlay survival — can be
+    # demonstrated and browser-tested. Off unless explicitly enabled
+    # (`config :lavash, :dev_crash_event, true`); never enable in prod.
+    if event == "_lavash_dev_crash" and
+         Application.get_env(:lavash, :dev_crash_event, false) do
+      raise "Simulated LiveView crash (lavash dev tools, :dev_crash_event)"
+    end
+
     # Check for form validation events (validate_<form_name>)
     case parse_validation_event(module, event) do
       {:validate, form, form_name} ->

@@ -111,6 +111,50 @@ const setupLatencyToggle = () => {
 }
 setupLatencyToggle()
 
+// Failure simulation (dev tools, lavash issue #76). Two flavors:
+//
+// Drop — client-side transport failure: disconnect the socket, then
+// auto-reconnect. Exercises socket-level state resync; in-flight
+// events after the drop are lost.
+const setupDisconnectButton = () => {
+  const btn = document.getElementById("disconnect-button")
+  const label = document.getElementById("disconnect-label")
+  if (!btn || !label) return
+
+  btn.addEventListener("click", () => {
+    if (btn.disabled) return
+    btn.disabled = true
+    btn.classList.add("bg-red-700")
+    label.textContent = "Dropped…"
+    liveSocket.disconnect()
+    setTimeout(() => {
+      liveSocket.connect()
+      btn.disabled = false
+      btn.classList.remove("bg-red-700")
+      label.textContent = "Drop"
+    }, 1500)
+  })
+}
+setupDisconnectButton()
+
+// Crash — kill the LiveView process server-side. The push targets a
+// dev-only lavash event handler (config :lavash, :dev_crash_event —
+// dev.exs only) that raises; LiveView's client auto-rejoins and the
+// page remounts. This is the honest test of the reconnect story:
+// optimistic state rides _lavash_state in connect_params, projections
+// re-seed, SSR-open overlays reopen without flashing closed.
+const setupCrashButton = () => {
+  const btn = document.getElementById("crash-button")
+  if (!btn) return
+
+  btn.addEventListener("click", () => {
+    const main = document.querySelector("[data-phx-main]")
+    if (!main) return
+    liveSocket.execJS(main, '[["push",{"event":"_lavash_dev_crash"}]]')
+  })
+}
+setupCrashButton()
+
 // The lines below enable quality of life phoenix_live_reload
 // development features:
 //
