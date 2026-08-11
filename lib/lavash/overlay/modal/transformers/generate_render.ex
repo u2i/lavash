@@ -35,6 +35,12 @@ defmodule Lavash.Overlay.Modal.Transformers.GenerateRender do
         escaped_fn -> {:render_ast, escaped_fn}
       end
 
+    render_trigger_template =
+      case Map.get(renders_map, :__trigger_fn__) do
+        nil -> nil
+        escaped_fn -> {:render_ast, escaped_fn}
+      end
+
     # Only generate render if a render template is provided
     if render_template do
       open_field = Transformer.get_option(dsl_state, [:modal], :open_field) || :open
@@ -48,6 +54,7 @@ defmodule Lavash.Overlay.Modal.Transformers.GenerateRender do
         dsl_state
         |> Transformer.persist(:modal_render_template, render_template)
         |> Transformer.persist(:modal_render_loading_template, render_loading_template)
+        |> Transformer.persist(:modal_render_trigger_template, render_trigger_template)
         |> Transformer.persist(:modal_open_field, open_field)
         |> Transformer.persist(:modal_close_on_escape, close_on_escape)
         |> Transformer.persist(:modal_close_on_backdrop, close_on_backdrop)

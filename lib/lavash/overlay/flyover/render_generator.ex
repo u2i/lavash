@@ -25,6 +25,7 @@ defmodule Lavash.Overlay.Flyover.RenderGenerator do
       case field do
         :flyover_render_template -> {:lavash_template_tokens, :lavash_template_source}
         :flyover_render_loading_template -> {:lavash_loading_tokens, :lavash_loading_source}
+        :flyover_render_trigger_template -> {:lavash_trigger_tokens, :lavash_trigger_source}
       end
 
     pre_tokens = Spark.Dsl.Transformer.get_persisted(dsl_state, tokens_key)
@@ -87,6 +88,7 @@ defmodule Lavash.Overlay.Flyover.RenderGenerator do
     # Get render templates - may be {:render_ast, escaped_fn} or direct functions
     render_template = Transformer.get_persisted(dsl_state, :flyover_render_template)
     loading_template = Transformer.get_persisted(dsl_state, :flyover_render_loading_template)
+    trigger_template = Transformer.get_persisted(dsl_state, :flyover_render_trigger_template)
 
     # Get animated fields config at compile time for JS consumption
     animated_fields = Transformer.get_persisted(dsl_state, :lavash_animated_fields) || []
@@ -117,6 +119,19 @@ defmodule Lavash.Overlay.Flyover.RenderGenerator do
         env
       )
 
+    trigger_fn_code =
+      if trigger_template do
+        generate_render_fn_code(
+          trigger_template,
+          :flyover_render_trigger_template,
+          module,
+          dsl_state,
+          env
+        )
+      else
+        quote do: nil
+      end
+
     quote do
       # Track helpers.ex so changes trigger recompilation of this module
       @external_resource unquote(helpers_path)
@@ -131,6 +146,7 @@ defmodule Lavash.Overlay.Flyover.RenderGenerator do
         # Define render functions - either from unquoted AST, compiled source, or runtime lookup
         render_fn = unquote(render_fn_code)
         loading_fn = unquote(loading_fn_code)
+        trigger_fn = unquote(trigger_fn_code)
         async_assign_field = unquote(async_assign)
 
         # Default loading function
@@ -174,6 +190,7 @@ defmodule Lavash.Overlay.Flyover.RenderGenerator do
           |> Phoenix.Component.assign(:__flyover_width__, unquote(width))
           |> Phoenix.Component.assign(:__flyover_height__, unquote(height))
           |> Phoenix.Component.assign(:__flyover_render__, render_fn)
+          |> Phoenix.Component.assign(:__flyover_trigger__, trigger_fn)
           |> Phoenix.Component.assign(:__flyover_loading__, loading_fn || default_loading_fn)
           |> Phoenix.Component.assign(:__flyover_async_assign__, async_assign_field)
           |> Phoenix.Component.assign(:__lavash_module__, module_name)
@@ -195,6 +212,13 @@ defmodule Lavash.Overlay.Flyover.RenderGenerator do
           data-flyover-phase={@__flyover_phase__}
           class="contents"
         >
+          <Lavash.Overlay.TriggerHelper.overlay_trigger
+            :if={@__flyover_trigger__}
+            overlay_id={@__flyover_id__}
+            open={@__flyover_open__}
+            render={@__flyover_trigger__}
+            all_assigns={assigns}
+          />
           <.flyover_chrome
             id={@__flyover_id__}
             module={@__flyover_module__}

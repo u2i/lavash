@@ -93,7 +93,7 @@ export const overlays = {
     for (const field of ctx.asyncFieldsReady) {
       _notifyAsyncReady(hook.animatedStates, hook.store, field);
     }
-    _notifyDelegatesUpdated(hook.animatedStates, hook.store);
+    _notifyDelegatesUpdated(hook, hook.animatedStates, hook.store);
   },
 
   mergeVisitors: {

@@ -58,13 +58,8 @@ defmodule DemoWeb.Storefront.ProductsLive do
     argument :sort, state(:sort)
   end
 
-  # Load cart items with product preloaded (depends on cart_id)
-  # Uses PubSub invalidation - auto-refreshes when cart items change
-  read :cart_items, CartItem, :for_cart do
-    argument :cart_id, state(:cart_id)
-    async false
-    invalidate :pubsub
-  end
+  # The cart itself is fully owned by DemoWeb.CartFlyover (trigger +
+  # badge + panel) — this page only knows the cart_id.
 
   # ============================================
   # Calculations & Derives
@@ -73,34 +68,6 @@ defmodule DemoWeb.Storefront.ProductsLive do
   calculate :has_filters,
             rx(@roast != [] or @category != [] or @in_stock or @search != ""),
             optimistic: false
-
-  # Cart calculations
-  # optimistic: false — depends on @cart_items, a server-side Ash read
-  # that never exists in client state; a client-side recompute can only
-  # crash (undefined.reduce). The count updates via server patches.
-  calculate :cart_item_count,
-            rx(Enum.reduce(@cart_items, 0, fn item, acc -> acc + item.quantity end)),
-            optimistic: false
-
-  calculate :cart_subtotal,
-            rx(
-              Enum.reduce(@cart_items, Decimal.new(0), fn item, acc ->
-                Decimal.add(acc, Decimal.mult(item.unit_price, item.quantity))
-              end)
-            ),
-            optimistic: false
-
-  # String version of subtotal for JSON serialization
-  calculate :cart_subtotal_str, rx(compute_subtotal_str(@cart_items)), optimistic: false
-
-  def compute_subtotal_str(items) do
-    subtotal =
-      Enum.reduce(items || [], Decimal.new(0), fn item, acc ->
-        Decimal.add(acc, Decimal.mult(item.unit_price, item.quantity))
-      end)
-
-    Decimal.to_string(subtotal)
-  end
 
   defp to_atoms(list) when is_list(list) do
     Enum.map(list, &String.to_existing_atom/1)
@@ -116,10 +83,6 @@ defmodule DemoWeb.Storefront.ProductsLive do
       set :search, ""
     end
 
-    action :open_cart do
-      set :cart_open, true
-    end
-
     # Cart actions - use set to capture params, then effect to mutate + broadcast
     action :add_to_cart, [:product_id] do
       # Open cart flyover and store product_id for the effect
@@ -130,9 +93,12 @@ defmodule DemoWeb.Storefront.ProductsLive do
         cart_id = state.cart_id
         product_id = state[:_pending_product_id]
 
-        # Check if product already in cart
+        # Check if product already in cart (query directly — this page
+        # no longer holds a cart read)
         existing =
-          state.cart_items
+          CartItem
+          |> Ash.Query.for_read(:for_cart, %{cart_id: cart_id})
+          |> Ash.read!()
           |> Enum.find(fn item -> item.product_id == product_id end)
 
         if existing do
@@ -216,26 +182,15 @@ defmodule DemoWeb.Storefront.ProductsLive do
           <p class="text-base-content/70 mt-2">Freshly roasted, ethically sourced</p>
         </div>
         <div class="flex-1 flex justify-end">
-          <!-- Cart Button -->
-          <button
-            class="btn btn-ghost btn-circle relative"
-            phx-click="open_cart"
-          >
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"
-              />
-            </svg>
-            <span
-              :if={@cart_item_count > 0}
-              class="badge badge-sm badge-primary absolute -top-1 -right-1"
-            >
-              {@cart_item_count}
-            </span>
-          </button>
+          <%!-- Cart: trigger (icon + optimistic badge) AND flyover panel,
+               all owned by the component — this page just places it. --%>
+          <.lavash_component
+            module={DemoWeb.CartFlyover}
+            id="cart-flyover"
+            cart_id={@cart_id}
+            open={@cart_open}
+            bind={[open: :cart_open]}
+          />
         </div>
       </div>
 
@@ -388,16 +343,6 @@ defmodule DemoWeb.Storefront.ProductsLive do
           </button>
         </div>
       <% end %>
-
-      <!-- Cart Flyover -->
-      <.lavash_component
-        module={DemoWeb.CartFlyover}
-        id="cart-flyover"
-        cart_id={@cart_id}
-        item_count={@cart_item_count}
-        open={@cart_open}
-        bind={[open: :cart_open]}
-      />
     </div>
     """
   end

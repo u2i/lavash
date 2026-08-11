@@ -116,6 +116,57 @@ defmodule Lavash.Template.RenderMacro do
     end
   end
 
+  @doc """
+  Declares an overlay's trigger template using a `do` block containing a `~H` sigil.
+
+  Overlay components (modals, flyovers) render their `template do` inside the
+  panel chrome. The trigger template renders **outside** it, in normal page
+  flow, wrapped in a button that opens the overlay optimistically and carries
+  the dialog ARIA wiring (`aria-haspopup`, `aria-expanded`, `aria-controls`).
+  This lets one component own its trigger, badge, and panel — parents just
+  place the component.
+
+  ## Example
+
+      template_trigger do
+        ~H\"\"\"
+        <span class="btn btn-ghost">Cart ({@item_count})\</span>
+        \"\"\"
+      end
+
+  ## Limitations
+
+  - Same single-`~H`-sigil-literal rule as `template/1`.
+  - The content is wrapped in a `<button>` — keep it non-interactive
+    (spans, icons, badges), not nested buttons or links.
+  - The generated open dispatches the overlay's open with `true`; overlays
+    whose open field needs a value (e.g. an id) still open via actions.
+  - Only meaningful on overlay components; a module may declare at most one.
+  """
+  defmacro template_trigger(do: block) do
+    {source, line} = extract_heex_source!(block, __CALLER__)
+    __build_trigger_attr__(source, line)
+  end
+
+  @doc false
+  # Shared expansion used by both `template_trigger/1` and the component-side
+  # re-export `Lavash.Component.RenderImport.template_trigger/1`.
+  def __build_trigger_attr__(source, line) do
+    quote do
+      if List.keymember?(@__lavash_renders__ || [], :__trigger_fn__, 0) do
+        raise CompileError,
+          file: __ENV__.file,
+          line: __ENV__.line,
+          description:
+            ~s(`template_trigger do ~H"..." end` declared more than once. ) <>
+              "A module may declare at most one trigger template."
+      end
+
+      @__lavash_renders__ {:__trigger_fn__,
+                           {:__lavash_template_source__, unquote(source), unquote(line)}}
+    end
+  end
+
   @doc false
   # Public so `Lavash.Component.RenderImport.template/1` can re-use the same
   # ~H-extraction logic.

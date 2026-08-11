@@ -199,13 +199,25 @@ export function notifyAsyncReady(animatedStates, store, asyncField) {
 
 /**
  * Notify animated state delegates of a LiveView update (post-update FLIP).
+ *
+ * Also re-asserts the `data-<type>-phase` attribute on the hook root:
+ * the server always renders its own (stale, usually "idle") phase, so
+ * a patch arriving AFTER the client reached a later phase clobbers the
+ * attribute — with no subsequent phase change to repair it, tests and
+ * CSS selectors would see the stale value.
  */
-export function notifyDelegatesUpdated(animatedStates, store) {
+export function notifyDelegatesUpdated(hook, animatedStates, store) {
   if (!animatedStates) return;
   for (const [field, anim] of Object.entries(animatedStates)) {
+    const sv = store.get(field);
+
     if (anim.delegate?.onUpdated) {
-      const sv = store.get(field);
       anim.delegate.onUpdated(sv, sv.getPhase());
+    }
+
+    const type = anim.config?.type;
+    if (type === "modal" || type === "flyover") {
+      hook.el.setAttribute(`data-${type}-phase`, sv.getPhase());
     }
   }
 }
