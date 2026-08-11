@@ -21,8 +21,13 @@ defmodule Lavash.Component.Compiler do
         Map.put(acc, field.name, Map.get(assigns, field.name))
       end)
 
-    # Only include props that are referenced by JS-side calculations or actions.
-    # Props like Ash resource structs that aren't used in JS would crash Jason.encode.
+    # Props referenced by JS-side calcs/actions always ship. Beyond
+    # those, ship any prop whose value is a JSON primitive: subtree
+    # templates reference props the dep analysis can't see (class
+    # strings, placeholders — `${state.tag_class}` in the generated
+    # render), and a missing prop renders literally as "undefined" on
+    # the first client re-render. Non-primitive props (Ash structs)
+    # stay excluded — they'd crash Jason.encode and have no JS use.
     js_deps = collect_js_deps(module)
 
     props =
@@ -33,13 +38,21 @@ defmodule Lavash.Component.Compiler do
       end
 
     Enum.reduce(props, state_map, fn prop, acc ->
-      if prop.name in js_deps do
-        Map.put(acc, prop.name, Map.get(assigns, prop.name, prop.default))
-      else
-        acc
+      value = Map.get(assigns, prop.name, prop.default)
+
+      cond do
+        prop.name in js_deps -> Map.put(acc, prop.name, value)
+        json_primitive?(value) -> Map.put(acc, prop.name, value)
+        true -> acc
       end
     end)
   end
+
+  defp json_primitive?(v)
+       when is_binary(v) or is_number(v) or is_boolean(v) or is_nil(v) or is_atom(v),
+       do: true
+
+  defp json_primitive?(_), do: false
 
   # Collect all field names referenced by JS calculations and action rx expressions.
   defp collect_js_deps(module) do

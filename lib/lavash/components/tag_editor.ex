@@ -2,6 +2,12 @@ defmodule Lavash.Components.TagEditor do
   @moduledoc """
   Optimistic tag input component.
 
+  Typing a tag and pressing **Enter** commits it through the
+  `data-lavash-action` input primitive: the `:add` action's optimistic
+  half appends the chip instantly, the server push persists it, and
+  the input clears (focus retained) for rapid entry. Removal is a
+  plain optimistic `phx-click`.
+
   ## Usage
 
       <.lavash_component
@@ -66,7 +72,6 @@ defmodule Lavash.Components.TagEditor do
         placeholder={@placeholder}
         class={@input_class}
         data-lavash-action="add"
-        data-lavash-state-field="tags"
       />
       <span :if={@max_tags} class="text-xs text-gray-400">
         ({@tag_count}/{@max_tags})

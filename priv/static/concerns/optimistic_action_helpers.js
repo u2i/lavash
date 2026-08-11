@@ -113,6 +113,47 @@ export function handleChange(e, hook) {
 }
 
 /**
+ * Handle Enter on an action-committing input (`data-lavash-action`).
+ *
+ * The "text input commits to an action" primitive (tag editors, todo
+ * add-forms): Enter runs the named action with the input's trimmed
+ * value — optimistic half via runOptimisticAction (when the action
+ * transpiled), server half via pushEventTo — then clears the input
+ * and restores focus for rapid entry (the prediction may have
+ * re-rendered the subtree containing the input, replacing the node).
+ *
+ * @param {Event} e - keydown event
+ * @param {Object} hook - The hook instance
+ */
+export function handleActionInputKeydown(e, hook) {
+  if (e.key !== "Enter") return;
+
+  const input = e.target;
+  if (!input?.dataset?.lavashAction) return;
+  if (!hook.el.contains(input)) return;
+
+  // Inputs owned by a nested child hook are that hook's business.
+  const owner = input.closest("[data-lavash-state]");
+  if (owner && owner !== hook.el) return;
+
+  const actionName = input.dataset.lavashAction;
+  const value = (input.value || "").trim();
+  if (value === "") return;
+
+  // Enter in a lone input would submit an enclosing form.
+  e.preventDefault();
+
+  // Push first (nothing here depends on the DOM afterwards), then
+  // predict — the prediction's re-render may replace the input node.
+  hook.pushEventTo(hook.el, actionName, { value });
+  input.value = "";
+  runOptimisticAction(actionName, value, hook);
+
+  const fresh = hook.el.querySelector(`[data-lavash-action="${actionName}"]`);
+  if (fresh) fresh.focus();
+}
+
+/**
  * Run an optimistic action by name.
  * Looks up the function, applies the state delta, and triggers
  * derive recomputation, DOM update, and URL sync.
