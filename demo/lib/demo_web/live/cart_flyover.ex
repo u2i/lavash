@@ -63,10 +63,21 @@ defmodule DemoWeb.CartFlyover do
 
   calculate :item_count, rx(Enum.reduce(@items || [], 0, fn item, acc -> acc + item.quantity end))
 
+  # unit_price is a wire-encoded Decimal string whose scale the DB may
+  # normalize away ("18.00" round-trips as "18"). Elixir's
+  # String.to_float/1 is strict (raises without a fractional part)
+  # while its JS transpilation (parseFloat) is tolerant — normalize the
+  # string so BOTH sides parse every scale.
   calculate :subtotal,
             rx(
               Enum.reduce(@items || [], 0.0, fn item, acc ->
-                acc + String.to_float(item.unit_price) * item.quantity
+                acc +
+                  String.to_float(
+                    if(String.contains?(item.unit_price, "."),
+                      do: item.unit_price,
+                      else: item.unit_price <> ".0"
+                    )
+                  ) * item.quantity
               end)
             )
 
