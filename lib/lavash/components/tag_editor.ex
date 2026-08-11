@@ -23,9 +23,14 @@ defmodule Lavash.Components.TagEditor do
   prop :tag_class, :string,
     default: "inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 rounded text-sm"
 
+  # Default carries explicit foreground AND background: an input that
+  # inherits its colors from the host theme can end up grey-on-white
+  # (or worse, dark-on-dark). Hosts with a design system should pass
+  # their own class (e.g. daisyUI `input input-bordered input-sm`).
   prop :input_class, :string,
     default:
-      "px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+      "px-2 py-1 bg-white text-gray-900 placeholder-gray-500 border border-gray-300 rounded " <>
+        "text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
 
   calculate :can_add, rx(@max_tags == nil or length(@tags) < @max_tags)
   calculate :tag_count, rx(length(@tags))
@@ -50,7 +55,7 @@ defmodule Lavash.Components.TagEditor do
         {tag}
         <button
           type="button"
-          class="hover:text-blue-600 text-blue-400"
+          class="text-blue-600 hover:text-blue-900"
           phx-click="remove"
           phx-value-val={tag}
         >×</button>
