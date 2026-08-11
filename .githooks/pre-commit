@@ -37,4 +37,19 @@ step "mix test"
 step "mix docs --warnings-as-errors"
 "${MIX[@]}" docs --warnings-as-errors
 
+# The demo is its own mix project with its own formatter/credo config —
+# the root checks above never touch it, but CI gates it. Mirror CI here
+# so a demo-side violation can't land locally and only fail post-merge.
+step "demo: mix format --check-formatted"
+(cd demo && "${MIX[@]}" format --check-formatted)
+
+step "demo: mix compile --warnings-as-errors"
+(cd demo && "${MIX[@]}" compile --warnings-as-errors)
+
+step "demo: mix credo --strict"
+(cd demo && "${MIX[@]}" credo --strict)
+
+step "demo: mix test"
+(cd demo && "${MIX[@]}" test)
+
 printf '\n✓ pre-commit checks passed\n'

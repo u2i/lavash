@@ -108,7 +108,7 @@ defmodule DemoWeb.ProductsLive do
                   value={@search}
                   placeholder="Search products..."
                   phx-debounce="300"
-                  class="w-full px-3 py-2 border rounded-md text-sm"
+                  class="input input-bordered input-sm w-full"
                 />
               </form>
             </div>
@@ -117,7 +117,7 @@ defmodule DemoWeb.ProductsLive do
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">Category</label>
               <form phx-change="set_category_id">
-                <select name="value" class="w-full px-3 py-2 border rounded-md text-sm">
+                <select name="value" class="select select-bordered select-sm w-full">
                   <option value="">All Categories</option>
                   <option
                     :for={{name, id} <- @category_options}
@@ -134,7 +134,7 @@ defmodule DemoWeb.ProductsLive do
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">Availability</label>
               <form phx-change="set_in_stock">
-                <select name="value" class="w-full px-3 py-2 border rounded-md text-sm">
+                <select name="value" class="select select-bordered select-sm w-full">
                   <option value="" selected={@in_stock == nil}>All</option>
                   <option value="true" selected={@in_stock == true}>In Stock</option>
                   <option value="false" selected={@in_stock == false}>Out of Stock</option>
@@ -152,7 +152,7 @@ defmodule DemoWeb.ProductsLive do
                     name="value"
                     value={@min_price}
                     placeholder="Min"
-                    class="w-full px-3 py-2 border rounded-md text-sm"
+                    class="input input-bordered input-sm w-full"
                   />
                 </form>
                 <span class="self-center text-gray-400">-</span>
@@ -162,7 +162,7 @@ defmodule DemoWeb.ProductsLive do
                     name="value"
                     value={@max_price}
                     placeholder="Max"
-                    class="w-full px-3 py-2 border rounded-md text-sm"
+                    class="input input-bordered input-sm w-full"
                   />
                 </form>
               </div>
@@ -172,7 +172,7 @@ defmodule DemoWeb.ProductsLive do
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">Minimum Rating</label>
               <form phx-change="set_min_rating">
-                <select name="value" class="w-full px-3 py-2 border rounded-md text-sm">
+                <select name="value" class="select select-bordered select-sm w-full">
                   <option value="" selected={@min_rating == nil}>Any Rating</option>
                   <option :for={r <- [4, 3, 2, 1]} value={r} selected={@min_rating == r}>
                     {r}+ stars
@@ -197,8 +197,7 @@ defmodule DemoWeb.ProductsLive do
             <p class="text-gray-600">
               Showing <span class="font-semibold">{unwrap_count(@result_count)}</span> products
             </p>
-            <span :if={loading?(@products)} class="loading loading-spinner loading-sm text-indigo-600">
-            </span>
+            <span :if={loading?(@products)} class="loading loading-spinner loading-sm text-indigo-600"></span>
           </div>
 
           <div class={[
