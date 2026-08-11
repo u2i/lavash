@@ -60,6 +60,9 @@ defmodule DemoWeb.CartFlyover do
               end)
             )
 
+  # length/1 is deliberate in rx() — `== []` would transpile to JS
+  # reference equality.
+  # credo:disable-for-next-line Credo.Check.Warning.ExpensiveEmptyEnumCheck
   calculate :is_empty, rx(length(@items || []) == 0)
 
   calculate :grand_total, rx(Float.round(@subtotal + @tax, 2))
