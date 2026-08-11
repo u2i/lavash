@@ -89,7 +89,22 @@ defmodule Lavash.ClientState do
       socket
     else
       projections_by_field = Map.new(projections(module), &{&1.name, &1})
-      state = Lavash.Socket.full_state(socket) |> Map.merge(params)
+
+      # Component props resolve in transforms too (@cart_id etc.) —
+      # full_state only covers state + derives. LiveViews don't define
+      # __lavash__(:props), hence the rescue.
+      prop_values =
+        try do
+          module.__lavash__(:props)
+          |> Map.new(fn prop -> {prop.name, Map.get(socket.assigns, prop.name)} end)
+        rescue
+          FunctionClauseError -> %{}
+        end
+
+      state =
+        prop_values
+        |> Map.merge(Lavash.Socket.full_state(socket))
+        |> Map.merge(params)
 
       touched =
         Enum.map(ops, fn {kind, op} ->
@@ -148,8 +163,14 @@ defmodule Lavash.ClientState do
 
   defp accepted_attrs(resource, action_name) do
     case Ash.Resource.Info.action(resource, action_name) do
-      %{accept: accept} when is_list(accept) -> accept
-      _ -> nil
+      %{accept: accept} = action when is_list(accept) ->
+        # Arguments are part of the action's input surface too — an
+        # `:add` taking cart_id/product_id as arguments must receive
+        # them, not have them filtered away.
+        accept ++ Enum.map(Map.get(action, :arguments) || [], & &1.name)
+
+      _ ->
+        nil
     end
   end
 

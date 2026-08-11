@@ -52,6 +52,15 @@ export function coreInit(hook) {
   hook.moduleName = hook.el.dataset.lavashModule || null;
   hook.urlFields = JSON.parse(hook.el.dataset.lavashUrlFields || "[]");
 
+  // Cross-hook registry: `invoke`'s client half looks the target hook
+  // up by component id to run its optimistic prediction in the same
+  // tick as the invoking action's own sets. Overlay hook roots are
+  // prefixed (lavash-<id>); register under the bare component id.
+  window.Lavash = window.Lavash || {};
+  window.Lavash.hooks = window.Lavash.hooks || {};
+  hook.lavashHookId = (hook.el.id || "").replace(/^lavash-/, "");
+  if (hook.lavashHookId) window.Lavash.hooks[hook.lavashHookId] = hook;
+
   // ----- Generated functions -----
   // Load the per-module optimistic functions (delta computers + the
   // dependency graph) from the inline JSON script tag.

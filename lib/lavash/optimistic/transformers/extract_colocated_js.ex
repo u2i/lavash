@@ -386,15 +386,32 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
 
     projection_stmts = Enum.filter(projection_ops, & &1)
 
-    if set_exprs == [] and projection_stmts == [] do
+    # `invoke`'s client half: run the target component's optimistic
+    # prediction in the same tick as this action's own sets. The
+    # server half still routes via send_update; if the target hook or
+    # action fn doesn't exist client-side, invokeOptimistic no-ops.
+    invoke_stmts =
+      Enum.map(Map.get(action, :invokes) || [], fn invoke ->
+        args =
+          Enum.map_join(invoke.params || [], ", ", fn {key, val} ->
+            "#{key}: #{invoke_param_js(val, params)}"
+          end)
+
+        target_action = invoke.action |> to_string() |> Jason.encode!()
+
+        "    window.Lavash.invokeOptimistic(#{Jason.encode!(to_string(invoke.target))}, " <>
+          "#{target_action}, { #{args} });"
+      end)
+
+    if set_exprs == [] and projection_stmts == [] and invoke_stmts == [] do
       nil
     else
       param_str = if params != [], do: ", value", else: ""
       method_key = Lavash.Optimistic.Transpiler.js_field_key(name)
 
-      if projection_stmts != [] do
+      if projection_stmts != [] or invoke_stmts != [] do
         # Projection ops mutate the list in-place and return the full delta
-        stmts = Enum.join(projection_stmts, "\n")
+        stmts = Enum.join(projection_stmts ++ invoke_stmts, "\n")
 
         projection_fields =
           Lavash.ClientState.mutated_fields(action)
@@ -476,23 +493,57 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
     end
   end
 
+  # Resolve one invoke param to a JS expression, in the context of the
+  # INVOKING action (whose fn receives `value` — scalar for one param,
+  # object for several).
+  defp invoke_param_js({:param, name}, action_params) do
+    case action_params do
+      [_single] -> "value"
+      _ -> "value?.#{Lavash.Optimistic.Transpiler.js_field_key(name)}"
+    end
+  end
+
+  defp invoke_param_js({:state, field}, _action_params) do
+    Lavash.Optimistic.Transpiler.js_field_access("state", field)
+  end
+
+  defp invoke_param_js(literal, _action_params), do: Jason.encode!(literal)
+
+  # Substitute action-param references in a transpiled expression.
+  # Single-param actions receive the scalar `value` (the phx-value /
+  # invoke argument); multi-param actions receive an object.
+  defp substitute_params(js_expr, params) do
+    case params do
+      [param] ->
+        param_ref = Lavash.Optimistic.Transpiler.js_field_access("state", param)
+        String.replace(js_expr, param_ref, "value")
+
+      many when is_list(many) and many != [] ->
+        Enum.reduce(many, js_expr, fn param, expr ->
+          param_ref = Lavash.Optimistic.Transpiler.js_field_access("state", param)
+
+          String.replace(
+            expr,
+            param_ref,
+            "value?.#{Lavash.Optimistic.Transpiler.js_field_key(param)}"
+          )
+        end)
+
+      _ ->
+        js_expr
+    end
+  end
+
   defp projection_key_js(projection_keys, field) do
     key_name = Map.get(projection_keys, field, :id)
     Lavash.Optimistic.Transpiler.js_field_access("item", to_string(key_name))
   end
 
   defp transpile_projection_rx(%Lavash.Rx{source: source}, params, label, module) do
-    js_expr = Lavash.Optimistic.Transpiler.to_js(source)
-
     js_expr =
-      case params do
-        [param] ->
-          param_ref = Lavash.Optimistic.Transpiler.js_field_access("state", param)
-          String.replace(js_expr, param_ref, "value")
-
-        _ ->
-          js_expr
-      end
+      source
+      |> Lavash.Optimistic.Transpiler.to_js()
+      |> substitute_params(params)
 
     if Lavash.Optimistic.Transpiler.untranspilable_output?(js_expr) do
       # mutate/append transforms have no optimistic:false escape — the

@@ -7,7 +7,7 @@ defmodule DemoWeb.Storefront.ProductsLive do
     router: DemoWeb.Router,
     statics: DemoWeb.static_paths()
 
-  alias Demo.Cart.{Cart, CartItem}
+  alias Demo.Cart.Cart
   alias Demo.Catalog.{Category, Product}
 
   # ============================================
@@ -31,12 +31,6 @@ defmodule DemoWeb.Storefront.ProductsLive do
 
   # Parent owns flyover open state, bound down to CartFlyover
   state :cart_open, :any, from: :ephemeral, default: nil, optimistic: true
-
-  # Action-scratch state — actions stash the operating ids/delta here
-  # before reading them back in the run body of the same action.
-  state :_pending_product_id, :string, from: :ephemeral, default: nil
-  state :_pending_item_id, :string, from: :ephemeral, default: nil
-  state :_pending_delta, :integer, from: :ephemeral, default: nil
 
   # ============================================
   # Reads
@@ -83,41 +77,16 @@ defmodule DemoWeb.Storefront.ProductsLive do
       set :search, ""
     end
 
-    # Cart actions - use set to capture params, then effect to mutate + broadcast
+    # Add to cart: opens the flyover optimistically and invokes the
+    # flyover's :add_item — client-side the invoke's optimistic half
+    # bumps the projected badge instantly; server-side the append runs
+    # the deduping CartItem.:add and broadcasts.
     action :add_to_cart, [:product_id] do
-      # Open cart flyover and store product_id for the effect
       set :cart_open, true
-      set :_pending_product_id, & &1.params.product_id
 
-      effect fn state ->
-        cart_id = state.cart_id
-        product_id = state[:_pending_product_id]
-
-        # Check if product already in cart (query directly — this page
-        # no longer holds a cart read)
-        existing =
-          CartItem
-          |> Ash.Query.for_read(:for_cart, %{cart_id: cart_id})
-          |> Ash.read!()
-          |> Enum.find(fn item -> item.product_id == product_id end)
-
-        if existing do
-          existing
-          |> Ash.Changeset.for_update(:update_quantity, %{quantity: existing.quantity + 1})
-          |> Ash.update!()
-        else
-          CartItem
-          |> Ash.Changeset.for_create(:add, %{
-            cart_id: cart_id,
-            product_id: product_id,
-            quantity: 1
-          })
-          |> Ash.create!()
-        end
-
-        # Broadcast for PubSub invalidation
-        Lavash.PubSub.broadcast(CartItem)
-      end
+      invoke "cart-flyover", :add_item,
+        module: DemoWeb.CartFlyover,
+        params: [product_id: {:param, :product_id}, qty: 1]
     end
   end
 
