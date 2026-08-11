@@ -302,6 +302,57 @@ defmodule Lavash.SyncedVarTest do
       assert result == ["a", "b"]
     end
 
+    test "debounced typing resolves on the final echo even while version-pending", ctx do
+      # 16 keystrokes = 16 version bumps, ONE debounced push = one echo.
+      # The incremental pending-match confirm (anti-bounce) can never
+      # catch cv up to v — isPending stays true by design — but the
+      # server's last word equals the on-screen value, so the sync
+      # indicator must read resolved.
+      result =
+        run_js(
+          """
+          const sv = new SyncedVar("");
+          const digits = "4242424242424242";
+          for (let i = 1; i <= digits.length; i++) sv.setOptimistic(digits.slice(0, i));
+          const before = sv.isUnresolved;
+          sv.serverSet(digits);
+          return { before, pending: sv.isPending, unresolved: sv.isUnresolved };
+          """,
+          ctx
+        )
+
+      assert result == %{"before" => true, "pending" => true, "unresolved" => false}
+    end
+
+    test "a stale divergent echo reads unresolved again until the pipeline drains", ctx do
+      # Rapid toggle: client lands on true; server echoes [true, null,
+      # true]. Values stay bounce-protected (the stale null is rejected),
+      # and the indicator honestly tracks whether the server's last word
+      # matches the screen.
+      result =
+        run_js(
+          """
+          const sv = new SyncedVar(null);
+          sv.setOptimistic(true);
+          sv.setOptimistic(null);
+          sv.setOptimistic(true);
+          const states = [];
+          for (const echo of [true, null, true]) {
+            sv.serverSet(echo);
+            states.push({ value: sv.value, unresolved: sv.isUnresolved });
+          }
+          return states;
+          """,
+          ctx
+        )
+
+      assert result == [
+               %{"value" => true, "unresolved" => false},
+               %{"value" => true, "unresolved" => true},
+               %{"value" => true, "unresolved" => false}
+             ]
+    end
+
     test "store hasUnresolved counts pending AND provisional; hasPending only pending", ctx do
       result =
         run_js(

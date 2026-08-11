@@ -26,6 +26,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Sync indicator no longer sticks on after debounced typing.**
+  `version` counts client mutations while the anti-bounce incremental
+  confirm counts server patches, so typing N characters into a bound
+  input (one debounced push) left the var version-pending forever and
+  `data-lavash-syncing` stuck on. `isUnresolved` now means: pending AND
+  the server's last word differs from the on-screen value — merge-level
+  bounce protection is untouched.
+
 - **Bound fields no longer stay pending forever after parent→child
   refresh.** `refreshFromParent` marked the mirrored value as an
   optimistic set — but no confirming push ever comes for a mirror, so

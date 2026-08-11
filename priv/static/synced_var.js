@@ -475,13 +475,24 @@ export class SyncedVar {
   }
 
   /**
-   * Anything unconfirmed: an optimistic set awaiting its confirm OR a
-   * provisional (append/upsert) seed awaiting the same-event re-read.
-   * The "is the truth on screen?" predicate (issue #72; #63 wants the
-   * same answer for navigation guarding).
+   * "Is the truth on screen?" predicate (issue #72; #63 wants the same
+   * answer for navigation guarding): an optimistic set the server
+   * hasn't echoed yet, OR a provisional (append/upsert) seed awaiting
+   * the same-event re-read.
+   *
+   * NOT simply isPending: version counts client MUTATIONS while the
+   * incremental pending-match confirm counts server PATCHES (the
+   * anti-bounce rule for rapid toggles), so debounced typing — many
+   * mutations, one push — leaves cv < v long after the server echoed
+   * the final value. That protection gap is deliberate for merge
+   * semantics, but as a sync indicator it reads "stuck syncing" while
+   * client and server agree. Unresolved therefore means: pending AND
+   * the server's last word differs from the value on screen.
    */
   get isUnresolved() {
-    return this.isPending || !!this.isProvisional;
+    if (this.isProvisional) return true;
+    if (!this.isPending) return false;
+    return this._lastServerValue === _UNSET || !deepEqual(this.value, this._lastServerValue);
   }
 
   getValue() {
