@@ -127,6 +127,7 @@ defmodule Lavash.Test.Magic.ClientCartLive do
       </div>
       <button id="add-widget" phx-click="add_item" phx-value-name="Widget">add</button>
       <button id="upsert-widget" phx-click="upsert_item" phx-value-name="Widget">upsert</button>
+      <.link navigate="/magic/client-cart" id="go-checkout" class="btn">Checkout</.link>
     </div>
     """
   end

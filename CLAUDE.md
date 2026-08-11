@@ -53,7 +53,7 @@ The demo app has these configurations:
 
 - `config :phoenix_live_view, :colocated_js, target_directory: "assets/vendor/phoenix-colocated"` - writes hooks where esbuild can see them
 - `reloadable_apps: [:demo, :lavash]` - Phoenix recompiles lavash on changes
-- `reloadable_compilers: [:elixir, :app, :phoenix_live_view]` - includes the colocated hooks compiler (the compiler is named `:phoenix_live_view`; there is no `:phoenix_colocated` compiler)
+- `reloadable_compilers: [:phoenix_live_view, :elixir, :app]` - includes the colocated hooks compiler (named `:phoenix_live_view`; there is no `:phoenix_colocated` compiler). It MUST be listed BEFORE `:elixir`: the task only registers an after-elixir hook that regenerates the colocated manifest, so listed after `:elixir` the hook registers too late, never fires, and in-server reloads leave `index.js` importing stale content hashes (esbuild "Could not resolve" errors)
 - esbuild `NODE_PATH` includes `assets/vendor/` to resolve `phoenix-colocated/lavash`
 
 ### Manual recompile (if needed)

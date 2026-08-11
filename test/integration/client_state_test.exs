@@ -64,6 +64,12 @@ defmodule Lavash.Integration.ClientStateTest do
       session = assert_has(session, qty(item.id, "3"))
       session = assert_has(session, css("#count", text: "3"))
 
+      # The <.link> inside the re-rendered subtree survived as a real
+      # anchor (regression: components were flattened to bare text by
+      # the client-side subtree render, so the styled link vanished
+      # until the server repainted).
+      session = assert_has(session, css(~s(a#go-checkout[data-phx-link="redirect"])))
+
       # After the round-trip the prediction stands (confirmed, not
       # reverted) and the write persisted.
       session = WLV.await_patch(session)

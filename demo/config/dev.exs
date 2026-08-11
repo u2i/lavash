@@ -55,7 +55,12 @@ config :demo, DemoWeb.Endpoint,
   # :phoenix_live_view rebuilds the colocated-JS manifest after elixir
   # recompiles. (There is no :phoenix_colocated compiler — a wrong name
   # here is silently ignored and the manifest goes stale on live reload.)
-  reloadable_compilers: [:elixir, :app, :phoenix_live_view],
+  # :phoenix_live_view must come BEFORE :elixir: the compiler only
+  # registers an after-elixir hook (which regenerates the colocated JS
+  # manifest), so listed after :elixir the hook registers too late and
+  # never fires — per-module JS gets new content hashes on reload while
+  # index.js keeps importing the old ones, and esbuild fails to resolve.
+  reloadable_compilers: [:phoenix_live_view, :elixir, :app],
   reloadable_apps: [:demo, :lavash],
   live_reload: [
     web_console_logger: true,

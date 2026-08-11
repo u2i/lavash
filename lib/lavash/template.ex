@@ -97,19 +97,105 @@ defmodule Lavash.Template do
     end)
   end
 
+  # `<.link>` is not opaque to the client half: it renders to a plain
+  # anchor whose clicks LiveView's own client JS intercepts by
+  # delegation (data-phx-link). Rewriting it to that anchor keeps links
+  # inside optimistic subtrees rendered — and navigable — when the
+  # client re-renders the subtree; flattened like other components, the
+  # anchor would vanish until server truth repaints. Only literal
+  # string targets and GET semantics are rewritable; anything else
+  # falls back to the generic component handling below.
+  defp node_to_element(
+         {:block, :local_component, "link", attrs, children, open_meta, _close_meta} = node,
+         descend
+       ) do
+    case link_anchor_attrs(parse_attrs(attrs)) do
+      {:ok, anchor_attrs} ->
+        [
+          {:element, "a", anchor_attrs, parse(children, descend_components: descend), open_meta}
+        ]
+
+      :skip ->
+        generic_component_to_element(node, descend)
+    end
+  end
+
   # Component/slot blocks: transparent descent when requested — their slot
   # children are host-owned markup that downstream analysis may care about.
   defp node_to_element(
-         {:block, comp_type, _name, _attrs, children, _open_meta, _close_meta},
-         true
+         {:block, comp_type, _name, _attrs, _children, _open_meta, _close_meta} = node,
+         descend
        )
        when comp_type in [:local_component, :remote_component, :slot] do
-    parse(children, descend_components: true)
+    generic_component_to_element(node, descend)
   end
 
   # Components, slots, eex_comment etc. are not interesting to downstream
   # consumers (AnalyzeTemplate looks at HTML tags and bare exprs).
   defp node_to_element(_node, _descend), do: []
+
+  defp generic_component_to_element(
+         {:block, _comp_type, _name, _attrs, children, _open_meta, _close_meta},
+         true
+       ) do
+    parse(children, descend_components: true)
+  end
+
+  defp generic_component_to_element(_node, false), do: []
+
+  # Maps `<.link>` attrs to the anchor Phoenix.Component.link/1 renders:
+  # navigate → data-phx-link="redirect", patch → "patch", both with
+  # data-phx-link-state push/replace; bare href passes through. Returns
+  # :skip (→ generic component handling) for expr-valued targets,
+  # non-GET methods, or no target at all.
+  defp link_anchor_attrs(attrs) do
+    method_ok? =
+      case Enum.find(attrs, &match?({"method", _}, &1)) do
+        nil -> true
+        {"method", {:string, "get"}} -> true
+        _ -> false
+      end
+
+    state =
+      if Enum.any?(attrs, &match?({"replace", {:boolean, true}}, &1)), do: "replace", else: "push"
+
+    passthrough =
+      Enum.reject(attrs, fn {name, _} -> name in ~w(navigate patch href replace method) end)
+
+    target = fn name ->
+      case Enum.find(attrs, &match?({^name, {:string, _}}, &1)) do
+        {^name, {:string, to}} -> to
+        _ -> nil
+      end
+    end
+
+    cond do
+      not method_ok? ->
+        :skip
+
+      to = target.("navigate") ->
+        {:ok,
+         [
+           {"href", {:string, to}},
+           {"data-phx-link", {:string, "redirect"}},
+           {"data-phx-link-state", {:string, state}} | passthrough
+         ]}
+
+      to = target.("patch") ->
+        {:ok,
+         [
+           {"href", {:string, to}},
+           {"data-phx-link", {:string, "patch"}},
+           {"data-phx-link-state", {:string, state}} | passthrough
+         ]}
+
+      to = target.("href") ->
+        {:ok, [{"href", {:string, to}} | passthrough]}
+
+      true ->
+        :skip
+    end
+  end
 
   defp parse_attrs(attrs) do
     Enum.flat_map(attrs, fn
