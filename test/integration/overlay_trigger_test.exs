@@ -68,6 +68,69 @@ defmodule Lavash.Integration.OverlayTriggerTest do
     end
   end
 
+  test "rapid open/close/open cycles do not bounce a bound overlay", %{session: session} do
+    cart = unique_cart()
+
+    session =
+      session
+      |> visit("/magic/trigger-flyover?cart_id=#{cart}")
+      |> WLV.set_latency(@latency_ms)
+
+    try do
+      # Two fast cycles then a final open — echoes of every earlier
+      # cycle land DURING the final open. The bound parent field's
+      # SyncedVar must hold pending protection so those stale echoes
+      # are rejected instead of hydrating a stale close back down.
+      session = click(session, css(@trigger), await: :defer)
+      Process.sleep(450)
+      session = send_keys(session, [:escape])
+      Process.sleep(350)
+      session = click(session, css(@trigger), await: :defer)
+      Process.sleep(450)
+      session = send_keys(session, [:escape])
+      Process.sleep(350)
+      session = click(session, css(@trigger), await: :defer)
+
+      session = assert_has(session, css(~s(#lavash-trig-fly[data-flyover-phase="visible"])))
+
+      # Record EVERY phase change while the delayed echoes land — the
+      # bounce is a sub-second transient (visible → exiting → idle →
+      # entering → visible) that interval sampling misses.
+      execute_script(
+        session,
+        """
+          window.__phases = [];
+          const el = document.getElementById('lavash-trig-fly');
+          new MutationObserver(() => window.__phases.push(el.getAttribute('data-flyover-phase')))
+            .observe(el, { attributes: true, attributeFilter: ['data-flyover-phase'] });
+          return true
+        """,
+        fn _ -> :ok end
+      )
+
+      # 3x the latency window: every echo of every cycle has arrived.
+      Process.sleep(@latency_ms * 3)
+
+      execute_script(session, "return window.__phases.join(',')", fn phases ->
+        send(self(), {:phases, phases})
+      end)
+
+      phases =
+        receive do
+          {:phases, p} -> p
+        after
+          2_000 -> flunk("no phase recording")
+        end
+
+      refute phases =~ "exiting", "overlay bounced after final open: #{inspect(phases)}"
+      refute phases =~ "idle", "overlay bounced after final open: #{inspect(phases)}"
+
+      assert_has(session, css(~s(#lavash-trig-fly[data-flyover-phase="visible"])))
+    after
+      _ = WLV.clear_latency(session)
+    end
+  end
+
   test "host invoke bumps the projected badge in the same tick", %{session: session} do
     cart = unique_cart()
     create_item!(cart, "Seeded", 3)

@@ -56,10 +56,17 @@ defmodule Lavash.Test.Magic.TriggerFlyoverHostLive do
   Host for the trigger-flyover fixture. Its `add_remote` action
   invokes the flyover's `append` — server via send_update, client via
   invoke's optimistic half — so the badge bumps in the same tick.
+
+  The flyover's open state is BOUND to the host's `:fly_open` — the
+  geometry of the rapid open/close/open bounce (parent echoes of
+  earlier cycles arriving during a later open must not close it).
   """
   use Lavash.LiveView
+  import Lavash.LiveView.Helpers, only: [lavash_component: 1]
 
   state :cart_id, :string, from: :url
+  state :fly_open, :any, from: :ephemeral, default: nil, optimistic: true
+  state :add_qty, :integer, from: :ephemeral, default: 2, optimistic: true
 
   actions do
     action :add_remote do
@@ -69,17 +76,17 @@ defmodule Lavash.Test.Magic.TriggerFlyoverHostLive do
     end
   end
 
-  state :add_qty, :integer, from: :ephemeral, default: 2, optimistic: true
-
-  def render(assigns) do
+  template do
     ~H"""
     <div>
       <h1>Trigger flyover host</h1>
       <button id="add-remote" phx-click="add_remote">add remote</button>
-      <.live_component
+      <.lavash_component
         module={Lavash.Test.Magic.TriggerFlyover}
         id="trig-fly"
         cart_id={@cart_id}
+        open={@fly_open}
+        bind={[open: :fly_open]}
       />
     </div>
     """
