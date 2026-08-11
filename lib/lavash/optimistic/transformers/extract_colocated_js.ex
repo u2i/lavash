@@ -308,13 +308,16 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
       derives_str = Jason.encode!(derive_names)
       animated_str = Jason.encode!(animated_metadata)
 
-      # Actions with appends apply their delta provisionally (seed, not
-      # setOptimistic): the predicted list still can't confirm by
-      # deep-equality (server-derived fields), so the same event's
-      # re-read must be accepted, not rejected as a mismatch.
+      # Actions with appends/upserts apply their delta provisionally
+      # (seed, not setOptimistic): the predicted list still can't
+      # confirm by deep-equality (server-derived fields; upsert's
+      # branch can diverge), so the same event's re-read must be
+      # accepted, not rejected as a mismatch.
       provisional_str =
         optimistic_actions
-        |> Enum.filter(&((Map.get(&1, :appends) || []) != []))
+        |> Enum.filter(
+          &((Map.get(&1, :appends) || []) != [] or (Map.get(&1, :upserts) || []) != [])
+        )
         |> Enum.map(&to_string(&1.name))
         |> Jason.encode!()
 
@@ -329,9 +332,10 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
         optimistic_actions
         |> Enum.map(fn action ->
           own =
-            Enum.map(Map.get(action, :appends) || [], fn ap ->
-              append_id_key(module, action.name, ap.field)
-            end)
+            Enum.map(
+              (Map.get(action, :appends) || []) ++ (Map.get(action, :upserts) || []),
+              fn op -> append_id_key(module, action.name, op.field) end
+            )
 
           invoked =
             Enum.flat_map(Map.get(action, :invokes) || [], fn inv ->
@@ -410,6 +414,10 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
         Enum.map(
           Map.get(action, :appends) || [],
           &generate_append_js(&1, action.name, params, projection_keys, module)
+        ) ++
+        Enum.map(
+          Map.get(action, :upserts) || [],
+          &generate_upsert_js(&1, action.name, params, projection_keys, module)
         )
 
     projection_stmts = Enum.filter(projection_ops, & &1)
@@ -532,6 +540,58 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
     end
   end
 
+  # Match-based insert-or-update: find the projected row by the match
+  # fields; found → merge the on_conflict result (@item bound, mutate
+  # semantics, :remove drops it); not found → push an on_insert row
+  # under the pre-stashed client id (append semantics). Predicting the
+  # MERGE when the row exists is the point — an append would flash a
+  # duplicate row the server's dedup then collapses.
+  defp generate_upsert_js(upsert, action_name, params, projection_keys, module) do
+    field = upsert.field
+    key_name = Map.get(projection_keys, field, :id)
+    state_field = Lavash.Optimistic.Transpiler.js_field_access("state", field)
+    {_conflict_action, conflict_rx} = upsert.on_conflict
+    {_insert_action, insert_rx} = upsert.on_insert
+
+    conflict_js =
+      transpile_projection_rx(conflict_rx, params, "upsert :#{field} on_conflict", module)
+
+    insert_js = transpile_projection_rx(insert_rx, params, "upsert :#{field} on_insert", module)
+
+    if conflict_js && insert_js do
+      match_conds =
+        Enum.map_join(upsert.match, " && ", fn key ->
+          item_ref = Lavash.Optimistic.Transpiler.js_field_access("item", to_string(key))
+
+          match_ref =
+            Lavash.Optimistic.Transpiler.js_field_access("state", key)
+            |> substitute_params(params)
+
+          "String(#{item_ref}) === String(#{match_ref})"
+        end)
+
+      stash_key = Jason.encode!(append_id_key(module, action_name, field))
+
+      """
+          #{state_field} = (() => {
+            const list = [ ...(#{state_field} || []) ];
+            const idx = list.findIndex(item => #{match_conds});
+            if (idx >= 0) {
+              const result = ((state) => (#{conflict_js}))({ ...state, item: list[idx] });
+              if (result === 'remove') list.splice(idx, 1);
+              else list[idx] = { ...list[idx], ...result };
+            } else {
+              list.push({ #{Lavash.Optimistic.Transpiler.js_field_key(key_name)}: (window.Lavash.takeAppendId(#{stash_key}) ?? crypto.randomUUID()),
+                ...(#{insert_js}) });
+            }
+            return list;
+          })();
+      """
+    else
+      nil
+    end
+  end
+
   # Shared stash-key shape for a specific append op — the same key is
   # computed by handleClick (from __append_ids__ metadata), by the
   # generated prediction (above), and by the server when reading the
@@ -548,7 +608,10 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
          true <- function_exported?(target_module, :__lavash__, 1),
          actions when is_list(actions) <- target_module.__lavash__(:declared_actions),
          %{} = action <- Enum.find(actions, &(&1.name == action_name)) do
-      Enum.map(Map.get(action, :appends) || [], & &1.field)
+      Enum.map(
+        (Map.get(action, :appends) || []) ++ (Map.get(action, :upserts) || []),
+        & &1.field
+      )
     else
       _ -> []
     end

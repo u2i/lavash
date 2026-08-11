@@ -41,7 +41,11 @@ defmodule DemoWeb.Storefront.CheckoutLiveTest do
       end
 
     Demo.Cart.CartItem
-    |> Ash.Changeset.for_create(:add, %{cart_id: cart.id, product_id: product.id, quantity: 2})
+    |> Ash.Changeset.for_create(:create_row, %{
+      cart_id: cart.id,
+      product_id: product.id,
+      quantity: 2
+    })
     |> Ash.create!()
 
     Demo.Orders.Address

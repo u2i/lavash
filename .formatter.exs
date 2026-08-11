@@ -94,6 +94,7 @@ spark_locals_without_parens = [
   submit: 1,
   submit: 2,
   transform: 1,
+  upsert: 2,
   when: 1,
   when_connected: 1
 ]

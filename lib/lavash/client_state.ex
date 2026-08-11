@@ -46,7 +46,8 @@ defmodule Lavash.ClientState do
   def mutated_fields(action) do
     Enum.map(Map.get(action, :mutates) || [], & &1.field) ++
       Enum.map(Map.get(action, :removes) || [], & &1.field) ++
-      Enum.map(Map.get(action, :appends) || [], & &1.field)
+      Enum.map(Map.get(action, :appends) || [], & &1.field) ++
+      Enum.map(Map.get(action, :upserts) || [], & &1.field)
   end
 
   @doc """
@@ -89,7 +90,8 @@ defmodule Lavash.ClientState do
     ops =
       Enum.map(Map.get(action, :mutates) || [], &{:mutate, &1}) ++
         Enum.map(Map.get(action, :removes) || [], &{:remove, &1}) ++
-        Enum.map(Map.get(action, :appends) || [], &{:append, &1})
+        Enum.map(Map.get(action, :appends) || [], &{:append, &1}) ++
+        Enum.map(Map.get(action, :upserts) || [], &{:upsert, &1})
 
     if ops == [] do
       socket
@@ -120,6 +122,10 @@ defmodule Lavash.ClientState do
             :append ->
               id = Map.get(append_ids, append_id_key(module, action.name, op.field))
               apply_append(op, proj, state, module, id)
+
+            :upsert ->
+              id = Map.get(append_ids, append_id_key(module, action.name, op.field))
+              apply_upsert(op, proj, state, module, id)
 
             _ ->
               apply_mutation(kind, op, proj, state, params, module)
@@ -158,12 +164,50 @@ defmodule Lavash.ClientState do
   end
 
   defp apply_append(op, proj, state, module, id) do
-    attrs = eval_rx(module, op.transform, state)
-    accepted = accepted_attrs(proj.resource, op.action)
+    create_record(proj, op.action, op.transform, state, module, id)
+  end
+
+  # Match against the backing read's CURRENT records — the same list
+  # the client's copy projects from, so both sides decide the branch
+  # from the same basis (modulo in-flight writes from other sessions,
+  # which the same-event re-read reconciles). Comparison is
+  # string-tolerant like the client's (`String(a) === String(b)`) —
+  # wire params arrive as strings.
+  defp apply_upsert(op, proj, state, module, id) do
+    records = List.wrap(Map.get(state, proj.read))
+
+    matched =
+      Enum.find(records, fn record ->
+        Enum.all?(op.match, fn key ->
+          to_string(Map.get(record, key)) == to_string(Map.get(state, key))
+        end)
+      end)
+
+    if matched do
+      {action, transform} = op.on_conflict
+
+      case eval_rx(module, transform, Map.put(state, :item, matched)) do
+        :remove ->
+          Ash.destroy!(matched)
+
+        attrs when is_map(attrs) ->
+          matched
+          |> Ash.Changeset.for_update(action, attrs)
+          |> Ash.update!()
+      end
+    else
+      {action, transform} = op.on_insert
+      create_record(proj, action, transform, state, module, id)
+    end
+  end
+
+  defp create_record(proj, action, transform, state, module, id) do
+    attrs = eval_rx(module, transform, state)
+    accepted = accepted_attrs(proj.resource, action)
     attrs = if accepted, do: Map.take(attrs, accepted), else: attrs
 
     proj.resource
-    |> Ash.Changeset.for_create(op.action, attrs)
+    |> Ash.Changeset.for_create(action, attrs)
     |> force_append_id(id)
     |> Ash.create!()
   end

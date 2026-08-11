@@ -96,9 +96,11 @@ defmodule Lavash.Transformers.ExpandFields do
     end)
   end
 
-  # mutate/remove/append must target a declared client_state projection,
-  # and keyed ops (mutate/remove) need the projection's key as an action
-  # param so the server can fetch the record.
+  # mutate/remove/append/upsert must target a declared client_state
+  # projection; keyed ops (mutate/remove) need the projection's key as
+  # an action param so the server can fetch the record; upsert's match
+  # fields must be projected own fields so the client can match its
+  # copy of the row.
   defp validate_projection_ops!(dsl_state, module) do
     reads = Transformer.get_entities(dsl_state, [:reads]) || []
     actions = Transformer.get_entities(dsl_state, [:actions]) || []
@@ -114,8 +116,9 @@ defmodule Lavash.Transformers.ExpandFields do
           Enum.map(Map.get(action, :removes) || [], &{:remove, &1})
 
       append_ops = Enum.map(Map.get(action, :appends) || [], &{:append, &1})
+      upsert_ops = Enum.map(Map.get(action, :upserts) || [], &{:upsert, &1})
 
-      Enum.each(keyed_ops ++ append_ops, fn {kind, op} ->
+      Enum.each(keyed_ops ++ append_ops ++ upsert_ops, fn {kind, op} ->
         case Map.get(projections, op.field) do
           nil ->
             raise Spark.Error.DslError,
@@ -126,7 +129,7 @@ defmodule Lavash.Transformers.ExpandFields do
                   "projection — declare one on a read first"
 
           cs ->
-            if kind != :append and cs.key not in (action.params || []) do
+            if kind in [:mutate, :remove] and cs.key not in (action.params || []) do
               raise Spark.Error.DslError,
                 module: module,
                 path: [:actions, action.name],
@@ -135,6 +138,22 @@ defmodule Lavash.Transformers.ExpandFields do
                     "#{inspect(cs.key)} as an action param (e.g. `action " <>
                     "#{inspect(action.name)}, [#{inspect(cs.key)}]`) so the server " <>
                     "can fetch the record"
+            end
+
+            if kind == :upsert do
+              own_fields = Enum.filter(cs.fields, &is_atom/1)
+              missing = Enum.reject(op.match, &(&1 in own_fields))
+
+              if missing != [] do
+                raise Spark.Error.DslError,
+                  module: module,
+                  path: [:actions, action.name],
+                  message:
+                    "`upsert #{inspect(op.field)}` matches on #{inspect(missing)} " <>
+                      "which are not projected own fields — add them to the " <>
+                      "projection's `fields` so the client can match its copy " <>
+                      "of the row"
+              end
             end
         end
       end)

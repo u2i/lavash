@@ -7,10 +7,12 @@ defmodule DemoWeb.CartFlyover do
   One projection means every mutation predicts everything at once:
   increment/decrement/remove tick the rows, badge, and totals
   instantly, and `add_item` (invoked by the pages, with the product's
-  display fields passed through) appends a complete provisional row —
-  so even a page-initiated add updates badge, row, AND totals in the
-  same tick. The `CartItem.:add` manual create dedups server-side and
-  the re-read replaces provisional data with truth.
+  display fields passed through) upserts by product — a product
+  already in the cart predicts its row's quantity ticking, a new one
+  predicts a complete provisional row — so even a page-initiated add
+  updates badge, row, AND totals in the same tick, with no
+  duplicate-row flash. The re-read replaces predicted data with truth
+  (`:create_row` snapshots the authoritative price).
 
   Parents place the component where the trigger belongs:
 
@@ -47,7 +49,15 @@ defmodule DemoWeb.CartFlyover do
 
     client_state :items do
       key :id
-      fields [:id, :quantity, :unit_price, product: [:id, :name, :origin, :roast_level]]
+      # product_id is the upsert match key — it must be a projected
+      # own field so the client can match its copy of the row.
+      fields [
+        :id,
+        :product_id,
+        :quantity,
+        :unit_price,
+        product: [:id, :name, :origin, :roast_level]
+      ]
     end
   end
 
@@ -84,21 +94,26 @@ defmodule DemoWeb.CartFlyover do
       remove :items
     end
 
-    # Invoked by the pages' add_to_cart. The provisional row carries
-    # the product's display fields (passed through the invoke) so the
-    # row, badge, and totals all predict correctly; the server half
-    # runs the deduping CartItem.:add (which snapshots the real price)
-    # and the re-read replaces the provisional row.
+    # Invoked by the pages' add_to_cart. Upsert by product: a product
+    # already in the cart predicts (and persists) a quantity bump on
+    # its existing row; a new product predicts a complete provisional
+    # row from the display fields passed through the invoke. Either
+    # way row, badge, and totals move in the same tick. Server-side,
+    # `:create_row` snapshots the authoritative price — the client's
+    # unit_price is a display claim the re-read can correct.
     action :add_item, [:product_id, :qty, :name, :origin, :unit_price] do
-      append :items,
-             :add,
-             rx(%{
-               cart_id: @cart_id,
-               product_id: @product_id,
-               quantity: @qty,
-               unit_price: @unit_price,
-               product: %{name: @name, origin: @origin}
-             })
+      upsert :items,
+        match: [:product_id],
+        on_conflict: {:update_quantity, rx(%{quantity: @item.quantity + @qty})},
+        on_insert:
+          {:create_row,
+           rx(%{
+             cart_id: @cart_id,
+             product_id: @product_id,
+             quantity: @qty,
+             unit_price: @unit_price,
+             product: %{name: @name, origin: @origin}
+           })}
     end
   end
 
