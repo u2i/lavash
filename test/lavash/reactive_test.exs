@@ -504,6 +504,33 @@ defmodule Lavash.ReactiveTest do
       assert %Phoenix.LiveView.AsyncResult{ok?: true, result: [:found]} = socket.assigns.results
     end
 
+    test "async re-run keeps the previous result while loading", %{socket: socket} do
+      graph =
+        Reactive.new()
+        |> Reactive.state(:search, "")
+        |> Reactive.derive(:results, rx(async_list(@search)), async: true)
+        |> Reactive.build()
+
+      socket = Reactive.init(socket, graph)
+
+      assert_receive {:lavash_reactive, :results, {:ok, [:a, :b]}}, 1000
+      {:ok, socket} = Reactive.handle_async(socket, {:lavash_reactive, :results, {:ok, [:a, :b]}})
+
+      assert %Phoenix.LiveView.AsyncResult{ok?: true, result: [:a, :b]} = socket.assigns.results
+
+      # Re-run (a filter change): loading again, but the stale list is
+      # retained — templates can render it dimmed instead of blanking.
+      socket =
+        socket
+        |> Reactive.put(:search, "again")
+        |> Reactive.recompute()
+
+      assert %Phoenix.LiveView.AsyncResult{loading: loading, result: [:a, :b]} =
+               socket.assigns.results
+
+      assert loading != nil
+    end
+
     test "downstream sync derive propagates loading when async dep is loading", %{socket: socket} do
       graph =
         Reactive.new()
