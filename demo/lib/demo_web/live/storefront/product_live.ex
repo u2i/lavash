@@ -16,6 +16,10 @@ defmodule DemoWeb.Storefront.ProductLive do
 
   # Cart state (same pattern as ProductsLive)
   state :cart_id, :string, from: :ephemeral
+
+  # Injected by the auth on_mount hook; lifted into lavash state so
+  # the template can pass it to the store_page top bar.
+  state :current_user, :map, from: :assigns, assigns_key: :current_user
   state :cart_open, :any, from: :ephemeral, default: nil, optimistic: true
 
   # Quantity selector — bumped/dec'd via two actions, used by add_to_cart.
@@ -131,13 +135,11 @@ defmodule DemoWeb.Storefront.ProductLive do
 
   template do
     ~H"""
-    <div class="space-y-6">
-      <div class="flex items-center justify-between">
-        <a href={~p"/storefront/products"} class="btn btn-ghost btn-sm">
-          &larr; Back to Coffees
-        </a>
+    <DemoWeb.Layouts.store_page current_user={@current_user}>
+      <:cart>
         <%!-- Cart: trigger (icon + optimistic badge) AND flyover panel,
-             all owned by the component — this page just places it. --%>
+             all owned by the component — the store_page top bar just
+             places it. --%>
         <.lavash_component
           module={DemoWeb.CartFlyover}
           id="cart-flyover"
@@ -145,97 +147,104 @@ defmodule DemoWeb.Storefront.ProductLive do
           open={@cart_open}
           bind={[open: :cart_open]}
         />
-      </div>
-
-      <div class="grid md:grid-cols-2 gap-8">
-        <div class="card bg-base-200 overflow-hidden">
-          <figure>
-            <img
-              src={"https://images.unsplash.com/#{coffee_image(@product.roast_level)}?w=600&q=80"}
-              alt={@product.name}
-              class="w-full h-80 object-cover"
-            />
-          </figure>
+      </:cart>
+      <div class="space-y-6">
+        <div>
+          <a href={~p"/storefront/products"} class="btn btn-ghost btn-sm">
+            &larr; Back to Coffees
+          </a>
         </div>
 
-        <div class="space-y-6">
-          <div>
-            <div class="flex items-start justify-between gap-4">
-              <h1 class="text-3xl font-bold">{@product.name}</h1>
-              <.roast_badge level={@product.roast_level} />
+        <div class="grid md:grid-cols-2 gap-8">
+          <div class="card bg-base-200 overflow-hidden">
+            <figure>
+              <img
+                src={"https://images.unsplash.com/#{coffee_image(@product.roast_level)}?w=600&q=80"}
+                alt={@product.name}
+                class="w-full h-80 object-cover"
+              />
+            </figure>
+          </div>
+
+          <div class="space-y-6">
+            <div>
+              <div class="flex items-start justify-between gap-4">
+                <h1 class="text-3xl font-bold">{@product.name}</h1>
+                <.roast_badge level={@product.roast_level} />
+              </div>
+              <p class="text-lg text-base-content/70 mt-1">{@product.origin}</p>
             </div>
-            <p class="text-lg text-base-content/70 mt-1">{@product.origin}</p>
-          </div>
 
-          <p class="text-base-content/80">{@product.description}</p>
+            <p class="text-base-content/80">{@product.description}</p>
 
-          <div class="flex items-center gap-2">
-            <span class="text-amber-500 text-lg">{"★"
-            |> String.duplicate(round(Decimal.to_float(@product.rating)))}</span>
-            <span class="text-base-content/70">{Decimal.to_string(@product.rating)} / 5</span>
-          </div>
-
-          <div class="card bg-base-200">
-            <div class="card-body p-4">
-              <h3 class="font-semibold text-sm uppercase tracking-wide text-base-content/60">
-                Tasting Notes
-              </h3>
-              <p class="mt-1">{@product.tasting_notes}</p>
+            <div class="flex items-center gap-2">
+              <span class="text-amber-500 text-lg">{"★"
+              |> String.duplicate(round(Decimal.to_float(@product.rating)))}</span>
+              <span class="text-base-content/70">{Decimal.to_string(@product.rating)} / 5</span>
             </div>
-          </div>
 
-          <div class="flex items-center gap-4">
-            <span class={[
-              "badge badge-lg",
-              @product.in_stock && "badge-success",
-              !@product.in_stock && "badge-error"
-            ]}>
-              {if @product.in_stock, do: "In Stock", else: "Sold Out"}
-            </span>
-            <span class="text-sm text-base-content/60">{@product.weight_oz}oz bag</span>
-          </div>
+            <div class="card bg-base-200">
+              <div class="card-body p-4">
+                <h3 class="font-semibold text-sm uppercase tracking-wide text-base-content/60">
+                  Tasting Notes
+                </h3>
+                <p class="mt-1">{@product.tasting_notes}</p>
+              </div>
+            </div>
 
-          <div class="divider"></div>
+            <div class="flex items-center gap-4">
+              <span class={[
+                "badge badge-lg",
+                @product.in_stock && "badge-success",
+                !@product.in_stock && "badge-error"
+              ]}>
+                {if @product.in_stock, do: "In Stock", else: "Sold Out"}
+              </span>
+              <span class="text-sm text-base-content/60">{@product.weight_oz}oz bag</span>
+            </div>
 
-          <div class="flex items-center justify-between gap-4">
-            <span class="text-3xl font-bold">${Decimal.to_string(@product.price)}</span>
-            <%= if @product.in_stock do %>
-              <div class="flex items-center gap-3">
-                <div class="join">
+            <div class="divider"></div>
+
+            <div class="flex items-center justify-between gap-4">
+              <span class="text-3xl font-bold">${Decimal.to_string(@product.price)}</span>
+              <%= if @product.in_stock do %>
+                <div class="flex items-center gap-3">
+                  <div class="join">
+                    <button
+                      phx-click="dec_quantity"
+                      class="btn btn-sm join-item"
+                      data-lavash-enabled="quantity_gt_1"
+                    >
+                      -
+                    </button>
+                    <span class="btn btn-sm join-item no-animation pointer-events-none min-w-12">
+                      {@quantity}
+                    </span>
+                    <button
+                      phx-click="inc_quantity"
+                      class="btn btn-sm join-item"
+                    >
+                      +
+                    </button>
+                  </div>
                   <button
-                    phx-click="dec_quantity"
-                    class="btn btn-sm join-item"
-                    data-lavash-enabled="quantity_gt_1"
+                    class="btn btn-primary btn-lg"
+                    phx-click="add_to_cart"
+                    phx-value-name={@product.name}
+                    phx-value-origin={@product.origin}
+                    phx-value-unit_price={Decimal.to_string(@product.price)}
                   >
-                    -
-                  </button>
-                  <span class="btn btn-sm join-item no-animation pointer-events-none min-w-12">
-                    {@quantity}
-                  </span>
-                  <button
-                    phx-click="inc_quantity"
-                    class="btn btn-sm join-item"
-                  >
-                    +
+                    Add to Cart
                   </button>
                 </div>
-                <button
-                  class="btn btn-primary btn-lg"
-                  phx-click="add_to_cart"
-                  phx-value-name={@product.name}
-                  phx-value-origin={@product.origin}
-                  phx-value-unit_price={Decimal.to_string(@product.price)}
-                >
-                  Add to Cart
-                </button>
-              </div>
-            <% else %>
-              <button class="btn btn-lg" disabled>Notify Me</button>
-            <% end %>
+              <% else %>
+                <button class="btn btn-lg" disabled>Notify Me</button>
+              <% end %>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </DemoWeb.Layouts.store_page>
     """
   end
 end

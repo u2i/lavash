@@ -13,6 +13,26 @@ defmodule DemoWeb.Layouts do
 
   def app(assigns) do
     ~H"""
+    {@inner_content}
+
+    <.flash_group flash={@flash} />
+    """
+  end
+
+  @doc """
+  One consolidated store page: top bar (logo, nav, theme, auth, cart)
+  plus the content container. Rendered INSIDE each storefront page's
+  lavash template — not in the live layout — because the cart flyover
+  in the `:cart` slot propagates its bound state to the page via a
+  bubbling `lavash-set` event, so it must live inside the page's hook
+  root in the DOM.
+  """
+  attr :current_user, :map, default: nil
+  slot :cart, doc: "cart trigger + flyover, rendered at the right end of the top bar"
+  slot :inner_block, required: true
+
+  def store_page(assigns) do
+    ~H"""
     <header class="border-b border-base-300/50">
       <nav class="navbar mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
         <div class="flex-1">
@@ -22,7 +42,7 @@ defmodule DemoWeb.Layouts do
           </a>
         </div>
         <div class="flex-none">
-          <ul class="flex px-1 space-x-4 items-center">
+          <ul class="flex px-1 space-x-2 sm:space-x-4 items-center">
             <li>
               <a href={~p"/storefront/products"} class="btn btn-ghost">Shop</a>
             </li>
@@ -49,6 +69,9 @@ defmodule DemoWeb.Layouts do
                 <a href={~p"/sign-in"} class="btn btn-primary">Sign in</a>
               </li>
             <% end %>
+            <li :if={@cart != []}>
+              {render_slot(@cart)}
+            </li>
           </ul>
         </div>
       </nav>
@@ -56,11 +79,9 @@ defmodule DemoWeb.Layouts do
 
     <main class="px-4 py-8 sm:px-6 lg:px-8">
       <div class="mx-auto max-w-6xl">
-        {@inner_content}
+        {render_slot(@inner_block)}
       </div>
     </main>
-
-    <.flash_group flash={@flash} />
     """
   end
 
