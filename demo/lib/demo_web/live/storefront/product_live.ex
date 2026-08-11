@@ -35,18 +35,24 @@ defmodule DemoWeb.Storefront.ProductLive do
       set :quantity, rx(max(@quantity - 1, 1))
     end
 
-    action :add_to_cart do
+    # Product display fields ride along via phx-value-* (server-rendered,
+    # static per page) while the quantity comes from optimistic client
+    # state — so the flyover's append predicts a complete row.
+    #
+    # No quantity reset here: server-side `set`s apply before `invoke`s,
+    # so a reset would clobber the qty the invoke reads.
+    action :add_to_cart, [:name, :origin, :unit_price] do
       set :cart_open, true
 
-      # Client: invoke's optimistic half bumps the flyover's projected
-      # badge with the selected quantity instantly. Server: the append
-      # runs the deduping CartItem.:add and broadcasts.
-      #
-      # No quantity reset here: server-side `set`s apply before
-      # `invoke`s, so a reset would clobber the qty the invoke reads.
       invoke "cart-flyover", :add_item,
         module: DemoWeb.CartFlyover,
-        params: [product_id: {:state, :product_id}, qty: {:state, :quantity}]
+        params: [
+          product_id: {:state, :product_id},
+          qty: {:state, :quantity},
+          name: {:param, :name},
+          origin: {:param, :origin},
+          unit_price: {:param, :unit_price}
+        ]
     end
   end
 
@@ -213,7 +219,13 @@ defmodule DemoWeb.Storefront.ProductLive do
                     +
                   </button>
                 </div>
-                <button class="btn btn-primary btn-lg" phx-click="add_to_cart">
+                <button
+                  class="btn btn-primary btn-lg"
+                  phx-click="add_to_cart"
+                  phx-value-name={@product.name}
+                  phx-value-origin={@product.origin}
+                  phx-value-unit_price={Decimal.to_string(@product.price)}
+                >
                   Add to Cart
                 </button>
               </div>

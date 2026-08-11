@@ -21,14 +21,21 @@ export function handleClick(e, hook) {
   // Only intercept if this is a known optimistic action
   if (!hook.fns[actionName]) return;
 
-  // Extract value from first phx-value-* attribute
-  let value;
+  // Extract phx-value-* attributes. One attribute → scalar `value`
+  // (the historical contract single-param action fns compile
+  // against); several → an object keyed by snake_cased param names
+  // (what multi-param action fns compile against).
+  const entries = [];
   for (const attr of target.attributes) {
     if (attr.name.startsWith("phx-value-")) {
-      value = attr.value;
-      break;
+      entries.push([attr.name.slice("phx-value-".length).replace(/-/g, "_"), attr.value]);
     }
   }
+
+  const value =
+    entries.length === 0 ? undefined :
+    entries.length === 1 ? entries[0][1] :
+    Object.fromEntries(entries);
 
   // Defer the prediction one macrotask: applying it synchronously
   // re-renders any data-lavash-html subtree the clicked element sits

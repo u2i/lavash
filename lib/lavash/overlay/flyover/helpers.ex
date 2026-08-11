@@ -77,6 +77,14 @@ defmodule Lavash.Overlay.Flyover.Helpers do
   attr(:width, :atom, default: :md)
   attr(:height, :atom, default: :md)
   attr(:duration, :integer, default: 200)
+
+  attr(:render_closed, :boolean,
+    default: false,
+    doc:
+      "Render the panel content while closed so client-renderable content " <>
+        "(subtree derives over projections) fills optimistic opens instantly"
+  )
+
   slot(:inner_block, required: true)
   slot(:loading, doc: "Loading content shown during optimistic open")
 
@@ -175,7 +183,7 @@ defmodule Lavash.Overlay.Flyover.Helpers do
           data-active-if-open={to_string(@is_open)}
           class="row-start-1 col-start-1 h-full overflow-auto"
         >
-          <div :if={@is_open} id={"#{@id}-main_content_inner"}>
+          <div :if={@is_open or @render_closed} id={"#{@id}-main_content_inner"}>
             {render_slot(@inner_block)}
           </div>
         </div>

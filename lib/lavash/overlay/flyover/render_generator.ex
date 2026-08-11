@@ -82,6 +82,7 @@ defmodule Lavash.Overlay.Flyover.RenderGenerator do
 
     width = Transformer.get_persisted(dsl_state, :flyover_width) || :md
     height = Transformer.get_persisted(dsl_state, :flyover_height) || :md
+    render_closed = Transformer.get_persisted(dsl_state, :flyover_render_closed) || false
     async_assign = Transformer.get_persisted(dsl_state, :flyover_async_assign)
     helpers_path = @helpers_path
 
@@ -189,6 +190,7 @@ defmodule Lavash.Overlay.Flyover.RenderGenerator do
           |> Phoenix.Component.assign(:__flyover_close_on_backdrop__, unquote(close_on_backdrop))
           |> Phoenix.Component.assign(:__flyover_width__, unquote(width))
           |> Phoenix.Component.assign(:__flyover_height__, unquote(height))
+          |> Phoenix.Component.assign(:__flyover_render_closed__, unquote(render_closed))
           |> Phoenix.Component.assign(:__flyover_render__, render_fn)
           |> Phoenix.Component.assign(:__flyover_trigger__, trigger_fn)
           |> Phoenix.Component.assign(:__flyover_loading__, loading_fn || default_loading_fn)
@@ -231,6 +233,7 @@ defmodule Lavash.Overlay.Flyover.RenderGenerator do
             close_on_backdrop={@__flyover_close_on_backdrop__}
             width={@__flyover_width__}
             height={@__flyover_height__}
+            render_closed={@__flyover_render_closed__}
           >
             <:loading>
               {@__flyover_loading__.(assigns)}
