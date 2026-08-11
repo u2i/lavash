@@ -87,6 +87,7 @@ defmodule Lavash.Optimistic.ClientBindingsTransformer do
       {:expr, source, expr_meta} ->
         case parse_bind_pairs(source) do
           {:ok, pairs} ->
+            validate_bind_site!(attrs, pairs, expr_meta, metadata)
             warn_if_bind_targets_unknown(pairs, expr_meta, metadata)
 
             Enum.reduce(pairs, attrs, fn {child_field, parent_field}, acc ->
@@ -109,6 +110,51 @@ defmodule Lavash.Optimistic.ClientBindingsTransformer do
       _ ->
         attrs
     end
+  end
+
+  # Compile-time bind-site validation (issue #87): when the child
+  # module is a resolvable literal, check both sides of every bind pair
+  # against the declarations. Dynamic module=/bind= expressions fall
+  # through to the runtime check in Lavash.Component.Runtime.
+  defp validate_bind_site!(attrs, pairs, expr_meta, metadata) do
+    with child when is_atom(child) <- resolve_child_module(attrs, metadata),
+         true <- Code.ensure_loaded?(child) and function_exported?(child, :__lavash__, 1) do
+      result =
+        with :ok <- Lavash.Binding.Validation.validate_child_side(child, pairs) do
+          Lavash.Binding.Validation.validate_parent_side(child, pairs, metadata)
+        end
+
+      case result do
+        :ok ->
+          :ok
+
+        {:error, message} ->
+          raise Spark.Error.DslError,
+            module: metadata[:caller_module],
+            path: [:template, :bind],
+            message:
+              "#{metadata[:caller_file] || "template"}:#{expr_meta[:line] || "?"}: " <> message
+      end
+    else
+      _ -> :ok
+    end
+  end
+
+  defp resolve_child_module(attrs, metadata) do
+    with {:expr, source, _} <- AttrHelpers.get_attr_value(attrs, "module"),
+         {:ok, ast} <- Code.string_to_quoted(source),
+         env when not is_nil(env) <- metadata[:caller_env] do
+      case Macro.expand(ast, env) do
+        module when is_atom(module) -> module
+        _ -> nil
+      end
+    else
+      _ -> nil
+    end
+  rescue
+    # Alias expansion of arbitrary template expressions can fail in
+    # exotic ways — treat as unresolvable and defer to runtime.
+    _ -> nil
   end
 
   defp warn_if_bind_targets_unknown(pairs, expr_meta, metadata) do

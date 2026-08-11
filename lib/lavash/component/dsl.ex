@@ -95,10 +95,16 @@ defmodule Lavash.Component.Dsl do
   @state_schema CommonEntities.base_state_schema() ++
                   [
                     from: [
-                      type: {:one_of, [:socket, :ephemeral]},
+                      type: {:one_of, [:socket, :ephemeral, :bound]},
                       default: :ephemeral,
-                      doc:
-                        "Where to store: :socket (survives reconnects) or :ephemeral (socket only)"
+                      doc: """
+                      Where to store: :socket (survives reconnects), :ephemeral
+                      (socket only), or :bound (bindable by the parent via
+                      `bind={[field: :parent_field]}` — the parent field then owns
+                      source, persistence, and seeding; when rendered unbound the
+                      field falls back to ephemeral behavior with its own default).
+                      Only :bound fields may be bound.
+                      """
                     ]
                   ]
 

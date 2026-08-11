@@ -5,7 +5,7 @@ defmodule Lavash.Test.Magic.BindingChildComponent do
   """
   use Lavash.Component
 
-  state :n, :integer, from: :ephemeral, default: 0, optimistic: true
+  state :n, :integer, from: :bound, default: 0, optimistic: true
 
   actions do
     action :bump do
@@ -33,7 +33,9 @@ defmodule Lavash.Test.Magic.BindingMiddleComponent do
   use Lavash.Component
   import Lavash.LiveView.Helpers, only: [lavash_component: 1]
 
-  state :m, :integer, from: :ephemeral, default: 0, optimistic: true
+  # Mid-chain: bound BY the host (bind={[m: :root_count]}) AND the
+  # parent side of the grandchild's bind={[n: :m]}.
+  state :m, :integer, from: :bound, default: 0, optimistic: true
 
   template do
     ~H"""

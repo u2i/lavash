@@ -13,7 +13,7 @@ defmodule DemoWeb.Components.DoubleWrapper do
   import Lavash.LiveView.Helpers, only: [lavash_component: 1]
 
   # State that gets bound both upward (to parent) and downward (to CounterWrapper)
-  state :count, :integer, from: :ephemeral, default: 0, optimistic: true
+  state :count, :integer, from: :bound, default: 0, optimistic: true
 
   template do
     ~H"""

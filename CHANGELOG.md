@@ -6,6 +6,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **BREAKING: bindable component fields must be declared `from: :bound`**
+  (#87). A component's bindable surface is now explicit: only
+  `from: :bound` state fields may be targeted by
+  `bind={[child: :parent]}`. When bound, the parent field owns source,
+  persistence, and seeding; unbound, the field falls back to ephemeral
+  behavior with its own default. Binding a prop, an
+  `:ephemeral`/`:socket` field, or an unknown name raises — at compile
+  time when `module=`/`bind=` are literals (`Spark.Error.DslError`), at
+  first mount otherwise (`ArgumentError`). The parent side is also
+  validated at compile time: it must not be a calculation, concrete
+  types must agree, and binding an optimistic child field to a
+  non-client-visible parent field is an error. Overlay `open` fields
+  (modal/flyover DSL) and the bundled components (TagEditor, ChipSet,
+  ToggleChip, SyncedToggle) are already migrated — user components with
+  bindable fields need `from: :ephemeral` → `from: :bound`.
+
 ## [0.4.0-rc.5] — 2026-06-08
 
 Fixes the optimistic-template transpiler, which emitted invalid or

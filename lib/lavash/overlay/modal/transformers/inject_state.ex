@@ -57,10 +57,13 @@ defmodule Lavash.Overlay.Modal.Transformers.InjectState do
           [duration: 200, type: :modal]
         end
 
+      # from: :bound — the open field is the overlay's canonical
+      # bindable surface (bind={[open: :parent_field]}); unbound it
+      # falls back to ephemeral (self-managed open/close).
       state_field = %Lavash.State.Field{
         name: open_field,
         type: :any,
-        from: :ephemeral,
+        from: :bound,
         default: nil,
         animated: animated_opts
       }

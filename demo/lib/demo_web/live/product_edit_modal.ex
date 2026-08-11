@@ -18,7 +18,7 @@ defmodule DemoWeb.ProductEditModal do
 
   Parent owns the product_id state and opens via setter action:
 
-      state :product_id, :any, from: :ephemeral, default: nil, setter: true
+      state :product_id, :any, from: :bound, default: nil, setter: true
       # Auto-generates set_product_id action
       # Button: phx-click="set_product_id" phx-value-value={product.id}
   """
