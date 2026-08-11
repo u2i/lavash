@@ -137,6 +137,22 @@ export function initAnimatedFields(hook) {
         sv.set(openValue, (p, cb) => {
           hook.pushEventTo(chromeEl, setterAction, { ...p, value: openValue }, cb);
         });
+        // Propagate to the bound parent field — symmetric with the
+        // close handler. Without this the parent's var never learns
+        // about client opens, so a later close-propagation finds the
+        // parent already at null and setOptimistic no-ops (deepEqual
+        // early return) — leaving the parent var WITHOUT pending
+        // protection. Delayed server echoes of earlier open/close
+        // cycles then get accepted as fresh and hydrate a stale null
+        // back down, closing a just-opened overlay (the rapid
+        // open/close/open bounce).
+        //
+        // serverHandled: the component's own set_open event updates the
+        // parent server-side through the binding chain — the parent must
+        // only mirror client-side (pending protection), not push a
+        // duplicate set_<field> whose extra echo would arrive after
+        // confirmation and be accepted stale.
+        hook.propagateBoundFieldsToParent([field], { serverHandled: true });
       };
 
       // Canonical close path (issue #26): every close affordance dispatches
@@ -148,7 +164,8 @@ export function initAnimatedFields(hook) {
         sv.set(null, (p, cb) => {
           hook.pushEventTo(chromeEl, "close", { ...p }, cb);
         });
-        hook.propagateBoundFieldsToParent([field]);
+        // serverHandled — see openHandler.
+        hook.propagateBoundFieldsToParent([field], { serverHandled: true });
       };
 
       chromeEl.addEventListener("open-panel", openHandler);
