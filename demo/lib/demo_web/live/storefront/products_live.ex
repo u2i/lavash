@@ -78,15 +78,23 @@ defmodule DemoWeb.Storefront.ProductsLive do
     end
 
     # Add to cart: opens the flyover optimistically and invokes the
-    # flyover's :add_item — client-side the invoke's optimistic half
-    # bumps the projected badge instantly; server-side the append runs
-    # the deduping CartItem.:add and broadcasts.
-    action :add_to_cart, [:product_id] do
+    # flyover's :add_item. The product's display fields ride along
+    # (from phx-value-* on the card button) so the flyover's append
+    # can predict a COMPLETE provisional row — badge, row, and totals
+    # all tick before the server replies. Server-side the append runs
+    # the deduping CartItem.:add (which snapshots the real price).
+    action :add_to_cart, [:product_id, :name, :origin, :unit_price] do
       set :cart_open, true
 
       invoke "cart-flyover", :add_item,
         module: DemoWeb.CartFlyover,
-        params: [product_id: {:param, :product_id}, qty: 1]
+        params: [
+          product_id: {:param, :product_id},
+          qty: 1,
+          name: {:param, :name},
+          origin: {:param, :origin},
+          unit_price: {:param, :unit_price}
+        ]
     end
   end
 
@@ -292,6 +300,9 @@ defmodule DemoWeb.Storefront.ProductsLive do
                     class="btn btn-sm btn-primary"
                     phx-click="add_to_cart"
                     phx-value-product_id={product.id}
+                    phx-value-name={product.name}
+                    phx-value-origin={product.origin}
+                    phx-value-unit_price={Decimal.to_string(product.price)}
                   >
                     Add to Cart
                   </button>

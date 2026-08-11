@@ -49,6 +49,7 @@ defmodule Lavash.Overlay.Flyover.Transformers.GenerateRender do
       close_on_backdrop = Transformer.get_option(dsl_state, [:flyover], :close_on_backdrop)
       width = Transformer.get_option(dsl_state, [:flyover], :width)
       height = Transformer.get_option(dsl_state, [:flyover], :height)
+      render_closed = Transformer.get_option(dsl_state, [:flyover], :render_closed)
       async_assign = Transformer.get_option(dsl_state, [:flyover], :async_assign)
 
       # Store the render config for the compiler to use
@@ -63,6 +64,7 @@ defmodule Lavash.Overlay.Flyover.Transformers.GenerateRender do
         |> Transformer.persist(:flyover_close_on_backdrop, close_on_backdrop)
         |> Transformer.persist(:flyover_width, width)
         |> Transformer.persist(:flyover_height, height)
+        |> Transformer.persist(:flyover_render_closed, render_closed)
         |> Transformer.persist(:flyover_async_assign, async_assign)
         # Register the render generator for the component compiler
         |> Transformer.persist(

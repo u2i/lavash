@@ -85,6 +85,18 @@ defmodule Lavash.Overlay.Flyover.Dsl do
           "The async assign to wrap with async_result. Inside the template, " <>
             "the assign's own name holds the unwrapped data (e.g. `async_assign " <>
             ":edit_form` makes `@edit_form` the resolved value)."
+      ],
+      render_closed: [
+        type: :boolean,
+        default: false,
+        doc: """
+        Render the panel content even while the overlay is closed. Off by
+        default (closed overlays render nothing — the render optimization).
+        Turn on when the content is client-renderable (subtree derives over
+        optimistic/projected state): the anchors then exist in the DOM, so
+        an optimistic open shows COMPLETE content instantly instead of an
+        empty panel until the server round-trip.
+        """
       ]
     ]
   }
