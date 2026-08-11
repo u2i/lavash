@@ -78,8 +78,14 @@ defmodule Lavash.ClientState do
 
   Broadcasts each touched resource once via `Lavash.PubSub` so
   other sessions' reads invalidate.
+
+  `append_ids` maps `"Module:action:field"` keys to client-generated
+  UUIDs (see `Lavash.Action.Runtime.parse_append_ids/1`). When an
+  append op finds its key, the record is created under that id, so
+  the client's provisional row and the persisted record share
+  identity — no temp-id churn when the re-read lands.
   """
-  def apply_mutations(socket, action, params, module) do
+  def apply_mutations(socket, action, params, module, append_ids \\ %{}) do
     ops =
       Enum.map(Map.get(action, :mutates) || [], &{:mutate, &1}) ++
         Enum.map(Map.get(action, :removes) || [], &{:remove, &1}) ++
@@ -109,7 +115,16 @@ defmodule Lavash.ClientState do
       touched =
         Enum.map(ops, fn {kind, op} ->
           proj = Map.fetch!(projections_by_field, op.field)
-          apply_mutation(kind, op, proj, state, params, module)
+
+          case kind do
+            :append ->
+              id = Map.get(append_ids, append_id_key(module, action.name, op.field))
+              apply_append(op, proj, state, module, id)
+
+            _ ->
+              apply_mutation(kind, op, proj, state, params, module)
+          end
+
           proj.resource
         end)
 
@@ -142,14 +157,32 @@ defmodule Lavash.ClientState do
     end
   end
 
-  defp apply_mutation(:append, op, proj, state, _params, module) do
+  defp apply_append(op, proj, state, module, id) do
     attrs = eval_rx(module, op.transform, state)
     accepted = accepted_attrs(proj.resource, op.action)
     attrs = if accepted, do: Map.take(attrs, accepted), else: attrs
 
     proj.resource
     |> Ash.Changeset.for_create(op.action, attrs)
+    |> force_append_id(id)
     |> Ash.create!()
+  end
+
+  # The id came over the wire — only honor well-formed UUIDs, and
+  # force_change so a non-accepted/non-writable pk still takes it.
+  defp force_append_id(changeset, id) when is_binary(id) do
+    case Ecto.UUID.cast(id) do
+      {:ok, uuid} -> Ash.Changeset.force_change_attribute(changeset, :id, uuid)
+      :error -> changeset
+    end
+  end
+
+  defp force_append_id(changeset, _id), do: changeset
+
+  # Must mirror the key the generated JS stashes ids under
+  # (`ExtractColocatedJs.append_id_key/3`).
+  defp append_id_key(module, action_name, field) do
+    "#{inspect(module)}:#{action_name}:#{field}"
   end
 
   defp fetch_record!(proj, params) do

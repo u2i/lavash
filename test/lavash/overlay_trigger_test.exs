@@ -54,6 +54,22 @@ defmodule Lavash.OverlayTriggerTest do
     assert item.quantity == 2
   end
 
+  test "invoke forwards client append ids to the target's append", %{conn: conn} do
+    cart = "cart-#{System.unique_integer([:positive])}"
+    client_id = Ash.UUID.generate()
+    {:ok, view, _html} = live(conn, "/magic/trigger-flyover?cart_id=#{cart}")
+
+    # The click lands on the HOST; the append runs in the flyover via
+    # invoke. The id key is the flyover's — handleClick minted it from
+    # the compile-time invoke-target metadata.
+    ids = Jason.encode!(%{"Lavash.Test.Magic.TriggerFlyover:add_item:badge_items" => client_id})
+    view |> element("#add-remote") |> render_click(%{"_lavash_ids" => ids})
+
+    # send_update cycle → assert after a follow-up render.
+    assert render(view) =~ ~s(data-lavash-display="badge_count">2</span>)
+    assert Ash.get!(Lavash.Test.Magic.ClientCart.Item, client_id).name == "Widget"
+  end
+
   test "modules without template_trigger render no trigger button", %{conn: conn} do
     {:ok, _view, html} = live(conn, "/magic/modal-host")
     refute html =~ "data-lavash-overlay-trigger"

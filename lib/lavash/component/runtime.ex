@@ -548,6 +548,7 @@ defmodule Lavash.Component.Runtime do
 
   defp execute_action(socket, module, action, event_params) do
     params = ActionRuntime.build_params(action.params, event_params)
+    append_ids = ActionRuntime.parse_append_ids(event_params)
 
     if ActionRuntime.guards_pass?(socket, module, action.when) do
       socket
@@ -556,7 +557,7 @@ defmodule Lavash.Component.Runtime do
       |> ActionRuntime.apply_pre_runs(action.name, action.pre_runs || [], params, module)
       # mutate/remove/append: Ash writes + broadcast, then the backing
       # reads re-read post-write in this cascade
-      |> ActionRuntime.apply_client_state_mutations(action, params, module)
+      |> ActionRuntime.apply_client_state_mutations(action, params, module, append_ids)
       # Cascade settles all calcs once
       |> Reactive.recompute()
       # Post-cascade: socket-level ops + side effects
