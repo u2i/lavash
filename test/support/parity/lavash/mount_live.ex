@@ -25,7 +25,7 @@ defmodule Lavash.Parity.Lavash.MountLive do
   calculate :greeting, rx("Hello, " <> @handle)
   # Boolean projection of :connected_at for parity with vanilla's
   # `to_string(not is_nil(@connected_at))` render.
-  calculate :connected, rx(not is_nil(@connected_at))
+  calculate :connected, rx(not is_nil(@connected_at)), optimistic: false
 
   # Populated by the `mount do when_connected ... end` block below.
   # No `from:` — `:connected_at` is a regular ephemeral state field
@@ -46,10 +46,13 @@ defmodule Lavash.Parity.Lavash.MountLive do
     end
 
     action :notify do
-      # Lavash's `set` evaluates the rx against current state; a
-      # length-based item works fine here.
-      set :notifications,
-          rx(["hello-" <> Integer.to_string(length(@notifications)) | @notifications])
+      # Cons + string interpolation isn't transpilable, and this parity
+      # fixture is about mount/session semantics, not optimism — use
+      # the server-only function form (issue #46 makes untranspilable
+      # rx in an optimistic action a compile error).
+      set :notifications, fn %{state: state} ->
+        ["hello-#{length(state.notifications)}" | state.notifications]
+      end
     end
   end
 

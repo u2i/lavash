@@ -29,5 +29,16 @@ defmodule Lavash.Component.Calculate do
       # With resource invalidation
       calculate :product_count, rx(length(@products)), reads: [Product]
   """
-  defstruct [:name, :rx, optimistic: true, async: false, reads: [], __spark_metadata__: nil]
+  defstruct [
+    :name,
+    :rx,
+    optimistic: true,
+    async: false,
+    reads: [],
+    # Set on lavash-injected calcs (e.g. `{field}_async_ready`) that are
+    # deliberately tolerant of deps missing client-side — exempts them
+    # from the optimistic dep-gap compile check (issue #46).
+    injected: false,
+    __spark_metadata__: nil
+  ]
 end

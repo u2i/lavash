@@ -20,7 +20,8 @@ defmodule Lavash.Parity.Lavash.HandleParamsLive do
   state :page, :integer, from: :url, default: 1, optimistic: true
   state :hits, :integer, default: 0, optimistic: true
 
-  calculate :title, rx("Tab: " <> @tab <> " (page " <> Integer.to_string(@page) <> ")")
+  calculate :title, rx("Tab: " <> @tab <> " (page " <> Integer.to_string(@page) <> ")"),
+    optimistic: false
 
   actions do
     # In lavash, mutating a `from: :url` state automatically syncs

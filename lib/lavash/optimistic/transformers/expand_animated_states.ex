@@ -147,7 +147,10 @@ defmodule Lavash.Optimistic.Transformers.ExpandAnimatedStates do
       calculation = %Lavash.Component.Calculate{
         name: calc_name,
         rx: rx,
-        optimistic: true
+        optimistic: true,
+        # Tolerates the async dep being absent client-side — the phase
+        # half of the expression is the client signal (issue #46).
+        injected: true
       }
 
       Transformer.add_entity(dsl_state, [:calculations], calculation)
@@ -226,7 +229,10 @@ defmodule Lavash.Optimistic.Transformers.ExpandAnimatedStates do
       calculation = %Lavash.Component.Calculate{
         name: calc_name,
         rx: rx,
-        optimistic: true
+        optimistic: true,
+        # Tolerates the async dep being absent client-side — the phase
+        # half of the expression is the client signal (issue #46).
+        injected: true
       }
 
       Transformer.add_entity(dsl_state, [:calculations], calculation)

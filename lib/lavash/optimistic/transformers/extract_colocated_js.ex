@@ -185,6 +185,8 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
       end)
       |> Map.new()
 
+    check_optimistic_calc_deps!(dsl_state, module, calculations, animated_fields)
+
     if calculations == [] and forms == [] and animated_fields == [] and optimistic_actions == [] and
          attr_derives == [] and subtree_derives == [] do
       nil
@@ -246,7 +248,7 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
 
     action_fns =
       optimistic_actions
-      |> Enum.map(&generate_action_js(&1, projection_keys))
+      |> Enum.map(&generate_action_js(&1, projection_keys, module))
       |> Enum.filter(& &1)
 
     {form_validation_fns, form_error_fns, validation_derives, error_derives} =
@@ -363,20 +365,23 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
   # Generate JS for an action
   # Non-transpilable sets (lambdas, complex expressions) are skipped —
   # the transpilable ones still run client-side for instant UI updates
-  defp generate_action_js(action, projection_keys) do
+  defp generate_action_js(action, projection_keys, module) do
     name = action.name
     sets = action.sets || []
     params = action.params || []
 
     # Generate JS expressions, filtering out non-transpilable ones
-    set_exprs = sets |> Enum.map(&generate_set_js(&1, params)) |> Enum.filter(& &1)
+    set_exprs = sets |> Enum.map(&generate_set_js(&1, params, module)) |> Enum.filter(& &1)
 
     projection_ops =
-      Enum.map(Map.get(action, :mutates) || [], &generate_mutate_js(&1, params, projection_keys)) ++
+      Enum.map(
+        Map.get(action, :mutates) || [],
+        &generate_mutate_js(&1, params, projection_keys, module)
+      ) ++
         Enum.map(Map.get(action, :removes) || [], &generate_remove_js(&1, projection_keys)) ++
         Enum.map(
           Map.get(action, :appends) || [],
-          &generate_append_js(&1, params, projection_keys)
+          &generate_append_js(&1, params, projection_keys, module)
         )
 
     projection_stmts = Enum.filter(projection_ops, & &1)
@@ -423,11 +428,11 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
   # refs become `state.item` accesses — we evaluate the expression with
   # a shadowed state that has the row injected, so both @item and
   # ordinary state refs resolve.
-  defp generate_mutate_js(mutate, params, projection_keys) do
+  defp generate_mutate_js(mutate, params, projection_keys, module) do
     field = mutate.field
     key = projection_key_js(projection_keys, field)
     state_field = Lavash.Optimistic.Transpiler.js_field_access("state", field)
-    transform_js = transpile_projection_rx(mutate.transform, params, "mutate :#{field}")
+    transform_js = transpile_projection_rx(mutate.transform, params, "mutate :#{field}", module)
 
     if transform_js do
       """
@@ -454,11 +459,11 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
   # The provisional row gets a temp key; runOptimisticAction applies
   # provisional deltas via seed() (non-pending), so the same event's
   # re-read — carrying the real record — is accepted, not rejected.
-  defp generate_append_js(append, params, projection_keys) do
+  defp generate_append_js(append, params, projection_keys, module) do
     field = append.field
     key_name = Map.get(projection_keys, field, :id)
     state_field = Lavash.Optimistic.Transpiler.js_field_access("state", field)
-    transform_js = transpile_projection_rx(append.transform, params, "append :#{field}")
+    transform_js = transpile_projection_rx(append.transform, params, "append :#{field}", module)
 
     if transform_js do
       """
@@ -476,7 +481,7 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
     Lavash.Optimistic.Transpiler.js_field_access("item", to_string(key_name))
   end
 
-  defp transpile_projection_rx(%Lavash.Rx{source: source}, params, label) do
+  defp transpile_projection_rx(%Lavash.Rx{source: source}, params, label, module) do
     js_expr = Lavash.Optimistic.Transpiler.to_js(source)
 
     js_expr =
@@ -490,10 +495,14 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
       end
 
     if Lavash.Optimistic.Transpiler.untranspilable_output?(js_expr) do
-      Logger.warning(
-        "[lavash] #{label} uses rx(#{source}) which is not transpilable; the " <>
-          "prediction is skipped client-side and the list only updates after " <>
-          "the server round-trip."
+      # mutate/append transforms have no optimistic:false escape — the
+      # prediction IS the op's client half, so an untranspilable rx is
+      # a broken contract (issue #46).
+      Lavash.Optimistic.Strictness.violation!(
+        module,
+        [:actions],
+        "#{label} uses rx(#{source}) which is not transpilable; rewrite the " <>
+          "transform with transpilable constructs."
       )
 
       nil
@@ -503,7 +512,7 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
   end
 
   # Generate JS for a set operation
-  defp generate_set_js(set, action_params) do
+  defp generate_set_js(set, action_params, module) do
     field = set.field
     key = Lavash.Optimistic.Transpiler.js_field_key(field)
 
@@ -533,12 +542,15 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
 
         if Lavash.Optimistic.Transpiler.untranspilable_output?(js_expr) do
           # Shipping this would apply `undefined` to the field on every
-          # optimistic run of the action (issue #43). Skip the set —
-          # the server still applies it — and say so.
-          Logger.warning(
-            "[lavash] set :#{field} in an optimistic action uses rx(#{source}) which is " <>
-              "not transpilable; the set is skipped client-side and only applies after " <>
-              "the server round-trip."
+          # optimistic run of the action (issue #43). Issue #46: fail
+          # the build (or demote under the :warn escape hatch — the
+          # server still applies the set).
+          Lavash.Optimistic.Strictness.violation!(
+            module,
+            [:actions],
+            "set :#{field} in an optimistic action uses rx(#{source}) which is not " <>
+              "transpilable. Either rewrite it with transpilable constructs, or use " <>
+              "the server-only function form (`set :#{field}, fn ctx -> ... end`)."
           )
 
           nil
@@ -575,6 +587,92 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
   # untranspilable marker are demoted (dropped from the client bundle)
   # with a warning. Returns {kept_calculations, generated_fns} so the
   # caller builds derive names and the graph from the SAME kept set.
+  # Issue #46 (the #41/#45 bug class): an optimistic calc whose deps
+  # never exist in client state transpiles fine but throws (or computes
+  # garbage) on every client recompute. The client-visible set is
+  # statically known — optimistic state, client_state projections,
+  # other optimistic calcs, form-derived fields, animated open/phase
+  # fields, and (for components) props, which hydrate via bindings.
+  defp check_optimistic_calc_deps!(dsl_state, module, calculations, animated_fields) do
+    states = Transformer.get_entities(dsl_state, [:states]) || []
+    actions = Transformer.get_entities(dsl_state, [:actions]) || []
+    reads = Transformer.get_entities(dsl_state, [:reads]) || []
+    forms = Transformer.get_entities(dsl_state, [:forms]) || []
+    props = Transformer.get_entities(dsl_state, [:props]) || []
+
+    explicit_optimistic =
+      states
+      |> Enum.filter(fn
+        %Lavash.State.Field{} = f -> Lavash.State.Field.optimistic?(f)
+        _ -> false
+      end)
+      |> Enum.map(& &1.name)
+
+    action_touched =
+      actions
+      |> Enum.filter(&ActionJs.action_is_optimistic?/1)
+      |> Enum.flat_map(fn action ->
+        Enum.map(action.sets || [], & &1.field) ++ Lavash.ClientState.mutated_fields(action)
+      end)
+
+    projection_names =
+      Enum.flat_map(reads, fn read -> Enum.map(read.client_states || [], & &1.name) end)
+
+    form_names = Enum.flat_map(forms, &Lavash.Transformers.ValidateDsl.form_field_names/1)
+
+    animated_names =
+      Enum.flat_map(animated_fields, fn config ->
+        [config[:field], config[:phase_field]]
+      end)
+
+    visible =
+      MapSet.new(
+        explicit_optimistic ++
+          action_touched ++
+          projection_names ++
+          Enum.map(calculations, & &1.name) ++
+          form_names ++
+          animated_names ++
+          Enum.map(props, & &1.name)
+      )
+
+    Enum.each(calculations, fn calc ->
+      deps =
+        if Map.get(calc, :injected, false) do
+          # Lavash-injected calcs (async_ready) deliberately tolerate
+          # deps missing client-side.
+          []
+        else
+          calc.rx.deps || []
+        end
+
+      deps =
+        deps
+        |> Enum.map(fn
+          {:path, root, _} -> root
+          atom when is_atom(atom) -> atom
+        end)
+
+      case Enum.reject(deps, &MapSet.member?(visible, &1)) do
+        [] ->
+          :ok
+
+        gaps ->
+          gap_list = Enum.map_join(gaps, ", ", &inspect/1)
+
+          Lavash.Optimistic.Strictness.violation!(
+            module,
+            [:calculations, calc.name],
+            "calculate :#{calc.name} is optimistic but depends on #{gap_list}, which " <>
+              "#{if length(gaps) == 1, do: "is", else: "are"} not client state — a " <>
+              "client-side recompute can only fail. Mark the calc `optimistic: false`, " <>
+              "or depend on optimistic fields (state marked optimistic, client_state " <>
+              "projections, other optimistic calcs)."
+          )
+      end
+    end)
+  end
+
   defp split_transpilable_calculations(calculations, defrx_map, module) do
     {kept, fns} =
       Enum.reduce(calculations, {[], []}, fn calc, {kept, fns} ->
@@ -583,11 +681,15 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
             {[calc | kept], [js | fns]}
 
           {:untranspilable, _js} ->
-            Logger.warning(
-              "[lavash] #{inspect(module)}: calculate :#{calc.name} is marked optimistic " <>
-                "but rx(#{calc.rx.source}) is not transpilable; demoting to server-only. " <>
-                "The value still updates via server patches. Mark it `optimistic: false` " <>
-                "to silence this warning."
+            # Issue #46: a declared-optimistic calc that can't run
+            # client-side fails the build (Strictness may demote
+            # instead under the :warn escape hatch).
+            Lavash.Optimistic.Strictness.violation!(
+              module,
+              [:calculations, calc.name],
+              "calculate :#{calc.name} is marked optimistic but rx(#{calc.rx.source}) " <>
+                "is not transpilable. Either rewrite it with transpilable constructs, " <>
+                "or declare it `optimistic: false` (the value then updates via server patches)."
             )
 
             {kept, fns}

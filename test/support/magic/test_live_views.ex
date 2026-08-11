@@ -5,7 +5,7 @@ defmodule Lavash.Test.Magic.CounterLive do
   use Lavash.LiveView
 
   state :count, :integer, from: :url, default: 0
-  state :multiplier, :integer, from: :ephemeral, default: 2
+  state :multiplier, :integer, from: :ephemeral, default: 2, optimistic: true
 
   calculate :doubled, rx(@count * @multiplier)
 
@@ -118,8 +118,8 @@ defmodule Lavash.Test.Magic.AsyncChainLive do
 
   state :count, :integer, from: :url, default: 1
 
-  calculate :doubled, rx(slow_double(@count)), async: true
-  calculate :quadrupled, rx(@doubled * 2)
+  calculate :doubled, rx(slow_double(@count)), async: true, optimistic: false
+  calculate :quadrupled, rx(@doubled * 2), optimistic: false
 
   def slow_double(c) do
     Process.sleep(50)

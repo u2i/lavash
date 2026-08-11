@@ -112,7 +112,7 @@ defmodule Lavash.Transformers.ValidateDslTest do
         compile!(
           Lavash.Validate.GoodReads,
           """
-          state :n, :integer, default: 0
+          state :n, :integer, default: 0, optimistic: true
           calculate :doubled, rx(@n * 2)
           actions do
             action :submit, [:value] do
