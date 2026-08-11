@@ -14,7 +14,7 @@ defmodule Lavash.Components.SyncedToggle do
   """
   use Lavash.Component
 
-  state :value, :boolean, from: :ephemeral, default: false
+  state :value, :boolean, from: :bound, default: false
 
   prop :label, :string, default: ""
   prop :on_label, :string, default: "On"

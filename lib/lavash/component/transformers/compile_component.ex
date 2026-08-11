@@ -236,8 +236,18 @@ defmodule Lavash.Component.Transformers.CompileComponent do
         __lavash__(:states) |> Enum.filter(&(&1.from == :socket))
       end
 
+      # :bound fields hydrate exactly like ephemeral fields — the
+      # unbound fallback IS the ephemeral path (assign present → parent
+      # value, else keep state, else default); when bound,
+      # resolve_bindings takes over after hydration.
       def __lavash__(:ephemeral_fields) do
-        __lavash__(:states) |> Enum.filter(&(&1.from == :ephemeral))
+        __lavash__(:states) |> Enum.filter(&(&1.from in [:ephemeral, :bound]))
+      end
+
+      # The component's bindable surface: the only fields a parent may
+      # target with `bind={[field: :parent_field]}`.
+      def __lavash__(:bound_fields) do
+        __lavash__(:states) |> Enum.filter(&(&1.from == :bound))
       end
 
       def __lavash__(:optimistic_fields) do
@@ -434,6 +444,12 @@ defmodule Lavash.Component.Transformers.CompileComponent do
       attr_derives: attr_derives,
       caller_module: env.module,
       caller_file: env.file,
+      # The compile env, for alias-resolving literal module={...} attrs
+      # at bind-validation sites.
+      caller_env: env,
+      # ALL calculation names (the :calculations key is optimistic-only)
+      # — bind sites need to reject calcs as the parent side regardless.
+      calculation_names: MapSet.new(calculations, & &1.name),
       # Layer hint for the token transformer: `:base` suppresses
       # "you declared :foo but didn't mark it optimistic" warnings
       # since in Base mode that's the contract, not a typo.

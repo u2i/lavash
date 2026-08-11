@@ -21,7 +21,7 @@ defmodule Lavash.ToggleChip do
   """
   use Lavash.Component
 
-  state :active, :boolean, from: :ephemeral, default: false
+  state :active, :boolean, from: :bound, default: false
 
   prop :label, :string, default: "Toggle"
 

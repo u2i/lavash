@@ -433,6 +433,10 @@ defmodule Lavash.LiveView.Transformers.CompileLiveView do
         __lavash__(:states) |> Enum.filter(&(is_nil(&1.from) || &1.from == :ephemeral))
       end
 
+      # LiveViews are roots — they have no parent to bind to, so their
+      # bindable surface is always empty (parity with components).
+      def __lavash__(:bound_fields), do: []
+
       def __lavash__(:optimistic_fields) do
         Lavash.LiveView.Compiler.collect_optimistic_fields(__MODULE__)
       end

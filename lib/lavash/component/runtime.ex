@@ -68,6 +68,7 @@ defmodule Lavash.Component.Runtime do
     socket =
       if first_mount?(socket) do
         register_with_parent(module, assigns)
+        validate_bindings!(module, assigns)
 
         socket
         |> init_lavash_state(module, assigns)
@@ -154,6 +155,23 @@ defmodule Lavash.Component.Runtime do
     end
 
     {:ok, socket}
+  end
+
+  # Runtime half of bind-site validation (issue #87): the compile-time
+  # check in ClientBindingsTransformer only fires when module= and
+  # bind= are literals — this catches dynamic call sites. Child side
+  # only: the parent's declarations aren't reachable from here.
+  defp validate_bindings!(module, assigns) do
+    case Map.get(assigns, :bind) do
+      bindings when is_list(bindings) ->
+        case Lavash.Binding.Validation.validate_child_side(module, bindings) do
+          :ok -> :ok
+          {:error, message} -> raise ArgumentError, message
+        end
+
+      _ ->
+        :ok
+    end
   end
 
   # Resolve bindings from the bind prop - sets up binding map and parent CID

@@ -6,6 +6,10 @@ defmodule Lavash.State.Field do
   - `:url` - bidirectionally synced with the URL (query params or path)
   - `:socket` - survives reconnects via JS client sync
   - `:ephemeral` - socket-only, lost on disconnect (default)
+  - `:bound` - (components only) bindable by the parent via
+    `bind={[field: :parent_field]}`; the parent field owns source,
+    persistence, and seeding. Unbound, it behaves like `:ephemeral`
+    with its own default. Only `:bound` fields may be bound.
 
   ## Example
 
