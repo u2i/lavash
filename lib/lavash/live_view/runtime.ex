@@ -652,6 +652,13 @@ defmodule Lavash.LiveView.Runtime do
     # Build params map from event
     params = ActionRuntime.build_params(action.params, event_params)
 
+    # Client-generated append ids ride the payload out-of-band
+    # (phx-value-_lavash_ids, a JSON map of stash-key => uuid) so the
+    # server creates records under the ids the client already
+    # predicted with. Forwarded to this action's own projection
+    # mutations and through invokes.
+    append_ids = ActionRuntime.parse_append_ids(event_params)
+
     # Check guards
     if ActionRuntime.guards_pass?(socket, module, action.when) do
       socket =
@@ -661,13 +668,13 @@ defmodule Lavash.LiveView.Runtime do
         |> ActionRuntime.apply_pre_runs(action.name, action.pre_runs || [], params, module)
         # mutate/remove/append: Ash writes + broadcast, then the backing
         # reads re-read post-write in this cascade
-        |> ActionRuntime.apply_client_state_mutations(action, params, module)
+        |> ActionRuntime.apply_client_state_mutations(action, params, module, append_ids)
         # Cascade settles all calcs once
         |> Reactive.recompute()
         # Post-cascade: socket-level ops + side effects (see settled state)
         |> ActionRuntime.apply_runs(action.name, action.runs || [], params, module)
         |> ActionRuntime.apply_effects(action.effects || [], params)
-        |> apply_invokes(action.invokes || [], params)
+        |> apply_invokes(action.invokes || [], params, append_ids)
 
       # Handle submits. Validation failures come back as {:error, form_with_errors}
       # from Lavash.Form.submit and are routed to on_error inside apply_submits.
@@ -680,7 +687,7 @@ defmodule Lavash.LiveView.Runtime do
     end
   end
 
-  defp apply_invokes(socket, invokes, params) do
+  defp apply_invokes(socket, invokes, params, append_ids) do
     state = LSocket.state(socket)
 
     Enum.each(invokes, fn invoke ->
@@ -696,6 +703,15 @@ defmodule Lavash.LiveView.Runtime do
 
           Map.put(acc, to_string(key), resolved)
         end)
+
+      # Forward client-generated append ids so the target's append
+      # creates records under the ids the client predicted with.
+      invoke_params =
+        if append_ids == %{} do
+          invoke_params
+        else
+          Map.put(invoke_params, "_lavash_ids", append_ids)
+        end
 
       component_id = to_string(invoke.target)
       component_module = invoke.module

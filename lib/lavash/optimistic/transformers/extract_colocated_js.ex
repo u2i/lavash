@@ -309,13 +309,40 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
       animated_str = Jason.encode!(animated_metadata)
 
       # Actions with appends apply their delta provisionally (seed, not
-      # setOptimistic): the provisional row carries a temp key, so the
-      # same event's re-read — with the real record — must be accepted,
-      # not rejected as a mismatched prediction.
+      # setOptimistic): the predicted list still can't confirm by
+      # deep-equality (server-derived fields), so the same event's
+      # re-read must be accepted, not rejected as a mismatch.
       provisional_str =
         optimistic_actions
         |> Enum.filter(&((Map.get(&1, :appends) || []) != []))
         |> Enum.map(&to_string(&1.name))
+        |> Jason.encode!()
+
+      # Per-action append id specs: which stash keys handleClick must
+      # pre-generate UUIDs for BEFORE the event is pushed (the id rides
+      # the payload so client prediction and server create share it).
+      # Includes appends reached through this action's invokes — the
+      # target module is compile-time known; ensure_compiled does the
+      # parallel-compiler wait (components never depend back on their
+      # hosts, so no cycle).
+      append_ids_str =
+        optimistic_actions
+        |> Enum.map(fn action ->
+          own =
+            Enum.map(Map.get(action, :appends) || [], fn ap ->
+              append_id_key(module, action.name, ap.field)
+            end)
+
+          invoked =
+            Enum.flat_map(Map.get(action, :invokes) || [], fn inv ->
+              invoked_append_fields(inv.module, inv.action)
+              |> Enum.map(fn field -> append_id_key(inv.module, inv.action, field) end)
+            end)
+
+          {to_string(action.name), own ++ invoked}
+        end)
+        |> Enum.reject(fn {_, keys} -> keys == [] end)
+        |> Map.new()
         |> Jason.encode!()
 
       # Flatten deps map: %{"name" => %{deps: [...]}} -> %{"name" => [...]}
@@ -339,7 +366,8 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
       __derives__: #{derives_str},
       __graph__: #{graph_json},
       __animated__: #{animated_str},
-      __provisional__: #{provisional_str}
+      __provisional__: #{provisional_str},
+      __append_ids__: #{append_ids_str}
       };
       window.Lavash = window.Lavash || {};
       window.Lavash.optimistic = window.Lavash.optimistic || {};
@@ -381,7 +409,7 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
         Enum.map(Map.get(action, :removes) || [], &generate_remove_js(&1, projection_keys)) ++
         Enum.map(
           Map.get(action, :appends) || [],
-          &generate_append_js(&1, params, projection_keys, module)
+          &generate_append_js(&1, action.name, params, projection_keys, module)
         )
 
     projection_stmts = Enum.filter(projection_ops, & &1)
@@ -476,21 +504,56 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
   # The provisional row gets a temp key; runOptimisticAction applies
   # provisional deltas via seed() (non-pending), so the same event's
   # re-read — carrying the real record — is accepted, not rejected.
-  defp generate_append_js(append, params, projection_keys, module) do
+  defp generate_append_js(append, action_name, params, projection_keys, module) do
     field = append.field
     key_name = Map.get(projection_keys, field, :id)
     state_field = Lavash.Optimistic.Transpiler.js_field_access("state", field)
     transform_js = transpile_projection_rx(append.transform, params, "append :#{field}", module)
 
     if transform_js do
+      # The row's identity is CLIENT-generated (crypto.randomUUID) and
+      # shared with the server through the event payload, so the
+      # predicted row keeps its id when the re-read replaces it — no
+      # temp-key churn, and follow-up mutations on a just-added row
+      # address the real record immediately. handleClick pre-stashes
+      # the id (takeAppendId) so prediction and server use the same
+      # one; the fallback UUID covers programmatic invocations whose
+      # payload didn't carry ids (the re-read then swaps the id — the
+      # pre-client-id behavior).
+      stash_key = Jason.encode!(append_id_key(module, action_name, append.field))
+
       """
           #{state_field} = [ ...(#{state_field} || []),
-            { #{Lavash.Optimistic.Transpiler.js_field_key(key_name)}: "__lavash_tmp_" + Date.now() + "_" + Math.floor(Math.random() * 1e6),
+            { #{Lavash.Optimistic.Transpiler.js_field_key(key_name)}: (window.Lavash.takeAppendId(#{stash_key}) ?? crypto.randomUUID()),
               ...(#{transform_js}) } ];
       """
     else
       nil
     end
+  end
+
+  # Shared stash-key shape for a specific append op — the same key is
+  # computed by handleClick (from __append_ids__ metadata), by the
+  # generated prediction (above), and by the server when reading the
+  # forwarded id out of the event payload.
+  defp append_id_key(module, action_name, field) do
+    "#{inspect(module)}:#{action_name}:#{field}"
+  end
+
+  # Append fields of an invoked action on another module — compile-time
+  # cross-module introspection, tolerant of the target not being a
+  # lavash module (or not compiled) by returning [].
+  defp invoked_append_fields(target_module, action_name) do
+    with {:module, _} <- Code.ensure_compiled(target_module),
+         true <- function_exported?(target_module, :__lavash__, 1),
+         actions when is_list(actions) <- target_module.__lavash__(:declared_actions),
+         %{} = action <- Enum.find(actions, &(&1.name == action_name)) do
+      Enum.map(Map.get(action, :appends) || [], & &1.field)
+    else
+      _ -> []
+    end
+  rescue
+    _ -> []
   end
 
   # Resolve one invoke param to a JS expression, in the context of the

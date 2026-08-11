@@ -27,14 +27,41 @@ defmodule Lavash.Action.Runtime do
   end
 
   @doc """
+  Parses the out-of-band client-generated append ids from the raw
+  event params (`phx-value-_lavash_ids` — a JSON map of
+  `"Module:action:field" => uuid`). Invalid or absent → `%{}`.
+  """
+  def parse_append_ids(event_params) when is_map(event_params) do
+    case Map.get(event_params, "_lavash_ids") do
+      ids when is_map(ids) ->
+        ids
+
+      json when is_binary(json) ->
+        case Jason.decode(json) do
+          {:ok, ids} when is_map(ids) -> ids
+          _ -> %{}
+        end
+
+      _ ->
+        %{}
+    end
+  end
+
+  def parse_append_ids(_), do: %{}
+
+  @doc """
   Executes an action's `mutate`/`remove`/`append` ops (the durable
   Ash writes + broadcast) and marks their backing reads dirty, so
   the cascade re-reads them in this event. The diff the client
   receives then carries post-write truth — confirming the client's
   prediction instead of pushing a stale list.
+
+  `append_ids` are the client-generated record ids (see
+  `parse_append_ids/1`): appends create their records under them so
+  prediction and truth share identity.
   """
-  def apply_client_state_mutations(socket, action, params, module) do
-    socket = Lavash.ClientState.apply_mutations(socket, action, params, module)
+  def apply_client_state_mutations(socket, action, params, module, append_ids \\ %{}) do
+    socket = Lavash.ClientState.apply_mutations(socket, action, params, module, append_ids)
 
     case Lavash.ClientState.reads_to_refresh(module, action) do
       [] -> socket

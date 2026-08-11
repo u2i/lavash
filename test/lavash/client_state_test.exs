@@ -138,6 +138,43 @@ defmodule Lavash.ClientStateTest do
       assert html =~ item.id
     end
 
+    test "append creates the record under the client-generated id", %{conn: conn} do
+      cart = unique_cart()
+      client_id = Ash.UUID.generate()
+
+      {:ok, view, _html} = live(conn, "/magic/client-cart?cart_id=#{cart}")
+
+      ids = Jason.encode!(%{"Lavash.Test.Magic.ClientCartLive:add_item:items" => client_id})
+      html = view |> element("#add-widget") |> render_click(%{"_lavash_ids" => ids})
+
+      # The persisted record carries the id the client predicted with —
+      # the same-event re-read confirms the provisional row in place.
+      assert Ash.get!(Item, client_id).name == "Widget"
+      assert html =~ "item-#{client_id}"
+    end
+
+    test "malformed client id is ignored and the append still lands", %{conn: conn} do
+      cart = unique_cart()
+      {:ok, view, _html} = live(conn, "/magic/client-cart?cart_id=#{cart}")
+
+      ids = Jason.encode!(%{"Lavash.Test.Magic.ClientCartLive:add_item:items" => "not-a-uuid"})
+      view |> element("#add-widget") |> render_click(%{"_lavash_ids" => ids})
+
+      [item] = Item |> Ash.Query.for_read(:for_cart, %{cart_id: cart}) |> Ash.read!()
+      assert item.name == "Widget"
+      refute item.id == "not-a-uuid"
+    end
+
+    test "garbage _lavash_ids payload is tolerated", %{conn: conn} do
+      cart = unique_cart()
+      {:ok, view, _html} = live(conn, "/magic/client-cart?cart_id=#{cart}")
+
+      view |> element("#add-widget") |> render_click(%{"_lavash_ids" => "not json"})
+
+      [item] = Item |> Ash.Query.for_read(:for_cart, %{cart_id: cart}) |> Ash.read!()
+      assert item.name == "Widget"
+    end
+
     test "remove's response drops the row and destroys the record", %{conn: conn} do
       cart = unique_cart()
       item = create_item!(cart, "Beans", 1, "4.00")

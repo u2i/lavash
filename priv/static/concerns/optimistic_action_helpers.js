@@ -21,13 +21,32 @@ export function handleClick(e, hook) {
   // Only intercept if this is a known optimistic action
   if (!hook.fns[actionName]) return;
 
+  // Client-generated append ids: for every append op this action will
+  // perform (directly or via invoke — compile-time metadata), mint a
+  // UUID NOW, before Phoenix's delegate reads the element's attributes,
+  // and inject it into the payload as phx-value-_lavash_ids. The
+  // deferred prediction consumes the same ids via the stash, so the
+  // provisional row and the server-created record share their identity.
+  const appendKeys =
+    (window.Lavash?.optimistic?.[hook.moduleName]?.__append_ids__ || {})[actionName] || [];
+
+  if (appendKeys.length > 0 && window.crypto?.randomUUID) {
+    const ids = {};
+    for (const key of appendKeys) {
+      ids[key] = crypto.randomUUID();
+      window.Lavash.stashAppendId(key, ids[key]);
+    }
+    target.setAttribute("phx-value-_lavash_ids", JSON.stringify(ids));
+  }
+
   // Extract phx-value-* attributes. One attribute → scalar `value`
   // (the historical contract single-param action fns compile
   // against); several → an object keyed by snake_cased param names
-  // (what multi-param action fns compile against).
+  // (what multi-param action fns compile against). The out-of-band
+  // _lavash_ids channel is excluded from the value shape.
   const entries = [];
   for (const attr of target.attributes) {
-    if (attr.name.startsWith("phx-value-")) {
+    if (attr.name.startsWith("phx-value-") && attr.name !== "phx-value-_lavash_ids") {
       entries.push([attr.name.slice("phx-value-".length).replace(/-/g, "_"), attr.value]);
     }
   }
@@ -49,6 +68,9 @@ export function handleClick(e, hook) {
     // Clear LiveView's element lock so rapid clicks on the same element work.
     target.removeAttribute("data-phx-ref-src");
     target.removeAttribute("data-phx-ref-lock");
+    // The per-click append ids were consumed by the push above; drop
+    // the attribute so a future click mints fresh ones.
+    target.removeAttribute("phx-value-_lavash_ids");
   }, 0);
 }
 

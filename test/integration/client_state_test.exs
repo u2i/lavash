@@ -34,6 +34,16 @@ defmodule Lavash.Integration.ClientStateTest do
     css("#item-#{item_id} .qty", text: text)
   end
 
+  defp eval(session, script) do
+    execute_script(session, "return #{script}", fn value -> send(self(), {:eval, value}) end)
+
+    receive do
+      {:eval, value} -> value
+    after
+      2_000 -> :timeout
+    end
+  end
+
   test "mutate predicts instantly; the server write confirms it", %{session: session} do
     cart = unique_cart()
     item = create_item!(cart, "Beans", 2, "9.50")
@@ -99,7 +109,7 @@ defmodule Lavash.Integration.ClientStateTest do
     session: session
   } do
     cart = unique_cart()
-    create_item!(cart, "Beans", 1, "4.00")
+    first = create_item!(cart, "Beans", 1, "4.00")
 
     session =
       session
@@ -111,12 +121,23 @@ defmodule Lavash.Integration.ClientStateTest do
     try do
       session = click(session, css("#add-widget"), await: :defer)
 
-      # Provisional row rendered deep inside the lag window.
+      # Provisional row rendered deep inside the lag window. Its id is
+      # the CLIENT-generated UUID — capture it before the reply lands.
       session = assert_has(session, css(".row-name", text: "Widget"))
       session = assert_has(session, css(".cart-row", count: 2))
 
-      # After the round-trip the row is the real record (temp id gone)
-      # and it persisted.
+      provisional_id =
+        eval(
+          session,
+          ~s{Array.from(document.querySelectorAll(".cart-row"))} <>
+            ~s{.map(e => e.id).find(id => id !== "item-#{first.id}")}
+        )
+
+      assert "item-" <> provisional_uuid = provisional_id
+      assert {:ok, _} = Ecto.UUID.cast(provisional_uuid)
+
+      # After the round-trip the persisted record carries the SAME id
+      # the client predicted with — stable identity, no temp-id churn.
       session = WLV.await_patch(session)
       session = assert_has(session, css(".row-name", text: "Widget"))
       refute_has(session, css("[id*='__lavash_tmp_']", wait: 0))
@@ -127,6 +148,7 @@ defmodule Lavash.Integration.ClientStateTest do
         |> Ash.read!()
         |> Enum.filter(&(&1.name == "Widget"))
 
+      assert item.id == provisional_uuid
       assert_has(session, css("#item-#{item.id}"))
     after
       _ = WLV.clear_latency(session)

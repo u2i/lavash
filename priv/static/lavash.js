@@ -54,6 +54,23 @@ window.Lavash.invokeOptimistic = function (targetId, actionName, params) {
   hook?.runOptimisticAction?.(actionName, params);
 };
 
+// Append-id stash: handleClick pre-generates a UUID per append op the
+// clicked action will perform (directly or via invoke) and stashes it
+// here, keyed "Module:action:field". The generated append prediction
+// takes it (consume-once) so the provisional row carries the SAME id
+// the server will create the record under — the id also rides the
+// event payload (phx-value-_lavash_ids). Stable identity means no
+// temp-key churn when the re-read replaces the provisional row.
+window.Lavash.__appendIds = window.Lavash.__appendIds || {};
+window.Lavash.takeAppendId = function (key) {
+  const id = window.Lavash.__appendIds[key];
+  if (id !== undefined) delete window.Lavash.__appendIds[key];
+  return id;
+};
+window.Lavash.stashAppendId = function (key, id) {
+  window.Lavash.__appendIds[key] = id;
+};
+
 // ----- Public API -----
 
 export { lavash } from "./pipeline.js";
