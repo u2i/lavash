@@ -93,6 +93,26 @@ defmodule Lavash.Dsl.CommonEntities do
           `phx-update="stream"` container whose DOM id is `<name>`).
           See docs/STREAM_PROJECTIONS.md.
           """
+        ],
+        at: [
+          type: :integer,
+          default: -1,
+          doc: """
+          Streamed projections only: where inserted rows land — `-1`
+          appends (default), `0` prepends. One ordering per list: both
+          the client's predicted insert and the server's confirming
+          stream ops use it.
+          """
+        ],
+        limit: [
+          type: {:or, [:integer, nil]},
+          default: nil,
+          doc: """
+          Streamed projections only: passed to the LiveView stream ops
+          so the server prunes the container. A predicted insert may
+          transiently exceed the limit by one row until the confirming
+          op lands.
+          """
         ]
       ]
     }

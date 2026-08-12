@@ -191,24 +191,41 @@ function shallowRowEqual(a, b) {
   return keysA.every(k => a[k] === b[k]);
 }
 
-// Predicted row inserts for stream-backed projections (issue #71).
-// The row goes into the phx-update="stream" container — which never
-// reconciles children on patch, so the predicted node survives until
-// the server's confirming stream_insert (same client-minted dom id)
-// morphs it in place. That morph strips data-lavash-provisional (the
-// server HTML doesn't carry it), which is the confirmation signal
-// refreshSyncAnnotations watches for.
+// Predicted row ops for stream-backed projections (issue #71).
+// Inserted/replaced rows go into the phx-update="stream" container —
+// which never reconciles children on patch, so the predicted node
+// survives until the server's confirming stream op (same client-minted
+// dom id) morphs it in place. That morph strips
+// data-lavash-provisional (the server HTML doesn't carry it), which is
+// the confirmation signal refreshSyncAnnotations watches for.
+// Predicted deletes remove the node immediately; the confirming
+// stream_delete is a no-op on the already-gone node, so they resolve
+// when the next server patch (version bump) arrives.
 function applyStreamOps(hook, ops) {
+  hook.streamRows = hook.streamRows || new Map();
+
   for (const op of ops) {
-    if (document.getElementById(op.domId)) continue;
-    const container = document.getElementById(op.container);
-    if (!container) continue;
-    container.insertAdjacentHTML("beforeend", op.html);
+    if (op.op === "delete") {
+      document.getElementById(op.domId)?.remove();
+      hook.streamRows.set(op.domId, { kind: "delete", version: hook.serverVersion });
+      continue;
+    }
+
+    if (op.op === "replace") {
+      const el = document.getElementById(op.domId);
+      if (!el) continue;
+      el.outerHTML = op.html;
+    } else {
+      if (document.getElementById(op.domId)) continue;
+      const container = document.getElementById(op.container);
+      if (!container) continue;
+      container.insertAdjacentHTML(op.at === 0 ? "afterbegin" : "beforeend", op.html);
+    }
+
     const el = document.getElementById(op.domId);
     if (el) {
       el.setAttribute("data-lavash-provisional", "");
-      hook.streamRows = hook.streamRows || new Map();
-      hook.streamRows.set(op.domId, true);
+      hook.streamRows.set(op.domId, { kind: op.op });
     }
   }
 }

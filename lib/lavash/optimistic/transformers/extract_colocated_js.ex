@@ -232,7 +232,7 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
 
     %{
       projection_keys: Map.new(client_states, &{&1.name, &1.key}),
-      streamed_fields: MapSet.new(streamed, & &1.name),
+      streamed_fields: Map.new(streamed, &{&1.name, %{at: Map.get(&1, :at, -1)}}),
       stream_row_fns: generate_stream_row_fns(dsl_state, module, streamed)
     }
   end
@@ -255,11 +255,19 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
           _ -> []
         end
 
+      row_data_fields =
+        Lavash.Component.Transformers.CompileComponent.stream_row_data_fields(
+          Transformer.get_entities(dsl_state, [:reads]) || [],
+          Transformer.get_entities(dsl_state, [:actions]) || []
+        )
+
       Enum.map(streamed_projections, fn cs ->
         with node when not is_nil(node) <-
                Lavash.Component.JsGenerator.find_stream_row_node(nodes, cs.name),
              {:ok, {dom_var, row_var, body}} <-
-               Lavash.Component.JsGenerator.stream_row_fn(node) do
+               Lavash.Component.JsGenerator.stream_row_fn(node,
+                 row_data: MapSet.member?(row_data_fields, cs.name)
+               ) do
           """
             __stream_row_#{cs.name}(#{dom_var}, #{row_var}) {
               return #{body};
@@ -482,30 +490,8 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
     # Generate JS expressions, filtering out non-transpilable ones
     set_exprs = sets |> Enum.map(&generate_set_js(&1, params, module)) |> Enum.filter(& &1)
 
-    {stream_appends, list_appends} =
-      Enum.split_with(Map.get(action, :appends) || [], &(&1.field in streamed_fields))
-
-    projection_ops =
-      Enum.map(
-        Map.get(action, :mutates) || [],
-        &generate_mutate_js(&1, params, projection_keys, module)
-      ) ++
-        Enum.map(Map.get(action, :removes) || [], &generate_remove_js(&1, projection_keys)) ++
-        Enum.map(
-          list_appends,
-          &generate_append_js(&1, action.name, params, projection_keys, module)
-        ) ++
-        Enum.map(
-          stream_appends,
-          &generate_stream_append_js(&1, action.name, params, projection_keys, module)
-        ) ++
-        Enum.map(
-          Map.get(action, :upserts) || [],
-          &generate_upsert_js(&1, action.name, params, projection_keys, module)
-        )
-
-    projection_stmts = Enum.filter(projection_ops, & &1)
-    has_stream_ops = stream_appends != []
+    {projection_stmts, has_stream_ops} =
+      generate_projection_op_stmts(action, params, projection_keys, streamed_fields, module)
 
     # `invoke`'s client half: run the target component's optimistic
     # prediction in the same tick as this action's own sets. The
@@ -540,7 +526,7 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
         projection_fields =
           Lavash.ClientState.mutated_fields(action)
           |> Enum.uniq()
-          |> Enum.reject(&(&1 in streamed_fields))
+          |> Enum.reject(&Map.has_key?(streamed_fields, &1))
           |> Enum.map(fn field ->
             "#{Lavash.Optimistic.Transpiler.js_field_key(field)}: #{Lavash.Optimistic.Transpiler.js_field_access("state", field)}"
           end)
@@ -638,7 +624,7 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
   # are "<name>-<key>" (matching LiveView's stream dom_id default).
   # The server's confirming stream_insert targets the same dom id, so
   # LiveView morphs the predicted node in place.
-  defp generate_stream_append_js(append, action_name, params, projection_keys, module) do
+  defp generate_stream_append_js(append, action_name, params, projection_keys, module, at) do
     field = append.field
     key_name = Map.get(projection_keys, field, :id)
     transform_js = transpile_projection_rx(append.transform, params, "append :#{field}", module)
@@ -653,10 +639,174 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
             const __domId = `#{field}-${__sid}`;
             const __row = { #{Lavash.Optimistic.Transpiler.js_field_key(key_name)}: __sid, ...(#{transform_js}) };
             __stream_ops__.push({
+              op: "insert",
+              at: #{at},
               container: #{Jason.encode!(to_string(field))},
               domId: __domId,
               html: window.Lavash.optimistic[#{module_name}].__stream_row_#{field}(__domId, __row)
             });
+          }
+      """
+    else
+      nil
+    end
+  end
+
+  # All of an action's projection-op statements — list ops rewrite the
+  # client-state copy; stream ops (issue #71) queue per-row DOM
+  # operations into __stream_ops__ instead.
+  defp generate_projection_op_stmts(action, params, projection_keys, streamed_fields, module) do
+    streamed? = &Map.has_key?(streamed_fields, &1.field)
+    at = fn op -> streamed_fields[op.field].at end
+
+    {stream_appends, list_appends} =
+      Enum.split_with(Map.get(action, :appends) || [], streamed?)
+
+    {stream_mutates, list_mutates} =
+      Enum.split_with(Map.get(action, :mutates) || [], streamed?)
+
+    {stream_removes, list_removes} =
+      Enum.split_with(Map.get(action, :removes) || [], streamed?)
+
+    {stream_upserts, list_upserts} =
+      Enum.split_with(Map.get(action, :upserts) || [], streamed?)
+
+    projection_ops =
+      Enum.map(list_mutates, &generate_mutate_js(&1, params, projection_keys, module)) ++
+        Enum.map(list_removes, &generate_remove_js(&1, projection_keys)) ++
+        Enum.map(
+          list_appends,
+          &generate_append_js(&1, action.name, params, projection_keys, module)
+        ) ++
+        Enum.map(
+          list_upserts,
+          &generate_upsert_js(&1, action.name, params, projection_keys, module)
+        ) ++
+        Enum.map(stream_mutates, &generate_stream_mutate_js(&1, params, module)) ++
+        Enum.map(stream_removes, &generate_stream_remove_js/1) ++
+        Enum.map(
+          stream_appends,
+          &generate_stream_append_js(&1, action.name, params, projection_keys, module, at.(&1))
+        ) ++
+        Enum.map(
+          stream_upserts,
+          &generate_stream_upsert_js(&1, action.name, params, projection_keys, module, at.(&1))
+        )
+
+    has_stream_ops =
+      stream_appends != [] or stream_mutates != [] or stream_removes != [] or
+        stream_upserts != []
+
+    {Enum.filter(projection_ops, & &1), has_stream_ops}
+  end
+
+  # Stream-backed mutate (issue #71 phase 2): address the row's DOM
+  # node by dom id, read its data (the injected data-lavash-row JSON),
+  # run the transform with @item bound, and queue a replace (re-render
+  # via the row fn) or delete.
+  defp generate_stream_mutate_js(mutate, params, module) do
+    field = mutate.field
+    transform_js = transpile_projection_rx(mutate.transform, params, "mutate :#{field}", module)
+
+    if transform_js do
+      module_name = Jason.encode!(inspect(module))
+
+      """
+          {
+            const __domId = `#{field}-${value}`;
+            const __el = document.getElementById(__domId);
+            const __item = __el && JSON.parse(__el.dataset.lavashRow || "null");
+            if (__item) {
+              const __res = ((state) => (#{transform_js}))({ ...state, item: __item });
+              if (__res === 'remove') {
+                __stream_ops__.push({ op: "delete", domId: __domId });
+              } else {
+                const __row = { ...__item, ...__res };
+                __stream_ops__.push({
+                  op: "replace",
+                  domId: __domId,
+                  html: window.Lavash.optimistic[#{module_name}].__stream_row_#{field}(__domId, __row)
+                });
+              }
+            }
+          }
+      """
+    else
+      nil
+    end
+  end
+
+  defp generate_stream_remove_js(remove) do
+    field = remove.field
+
+    """
+        __stream_ops__.push({ op: "delete", domId: `#{field}-${value}` });
+    """
+  end
+
+  # Stream-backed upsert (issue #71 phase 2): scan the container's rows
+  # (their injected data-lavash-row JSON) for a match — conflict
+  # re-renders that row, no match inserts under the pre-stashed client
+  # id, exactly like the streamed append.
+  defp generate_stream_upsert_js(upsert, action_name, params, projection_keys, module, at) do
+    field = upsert.field
+    key_name = Map.get(projection_keys, field, :id)
+
+    {conflict_action_rx, insert_action_rx} = {upsert.on_conflict, upsert.on_insert}
+    {_conflict_action, conflict_rx} = conflict_action_rx
+    {_insert_action, insert_rx} = insert_action_rx
+
+    conflict_js =
+      transpile_projection_rx(conflict_rx, params, "upsert :#{field} on_conflict", module)
+
+    insert_js = transpile_projection_rx(insert_rx, params, "upsert :#{field} on_insert", module)
+
+    if conflict_js && insert_js do
+      match_conds =
+        Enum.map_join(upsert.match, " && ", fn key ->
+          item_ref = Lavash.Optimistic.Transpiler.js_field_access("__row", to_string(key))
+
+          match_ref =
+            Lavash.Optimistic.Transpiler.js_field_access("state", key)
+            |> substitute_params(params)
+
+          "String(#{item_ref}) === String(#{match_ref})"
+        end)
+
+      stash_key = Jason.encode!(append_id_key(module, action_name, field))
+      module_name = Jason.encode!(inspect(module))
+
+      """
+          {
+            let __matched = null;
+            for (const __el of document.querySelectorAll(`##{field} [data-lavash-row]`)) {
+              const __row = JSON.parse(__el.dataset.lavashRow);
+              if (#{match_conds}) { __matched = { el: __el, row: __row }; break; }
+            }
+            if (__matched) {
+              const __res = ((state) => (#{conflict_js}))({ ...state, item: __matched.row });
+              if (__res === 'remove') {
+                __stream_ops__.push({ op: "delete", domId: __matched.el.id });
+              } else {
+                const __row = { ...__matched.row, ...__res };
+                __stream_ops__.push({
+                  op: "replace",
+                  domId: __matched.el.id,
+                  html: window.Lavash.optimistic[#{module_name}].__stream_row_#{field}(__matched.el.id, __row)
+                });
+              }
+            } else {
+              const __sid = (window.Lavash.takeAppendId(#{stash_key}) ?? crypto.randomUUID());
+              const __domId = `#{field}-${__sid}`;
+              const __row = { #{Lavash.Optimistic.Transpiler.js_field_key(key_name)}: __sid, ...(#{insert_js}) };
+              __stream_ops__.push({
+                op: "insert",
+                at: #{at},
+                container: #{Jason.encode!(to_string(field))},
+                domId: __domId,
+                html: window.Lavash.optimistic[#{module_name}].__stream_row_#{field}(__domId, __row)
+              });
+            }
           }
       """
     else

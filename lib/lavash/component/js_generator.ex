@@ -79,7 +79,10 @@ defmodule Lavash.Component.JsGenerator do
   end
 
   defp render_element_wrapped(tag, attrs, children, _meta, ctx) do
-    attrs_js = render_attrs_to_js(attrs, ctx)
+    # extra_attr_js applies to THIS element only (the stream row's
+    # data-lavash-row) — strip before rendering children.
+    {extra, ctx} = Map.pop(ctx, :extra_attr_js)
+    attrs_js = render_attrs_to_js(attrs, ctx) <> (extra || "")
 
     if children == [] do
       if tag in @void_elements do
@@ -160,23 +163,36 @@ defmodule Lavash.Component.JsGenerator do
   Returns `{:ok, {dom_id_param, row_param, body_literal}}` or `:error`
   when the node isn't a stream `:for` of that shape.
   """
-  def stream_row_fn({:element, tag, attrs, children, meta}) do
+  def stream_row_fn(node, opts \\ [])
+
+  def stream_row_fn({:element, tag, attrs, children, meta}, opts) do
     with {:for, code} <- find_special_attr(attrs, :for),
          {:ok, {:<-, _, [{{dom_var, _, _}, {row_var, _, _}}, _collection]}} <-
            Code.string_to_quoted(code),
          true <- is_atom(dom_var) and is_atom(row_var) do
+      row = to_string(row_var)
+
+      # Keyed row predictions read the row's data back from the DOM —
+      # predicted rows must carry data-lavash-row like server-rendered
+      # ones do (the token transformer injects it there).
+      extra =
+        if Keyword.get(opts, :row_data, false) do
+          " data-lavash-row=\"${JSON.stringify(#{row}).replace(/\"/g, '&quot;')}\""
+        end
+
       body =
         render_element_wrapped(tag, reject_special_attr(attrs, :for), children, meta, %{
-          loop_var: to_string(row_var)
+          loop_var: row,
+          extra_attr_js: extra
         })
 
-      {:ok, {to_string(dom_var), to_string(row_var), body}}
+      {:ok, {to_string(dom_var), row, body}}
     else
       _ -> :error
     end
   end
 
-  def stream_row_fn(_), do: :error
+  def stream_row_fn(_, _opts), do: :error
 
   @doc """
   Finds the row node for a streamed projection in a parsed template

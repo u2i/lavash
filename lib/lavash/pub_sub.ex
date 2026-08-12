@@ -83,6 +83,30 @@ defmodule Lavash.PubSub do
   end
 
   @doc """
+  Broadcast a record-level mutation (issue #71 phase 3): carries which
+  record was written or deleted so subscribers with stream-backed
+  projections can apply a targeted per-row op instead of re-reading
+  the whole list.
+
+  `detail` is `{:written, id}` or `{:deleted, id}`. Subscribers that
+  don't understand the 3-tuple treat it as a coarse invalidation.
+  """
+  def broadcast_record(resource, {op, _id} = detail)
+      when is_atom(resource) and op in [:written, :deleted] do
+    case pubsub() do
+      nil ->
+        :ok
+
+      pubsub_mod ->
+        Phoenix.PubSub.broadcast(
+          pubsub_mod,
+          resource_topic(resource),
+          {:lavash_invalidate, resource, detail}
+        )
+    end
+  end
+
+  @doc """
   Returns the resource-level topic name.
   """
   def resource_topic(resource) when is_atom(resource) do

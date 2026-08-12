@@ -20,9 +20,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   patches until the same event's `stream_insert` of the written record
   morphs that exact node (stripping `data-lavash-provisional`, which
   is the confirmation signal, integrated with the #72 annotations).
-  Verified against a 10k-row fixture. `mutate`/`remove`/`upsert` row
-  ops, targeted PubSub invalidation, and `at:`/`limit:` semantics are
-  design-only for now — see docs/STREAM_PROJECTIONS.md.
+  Verified against a 10k-row fixture. See docs/STREAM_PROJECTIONS.md.
+
+- **Stream projections: the full op family, targeted invalidation,
+  ordering** (#71 phases 2–4). `mutate` re-renders the addressed row
+  from its `data-lavash-row` payload (injected onto stream rows by a
+  token transformer, only for projections a `mutate`/`upsert`
+  targets); `remove` drops the node (resolving on the confirming
+  patch); `upsert` scans row payloads for a match — conflict
+  re-renders, miss inserts under the client id — while the server
+  matches by requerying through the backing read so its filters
+  apply. Writes to streamed projections broadcast record-level detail
+  (`Lavash.PubSub.broadcast_record/2`); subscribed views requery just
+  that record through their read and stream-insert it — membership
+  follows the read's filters — while removals (deletes, or writes
+  falling out of the filter) route through a reset re-stream (#96
+  tracks browser-layer application of removal-only stream diffs).
+  `at:`/`limit:` live on the projection: one ordering per list, used
+  by predictions and confirms alike, with LiveView pruning to the
+  limit on server ops.
 
 - **Dev crash trigger + crash-remount coverage** (#76). With
   `config :lavash, :dev_crash_event, true` (off by default; never

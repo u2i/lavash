@@ -1,8 +1,9 @@
 # Stream projections: reconciling `client_state` with LiveView streams
 
-Design for issue #71. Status: **phase 1 (spike) implemented** — `append`
-with a client id → predicted row DOM insert → server `stream_insert`
-confirmation; later phases are design-only.
+Design for issue #71. Status: **phases 1–4 implemented** — the full
+projection-op family (`append`/`mutate`/`remove`/`upsert`) predicts
+per-row DOM operations confirmed by same-event stream ops; targeted
+PubSub row invalidation; `at:`/`limit:` ordering.
 
 ## The tension
 
@@ -85,10 +86,31 @@ the existing design that transfers unchanged:
   today's `apply_append` — except confirmation is a
   `stream_insert(socket, :items, projected_row)` of the written
   record instead of marking the read for a full re-read.
-- `mutate`/`remove`/`upsert` (phase 2) — client half targets the row
-  node by key (`#items-<id>`): re-render its fields / remove it /
-  either; server half unchanged plus per-row `stream_insert`/
-  `stream_delete` confirmation.
+- `mutate` — the client addresses the row node by key
+  (`#items-<id>`), reads its current data back from the injected
+  `data-lavash-row` JSON (see below), runs the transform with `@item`
+  bound, and replaces the node with a re-render (or drops it on
+  `:remove`). The server confirms with `stream_insert` of the updated
+  record / `stream_delete`.
+- `remove` — the client drops the node immediately; the confirming
+  `stream_delete` no-ops on the already-gone element, so the
+  prediction resolves when the event's patch (version bump) arrives.
+- `upsert` — the client scans the container's rows' `data-lavash-row`
+  payloads for a match: conflict re-renders that row, miss inserts
+  under the pre-stashed client id exactly like append. The server
+  side can't match against `state[read]` (it's `:streamed`) — it
+  requeries the match through the backing read action
+  (`read_one_through/4`), so the read's filters apply.
+
+### Row data rides the row (`data-lavash-row`)
+
+Keyed predictions need the row's current values, but no list copy
+exists. The row element itself carries them: a token transformer
+injects `data-lavash-row={Lavash.JSON.encode!(row)}` onto the stream
+`:for` element, and the generated row function renders the same
+attribute on predicted rows. Injection is need-driven — only
+projections targeted by a `mutate`/`upsert` pay the per-row payload;
+append/remove-only lists stay lean.
 
 ### The row template is its own compilation unit
 
@@ -128,15 +150,15 @@ pending-match rules as today's scalar protocol, keyed by dom id.
 
 ### Ordering and `limit:`
 
-- The predicted insert position comes from the op's declared `at:`
-  (default `-1`, append). The server's confirming `stream_insert`
-  carries its own `at:` — **server order wins**: LiveView repositions
-  the node if they disagree. The visible effect of a disagreement is
-  the row hopping to its confirmed position on confirm, which is the
-  honest rendering of "the client guessed".
-- `limit:` is enforced by LiveView on server ops only, so a predicted
-  insert can transiently exceed the limit by one row until the
-  confirming op prunes. Documented, not fought.
+- `at:` lives on the **projection** (`at 0` prepends, default `-1`
+  appends) — one ordering per list, used by both the client's
+  predicted insert (`afterbegin`/`beforeend`) and the server's
+  confirming stream ops. On disagreement (e.g. another session's
+  interleaved write) **server order wins**: LiveView repositions the
+  node on confirm — the honest rendering of "the client guessed".
+- `limit:` (also on the projection) is enforced by LiveView on server
+  ops only, so a predicted insert can transiently exceed the limit by
+  one row until the confirming op prunes. Documented, not fought.
 
 ### Aggregates over streamed projections
 
@@ -155,23 +177,30 @@ action :add, [:body] do
 end
 ```
 
-### PubSub invalidation (phase 3)
+### Targeted PubSub invalidation
 
-Today's invalidation re-reads the whole list. A streamed read wants
-targeted ops: `Lavash.PubSub.broadcast/1` grows a per-record variant
-(`{resource, :written, record}` / `{resource, :deleted, id}`) that
-maps to `stream_insert`/`stream_delete` on subscribed views, falling
-back to a full `stream(..., reset: true)` re-read when a broadcast
-can't be attributed to a row.
+Writes to streamed projections broadcast record-level detail —
+`Lavash.PubSub.broadcast_record(resource, {:written, id} | {:deleted,
+id})` — instead of the coarse resource message. A subscribed view
+with a streamed projection of that resource requeries JUST the
+touched record **through its backing read** (so the read's filters
+decide membership): found → `stream_insert`, not found (deleted, or
+outside the filter) → `stream_delete`. Non-streamed reads on the
+same resource still coarse-invalidate, and plain 2-tuple broadcasts
+keep the old behavior (streamed reads re-stream with `reset: true`).
 
-## Phases
+## Status
 
-1. **Spike (this PR)**: `stream true` DSL flag; mount streams the
-   projected read; `append` predicts a DOM row insert under the
-   client id; server confirms via `stream_insert` from the same
-   event; keyed provisional tracking wired into the #72 annotations;
-   10k-row fixture + e2e proving in-window prediction and same-node
-   confirmation.
-2. `mutate`/`remove`/`upsert` row ops + the keyed SyncedVar variant.
-3. Targeted PubSub row invalidation.
-4. `at:`/`limit:` surface on the ops; ordering reconciliation tests.
+All four phases are implemented and covered by
+`test/integration/stream_projection_test.exs`: streamed-not-shipped,
+per-op prediction/confirmation (append, mutate, remove, both upsert
+branches), targeted cross-process row ops with filter correctness,
+`at 0` prepend ordering, `limit` pruning, and the 10k-row fixture.
+
+Remaining follow-ups (not blocking): a full keyed SyncedVar protocol
+for per-row pending semantics beyond the provisional marker,
+`async: true` streamed reads, and issue #96 — browser-layer stream
+row removals (delete-only/reset diffs) intermittently not applying in
+the e2e harness; cross-session removals route through reset
+re-streams and their server semantics are pinned at the LiveViewTest
+level meanwhile.

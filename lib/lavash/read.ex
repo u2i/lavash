@@ -81,6 +81,8 @@ defmodule Lavash.Read.ClientState do
     key: :id,
     fields: [],
     stream: false,
+    at: -1,
+    limit: nil,
     __spark_metadata__: nil
   ]
 end
