@@ -83,17 +83,25 @@ defmodule Lavash.Transformers.ExpandFields do
               "and let the read re-run instead"
       end
 
-      %{
-        type: :client_projection,
-        name: cs.name,
-        read_name: read.name,
-        key: cs.key,
-        fields: cs.fields,
-        depends_on: [read.name],
-        async: false,
-        reads: []
-      }
+      # Streamed projections (issue #71) get NO derive: the rows feed a
+      # LiveView stream (Lavash.ClientState.flush_stream_projections)
+      # instead of living in assigns or client state.
+      if cs.stream do
+        nil
+      else
+        %{
+          type: :client_projection,
+          name: cs.name,
+          read_name: read.name,
+          key: cs.key,
+          fields: cs.fields,
+          depends_on: [read.name],
+          async: false,
+          reads: []
+        }
+      end
     end)
+    |> Enum.reject(&is_nil/1)
   end
 
   # mutate/remove/append/upsert must target a declared client_state

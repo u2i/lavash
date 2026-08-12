@@ -31,7 +31,13 @@ defmodule Lavash.Optimistic.RenderWrapper do
   def wrap_render(module, assigns, inner_content) do
     optimistic_fields = module.__lavash__(:optimistic_fields)
 
-    if optimistic_fields == [] do
+    # Stream-backed projections (issue #71) ship no state fields but
+    # still need the hook root: the append prediction runs through the
+    # hook, and the sync annotations hang off its element.
+    has_streamed =
+      Enum.any?(Lavash.ClientState.projections(module), & &1.stream)
+
+    if optimistic_fields == [] and not has_streamed do
       # No optimistic fields → no wrap needed even though the
       # extension is registered. Cheaper than a transformer-time
       # gate because some modules use optimism partially.

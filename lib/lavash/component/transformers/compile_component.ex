@@ -356,7 +356,10 @@ defmodule Lavash.Component.Transformers.CompileComponent do
     client_projection_fields =
       reads
       |> Enum.flat_map(fn read ->
-        Enum.map(read.client_states || [], fn cs ->
+        # Streamed projections (issue #71) ship no list copy.
+        (read.client_states || [])
+        |> Enum.reject(&Map.get(&1, :stream, false))
+        |> Enum.map(fn cs ->
           {cs.name,
            %{name: cs.name, type: {:array, :map}, optimistic: true, from: :client_projection}}
         end)

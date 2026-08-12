@@ -42,7 +42,11 @@ defmodule Lavash.LiveView.Compiler do
     # but stay server-side derives — they are not State.Fields, so they
     # get no setters and no hydration.
     projection_fields =
-      Enum.map(Lavash.ClientState.projections(module), fn proj ->
+      Lavash.ClientState.projections(module)
+      # Streamed projections (issue #71) ship NO list copy — rows live
+      # in the DOM via LiveView streams; predictions are per-row ops.
+      |> Enum.reject(& &1.stream)
+      |> Enum.map(fn proj ->
         %{name: proj.name, type: {:array, :map}, optimistic: true, from: :client_projection}
       end)
 

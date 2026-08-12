@@ -8,6 +8,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Stream-backed projections (spike)** (#71). `client_state :items do
+  stream true end` reconciles projections with LiveView streams: rows
+  feed `Phoenix.LiveView.stream/3` and are released from assigns — no
+  list copy on either side — and the template renders the standard
+  stream idiom. `append` predictions become per-row DOM inserts: a
+  transpiled row function (extracted from the template's
+  `:for={{dom_id, row} <- @streams.<name>}`) renders the predicted row
+  under the client-minted id straight into the `phx-update="stream"`
+  container, which never reconciles children — so the row survives
+  patches until the same event's `stream_insert` of the written record
+  morphs that exact node (stripping `data-lavash-provisional`, which
+  is the confirmation signal, integrated with the #72 annotations).
+  Verified against a 10k-row fixture. `mutate`/`remove`/`upsert` row
+  ops, targeted PubSub invalidation, and `at:`/`limit:` semantics are
+  design-only for now — see docs/STREAM_PROJECTIONS.md.
+
 - **Dev crash trigger + crash-remount coverage** (#76). With
   `config :lavash, :dev_crash_event, true` (off by default; never
   enable in prod), a `_lavash_dev_crash` event raises inside the

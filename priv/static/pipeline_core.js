@@ -125,11 +125,15 @@ function attachHookMethods(hook) {
     return this.store ? this.store.getPendingPaths().length : 0;
   };
 
-  // "Is anything on screen unconfirmed?" — pending optimistic sets OR
-  // provisional append/upsert seeds (issue #72). Also the predicate a
-  // navigation guard for in-flight writes wants (issue #63).
+  // "Is anything on screen unconfirmed?" — pending optimistic sets,
+  // provisional append/upsert seeds (issue #72), or predicted stream
+  // rows awaiting their confirming stream op (issue #71). Also the
+  // predicate a navigation guard for in-flight writes wants (#63).
   hook.hasUnresolved = function() {
-    return this.store ? this.store.hasUnresolved : false;
+    return (
+      (this.store ? this.store.hasUnresolved : false) ||
+      (this.streamRows ? this.streamRows.size > 0 : false)
+    );
   };
 
   hook.notifyChildren = function() {

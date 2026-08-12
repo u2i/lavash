@@ -98,8 +98,20 @@ const PACKED_ATTRS = [
 export function refreshSyncAnnotations(hook) {
   if (!hook.store) return;
 
+  // ----- Stream rows (issue #71) -----
+  // A predicted row resolves when the server's confirming stream op
+  // morphs it (stripping data-lavash-provisional) or removes it.
+  if (hook.streamRows && hook.streamRows.size > 0) {
+    for (const domId of [...hook.streamRows.keys()]) {
+      const el = document.getElementById(domId);
+      if (!el || !el.hasAttribute("data-lavash-provisional")) {
+        hook.streamRows.delete(domId);
+      }
+    }
+  }
+
   // ----- Hook level -----
-  if (hook.store.hasUnresolved) {
+  if (hook.store.hasUnresolved || hook.streamRows?.size > 0) {
     hook.el.setAttribute("data-lavash-syncing", "");
     hook.el.setAttribute("aria-busy", "true");
   } else {
