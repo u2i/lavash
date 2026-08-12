@@ -30,6 +30,11 @@ defmodule DemoWeb.DemosIndexLive do
               description="Full client-side re-rendering for structural DOM changes like adding/removing tags."
             />
             <.demo_card
+              href={~p"/demos/todos"}
+              title="Todos (Streams)"
+              description="Stream-backed projection: the list never ships to the client — add/toggle/delete are predicted per-row DOM ops confirmed on the same node."
+            />
+            <.demo_card
               href={~p"/demos/bindings"}
               title="ChipSet Bindings"
               description="Multi-select chips with parent state binding. Demonstrates bind/synced pattern."

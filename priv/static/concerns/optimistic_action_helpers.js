@@ -143,9 +143,27 @@ export function handleActionInputKeydown(e, hook) {
   // Enter in a lone input would submit an enclosing form.
   e.preventDefault();
 
+  // Same client-generated append-id contract as handleClick: mint and
+  // stash per-append UUIDs so the Enter-triggered prediction and the
+  // server-created record share identity. Without this a streamed
+  // append's confirming stream_insert would target a different dom id
+  // than the predicted row.
+  const payload = { value };
+  const appendKeys =
+    (window.Lavash?.optimistic?.[hook.moduleName]?.__append_ids__ || {})[actionName] || [];
+
+  if (appendKeys.length > 0 && window.crypto?.randomUUID) {
+    const ids = {};
+    for (const key of appendKeys) {
+      ids[key] = crypto.randomUUID();
+      window.Lavash.stashAppendId(key, ids[key]);
+    }
+    payload._lavash_ids = JSON.stringify(ids);
+  }
+
   // Push first (nothing here depends on the DOM afterwards), then
   // predict — the prediction's re-render may replace the input node.
-  hook.pushEventTo(hook.el, actionName, { value });
+  hook.pushEventTo(hook.el, actionName, payload);
   input.value = "";
   runOptimisticAction(actionName, value, hook);
 
