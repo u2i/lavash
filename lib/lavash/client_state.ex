@@ -26,7 +26,8 @@ defmodule Lavash.ClientState do
 
   @doc """
   Returns the client-state projections declared on a module's reads,
-  as `%{name, read, key, resource, fields, stream}` maps.
+  as `%{name, read, key, resource, fields, stream, at, limit, module}`
+  maps.
   """
   def projections(module) do
     module.__lavash__(:reads)
@@ -38,7 +39,10 @@ defmodule Lavash.ClientState do
           key: cs.key,
           resource: read.resource,
           fields: cs.fields,
-          stream: Map.get(cs, :stream, false)
+          stream: Map.get(cs, :stream, false),
+          at: Map.get(cs, :at, -1),
+          limit: Map.get(cs, :limit),
+          module: module
         }
       end)
     end)
@@ -124,33 +128,47 @@ defmodule Lavash.ClientState do
         |> Map.merge(Lavash.Socket.full_state(socket))
         |> Map.merge(params)
 
-      {socket, touched} =
+      {socket, results} =
         Enum.reduce(ops, {socket, []}, fn {kind, op}, {sock, acc} ->
           proj = Map.fetch!(projections_by_field, op.field)
 
-          sock =
+          result =
             case kind do
               :append ->
                 id = Map.get(append_ids, append_id_key(module, action.name, op.field))
-                record = apply_append(op, proj, state, module, id)
-                confirm_stream_insert(sock, proj, record)
+                {:written, apply_append(op, proj, state, module, id)}
 
               :upsert ->
                 id = Map.get(append_ids, append_id_key(module, action.name, op.field))
                 apply_upsert(op, proj, state, module, id)
-                sock
 
               _ ->
                 apply_mutation(kind, op, proj, state, params, module)
-                sock
             end
 
-          {sock, [proj.resource | acc]}
+          {confirm_stream_op(sock, proj, result), [{proj, result} | acc]}
         end)
 
-      touched |> Enum.uniq() |> Enum.each(&Lavash.PubSub.broadcast/1)
+      broadcast_results(module, results)
       socket
     end
+  end
+
+  # Streamed projections broadcast record-level invalidation (issue
+  # #71 phase 3) so other sessions apply per-row stream ops instead of
+  # re-reading the whole list; everything else keeps the coarse
+  # resource broadcast.
+  defp broadcast_results(_module, results) do
+    results
+    |> Enum.uniq_by(fn {proj, result} -> {proj.resource, elem(result, 1).id, elem(result, 0)} end)
+    |> Enum.each(fn {proj, {op, record}} ->
+      if proj.stream do
+        detail = if op == :destroyed, do: {:deleted, record.id}, else: {:written, record.id}
+        Lavash.PubSub.broadcast_record(proj.resource, detail)
+      else
+        Lavash.PubSub.broadcast(proj.resource)
+      end
+    end)
   end
 
   # Streamed projection (issue #71): the same-event confirmation is a
@@ -158,11 +176,26 @@ defmodule Lavash.ClientState do
   # row rendered under the same client-generated id, so LiveView's
   # insert morphs that exact node in place (and strips the client's
   # data-lavash-provisional marker, which IS the confirm signal).
-  defp confirm_stream_insert(socket, %{stream: true} = proj, record) do
-    Phoenix.LiveView.stream_insert(socket, proj.name, project_record(record, proj.fields))
+  # Destroys confirm as a stream_delete of the same dom id.
+  defp confirm_stream_op(socket, %{stream: true} = proj, {:written, record}) do
+    Phoenix.LiveView.stream_insert(
+      socket,
+      proj.name,
+      project_record(record, proj.fields),
+      stream_insert_opts(proj)
+    )
   end
 
-  defp confirm_stream_insert(socket, _proj, _record), do: socket
+  defp confirm_stream_op(socket, %{stream: true} = proj, {:destroyed, record}) do
+    Phoenix.LiveView.stream_delete(socket, proj.name, %{id: record.id})
+  end
+
+  defp confirm_stream_op(socket, _proj, _result), do: socket
+
+  defp stream_insert_opts(proj) do
+    opts = if proj.at == -1, do: [], else: [at: proj.at]
+    if proj.limit, do: opts ++ [limit: proj.limit], else: opts
+  end
 
   @doc """
   Feeds fresh results of stream-backed projections (issue #71) into
@@ -181,8 +214,10 @@ defmodule Lavash.ClientState do
     |> Enum.reduce(socket, fn proj, sock ->
       case sock.assigns[proj.read] do
         records when is_list(records) ->
+          opts = if proj.limit, do: [reset: true, limit: proj.limit], else: [reset: true]
+
           sock
-          |> Phoenix.LiveView.stream(proj.name, project(records, proj.fields), reset: true)
+          |> Phoenix.LiveView.stream(proj.name, project(records, proj.fields), opts)
           |> Lavash.Socket.put_derived(proj.read, :streamed)
 
         _ ->
@@ -197,11 +232,13 @@ defmodule Lavash.ClientState do
     case eval_rx(module, op.transform, Map.put(state, :item, record)) do
       :remove ->
         Ash.destroy!(record)
+        {:destroyed, record}
 
       attrs when is_map(attrs) ->
-        record
-        |> Ash.Changeset.for_update(op.action, attrs)
-        |> Ash.update!()
+        {:written,
+         record
+         |> Ash.Changeset.for_update(op.action, attrs)
+         |> Ash.update!()}
     end
   end
 
@@ -213,6 +250,8 @@ defmodule Lavash.ClientState do
     else
       Ash.destroy!(record)
     end
+
+    {:destroyed, record}
   end
 
   defp apply_append(op, proj, state, module, id) do
@@ -225,15 +264,22 @@ defmodule Lavash.ClientState do
   # which the same-event re-read reconciles). Comparison is
   # string-tolerant like the client's (`String(a) === String(b)`) —
   # wire params arrive as strings.
+  #
+  # Streamed projections hold no record list in state — the match runs
+  # as a single-record query THROUGH the backing read action, so the
+  # read's own filters still apply.
   defp apply_upsert(op, proj, state, module, id) do
-    records = List.wrap(Map.get(state, proj.read))
-
     matched =
-      Enum.find(records, fn record ->
-        Enum.all?(op.match, fn key ->
-          to_string(Map.get(record, key)) == to_string(Map.get(state, key))
+      if proj.stream do
+        match_via_read(proj, state, op.match)
+      else
+        List.wrap(Map.get(state, proj.read))
+        |> Enum.find(fn record ->
+          Enum.all?(op.match, fn key ->
+            to_string(Map.get(record, key)) == to_string(Map.get(state, key))
+          end)
         end)
-      end)
+      end
 
     if matched do
       {action, transform} = op.on_conflict
@@ -241,16 +287,68 @@ defmodule Lavash.ClientState do
       case eval_rx(module, transform, Map.put(state, :item, matched)) do
         :remove ->
           Ash.destroy!(matched)
+          {:destroyed, matched}
 
         attrs when is_map(attrs) ->
-          matched
-          |> Ash.Changeset.for_update(action, attrs)
-          |> Ash.update!()
+          {:written,
+           matched
+           |> Ash.Changeset.for_update(action, attrs)
+           |> Ash.update!()}
       end
     else
       {action, transform} = op.on_insert
-      create_record(proj, action, transform, state, module, id)
+      {:written, create_record(proj, action, transform, state, module, id)}
     end
+  end
+
+  # Single-record queries THROUGH the backing read action, so its
+  # filters and arguments apply — used by streamed upsert matching and
+  # by targeted PubSub invalidation (issue #71 phases 2/3). Argument
+  # values resolve the way the read runtime resolves them: explicit
+  # `argument` overrides (source + transform), else state by name.
+  def read_one_through(module, proj, state, filter_map) do
+    read = Enum.find(module.__lavash__(:reads), &(&1.name == proj.read))
+    action_name = read.action || :read
+    action = Ash.Resource.Info.action(read.resource, action_name)
+    overrides = Map.new(read.arguments || [], &{&1.name, &1})
+
+    args =
+      Enum.reduce(action.arguments || [], %{}, fn arg, acc ->
+        case Map.get(overrides, arg.name) do
+          nil ->
+            if Map.has_key?(state, arg.name) do
+              Map.put(acc, arg.name, Map.get(state, arg.name))
+            else
+              acc
+            end
+
+          %{source: source, transform: transform} ->
+            value = Map.get(state, source_field(source) || arg.name)
+            value = if transform, do: transform.(value), else: value
+            Map.put(acc, arg.name, value)
+        end
+      end)
+
+    read.resource
+    |> Ash.Query.for_read(action_name, args)
+    |> Ash.Query.filter_input(filter_map)
+    |> Ash.Query.limit(1)
+    |> Ash.read()
+    |> case do
+      {:ok, [record | _]} -> record
+      _ -> nil
+    end
+  end
+
+  defp source_field({:state, name}), do: name
+  defp source_field({:prop, name}), do: name
+  defp source_field(name) when is_atom(name), do: name
+  defp source_field(_), do: nil
+
+  defp match_via_read(proj, state, match_fields) do
+    module = Map.fetch!(proj, :module)
+    filter = Map.new(match_fields, &{&1, Map.get(state, &1)})
+    read_one_through(module, proj, state, filter)
   end
 
   defp create_record(proj, action, transform, state, module, id) do

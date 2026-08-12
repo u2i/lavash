@@ -99,10 +99,18 @@ export function refreshSyncAnnotations(hook) {
   if (!hook.store) return;
 
   // ----- Stream rows (issue #71) -----
-  // A predicted row resolves when the server's confirming stream op
-  // morphs it (stripping data-lavash-provisional) or removes it.
+  // A predicted insert/replace resolves when the server's confirming
+  // stream op morphs it (stripping data-lavash-provisional) or removes
+  // it. A predicted delete removed the node itself — it resolves when
+  // the next server patch arrives (the confirming stream_delete no-ops
+  // on the already-gone node).
   if (hook.streamRows && hook.streamRows.size > 0) {
-    for (const domId of [...hook.streamRows.keys()]) {
+    for (const [domId, entry] of [...hook.streamRows.entries()]) {
+      if (entry.kind === "delete") {
+        if (hook.serverVersion !== entry.version) hook.streamRows.delete(domId);
+        continue;
+      }
+
       const el = document.getElementById(domId);
       if (!el || !el.hasAttribute("data-lavash-provisional")) {
         hook.streamRows.delete(domId);

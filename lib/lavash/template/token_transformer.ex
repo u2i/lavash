@@ -56,6 +56,7 @@ defmodule Lavash.Template.TokenTransformer do
     Lavash.Template.PhxTargetTransformer,
     Lavash.Optimistic.ClientBindingsTransformer,
     Lavash.Optimistic.DataAttrTransformer,
+    Lavash.Optimistic.StreamRowDataTransformer,
     Lavash.Optimistic.DisplaySpanTransformer
   ]
 

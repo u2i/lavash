@@ -445,6 +445,11 @@ defmodule Lavash.Component.Transformers.CompileComponent do
       actions: actions_map,
       optimistic_actions: optimistic_actions_map,
       attr_derives: attr_derives,
+      # Streamed projections whose rows carry data-lavash-row (issue
+      # #71 phase 2): keyed row predictions (mutate/upsert) read the
+      # row's current data from the DOM, so only fields those ops
+      # target pay the per-row payload.
+      stream_row_data_fields: stream_row_data_fields(reads, actions),
       caller_module: env.module,
       caller_file: env.file,
       # The compile env, for alias-resolving literal module={...} attrs
@@ -458,6 +463,23 @@ defmodule Lavash.Component.Transformers.CompileComponent do
       # since in Base mode that's the contract, not a typo.
       layer: Module.get_attribute(env.module, :__lavash_layer__)
     }
+  end
+
+  @doc false
+  def stream_row_data_fields(reads, actions) do
+    streamed =
+      reads
+      |> Enum.flat_map(&(&1.client_states || []))
+      |> Enum.filter(&Map.get(&1, :stream, false))
+      |> MapSet.new(& &1.name)
+
+    actions
+    |> Enum.flat_map(fn action ->
+      Enum.map(Map.get(action, :mutates) || [], & &1.field) ++
+        Enum.map(Map.get(action, :upserts) || [], & &1.field)
+    end)
+    |> MapSet.new()
+    |> MapSet.intersection(streamed)
   end
 
   # ============================================

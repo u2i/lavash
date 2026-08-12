@@ -603,6 +603,35 @@ defmodule Lavash.LiveView.Runtime do
     invalidate_resource(module, resource, socket)
   end
 
+  # Record-level invalidation (issue #71 phase 3): streamed projections
+  # of this resource requery JUST the touched record through their
+  # backing read — its filters decide membership — and apply a per-row
+  # stream op. Everything else (non-streamed reads/derives on the
+  # resource) still coarse-invalidates.
+  #
+  # Row REMOVALS (a delete, or a write that fell out of the read's
+  # filter) go through the coarse re-read + reset re-stream instead of
+  # a targeted stream_delete: delete-only stream diffs carry no row
+  # content, and LiveView's client can skip applying them depending on
+  # tree state (observed against the stock 1.2.9 client in both Chrome
+  # and lightpanda) — reset diffs ship full rows and always apply.
+  def handle_info(module, {:lavash_invalidate, resource, detail}, socket) do
+    streamed =
+      Lavash.ClientState.projections(module)
+      |> Enum.filter(&(&1.stream and &1.resource == resource))
+
+    {socket, reset_reads} =
+      Enum.reduce(streamed, {socket, MapSet.new()}, fn proj, {sock, resets} ->
+        case apply_targeted_stream_invalidation(module, proj, detail, sock) do
+          {:ok, sock} -> {sock, resets}
+          {:reset, sock} -> {sock, MapSet.put(resets, proj.read)}
+        end
+      end)
+
+    except = MapSet.difference(MapSet.new(streamed, & &1.read), reset_reads)
+    invalidate_resource(module, resource, socket, except: except)
+  end
+
   # Unrecognized :lavash_* tuples are library bugs — surface them.
   def handle_info(module, {tag, _, _} = msg, socket) when is_atom(tag) do
     if tag |> Atom.to_string() |> String.starts_with?("lavash_") do
@@ -620,9 +649,37 @@ defmodule Lavash.LiveView.Runtime do
     LSocket.put_state(socket, field, Lavash.Type.decode_wire(value))
   end
 
-  defp invalidate_resource(module, resource, socket) do
+  # A record found through the read (its filters applied) belongs in
+  # the stream — insert/update in place. Not found (deleted, or fell
+  # out of the filter) — the row must go, via the reset path (see
+  # handle_info above).
+  defp apply_targeted_stream_invalidation(module, proj, {op, id}, socket) do
+    state = Lavash.Socket.full_state(socket)
+
+    record =
+      if op == :deleted,
+        do: nil,
+        else: Lavash.ClientState.read_one_through(module, proj, state, %{id: id})
+
+    if record do
+      {:ok,
+       Phoenix.LiveView.stream_insert(
+         socket,
+         proj.name,
+         Lavash.ClientState.project([record], proj.fields) |> hd()
+       )}
+    else
+      {:reset, socket}
+    end
+  end
+
+  defp invalidate_resource(module, resource, socket, opts \\ []) do
+    except = Keyword.get(opts, :except, MapSet.new())
+
     # Invalidate all reads/derives that depend on this resource
-    fields_to_invalidate = DslGraph.fields_for_resource(module, resource)
+    fields_to_invalidate =
+      DslGraph.fields_for_resource(module, resource)
+      |> Enum.reject(&MapSet.member?(except, &1))
 
     socket =
       if fields_to_invalidate != [] do
