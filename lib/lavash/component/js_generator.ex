@@ -150,4 +150,55 @@ defmodule Lavash.Component.JsGenerator do
         {"item", "[]"}
     end
   end
+
+  @doc """
+  Transpiles a stream row template (issue #71) — an element carrying
+  `:for={{dom_id, row} <- @streams.<name>}` — into a standalone JS row
+  function body: the element WITHOUT the `:for` attr as a template
+  literal, with the tuple pattern's two variables as parameters.
+
+  Returns `{:ok, {dom_id_param, row_param, body_literal}}` or `:error`
+  when the node isn't a stream `:for` of that shape.
+  """
+  def stream_row_fn({:element, tag, attrs, children, meta}) do
+    with {:for, code} <- find_special_attr(attrs, :for),
+         {:ok, {:<-, _, [{{dom_var, _, _}, {row_var, _, _}}, _collection]}} <-
+           Code.string_to_quoted(code),
+         true <- is_atom(dom_var) and is_atom(row_var) do
+      body =
+        render_element_wrapped(tag, reject_special_attr(attrs, :for), children, meta, %{
+          loop_var: to_string(row_var)
+        })
+
+      {:ok, {to_string(dom_var), to_string(row_var), body}}
+    else
+      _ -> :error
+    end
+  end
+
+  def stream_row_fn(_), do: :error
+
+  @doc """
+  Finds the row node for a streamed projection in a parsed template
+  tree: the element whose `:for` iterates `@streams.<name>`.
+  """
+  def find_stream_row_node(nodes, name) when is_list(nodes) do
+    Enum.find_value(nodes, &find_stream_row_node(&1, name))
+  end
+
+  def find_stream_row_node({:element, _tag, attrs, children, _meta} = node, name) do
+    case find_special_attr(attrs, :for) do
+      {:for, code} ->
+        if String.contains?(code, "@streams.#{name}") do
+          node
+        else
+          find_stream_row_node(children, name)
+        end
+
+      nil ->
+        find_stream_row_node(children, name)
+    end
+  end
+
+  def find_stream_row_node(_, _name), do: nil
 end

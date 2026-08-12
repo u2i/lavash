@@ -26,13 +26,20 @@ defmodule Lavash.ClientState do
 
   @doc """
   Returns the client-state projections declared on a module's reads,
-  as `%{name, read, key, resource}` maps.
+  as `%{name, read, key, resource, fields, stream}` maps.
   """
   def projections(module) do
     module.__lavash__(:reads)
     |> Enum.flat_map(fn read ->
       Enum.map(read.client_states || [], fn cs ->
-        %{name: cs.name, read: read.name, key: cs.key, resource: read.resource}
+        %{
+          name: cs.name,
+          read: read.name,
+          key: cs.key,
+          resource: read.resource,
+          fields: cs.fields,
+          stream: Map.get(cs, :stream, false)
+        }
       end)
     end)
   end
@@ -63,9 +70,12 @@ defmodule Lavash.ClientState do
     if MapSet.size(fields) == 0 do
       []
     else
+      # Streamed projections don't confirm via a full re-read — the
+      # touched rows are pushed as per-row stream ops from the same
+      # event (see apply_mutations).
       module
       |> projections()
-      |> Enum.filter(&MapSet.member?(fields, &1.name))
+      |> Enum.filter(&(MapSet.member?(fields, &1.name) and not &1.stream))
       |> Enum.map(& &1.read)
       |> Enum.uniq()
     end
@@ -114,29 +124,71 @@ defmodule Lavash.ClientState do
         |> Map.merge(Lavash.Socket.full_state(socket))
         |> Map.merge(params)
 
-      touched =
-        Enum.map(ops, fn {kind, op} ->
+      {socket, touched} =
+        Enum.reduce(ops, {socket, []}, fn {kind, op}, {sock, acc} ->
           proj = Map.fetch!(projections_by_field, op.field)
 
-          case kind do
-            :append ->
-              id = Map.get(append_ids, append_id_key(module, action.name, op.field))
-              apply_append(op, proj, state, module, id)
+          sock =
+            case kind do
+              :append ->
+                id = Map.get(append_ids, append_id_key(module, action.name, op.field))
+                record = apply_append(op, proj, state, module, id)
+                confirm_stream_insert(sock, proj, record)
 
-            :upsert ->
-              id = Map.get(append_ids, append_id_key(module, action.name, op.field))
-              apply_upsert(op, proj, state, module, id)
+              :upsert ->
+                id = Map.get(append_ids, append_id_key(module, action.name, op.field))
+                apply_upsert(op, proj, state, module, id)
+                sock
 
-            _ ->
-              apply_mutation(kind, op, proj, state, params, module)
-          end
+              _ ->
+                apply_mutation(kind, op, proj, state, params, module)
+                sock
+            end
 
-          proj.resource
+          {sock, [proj.resource | acc]}
         end)
 
       touched |> Enum.uniq() |> Enum.each(&Lavash.PubSub.broadcast/1)
       socket
     end
+  end
+
+  # Streamed projection (issue #71): the same-event confirmation is a
+  # per-row stream op of the written record — the client's predicted
+  # row rendered under the same client-generated id, so LiveView's
+  # insert morphs that exact node in place (and strips the client's
+  # data-lavash-provisional marker, which IS the confirm signal).
+  defp confirm_stream_insert(socket, %{stream: true} = proj, record) do
+    Phoenix.LiveView.stream_insert(socket, proj.name, project_record(record, proj.fields))
+  end
+
+  defp confirm_stream_insert(socket, _proj, _record), do: socket
+
+  @doc """
+  Feeds fresh results of stream-backed projections (issue #71) into
+  their LiveView streams and releases the read's records from assigns.
+
+  Called after each reactive recompute: whenever a streamed
+  projection's backing read holds a fresh record list (initial mount,
+  PubSub invalidation re-read), the projected rows are streamed with
+  `reset: true` and the assign is collapsed to `:streamed` so neither
+  side retains the list.
+  """
+  def flush_stream_projections(socket, module) do
+    module
+    |> projections()
+    |> Enum.filter(& &1.stream)
+    |> Enum.reduce(socket, fn proj, sock ->
+      case sock.assigns[proj.read] do
+        records when is_list(records) ->
+          sock
+          |> Phoenix.LiveView.stream(proj.name, project(records, proj.fields), reset: true)
+          |> Lavash.Socket.put_derived(proj.read, :streamed)
+
+        _ ->
+          sock
+      end
+    end)
   end
 
   defp apply_mutation(:mutate, op, proj, state, params, module) do

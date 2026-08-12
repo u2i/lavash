@@ -90,6 +90,7 @@ spark_locals_without_parens = [
   setter: 1,
   source: 1,
   state: 2,
+  stream: 1,
   state: 3,
   submit: 1,
   submit: 2,

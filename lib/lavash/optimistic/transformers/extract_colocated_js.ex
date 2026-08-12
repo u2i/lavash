@@ -189,13 +189,11 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
     # Read subtree derives (auto-extracted :if/:for over optimistic state)
     subtree_derives = Transformer.get_persisted(dsl_state, :lavash_subtree_derives) || []
 
-    # Projection field -> key, for mutate/remove row matching
-    projection_keys =
-      (Transformer.get_entities(dsl_state, [:reads]) || [])
-      |> Enum.flat_map(fn read ->
-        Enum.map(read.client_states || [], fn cs -> {cs.name, cs.key} end)
-      end)
-      |> Map.new()
+    %{
+      projection_keys: projection_keys,
+      streamed_fields: streamed_fields,
+      stream_row_fns: stream_row_fns
+    } = collect_projection_js_metadata(dsl_state, module)
 
     check_optimistic_calc_deps!(dsl_state, module, calculations, animated_fields)
 
@@ -213,8 +211,72 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
         attr_derives: attr_derives,
         subtree_derives: subtree_derives,
         projection_keys: projection_keys,
+        streamed_fields: streamed_fields,
+        stream_row_fns: stream_row_fns,
         module: module
       })
+    end
+  end
+
+  # Projection-related JS metadata: field -> key for mutate/remove row
+  # matching, plus the stream-backed set (issue #71) — streamed rows
+  # live in the DOM, not in client state, so appends become per-row DOM
+  # inserts rendered by a transpiled row function extracted from the
+  # template's `:for={{dom_id, row} <- @streams.<name>}`.
+  defp collect_projection_js_metadata(dsl_state, module) do
+    client_states =
+      (Transformer.get_entities(dsl_state, [:reads]) || [])
+      |> Enum.flat_map(&(&1.client_states || []))
+
+    streamed = Enum.filter(client_states, &Map.get(&1, :stream, false))
+
+    %{
+      projection_keys: Map.new(client_states, &{&1.name, &1.key}),
+      streamed_fields: MapSet.new(streamed, & &1.name),
+      stream_row_fns: generate_stream_row_fns(dsl_state, module, streamed)
+    }
+  end
+
+  # Transpile each streamed projection's row template into a
+  # `__stream_row_<name>(dom_id, row)` function. The row node is found
+  # in the parsed template by its `@streams.<name>` generator; a
+  # streamed projection whose template has no such loop is a compile
+  # error — the append prediction would have nothing to render.
+  defp generate_stream_row_fns(dsl_state, module, streamed_projections) do
+    if streamed_projections == [] do
+      []
+    else
+      parsed = Transformer.get_persisted(dsl_state, :lavash_template_tokens)
+
+      nodes =
+        case parsed && Lavash.Template.parse(parsed, descend_components: true) do
+          nodes when is_list(nodes) -> nodes
+          node when is_tuple(node) -> [node]
+          _ -> []
+        end
+
+      Enum.map(streamed_projections, fn cs ->
+        with node when not is_nil(node) <-
+               Lavash.Component.JsGenerator.find_stream_row_node(nodes, cs.name),
+             {:ok, {dom_var, row_var, body}} <-
+               Lavash.Component.JsGenerator.stream_row_fn(node) do
+          """
+            __stream_row_#{cs.name}(#{dom_var}, #{row_var}) {
+              return #{body};
+            }
+          """
+        else
+          _ ->
+            raise Spark.Error.DslError,
+              module: module,
+              path: [:reads],
+              message:
+                "client_state :#{cs.name} has `stream true` but the template has no " <>
+                  "row loop of the form `:for={{dom_id, row} <- @streams.#{cs.name}}` " <>
+                  "on an element — the append prediction needs that row template to " <>
+                  "render the predicted row client-side"
+        end
+      end)
     end
   end
 
@@ -246,6 +308,8 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
          attr_derives: attr_derives,
          subtree_derives: subtree_derives,
          projection_keys: projection_keys,
+         streamed_fields: streamed_fields,
+         stream_row_fns: stream_row_fns,
          module: module
        }) do
     # Demote untranspilable optimistic calcs to server-only, loudly:
@@ -260,7 +324,7 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
 
     action_fns =
       optimistic_actions
-      |> Enum.map(&generate_action_js(&1, projection_keys, module))
+      |> Enum.map(&generate_action_js(&1, projection_keys, streamed_fields, module))
       |> Enum.filter(& &1)
 
     {form_validation_fns, form_error_fns, validation_derives, error_derives} =
@@ -278,7 +342,8 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
         form_validation_fns ++
         form_error_fns ++
         attr_derive_fns ++
-        subtree_derive_fns
+        subtree_derive_fns ++
+        stream_row_fns
 
     if fns == [] and animated_fields == [] do
       nil
@@ -409,13 +474,16 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
   # Generate JS for an action
   # Non-transpilable sets (lambdas, complex expressions) are skipped —
   # the transpilable ones still run client-side for instant UI updates
-  defp generate_action_js(action, projection_keys, module) do
+  defp generate_action_js(action, projection_keys, streamed_fields, module) do
     name = action.name
     sets = action.sets || []
     params = action.params || []
 
     # Generate JS expressions, filtering out non-transpilable ones
     set_exprs = sets |> Enum.map(&generate_set_js(&1, params, module)) |> Enum.filter(& &1)
+
+    {stream_appends, list_appends} =
+      Enum.split_with(Map.get(action, :appends) || [], &(&1.field in streamed_fields))
 
     projection_ops =
       Enum.map(
@@ -424,8 +492,12 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
       ) ++
         Enum.map(Map.get(action, :removes) || [], &generate_remove_js(&1, projection_keys)) ++
         Enum.map(
-          Map.get(action, :appends) || [],
+          list_appends,
           &generate_append_js(&1, action.name, params, projection_keys, module)
+        ) ++
+        Enum.map(
+          stream_appends,
+          &generate_stream_append_js(&1, action.name, params, projection_keys, module)
         ) ++
         Enum.map(
           Map.get(action, :upserts) || [],
@@ -433,6 +505,7 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
         )
 
     projection_stmts = Enum.filter(projection_ops, & &1)
+    has_stream_ops = stream_appends != []
 
     # `invoke`'s client half: run the target component's optimistic
     # prediction in the same tick as this action's own sets. The
@@ -459,17 +532,23 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
 
       if projection_stmts != [] or invoke_stmts != [] do
         # Projection ops mutate the list in-place and return the full delta
-        stmts = Enum.join(projection_stmts ++ invoke_stmts, "\n")
+        prelude = if has_stream_ops, do: "    const __stream_ops__ = [];\n", else: ""
+        stmts = prelude <> Enum.join(projection_stmts ++ invoke_stmts, "\n")
 
+        # Streamed fields hold no client-state list — their prediction
+        # is the __stream_ops__ DOM ops, not a state delta.
         projection_fields =
           Lavash.ClientState.mutated_fields(action)
           |> Enum.uniq()
+          |> Enum.reject(&(&1 in streamed_fields))
           |> Enum.map(fn field ->
             "#{Lavash.Optimistic.Transpiler.js_field_key(field)}: #{Lavash.Optimistic.Transpiler.js_field_access("state", field)}"
           end)
 
+        stream_delta = if has_stream_ops, do: ["__stream_ops__: __stream_ops__"], else: []
+
         set_delta = if set_exprs != [], do: Enum.join(set_exprs, ", ") <> ", ", else: ""
-        projection_delta = Enum.join(projection_fields, ", ")
+        projection_delta = Enum.join(projection_fields ++ stream_delta, ", ")
 
         """
           #{method_key}(state#{param_str}) {
@@ -546,6 +625,39 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
           #{state_field} = [ ...(#{state_field} || []),
             { #{Lavash.Optimistic.Transpiler.js_field_key(key_name)}: (window.Lavash.takeAppendId(#{stash_key}) ?? crypto.randomUUID()),
               ...(#{transform_js}) } ];
+      """
+    else
+      nil
+    end
+  end
+
+  # Stream-backed append (issue #71): no client-state list to rewrite —
+  # render ONE row via the transpiled row template under the
+  # pre-stashed client id and queue a DOM insert. The stream container
+  # convention: its DOM id equals the projection name, and row dom ids
+  # are "<name>-<key>" (matching LiveView's stream dom_id default).
+  # The server's confirming stream_insert targets the same dom id, so
+  # LiveView morphs the predicted node in place.
+  defp generate_stream_append_js(append, action_name, params, projection_keys, module) do
+    field = append.field
+    key_name = Map.get(projection_keys, field, :id)
+    transform_js = transpile_projection_rx(append.transform, params, "append :#{field}", module)
+
+    if transform_js do
+      stash_key = Jason.encode!(append_id_key(module, action_name, append.field))
+      module_name = Jason.encode!(inspect(module))
+
+      """
+          {
+            const __sid = (window.Lavash.takeAppendId(#{stash_key}) ?? crypto.randomUUID());
+            const __domId = `#{field}-${__sid}`;
+            const __row = { #{Lavash.Optimistic.Transpiler.js_field_key(key_name)}: __sid, ...(#{transform_js}) };
+            __stream_ops__.push({
+              container: #{Jason.encode!(to_string(field))},
+              domId: __domId,
+              html: window.Lavash.optimistic[#{module_name}].__stream_row_#{field}(__domId, __row)
+            });
+          }
       """
     else
       nil

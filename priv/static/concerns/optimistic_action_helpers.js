@@ -191,6 +191,28 @@ function shallowRowEqual(a, b) {
   return keysA.every(k => a[k] === b[k]);
 }
 
+// Predicted row inserts for stream-backed projections (issue #71).
+// The row goes into the phx-update="stream" container — which never
+// reconciles children on patch, so the predicted node survives until
+// the server's confirming stream_insert (same client-minted dom id)
+// morphs it in place. That morph strips data-lavash-provisional (the
+// server HTML doesn't carry it), which is the confirmation signal
+// refreshSyncAnnotations watches for.
+function applyStreamOps(hook, ops) {
+  for (const op of ops) {
+    if (document.getElementById(op.domId)) continue;
+    const container = document.getElementById(op.container);
+    if (!container) continue;
+    container.insertAdjacentHTML("beforeend", op.html);
+    const el = document.getElementById(op.domId);
+    if (el) {
+      el.setAttribute("data-lavash-provisional", "");
+      hook.streamRows = hook.streamRows || new Map();
+      hook.streamRows.set(op.domId, true);
+    }
+  }
+}
+
 export function runOptimisticAction(actionName, value, hook) {
   let fn = hook.fns[actionName];
 
@@ -234,6 +256,13 @@ export function runOptimisticAction(actionName, value, hook) {
     // references as the diff base for provisional row ids (issue #72).
     const stateBefore = provisional ? { ...hook.state } : null;
     const delta = fn(hook.state, value);
+
+    // Stream-backed projections (issue #71): the prediction is a DOM
+    // row op, not a state delta — apply and drop before the state loop.
+    if (delta.__stream_ops__) {
+      applyStreamOps(hook, delta.__stream_ops__);
+      delete delta.__stream_ops__;
+    }
 
     const changedFields = [];
     for (const [key, val] of Object.entries(delta)) {

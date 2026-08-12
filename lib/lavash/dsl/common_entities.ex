@@ -79,6 +79,20 @@ defmodule Lavash.Dsl.CommonEntities do
           attributes; keyword tails project one level of loaded
           relationships: `fields [:id, :quantity, product: [:id, :name]]`.
           """
+        ],
+        stream: [
+          type: :boolean,
+          default: false,
+          doc: """
+          Stream-backed projection (issue #71): rows feed a LiveView
+          stream instead of living in assigns/client state — the client
+          holds no list copy, predictions are per-row DOM inserts, and
+          the server confirms with per-row stream ops. The template
+          renders the standard stream idiom
+          (`:for={{dom_id, row} <- @streams.<name>}` inside a
+          `phx-update="stream"` container whose DOM id is `<name>`).
+          See docs/STREAM_PROJECTIONS.md.
+          """
         ]
       ]
     }

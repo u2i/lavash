@@ -351,9 +351,28 @@ defmodule Lavash.Reactive do
 
   # Recompute derived fields in the given order, handling async and propagation
   defp run_recompute(socket, graph, fields) do
-    Enum.reduce(fields, socket, fn field, sock ->
-      compute_field(sock, graph, field)
-    end)
+    socket =
+      Enum.reduce(fields, socket, fn field, sock ->
+        compute_field(sock, graph, field)
+      end)
+
+    # Stream-backed projections (issue #71): whenever a recompute
+    # leaves a streamed projection's backing read holding a fresh
+    # record list, feed the rows into the LiveView stream and release
+    # the assign. No-op for modules without streamed projections, and
+    # skipped entirely for ad-hoc graphs (bare test sockets) where no
+    # lavash module backs the socket.
+    maybe_flush_stream_projections(socket)
+  end
+
+  defp maybe_flush_stream_projections(socket) do
+    module = socket.assigns[:__component_module__] || socket.view
+
+    if module && function_exported?(module, :__lavash__, 1) do
+      Lavash.ClientState.flush_stream_projections(socket, module)
+    else
+      socket
+    end
   end
 
   defp compute_field(socket, graph, field) do
