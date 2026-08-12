@@ -95,6 +95,7 @@ defmodule DemoWeb.Router do
     live "/components", ComponentsDemoLive
     live "/bindings", BindingsDemoLive
     live "/tag-editor", TagEditorDemoLive
+    live "/todos", TodosLive
     live "/toggle", ToggleDemoLive
     live "/form-validation", FormValidationDemoLive
     live "/checkout", CheckoutDemoLive
