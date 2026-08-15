@@ -1,7 +1,7 @@
-defmodule DemoWeb.LiveViewDemos.ProductsLive do
+defmodule DemoWeb.Builder.ProductsLive do
   @moduledoc """
   Product catalog with URL-backed filters — the non-DSL counterpart
-  to `DemoWeb.ProductsLive`.
+  to `DemoWeb.Dsl.ProductsLive`.
 
   Everything the DSL does declaratively is wired by hand here:
 
@@ -87,7 +87,7 @@ defmodule DemoWeb.LiveViewDemos.ProductsLive do
   end
 
   def handle_event("clear_filters", _, socket) do
-    {:noreply, push_patch(socket, to: "/lv/products")}
+    {:noreply, push_patch(socket, to: "/builder/products")}
   end
 
   # Any product mutation (e.g. an /admin edit) lands here via the
@@ -123,7 +123,7 @@ defmodule DemoWeb.LiveViewDemos.ProductsLive do
       |> Map.merge(changes)
       |> Enum.reject(fn {_k, v} -> v in [nil, ""] end)
 
-    push_patch(socket, to: "/lv/products?" <> URI.encode_query(filters))
+    push_patch(socket, to: "/builder/products?" <> URI.encode_query(filters))
   end
 
   defp presence(nil), do: nil
@@ -157,8 +157,8 @@ defmodule DemoWeb.LiveViewDemos.ProductsLive do
           </p>
         </div>
         <div class="flex gap-4">
-          <a href="/demos/products" class="link">DSL version</a>
-          <a href="/lv" class="link">&larr; LiveView demos</a>
+          <a href="/dsl/products" class="link">DSL version</a>
+          <a href="/" class="link">&larr; All demos</a>
         </div>
       </div>
 

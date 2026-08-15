@@ -4,7 +4,7 @@ defmodule DemoWeb.ToggleDemoLiveTest do
 
   describe "toggle demo" do
     test "renders headings and the three toggles", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/demos/toggle")
+      {:ok, _view, html} = live(conn, "/dsl/toggle")
       assert html =~ "Toggle Demo"
       assert html =~ "Feature Flag"
       assert html =~ "Dark Mode"
@@ -15,7 +15,7 @@ defmodule DemoWeb.ToggleDemoLiveTest do
     end
 
     test "initial server state shows defaults", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/demos/toggle")
+      {:ok, _view, html} = live(conn, "/dsl/toggle")
       # feature_enabled and dark_mode default to false, notifications to true
       assert html =~ "feature_enabled:"
       assert html =~ "dark_mode:"

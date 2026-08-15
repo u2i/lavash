@@ -4,7 +4,7 @@ defmodule DemoWeb.BindingsDemoLiveTest do
 
   describe "bindings demo" do
     test "renders ChipSet and initial empty state", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/demos/bindings")
+      {:ok, _view, html} = live(conn, "/dsl/bindings")
       assert html =~ "Bindings Demo"
       assert html =~ ~s|id="roast-filter"|
       assert html =~ ~s|data-lavash-display="selected_count">0<|
@@ -13,7 +13,7 @@ defmodule DemoWeb.BindingsDemoLiveTest do
     end
 
     test "url-state preselects roasts and computes the chain", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/demos/bindings?roast[]=light&roast[]=dark")
+      {:ok, _view, html} = live(conn, "/dsl/bindings?roast[]=light&roast[]=dark")
 
       assert html =~ ~s|data-lavash-display="selected_count">2<|
       assert html =~ ~s|data-lavash-display="has_selection">true<|
@@ -21,7 +21,7 @@ defmodule DemoWeb.BindingsDemoLiveTest do
     end
 
     test "single selection uses singular wording", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/demos/bindings?roast[]=light")
+      {:ok, _view, html} = live(conn, "/dsl/bindings?roast[]=light")
       assert html =~ "1 roast selected"
     end
   end

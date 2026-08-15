@@ -12,7 +12,7 @@ defmodule DemoWeb.AnonymousIdentityTest do
     user = conn.assigns.current_user
     assert user.anonymous
 
-    for path <- ["/demos/todos", "/storefront", "/account/orders"] do
+    for path <- ["/dsl/todos", "/storefront", "/account/orders"] do
       conn = get(conn, path)
 
       assert conn.assigns.current_user.id == user.id,

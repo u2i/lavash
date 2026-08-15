@@ -1,7 +1,7 @@
-defmodule DemoWeb.LiveViewDemos.FormValidationLive do
+defmodule DemoWeb.Reactive.FormValidationLive do
   @moduledoc """
   Form validation with `Lavash.LiveView.Explicit` — the non-DSL
-  counterpart to `DemoWeb.FormValidationDemoLive`.
+  counterpart to `DemoWeb.Dsl.FormValidationDemoLive`.
 
   Same rules as the DSL demo (mirroring `Demo.Forms.Registration`'s
   constraints: name >= 2 chars, email with `@`, age >= 18) and the
@@ -152,14 +152,14 @@ defmodule DemoWeb.LiveViewDemos.FormValidationLive do
           </li>
           <li>&bull; Submit still goes through the Ash resource for authoritative validation</li>
           <li>
-            &bull; Compare: <a href="/demos/form-validation" class="link">DSL version</a>
+            &bull; Compare: <a href="/dsl/form-validation" class="link">DSL version</a>
             generates all of this from resource constraints, validated client-side
           </li>
         </ul>
       </div>
 
       <div class="mt-4 text-center">
-        <a href="/lv" class="link text-sm">&larr; LiveView demos</a>
+        <a href="/" class="link text-sm">&larr; All demos</a>
       </div>
     </div>
     """

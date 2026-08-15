@@ -34,7 +34,7 @@ defmodule DemoWeb.TodosLiveTest do
 
     create_todo!(other, "someone else's secret")
 
-    {:ok, _view, html} = live(conn, "/demos/todos")
+    {:ok, _view, html} = live(conn, "/dsl/todos")
     assert html =~ "write the demo"
     assert html =~ "todos-#{todo.id}"
     refute html =~ "someone else's secret"
@@ -45,7 +45,7 @@ defmodule DemoWeb.TodosLiveTest do
 
   test "add creates the record under the visitor's user", %{conn: conn} do
     {conn, user} = with_user(conn)
-    {:ok, view, _html} = live(conn, "/demos/todos")
+    {:ok, view, _html} = live(conn, "/dsl/todos")
 
     render_click(view, "add", %{"value" => "buy beans"})
 
@@ -58,7 +58,7 @@ defmodule DemoWeb.TodosLiveTest do
     {conn, user} = with_user(conn)
     todo = create_todo!(user, "flip me")
 
-    {:ok, view, _html} = live(conn, "/demos/todos")
+    {:ok, view, _html} = live(conn, "/dsl/todos")
 
     render_click(view, "toggle", %{"id" => todo.id})
     assert Ash.get!(Todo, todo.id).done == true
@@ -74,7 +74,7 @@ defmodule DemoWeb.TodosLiveTest do
     todo = create_todo!(user, "remove me")
     keeper = create_todo!(user, "keep me")
 
-    {:ok, view, _html} = live(conn, "/demos/todos")
+    {:ok, view, _html} = live(conn, "/dsl/todos")
 
     render_click(view, "delete", %{"id" => todo.id})
 

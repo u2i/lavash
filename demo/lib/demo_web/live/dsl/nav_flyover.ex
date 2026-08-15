@@ -1,4 +1,4 @@
-defmodule DemoWeb.NavFlyover do
+defmodule DemoWeb.Dsl.NavFlyover do
   @moduledoc """
   A Lavash Component demonstrating the Flyover (slideover) extension.
 
@@ -7,7 +7,7 @@ defmodule DemoWeb.NavFlyover do
   ## Example usage
 
       <.lavash_component
-        module={DemoWeb.NavFlyover}
+        module={DemoWeb.Dsl.NavFlyover}
         id="nav-flyover"
         open={@nav_open}
         bind={[open: :nav_open]}
@@ -47,8 +47,8 @@ defmodule DemoWeb.NavFlyover do
             <details open>
               <summary class="text-base font-medium">Forms</summary>
               <ul>
-                <li><a href="/demos/form-validation">Form Validation</a></li>
-                <li><a href="/demos/bindings">Bindings</a></li>
+                <li><a href="/dsl/form-validation">Form Validation</a></li>
+                <li><a href="/dsl/bindings">Bindings</a></li>
               </ul>
             </details>
           </li>
@@ -56,8 +56,8 @@ defmodule DemoWeb.NavFlyover do
             <details open>
               <summary class="text-base font-medium">Data</summary>
               <ul>
-                <li><a href="/demos/products">Products (URL)</a></li>
-                <li><a href="/demos/products-socket">Products (Socket)</a></li>
+                <li><a href="/dsl/products">Products (URL)</a></li>
+                <li><a href="/dsl/products-socket">Products (Socket)</a></li>
                 <li><a href="/admin/categories">Categories</a></li>
               </ul>
             </details>
@@ -66,9 +66,9 @@ defmodule DemoWeb.NavFlyover do
             <details open>
               <summary class="text-base font-medium">Components</summary>
               <ul>
-                <li><a href="/demos/counter">Counter</a></li>
-                <li><a href="/demos/tag-editor">Tag Editor</a></li>
-                <li><a href="/demos/flyover">Flyover</a></li>
+                <li><a href="/dsl/counter">Counter</a></li>
+                <li><a href="/dsl/tag-editor">Tag Editor</a></li>
+                <li><a href="/dsl/flyover">Flyover</a></li>
               </ul>
             </details>
           </li>

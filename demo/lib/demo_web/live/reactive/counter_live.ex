@@ -1,4 +1,4 @@
-defmodule DemoWeb.LiveViewDemos.CounterLive do
+defmodule DemoWeb.Reactive.CounterLive do
   @moduledoc """
   Counter demo using Lavash.Reactive in a plain LiveView — no DSL.
 
@@ -125,7 +125,7 @@ defmodule DemoWeb.LiveViewDemos.CounterLive do
       </div>
 
       <div class="mt-6 text-center">
-        <a href={~p"/lv"} class="link text-sm">&larr; LiveView demos</a>
+        <a href="/" class="link text-sm">&larr; All demos</a>
       </div>
     </div>
     """

@@ -1,4 +1,4 @@
-defmodule DemoWeb.ValidationDemoLive do
+defmodule DemoWeb.Dsl.ValidationDemoLive do
   @moduledoc """
   Demo showcasing client-side vs server-side validation.
 

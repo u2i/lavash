@@ -1,4 +1,4 @@
-defmodule DemoWeb.FormValidationDemoLive do
+defmodule DemoWeb.Dsl.FormValidationDemoLive do
   @moduledoc """
   Demo showcasing Ash form validation with client-side optimistic updates.
 

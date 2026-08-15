@@ -1,4 +1,4 @@
-defmodule DemoWeb.ProductEditModal do
+defmodule DemoWeb.Dsl.ProductEditModal do
   @moduledoc """
   A Lavash Component for editing a product in a modal.
 
@@ -10,7 +10,7 @@ defmodule DemoWeb.ProductEditModal do
   ## Example usage
 
       <.lavash_component
-        module={DemoWeb.ProductEditModal}
+        module={DemoWeb.Dsl.ProductEditModal}
         id="product-edit-modal"
         product_id={@product_id}
         bind={[product_id: :product_id]}

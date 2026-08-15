@@ -1,4 +1,4 @@
-defmodule DemoWeb.LiveViewDemos.TodosLive do
+defmodule DemoWeb.Builder.TodosLive do
   @moduledoc """
   Todos in pure Elixir — the zero-macro floor of the lavash design.
 
@@ -224,7 +224,7 @@ defmodule DemoWeb.LiveViewDemos.TodosLive do
       <div class="mt-6 p-4 bg-base-100 rounded-lg text-sm text-base-content/70 space-y-1">
         <h3 class="font-semibold text-base-content">What the DSL would add</h3>
         <p>
-          <a href="/demos/todos" class="link">/demos/todos</a>
+          <a href="/dsl/todos" class="link">/demos/todos</a>
           is this same page with stream projections (rows never ship as state) and
           per-row optimistic predictions (add/toggle/delete render before the round-trip).
           The graph underneath is the one you're reading here.
@@ -232,7 +232,7 @@ defmodule DemoWeb.LiveViewDemos.TodosLive do
       </div>
 
       <div class="mt-6 text-center">
-        <a href="/lv" class="link text-sm">&larr; LiveView demos</a>
+        <a href="/" class="link text-sm">&larr; All demos</a>
       </div>
     </div>
     """

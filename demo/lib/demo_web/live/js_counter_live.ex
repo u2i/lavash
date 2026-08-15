@@ -1,11 +1,11 @@
-defmodule DemoWeb.LiveViewDemos.PlainCounterLive do
+defmodule DemoWeb.JsCounterLive do
   @moduledoc """
   Counter built with plain LiveView + hand-coded JS hook.
 
   No Lavash DSL, no rx, no auto-generated JS. Uses the raw client
   primitives (SyncedVarStore, syncStateToUrl) to validate the API design.
 
-  Feature parity with DemoWeb.CounterLive (DSL version):
+  Feature parity with DemoWeb.Dsl.CounterLive (DSL version):
   - count: URL-backed integer state
   - multiplier: ephemeral integer state
   - doubled: synchronous derive (count * multiplier)
@@ -201,7 +201,7 @@ defmodule DemoWeb.LiveViewDemos.PlainCounterLive do
       </div>
 
       <div class="mt-6 text-center">
-        <a href={~p"/lv"} class="link text-sm">&larr; LiveView demos</a>
+        <a href="/" class="link text-sm">&larr; All demos</a>
       </div>
     </div>
     """

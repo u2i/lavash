@@ -1,4 +1,4 @@
-defmodule DemoWeb.DetailsFlyover do
+defmodule DemoWeb.Dsl.DetailsFlyover do
   @moduledoc """
   A Lavash Component demonstrating a right-sliding Flyover for detail panels.
 
@@ -7,7 +7,7 @@ defmodule DemoWeb.DetailsFlyover do
   ## Example usage
 
       <.lavash_component
-        module={DemoWeb.DetailsFlyover}
+        module={DemoWeb.Dsl.DetailsFlyover}
         id="details-flyover"
         open={@details_open}
         bind={[open: :details_open]}

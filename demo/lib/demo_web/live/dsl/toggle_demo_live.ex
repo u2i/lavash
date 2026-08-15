@@ -1,4 +1,4 @@
-defmodule DemoWeb.ToggleDemoLive do
+defmodule DemoWeb.Dsl.ToggleDemoLive do
   @moduledoc """
   Demo showing the Toggle component using SyncedVar.
 

@@ -1,4 +1,4 @@
-defmodule DemoWeb.ModalDemoLive do
+defmodule DemoWeb.Dsl.ModalDemoLive do
   @moduledoc """
   Demo page for the Modal component.
 
@@ -53,7 +53,7 @@ defmodule DemoWeb.ModalDemoLive do
 
       <!-- Simple Modal Component -->
       <.lavash_component
-        module={DemoWeb.SimpleModal}
+        module={DemoWeb.Dsl.SimpleModal}
         id="simple-modal"
         open={@modal_open}
         bind={[open: :modal_open]}

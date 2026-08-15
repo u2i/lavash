@@ -1,4 +1,4 @@
-defmodule DemoWeb.SimpleModal do
+defmodule DemoWeb.Dsl.SimpleModal do
   @moduledoc """
   A simple modal component for testing modal behavior with async loading.
 
@@ -10,7 +10,7 @@ defmodule DemoWeb.SimpleModal do
   ## Example usage
 
       <.lavash_component
-        module={DemoWeb.SimpleModal}
+        module={DemoWeb.Dsl.SimpleModal}
         id="simple-modal"
         open={@modal_open}
         bind={[open: :modal_open]}

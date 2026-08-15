@@ -4,7 +4,7 @@ defmodule DemoWeb.ComponentsDemoLiveTest do
 
   describe "components demo" do
     test "renders the components demo page", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/demos/components")
+      {:ok, _view, html} = live(conn, "/dsl/components")
       assert html =~ "Lavash Components Demo"
       assert html =~ "ProductCard with socket state"
     end

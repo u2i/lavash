@@ -1,4 +1,4 @@
-defmodule DemoWeb.ProductsSocketLive do
+defmodule DemoWeb.Dsl.ProductsSocketLive do
   @moduledoc """
   Products demo using socket state instead of URL state.
 
@@ -87,7 +87,7 @@ defmodule DemoWeb.ProductsSocketLive do
           <p class="text-gray-500 mt-1">Filter state survives reconnects but not page refresh</p>
         </div>
         <div class="flex gap-4">
-          <a href="/demos/products" class="text-indigo-600 hover:text-indigo-800">URL State Version</a>
+          <a href="/dsl/products" class="text-indigo-600 hover:text-indigo-800">URL State Version</a>
           <a href="/" class="text-indigo-600 hover:text-indigo-800">&larr; Demos</a>
         </div>
       </div>
@@ -99,7 +99,7 @@ defmodule DemoWeb.ProductsSocketLive do
           Try applying filters, then simulate a reconnect by
           disabling/enabling your network. Filters will persist. But if you refresh the page (F5),
           filters will reset. Compare with the
-          <a href="/demos/products" class="underline">URL State version</a>
+          <a href="/dsl/products" class="underline">URL State version</a>
           where filters persist in the URL.
         </p>
       </div>

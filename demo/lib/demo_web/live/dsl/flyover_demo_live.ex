@@ -1,4 +1,4 @@
-defmodule DemoWeb.FlyoverDemoLive do
+defmodule DemoWeb.Dsl.FlyoverDemoLive do
   @moduledoc """
   Demo page for the Flyover (slideover) component.
 
@@ -103,7 +103,7 @@ defmodule DemoWeb.FlyoverDemoLive do
 
       <!-- Navigation Flyover (Left) -->
       <.lavash_component
-        module={DemoWeb.NavFlyover}
+        module={DemoWeb.Dsl.NavFlyover}
         id="nav-flyover"
         open={@nav_open}
         bind={[open: :nav_open]}
@@ -111,7 +111,7 @@ defmodule DemoWeb.FlyoverDemoLive do
 
       <!-- Details Flyover (Right) -->
       <.lavash_component
-        module={DemoWeb.DetailsFlyover}
+        module={DemoWeb.Dsl.DetailsFlyover}
         id="details-flyover"
         open={@details_open}
         bind={[open: :details_open]}

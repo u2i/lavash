@@ -1,4 +1,4 @@
-defmodule DemoWeb.TodosLive do
+defmodule DemoWeb.Dsl.TodosLive do
   @moduledoc """
   Todo list on stream-backed projections (lavash issues #70/#71).
 
