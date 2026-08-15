@@ -14,6 +14,15 @@ fails, fix the underlying issue rather than passing `--no-verify`.
 
 Do not include co-author attribution in commit messages.
 
+Commit messages MUST use conventional-commit prefixes — release-please
+derives versions and changelog entries from them, and commits land on
+main verbatim (rebase merges). `feat:` / `fix:` drive releases;
+`feat!:` or a `BREAKING CHANGE:` footer marks breaking changes (which
+bump minor pre-1.0); `docs:` / `test:` / `chore:` / `refactor:` /
+`perf:` / `ci:` for the rest. Scopes are welcome (`feat(streams): …`).
+The `Release-As: x.y.z` footer forces a specific version (e.g. to
+graduate off release candidates).
+
 ## Testing — e2e is load-bearing, not optional
 
 Lavash's behavior is roughly half JavaScript (optimistic UI,
