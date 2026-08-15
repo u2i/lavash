@@ -18,13 +18,53 @@ defmodule Lavash.LiveView.ExplicitTest do
     end
   end
 
+  defmodule OverridesMount do
+    use Lavash.LiveView.Explicit
+
+    reactive do
+      state :count, 0
+      derive :doubled, rx(@count * 2)
+    end
+
+    # The documented override pattern: super does the lavash init.
+    # Regression: the default mount used to be injected in
+    # @before_compile (i.e. AFTER user code), so `super` didn't exist.
+    @impl Phoenix.LiveView
+    def mount(params, session, socket) do
+      {:ok, socket} = super(params, session, socket)
+      {:ok, Phoenix.Component.assign(socket, :extra, :from_override)}
+    end
+
+    @impl Phoenix.LiveView
+    def render(assigns) do
+      ~H"""
+      <p>{@count}</p>
+      """
+    end
+  end
+
   setup do
     on_exit(fn ->
       :persistent_term.erase({Lavash.Reactive, Sample})
       :persistent_term.erase({Lavash.Rx.Cache, Sample})
+      :persistent_term.erase({Lavash.Reactive, OverridesMount})
+      :persistent_term.erase({Lavash.Rx.Cache, OverridesMount})
     end)
 
     :ok
+  end
+
+  test "a user-defined mount/3 can call super for the lavash init" do
+    socket = %Phoenix.LiveView.Socket{
+      assigns: %{__changed__: %{}},
+      private: %{}
+    }
+
+    {:ok, socket} = OverridesMount.mount(%{}, %{}, socket)
+
+    assert socket.assigns.count == 0
+    assert socket.assigns.doubled == 0
+    assert socket.assigns.extra == :from_override
   end
 
   test "exposes a cached __lavash_reactive_graph__/0" do
