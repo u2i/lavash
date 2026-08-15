@@ -497,7 +497,7 @@ defmodule Lavash.ReactiveTest do
       socket = Reactive.init(socket, graph)
 
       # Wait for the async task to send its message
-      assert_receive {:lavash_reactive, :results, {:ok, [:found]}}, 1000
+      assert_receive {:lavash_reactive, :results, _gen, {:ok, [:found]}}, 1000
 
       {:ok, socket} = Reactive.handle_async(socket, {:lavash_reactive, :results, {:ok, [:found]}})
 
@@ -513,7 +513,7 @@ defmodule Lavash.ReactiveTest do
 
       socket = Reactive.init(socket, graph)
 
-      assert_receive {:lavash_reactive, :results, {:ok, [:a, :b]}}, 1000
+      assert_receive {:lavash_reactive, :results, _gen, {:ok, [:a, :b]}}, 1000
       {:ok, socket} = Reactive.handle_async(socket, {:lavash_reactive, :results, {:ok, [:a, :b]}})
 
       assert %Phoenix.LiveView.AsyncResult{ok?: true, result: [:a, :b]} = socket.assigns.results
@@ -557,7 +557,7 @@ defmodule Lavash.ReactiveTest do
       socket = Reactive.init(socket, graph)
 
       # Wait for task and handle the message
-      assert_receive {:lavash_reactive, :results, {:ok, [:a, :b, :c]}}, 1000
+      assert_receive {:lavash_reactive, :results, _gen, {:ok, [:a, :b, :c]}}, 1000
 
       {:ok, socket} =
         Reactive.handle_async(socket, {:lavash_reactive, :results, {:ok, [:a, :b, :c]}})
@@ -581,7 +581,8 @@ defmodule Lavash.ReactiveTest do
       socket = Reactive.init(socket, graph)
 
       # Wait for the error
-      assert_receive {:lavash_reactive, :fetched, {:error, %RuntimeError{message: "boom"}}}, 1000
+      assert_receive {:lavash_reactive, :fetched, _gen, {:error, %RuntimeError{message: "boom"}}},
+                     1000
 
       {:ok, socket} =
         Reactive.handle_async(
@@ -608,7 +609,7 @@ defmodule Lavash.ReactiveTest do
       socket = Reactive.init(socket, graph)
 
       # Drain the first task
-      assert_receive {:lavash_reactive, :results, {:ok, ["", ""]}}, 1000
+      assert_receive {:lavash_reactive, :results, _gen, {:ok, ["", ""]}}, 1000
       {:ok, socket} = Reactive.handle_async(socket, {:lavash_reactive, :results, {:ok, ["", ""]}})
       assert %Phoenix.LiveView.AsyncResult{ok?: true, result: ["", ""]} = socket.assigns.results
 
@@ -617,7 +618,7 @@ defmodule Lavash.ReactiveTest do
       assert %Phoenix.LiveView.AsyncResult{loading: true} = socket.assigns.results
 
       # New task completes
-      assert_receive {:lavash_reactive, :results, {:ok, ["hello", "hello"]}}, 1000
+      assert_receive {:lavash_reactive, :results, _gen, {:ok, ["hello", "hello"]}}, 1000
 
       {:ok, socket} =
         Reactive.handle_async(socket, {:lavash_reactive, :results, {:ok, ["hello", "hello"]}})
@@ -634,6 +635,57 @@ defmodule Lavash.ReactiveTest do
 
       socket = Reactive.init(socket, graph)
       assert :not_handled = Reactive.handle_async(socket, {:something_else, :data})
+    end
+  end
+
+  describe "async staleness (generation check)" do
+    test "a slow superseded task cannot clobber the newer result" do
+      # The first run (term = "first") sleeps; the second (term =
+      # "second") returns immediately. The stale first result arrives
+      # LAST — without the generation check it would overwrite.
+      graph =
+        Reactive.new()
+        |> Reactive.state(:term, "first")
+        |> Reactive.derive(
+          :result,
+          [:term],
+          fn %{term: term} ->
+            if term == "first", do: Process.sleep(80)
+            term
+          end,
+          async: true
+        )
+        |> Reactive.build()
+
+      socket =
+        Reactive.init(
+          %Phoenix.LiveView.Socket{assigns: %{__changed__: %{}}, private: %{}},
+          graph
+        )
+
+      # Supersede the in-flight slow task immediately
+      socket = socket |> Reactive.put(:term, "second") |> Reactive.recompute()
+
+      messages =
+        for _ <- 1..2 do
+          receive do
+            {:lavash_reactive, _, _, _} = msg -> msg
+          after
+            1_000 -> flunk("async derive result never arrived")
+          end
+        end
+
+      # Fast "second" arrives first; slow, stale "first" arrives last.
+      assert [{:lavash_reactive, :result, _, {:ok, "second"}}, _] = messages
+
+      socket =
+        Enum.reduce(messages, socket, fn msg, sock ->
+          {:ok, sock} = Reactive.handle_async(sock, msg)
+          sock
+        end)
+
+      assert %Phoenix.LiveView.AsyncResult{ok?: true, result: "second"} =
+               socket.assigns.result
     end
   end
 

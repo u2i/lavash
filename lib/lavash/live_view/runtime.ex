@@ -532,6 +532,18 @@ defmodule Lavash.LiveView.Runtime do
     end)
   end
 
+  # Generation-stamped async results (see Reactive.current_async_gen/2):
+  # a result from a superseded task run is stale — drop it instead of
+  # letting a slow old query clobber the newer result.
+  def handle_info(module, {:lavash_reactive, field, gen, result}, socket)
+      when is_integer(gen) do
+    if gen == Reactive.current_async_gen(socket, field) do
+      handle_info(module, {:lavash_reactive, field, result}, socket)
+    else
+      {:noreply, socket}
+    end
+  end
+
   def handle_info(module, {:lavash_reactive, field, {:ok, result}}, socket) do
     socket =
       socket

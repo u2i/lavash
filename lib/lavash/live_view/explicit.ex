@@ -91,7 +91,8 @@ defmodule Lavash.LiveView.Explicit do
       end
 
       @impl Phoenix.LiveView
-      def handle_info({:lavash_reactive, _, _} = msg, socket) do
+      def handle_info(msg, socket)
+          when is_tuple(msg) and elem(msg, 0) == :lavash_reactive do
         case Lavash.Reactive.handle_async(socket, msg) do
           {:ok, socket} -> {:noreply, socket}
           :not_handled -> {:noreply, socket}
