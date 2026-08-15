@@ -83,7 +83,7 @@ defmodule DemoWeb.DemosIndexLive do
             <.demo_card
               href={~p"/demos/checkout"}
               title="Checkout (Shopify-style)"
-              description="Full checkout form with card validation, Luhn check, and dynamic styling."
+              description="The real store checkout — cart, addresses, card validation with Luhn check, and order placement — in Shopify-styled chrome."
             />
             <.demo_card
               href={~p"/demos/products"}
