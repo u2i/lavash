@@ -113,7 +113,6 @@ defmodule DemoWeb.Router do
       live "/todos", TodosLive
       live "/toggle", ToggleDemoLive
       live "/form-validation", FormValidationDemoLive
-      live "/checkout", CheckoutDemoLive
       live "/flyover", FlyoverDemoLive
       live "/modal", ModalDemoLive
       live "/nesting", NestingDemoLive
