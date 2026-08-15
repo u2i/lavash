@@ -1,4 +1,4 @@
-defmodule DemoWeb.BindingsDemoLive do
+defmodule DemoWeb.Dsl.BindingsDemoLive do
   @moduledoc """
   Demo page for Lavash.Component bindings.
 

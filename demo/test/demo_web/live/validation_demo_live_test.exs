@@ -4,7 +4,7 @@ defmodule DemoWeb.ValidationDemoLiveTest do
 
   describe "validation demo" do
     test "renders form with username/email/password fields", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/demos/validation")
+      {:ok, _view, html} = live(conn, "/dsl/validation")
       assert html =~ "Client + Server Validation"
       assert html =~ "Username"
       assert html =~ "Email"

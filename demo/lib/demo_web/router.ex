@@ -43,7 +43,12 @@ defmodule DemoWeb.Router do
       on_mount: [{DemoWeb.LiveUserAuth, :live_user_ensure}, DemoWeb.SourceLink] do
       live "/", DemosIndexLive
       live "/chat", StreamingChatLive
+      live "/js-counter", JsCounterLive
     end
+
+    # Old section prefixes — permanent homes are /dsl, /reactive, /js-counter
+    get "/demos/*path", LegacyRedirectController, :dsl
+    get "/lv/*path", LegacyRedirectController, :reactive
   end
 
   # Storefront (public, with automatic anonymous user creation)
@@ -89,24 +94,14 @@ defmodule DemoWeb.Router do
   end
 
   # Lavash.Reactive demos (plain LiveView, no DSL). :ensure_user so
-  # the pure todos demo has the same anonymous identity as /demos.
-  scope "/lv", DemoWeb.LiveViewDemos do
+  # Three parallel demo structures, one demo set expressed three ways:
+  # /dsl (full lavash DSL, optimistic), /reactive (reactive graph only,
+  # server round-trips), /plain (vanilla LiveView baseline, no lavash).
+  # All share the same anonymous identity and data.
+  scope "/dsl", DemoWeb.Dsl do
     pipe_through [:browser, :ensure_user]
 
-    live "/", IndexLive
-    live "/counter", CounterLive
-    live "/explicit-counter", ExplicitCounterLive
-    live "/plain-counter", PlainCounterLive
-    live "/form-validation", FormValidationLive
-    live "/products", ProductsLive
-    live "/todos", TodosLive
-  end
-
-  # Demo/playground routes — same anonymous identity as the home scope.
-  scope "/demos", DemoWeb do
-    pipe_through [:browser, :ensure_user]
-
-    live_session :demos,
+    live_session :dsl,
       layout: {DemoWeb.Layouts, :demo},
       on_mount: [{DemoWeb.LiveUserAuth, :live_user_ensure}, DemoWeb.SourceLink] do
       live "/counter", CounterLive
@@ -122,6 +117,31 @@ defmodule DemoWeb.Router do
       live "/modal", ModalDemoLive
       live "/nesting", NestingDemoLive
       live "/validation", ValidationDemoLive
+    end
+  end
+
+  scope "/reactive", DemoWeb.Reactive do
+    pipe_through [:browser, :ensure_user]
+
+    live_session :reactive,
+      layout: {DemoWeb.Layouts, :demo},
+      on_mount: [{DemoWeb.LiveUserAuth, :live_user_ensure}, DemoWeb.SourceLink] do
+      live "/counter", CounterLive
+      live "/explicit-counter", ExplicitCounterLive
+      live "/form-validation", FormValidationLive
+      live "/todos", TodosLive
+    end
+  end
+
+  scope "/builder", DemoWeb.Builder do
+    pipe_through [:browser, :ensure_user]
+
+    live_session :builder,
+      layout: {DemoWeb.Layouts, :demo},
+      on_mount: [{DemoWeb.LiveUserAuth, :live_user_ensure}, DemoWeb.SourceLink] do
+      live "/counter", CounterLive
+      live "/products", ProductsLive
+      live "/todos", TodosLive
     end
   end
 

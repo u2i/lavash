@@ -1,7 +1,7 @@
 defmodule Demo.Todos.Todo do
   @moduledoc """
   A todo item. Kept deliberately minimal — the interesting part is the
-  LiveView (`DemoWeb.TodosLive`): the list is a stream-backed lavash
+  LiveView (`DemoWeb.Dsl.TodosLive`): the list is a stream-backed lavash
   projection, so it never lives in assigns or client state, and every
   mutation is a predicted per-row DOM operation.
   """

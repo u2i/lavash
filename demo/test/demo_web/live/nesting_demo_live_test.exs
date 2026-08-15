@@ -4,7 +4,7 @@ defmodule DemoWeb.NestingDemoLiveTest do
 
   describe "nesting demo" do
     test "renders the three nested counter sections", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/demos/nesting")
+      {:ok, _view, html} = live(conn, "/dsl/nesting")
       assert html =~ "Nesting Demo"
       assert html =~ "Direct Binding"
       assert html =~ "Single Wrapper"
@@ -12,7 +12,7 @@ defmodule DemoWeb.NestingDemoLiveTest do
     end
 
     test "all counters start at zero and total is zero", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/demos/nesting")
+      {:ok, _view, html} = live(conn, "/dsl/nesting")
 
       assert html =~ ~s|data-lavash-display="direct_count">0<|
       assert html =~ ~s|data-lavash-display="wrapped_count">0<|
@@ -21,7 +21,7 @@ defmodule DemoWeb.NestingDemoLiveTest do
     end
 
     test "direct CounterControls increments its own count", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/demos/nesting")
+      {:ok, view, _html} = live(conn, "/dsl/nesting")
 
       html =
         view
@@ -35,7 +35,7 @@ defmodule DemoWeb.NestingDemoLiveTest do
     end
 
     test "wrapped CounterControls increments through its parent component", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/demos/nesting")
+      {:ok, view, _html} = live(conn, "/dsl/nesting")
 
       html =
         view
@@ -48,7 +48,7 @@ defmodule DemoWeb.NestingDemoLiveTest do
     end
 
     test "deep CounterControls increments through nested wrappers", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/demos/nesting")
+      {:ok, view, _html} = live(conn, "/dsl/nesting")
 
       html =
         view
@@ -60,7 +60,7 @@ defmodule DemoWeb.NestingDemoLiveTest do
     end
 
     test "decrement does not go below zero", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/demos/nesting")
+      {:ok, view, _html} = live(conn, "/dsl/nesting")
 
       html =
         view

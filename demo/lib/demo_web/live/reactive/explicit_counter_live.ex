@@ -1,4 +1,4 @@
-defmodule DemoWeb.LiveViewDemos.ExplicitCounterLive do
+defmodule DemoWeb.Reactive.ExplicitCounterLive do
   @moduledoc """
   Counter built with `use Lavash.LiveView.Explicit` — the smallest
   non-DSL on-ramp.
@@ -101,7 +101,7 @@ defmodule DemoWeb.LiveViewDemos.ExplicitCounterLive do
       </div>
 
       <div class="mt-6 text-center">
-        <a href="/lv" class="link text-sm">&larr; LiveView demos</a>
+        <a href="/" class="link text-sm">&larr; All demos</a>
       </div>
     </div>
     """

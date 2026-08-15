@@ -1,4 +1,19 @@
 defmodule DemoWeb.DemosIndexLive do
+  @moduledoc """
+  Single landing page for all demos.
+
+  Demos are organized as three parallel structures — the same app
+  expressed at three levels of the stack — and each row links its
+  available implementations with colored pills:
+
+  - **DSL** (`/dsl/*`): full lavash DSL — optimistic client-side
+    updates, bindings, overlays, streams
+  - **Reactive DSL** (`/reactive/*`): the declarative reactive layer
+    (`reactive do` / `defgraph`) without the optimistic layer —
+    server round-trips
+  - **Builder** (`/builder/*`): lavash core API with no macros at
+    all — explicit dependency lists, plain functions
+  """
   use DemoWeb, :live_view
 
   def mount(_params, _session, socket) do
@@ -7,115 +22,137 @@ defmodule DemoWeb.DemosIndexLive do
 
   def render(assigns) do
     ~H"""
-    <div class="max-w-4xl mx-auto py-8">
-      <div class="text-center mb-12">
+    <div class="max-w-3xl mx-auto py-8 px-4">
+      <div class="text-center mb-8">
         <h1 class="text-4xl font-bold">Lavash Demos</h1>
         <p class="text-base-content/70 mt-2">
-          Explore optimistic UI patterns with Phoenix LiveView
+          One demo set, three parallel implementations — pick a row, compare the styles
         </p>
+      </div>
+
+      <div class="flex flex-wrap justify-center gap-4 mb-10 text-sm">
+        <span class="flex items-center gap-1.5">
+          <span class="badge badge-primary badge-xs"></span> Full DSL (optimistic)
+        </span>
+        <span class="flex items-center gap-1.5">
+          <span class="badge badge-secondary badge-xs"></span> Reactive DSL (no optimistic JS)
+        </span>
+        <span class="flex items-center gap-1.5">
+          <span class="badge badge-accent badge-xs"></span> Builder (core API, no macros)
+        </span>
       </div>
 
       <div class="grid gap-6">
         <section>
-          <h2 class="text-xl font-semibold mb-4 border-b pb-2">Optimistic Components</h2>
-          <div class="grid md:grid-cols-2 gap-4">
-            <.demo_card
-              href={~p"/demos/toggle"}
-              title="Toggle (LiveComponent)"
-              description="Per-field optimistic updates using SyncedVar. Updates individual DOM values without re-rendering."
-            />
-            <.demo_card
-              href={~p"/demos/tag-editor"}
-              title="Tag Editor (Component)"
-              description="Full client-side re-rendering for structural DOM changes like adding/removing tags."
-            />
-            <.demo_card
-              href={~p"/demos/todos"}
-              title="Todos (Streams)"
-              description="Stream-backed projection: the list never ships to the client — add/toggle/delete are predicted per-row DOM ops confirmed on the same node."
-            />
-            <.demo_card
-              href={~p"/demos/bindings"}
-              title="ChipSet Bindings"
-              description="Multi-select chips with parent state binding. Demonstrates bind/synced pattern."
-            />
-            <.demo_card
-              href={~p"/demos/components"}
-              title="Component Showcase"
-              description="Overview of Lavash component patterns and their optimistic behaviors."
-            />
-            <.demo_card
-              href={~p"/demos/flyover"}
-              title="Flyover (Slideover)"
-              description="Sliding panels from screen edges with optimistic open/close animations."
-            />
-            <.demo_card
-              href={~p"/demos/modal"}
-              title="Modal"
-              description="Modal dialogs with optimistic open, loading skeleton, and async content."
-            />
-            <.demo_card
-              href={~p"/demos/nesting"}
-              title="Nested Bindings"
-              description="Component binding chains at 1, 2, and 3 levels deep with bidirectional sync."
-            />
-          </div>
-        </section>
-
-        <section>
-          <h2 class="text-xl font-semibold mb-4 border-b pb-2">State Management</h2>
-          <div class="grid md:grid-cols-2 gap-4">
-            <.demo_card
-              href={~p"/demos/counter"}
+          <h2 class="text-xl font-semibold mb-4 border-b pb-2">Side by side</h2>
+          <div class="space-y-3">
+            <.demo_row
               title="Counter"
-              description="Basic state management with optimistic increment/decrement."
+              description="State, derived values, async compute."
+              links={[
+                {:dsl, "DSL", ~p"/dsl/counter"},
+                {:reactive, "Reactive · defgraph", ~p"/reactive/counter"},
+                {:reactive, "Reactive · Explicit", ~p"/reactive/explicit-counter"},
+                {:builder, "Builder", ~p"/builder/counter"},
+                {:js, "Hand-coded JS", ~p"/js-counter"}
+              ]}
             />
-            <.demo_card
-              href={~p"/demos/form-validation"}
+            <.demo_row
+              title="Todos"
+              description="CRUD on a real resource with cross-tab sync. The DSL adds stream projections and per-row optimistic predictions."
+              links={[
+                {:dsl, "DSL", ~p"/dsl/todos"},
+                {:reactive, "Reactive", ~p"/reactive/todos"},
+                {:builder, "Builder", ~p"/builder/todos"}
+              ]}
+            />
+            <.demo_row
               title="Form Validation"
-              description="Client-side validation via transpiled rx() calculations. Instant feedback."
+              description="Per-field errors and form validity. The DSL derives them from Ash constraints and validates client-side."
+              links={[
+                {:dsl, "DSL", ~p"/dsl/form-validation"},
+                {:reactive, "Reactive", ~p"/reactive/form-validation"}
+              ]}
             />
-            <.demo_card
-              href={~p"/demos/validation"}
+            <.demo_row
+              title="Products"
+              description="Filterable catalog with URL-backed state, async reads, and PubSub invalidation."
+              links={[
+                {:dsl, "DSL", ~p"/dsl/products"},
+                {:dsl, "DSL · socket state", ~p"/dsl/products-socket"},
+                {:builder, "Builder", ~p"/builder/products"}
+              ]}
+            />
+          </div>
+        </section>
+
+        <section>
+          <h2 class="text-xl font-semibold mb-4 border-b pb-2">DSL-only features</h2>
+          <p class="text-sm text-base-content/60 mb-4">
+            Generated from the DSL with no manual equivalent: optimistic JS, component
+            bindings, overlays, streams.
+          </p>
+          <div class="space-y-3">
+            <.demo_row
+              title="Toggle"
+              description="Per-field optimistic updates via SyncedVar."
+              links={[{:dsl, "DSL", ~p"/dsl/toggle"}]}
+            />
+            <.demo_row
+              title="Tag Editor"
+              description="Client-side re-rendering for structural DOM changes."
+              links={[{:dsl, "DSL", ~p"/dsl/tag-editor"}]}
+            />
+            <.demo_row
+              title="ChipSet Bindings"
+              description="Multi-select chips bound to parent state."
+              links={[{:dsl, "DSL", ~p"/dsl/bindings"}]}
+            />
+            <.demo_row
+              title="Nested Bindings"
+              description="Binding chains at 1, 2, and 3 levels with bidirectional sync."
+              links={[{:dsl, "DSL", ~p"/dsl/nesting"}]}
+            />
+            <.demo_row
+              title="Flyover"
+              description="Sliding panels with optimistic open/close animations."
+              links={[{:dsl, "DSL", ~p"/dsl/flyover"}]}
+            />
+            <.demo_row
+              title="Modal"
+              description="Optimistic open, loading skeleton, async content."
+              links={[{:dsl, "DSL", ~p"/dsl/modal"}]}
+            />
+            <.demo_row
+              title="Component Showcase"
+              description="Overview of lavash component patterns."
+              links={[{:dsl, "DSL", ~p"/dsl/components"}]}
+            />
+            <.demo_row
               title="Client + Server Validation"
-              description="Client errors instant from constraints, server errors after round-trip from custom validations."
+              description="Instant client errors from constraints, server errors after round-trip."
+              links={[{:dsl, "DSL", ~p"/dsl/validation"}]}
             />
-            <.demo_card
-              href={~p"/demos/products"}
-              title="Products (URL State)"
-              description="Product catalog with filters stored in URL. Shareable and bookmarkable."
-            />
-            <.demo_card
-              href={~p"/demos/products-socket"}
-              title="Products (Socket State)"
-              description="Same catalog with filters in socket. Survives reconnect, lost on refresh."
+            <.demo_row
+              title="Streaming Chat"
+              description="Token streaming into a LiveView stream."
+              links={[{:dsl, "DSL", ~p"/chat"}]}
             />
           </div>
         </section>
 
         <section>
-          <h2 class="text-xl font-semibold mb-4 border-b pb-2">Plain LiveView (No DSL)</h2>
-          <div class="grid md:grid-cols-2 gap-4">
-            <.demo_card
-              href={~p"/lv"}
-              title="Lavash.Reactive Demos"
-              description="Using the reactive graph engine in plain LiveViews — state, derives, async, batching."
-            />
-          </div>
-        </section>
-
-        <section>
-          <h2 class="text-xl font-semibold mb-4 border-b pb-2">Full Application</h2>
-          <div class="grid md:grid-cols-2 gap-4">
-            <.demo_card
-              href={~p"/storefront"}
+          <h2 class="text-xl font-semibold mb-4 border-b pb-2">Full application</h2>
+          <div class="space-y-3">
+            <.demo_row
               title="Coffee Shop Storefront"
-              description="Complete e-commerce demo with products, categories, and cart."
+              description="Complete e-commerce flow: products, cart, checkout, orders."
+              links={[{:dsl, "DSL", ~p"/storefront"}]}
             />
-            <.demo_card
-              href={~p"/admin"}
+            <.demo_row
               title="Admin Dashboard"
-              description="Product and category management with CRUD operations."
+              description="Product and category management."
+              links={[{:dsl, "DSL", ~p"/admin"}]}
             />
           </div>
         </section>
@@ -132,14 +169,36 @@ defmodule DemoWeb.DemosIndexLive do
     """
   end
 
-  defp demo_card(assigns) do
+  attr :title, :string, required: true
+  attr :description, :string, required: true
+  attr :links, :list, required: true, doc: "list of {style, label, href} pill links"
+
+  defp demo_row(assigns) do
     ~H"""
-    <a href={@href} class="card bg-base-200 hover:bg-base-300 transition-colors">
-      <div class="card-body py-4">
-        <h3 class="card-title text-base">{@title}</h3>
-        <p class="text-sm text-base-content/70">{@description}</p>
+    <div class="card bg-base-200">
+      <div class="card-body py-4 sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h3 class="card-title text-base">{@title}</h3>
+          <p class="text-sm text-base-content/70">{@description}</p>
+        </div>
+        <div class="flex flex-wrap gap-2 shrink-0">
+          <a :for={{style, label, href} <- @links} href={href} class={pill_class(style)}>
+            {label}
+          </a>
+        </div>
       </div>
-    </a>
+    </div>
     """
+  end
+
+  defp pill_class(style) do
+    base = "btn btn-xs rounded-full"
+
+    case style do
+      :dsl -> [base, "btn-primary"]
+      :reactive -> [base, "btn-secondary"]
+      :builder -> [base, "btn-accent"]
+      :js -> [base, "btn-warning"]
+    end
   end
 end

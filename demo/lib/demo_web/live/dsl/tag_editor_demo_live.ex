@@ -1,4 +1,4 @@
-defmodule DemoWeb.TagEditorDemoLive do
+defmodule DemoWeb.Dsl.TagEditorDemoLive do
   @moduledoc """
   Demo showing the TagEditor component with full client re-render model.
 

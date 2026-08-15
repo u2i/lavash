@@ -4,12 +4,12 @@ defmodule DemoWeb.ProductsLiveTest do
 
   describe "products (URL state)" do
     test "renders heading", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/demos/products")
+      {:ok, _view, html} = live(conn, "/dsl/products")
       assert html =~ "Product Catalog (URL State)"
     end
 
     test "search filter from URL is reflected in input", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/demos/products?search=widget")
+      {:ok, _view, html} = live(conn, "/dsl/products?search=widget")
       assert html =~ ~s|value="widget"|
     end
   end

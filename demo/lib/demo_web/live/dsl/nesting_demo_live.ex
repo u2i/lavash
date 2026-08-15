@@ -1,4 +1,4 @@
-defmodule DemoWeb.NestingDemoLive do
+defmodule DemoWeb.Dsl.NestingDemoLive do
   @moduledoc """
   Demo page showing various component nesting combinations with bindings.
 

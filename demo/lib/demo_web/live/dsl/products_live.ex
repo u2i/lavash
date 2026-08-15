@@ -1,4 +1,4 @@
-defmodule DemoWeb.ProductsLive do
+defmodule DemoWeb.Dsl.ProductsLive do
   use Lavash.LiveView
   import Lavash.LiveView.Helpers
 
@@ -76,7 +76,7 @@ defmodule DemoWeb.ProductsLive do
           <p class="text-gray-500 mt-1">Filter state stored in URL - try bookmarking or sharing</p>
         </div>
         <div class="flex gap-4">
-          <a href="/demos/products-socket" class="text-indigo-600 hover:text-indigo-800">
+          <a href="/dsl/products-socket" class="text-indigo-600 hover:text-indigo-800">
             Socket State Version
           </a>
           <a href="/" class="text-indigo-600 hover:text-indigo-800">&larr; Demos</a>
@@ -264,7 +264,7 @@ defmodule DemoWeb.ProductsLive do
       </div>
 
       <.lavash_component
-        module={DemoWeb.ProductEditModal}
+        module={DemoWeb.Dsl.ProductEditModal}
         id="product-edit-modal"
         product_id={@product_id}
         bind={[product_id: :product_id]}

@@ -1,4 +1,4 @@
-defmodule DemoWeb.CounterLive do
+defmodule DemoWeb.Dsl.CounterLive do
   use Lavash.LiveView
 
   state :count, :integer, from: :url, default: 0, optimistic: true

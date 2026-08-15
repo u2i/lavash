@@ -1,4 +1,4 @@
-defmodule DemoWeb.ComponentsDemoLive do
+defmodule DemoWeb.Dsl.ComponentsDemoLive do
   @moduledoc """
   Demo page showcasing Lavash.Component with ProductCard.
 

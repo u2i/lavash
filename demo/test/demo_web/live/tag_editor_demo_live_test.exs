@@ -4,7 +4,7 @@ defmodule DemoWeb.TagEditorDemoLiveTest do
 
   describe "tag editor demo" do
     test "renders heading and default tags from URL", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/demos/tag-editor")
+      {:ok, _view, html} = live(conn, "/dsl/tag-editor")
       assert html =~ "Tag Editor Demo"
       assert html =~ "Tag Editor A"
       assert html =~ "Tag Editor B (Sibling)"
@@ -14,7 +14,7 @@ defmodule DemoWeb.TagEditorDemoLiveTest do
     end
 
     test "tag_summary reflects the URL-state tags", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/demos/tag-editor?tags[]=ruby&tags[]=rails&tags[]=hanami")
+      {:ok, _view, html} = live(conn, "/dsl/tag-editor?tags[]=ruby&tags[]=rails&tags[]=hanami")
       # 3 tags
       assert html =~ "3 tags"
     end
