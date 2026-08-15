@@ -1,0 +1,24 @@
+name: release-please
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      # RELEASE_PLEASE_TOKEN should be a fine-grained PAT (contents +
+      # pull-requests read/write). It matters because PRs opened with
+      # the default GITHUB_TOKEN don't trigger CI workflows — and main
+      # requires four green checks, so a release PR opened without the
+      # PAT can never become mergeable.
+      - uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
