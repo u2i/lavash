@@ -23,7 +23,14 @@ defmodule DemoWeb.TodosLive do
 
   alias Demo.Todos.Todo
 
-  read :todo_records, Todo, :list do
+  # Anonymous identity: every visitor gets their own list (EnsureUser
+  # plug + live_user_ensure create an anonymous user; the Reset dev
+  # button wipes their data). Ownership rides the append transform —
+  # projection ops carry no actor, same pattern as cart_id.
+  state :user_id, :string, from: :ephemeral
+
+  read :todo_records, Todo, :for_user do
+    argument :user_id, state(:user_id)
     async false
 
     client_state :todos do
@@ -33,9 +40,15 @@ defmodule DemoWeb.TodosLive do
     end
   end
 
+  mount do
+    run fn socket ->
+      Lavash.Socket.put_state(socket, :user_id, socket.assigns.current_user.id)
+    end
+  end
+
   actions do
     action :add, [:value] do
-      append :todos, :create, rx(%{title: @value, done: false})
+      append :todos, :create, rx(%{title: @value, done: false, user_id: @user_id})
     end
 
     action :toggle, [:id] do

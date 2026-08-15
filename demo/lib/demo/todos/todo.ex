@@ -31,18 +31,31 @@ defmodule Demo.Todos.Todo do
     create_timestamp :inserted_at
   end
 
+  relationships do
+    # attribute_writable?: the streamed append passes user_id through
+    # the projection transform's attrs (there is no actor on that
+    # path — ownership rides the rx, the same way cart_id does for
+    # cart items).
+    belongs_to :user, Demo.Accounts.User do
+      allow_nil? false
+      attribute_writable? true
+    end
+  end
+
   actions do
     defaults [:read, :destroy]
 
     create :create do
-      accept [:title, :done]
+      accept [:title, :done, :user_id]
     end
 
     update :toggle do
       accept [:done]
     end
 
-    read :list do
+    read :for_user do
+      argument :user_id, :uuid, allow_nil?: false
+      filter expr(user_id == ^arg(:user_id))
       prepare build(sort: [inserted_at: :asc])
     end
   end

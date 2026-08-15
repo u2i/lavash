@@ -31,12 +31,17 @@ defmodule DemoWeb.Router do
     reset_route(auth_routes_prefix: "/auth")
   end
 
-  # Demos index (home page)
+  # Demos index (home page). Anonymous identity everywhere: every
+  # visitor gets their own data (todos, carts, ...) without logging
+  # in — EnsureUser creates the anonymous user, live_user_ensure
+  # carries it into the LiveViews.
   scope "/", DemoWeb do
-    pipe_through :browser
+    pipe_through [:browser, :ensure_user]
 
-    live "/", DemosIndexLive
-    live "/chat", StreamingChatLive
+    live_session :home, on_mount: {DemoWeb.LiveUserAuth, :live_user_ensure} do
+      live "/", DemosIndexLive
+      live "/chat", StreamingChatLive
+    end
   end
 
   # Storefront (public, with automatic anonymous user creation)
@@ -85,23 +90,33 @@ defmodule DemoWeb.Router do
     live "/plain-counter", PlainCounterLive
   end
 
-  # Demo/playground routes
+  # Demo/playground routes — same anonymous identity as the home scope.
   scope "/demos", DemoWeb do
-    pipe_through :browser
+    pipe_through [:browser, :ensure_user]
 
-    live "/counter", CounterLive
-    live "/products", ProductsLive
-    live "/products-socket", ProductsSocketLive
-    live "/components", ComponentsDemoLive
-    live "/bindings", BindingsDemoLive
-    live "/tag-editor", TagEditorDemoLive
-    live "/todos", TodosLive
-    live "/toggle", ToggleDemoLive
-    live "/form-validation", FormValidationDemoLive
-    live "/checkout", CheckoutDemoLive
-    live "/flyover", FlyoverDemoLive
-    live "/modal", ModalDemoLive
-    live "/nesting", NestingDemoLive
-    live "/validation", ValidationDemoLive
+    live_session :demos, on_mount: {DemoWeb.LiveUserAuth, :live_user_ensure} do
+      live "/counter", CounterLive
+      live "/products", ProductsLive
+      live "/products-socket", ProductsSocketLive
+      live "/components", ComponentsDemoLive
+      live "/bindings", BindingsDemoLive
+      live "/tag-editor", TagEditorDemoLive
+      live "/todos", TodosLive
+      live "/toggle", ToggleDemoLive
+      live "/form-validation", FormValidationDemoLive
+      live "/checkout", CheckoutDemoLive
+      live "/flyover", FlyoverDemoLive
+      live "/modal", ModalDemoLive
+      live "/nesting", NestingDemoLive
+      live "/validation", ValidationDemoLive
+    end
+  end
+
+  # Dev tools: wipe every piece of data belonging to the current
+  # (anonymous) visitor and start fresh.
+  scope "/dev", DemoWeb do
+    pipe_through [:browser, :ensure_user]
+
+    post "/reset", DevController, :reset
   end
 end
