@@ -94,7 +94,10 @@ defmodule DemoWeb.Router do
 
     live "/", IndexLive
     live "/counter", CounterLive
+    live "/explicit-counter", ExplicitCounterLive
     live "/plain-counter", PlainCounterLive
+    live "/form-validation", FormValidationLive
+    live "/products", ProductsLive
   end
 
   # Demo/playground routes — same anonymous identity as the home scope.
