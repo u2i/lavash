@@ -54,6 +54,22 @@
       >
         Crash
       </button>
+      <form
+        action="/dev/reset"
+        method="post"
+        class="fixed bottom-40 right-4"
+        style="z-index: 99999;"
+      >
+        <input type="hidden" name="_csrf_token" value={get_csrf_token()} />
+        <button
+          id="reset-button"
+          type="submit"
+          class="px-3 py-2 text-xs font-medium bg-gray-800 text-white rounded shadow-lg hover:bg-red-700"
+          title="Delete all data belonging to your anonymous demo user (todos, carts, orders, addresses)"
+        >
+          Reset
+        </button>
+      </form>
     </div>
     <%!-- Sync indicator (lavash issue #72): fixed and top-of-stack, so it
          is independent of every page layer — overlays, backdrops, and
