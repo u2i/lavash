@@ -179,7 +179,7 @@ defmodule DemoWeb.Builder.ProductsLive do
           <div class="space-y-4">
             <div>
               <label class="block text-sm font-medium mb-1">Search</label>
-              <form phx-change="set_search">
+              <form id="search-form" phx-change="set_search">
                 <input
                   type="text"
                   name="value"
@@ -193,7 +193,7 @@ defmodule DemoWeb.Builder.ProductsLive do
 
             <div>
               <label class="block text-sm font-medium mb-1">Category</label>
-              <form phx-change="set_category">
+              <form id="category-form" phx-change="set_category">
                 <select name="value" class="select select-bordered select-sm w-full">
                   <option value="">All categories</option>
                   <option
@@ -209,7 +209,7 @@ defmodule DemoWeb.Builder.ProductsLive do
 
             <div>
               <label class="block text-sm font-medium mb-1">Availability</label>
-              <form phx-change="set_in_stock">
+              <form id="in-stock-form" phx-change="set_in_stock">
                 <select name="value" class="select select-bordered select-sm w-full">
                   <option value="">All</option>
                   <option value="true" selected={@in_stock == true}>In stock</option>

@@ -344,6 +344,16 @@ defmodule Lavash.Reactive do
         end
       end
   """
+  def handle_async(socket, {:lavash_reactive, field, gen, result_tuple}) do
+    if gen == current_async_gen(socket, field) do
+      handle_async(socket, {:lavash_reactive, field, result_tuple})
+    else
+      # A newer run of this derive was started after the task that
+      # produced this message — the result is stale; drop it.
+      {:ok, socket}
+    end
+  end
+
   def handle_async(socket, {:lavash_reactive, field, {:ok, result}}) do
     graph = get_graph!(socket)
     socket = LSocket.put_derived(socket, field, AsyncResult.ok(result))
@@ -449,6 +459,23 @@ defmodule Lavash.Reactive do
     end)
   end
 
+  @doc false
+  # The current async generation for a field. Results from tasks
+  # stamped with an older generation are stale and must be dropped —
+  # two recomputes in quick succession race their tasks, and without
+  # this check the slower (older) query can land last and clobber
+  # the newer result.
+  def current_async_gen(socket, field) do
+    gens = LSocket.get(socket, :reactive_async_gen) || %{}
+    Map.get(gens, field, 0)
+  end
+
+  defp bump_async_gen(socket, field) do
+    gens = LSocket.get(socket, :reactive_async_gen) || %{}
+    gen = Map.get(gens, field, 0) + 1
+    {LSocket.put(socket, :reactive_async_gen, Map.put(gens, field, gen)), gen}
+  end
+
   # Spawn a task for an async derive
   defp compute_async(socket, graph, field, dep_values) do
     pid = self()
@@ -458,31 +485,38 @@ defmodule Lavash.Reactive do
     # Component context: route async results via send_update message
     component_id = LSocket.get(socket, :component_id)
 
-    if component_id do
-      component_module = socket.assigns[:__component_module__]
+    socket =
+      if component_id do
+        component_module = socket.assigns[:__component_module__]
 
-      Task.start(fn ->
-        try do
-          result = compute_fn.(values)
-          send(pid, {:lavash_component_async, component_module, component_id, field, result})
-        rescue
-          e ->
-            send(
-              pid,
-              {:lavash_component_async, component_module, component_id, field, {:error, e}}
-            )
-        end
-      end)
-    else
-      Task.start(fn ->
-        try do
-          result = compute_fn.(values)
-          send(pid, {:lavash_reactive, field, {:ok, result}})
-        rescue
-          e -> send(pid, {:lavash_reactive, field, {:error, e}})
-        end
-      end)
-    end
+        Task.start(fn ->
+          try do
+            result = compute_fn.(values)
+            send(pid, {:lavash_component_async, component_module, component_id, field, result})
+          rescue
+            e ->
+              send(
+                pid,
+                {:lavash_component_async, component_module, component_id, field, {:error, e}}
+              )
+          end
+        end)
+
+        socket
+      else
+        {socket, gen} = bump_async_gen(socket, field)
+
+        Task.start(fn ->
+          try do
+            result = compute_fn.(values)
+            send(pid, {:lavash_reactive, field, gen, {:ok, result}})
+          rescue
+            e -> send(pid, {:lavash_reactive, field, gen, {:error, e}})
+          end
+        end)
+
+        socket
+      end
 
     # Standard LiveView re-assign semantics: a re-run keeps the previous
     # result available while loading (`.loading` set, `.result` intact),
