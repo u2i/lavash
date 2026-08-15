@@ -59,13 +59,17 @@ defmodule DemoWeb.Router do
   end
 
   # Customer account (requires login)
+  # Customer account — same anonymous identity as everywhere else, so
+  # a visitor's orders/addresses are reachable without signing in.
   scope "/account", DemoWeb do
-    pipe_through :browser
+    pipe_through [:browser, :ensure_user]
 
-    live "/", Account.DashboardLive
-    live "/orders", Account.OrdersLive
-    live "/orders/:order_id", Account.OrderDetailLive
-    live "/settings", Account.SettingsLive
+    live_session :account, on_mount: {DemoWeb.LiveUserAuth, :live_user_ensure} do
+      live "/", Account.DashboardLive
+      live "/orders", Account.OrdersLive
+      live "/orders/:order_id", Account.OrderDetailLive
+      live "/settings", Account.SettingsLive
+    end
   end
 
   # Admin section
