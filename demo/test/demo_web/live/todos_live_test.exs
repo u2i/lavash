@@ -97,7 +97,13 @@ defmodule DemoWeb.TodosLiveTest do
     conn = post(conn, "/dev/reset")
     assert redirected_to(conn) == "/"
 
+    # Reset destroys the visitor themselves — cascades take their data.
+    assert {:ok, nil} = Ash.get(Demo.Accounts.User, user.id, error?: false)
     assert user_todos(user) == []
     assert [%Todo{title: "not mine"}] = user_todos(other)
+
+    # The next request mints a fresh identity.
+    conn = get(conn, "/")
+    assert conn.assigns.current_user.id != user.id
   end
 end

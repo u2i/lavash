@@ -55,8 +55,44 @@ defmodule Demo.Accounts.User do
     timestamps()
   end
 
+  relationships do
+    # Everything a visitor owns — the :reset destroy cascades through
+    # these.
+    has_many :todos, Demo.Todos.Todo
+    has_many :carts, Demo.Cart.Cart
+    has_many :orders, Demo.Orders.Order
+    has_many :addresses, Demo.Orders.Address
+  end
+
   actions do
     defaults [:read]
+
+    # Backs the demo's Reset dev tool (Demo.Accounts.reset_visitor!/1):
+    # destroying the visitor cascades through everything they own —
+    # todos, carts (whose destroy cascades items), orders (likewise),
+    # addresses. `after_action?: false` destroys children BEFORE the
+    # user, since SQLite enforces the FKs immediately. The next
+    # request mints a fresh anonymous user; the broadcast lets other
+    # open sessions re-read.
+    destroy :reset do
+      change cascade_destroy(:todos, after_action?: false, return_notifications?: false)
+      change cascade_destroy(:carts, after_action?: false, return_notifications?: false)
+      change cascade_destroy(:orders, after_action?: false, return_notifications?: false)
+      change cascade_destroy(:addresses, after_action?: false, return_notifications?: false)
+
+      change after_action(fn _changeset, user, _context ->
+               for resource <- [
+                     Demo.Todos.Todo,
+                     Demo.Cart.CartItem,
+                     Demo.Cart.Cart,
+                     Demo.Orders.Address
+                   ] do
+                 Lavash.PubSub.broadcast(resource)
+               end
+
+               {:ok, user}
+             end)
+    end
 
     create :create_anonymous do
       accept []

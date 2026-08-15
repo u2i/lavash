@@ -1,24 +1,22 @@
 defmodule DemoWeb.DevController do
   @moduledoc """
-  Dev-tools endpoints. `reset/2` wipes everything the current
-  (anonymous) visitor owns so the demo starts fresh — the data
-  semantics live in each domain's `wipe_for_user!/1`.
+  Dev-tools endpoints. `reset/2` destroys the current (anonymous)
+  visitor — DB-level cascades take their todos, carts, orders, and
+  addresses with them — and drops the session, so the next request
+  mints a fresh user. The semantics live in `Demo.Accounts.User`'s
+  `:reset` action.
   """
   use DemoWeb, :controller
 
   @doc false
   def reset(conn, _params) do
     case conn.assigns.current_user do
-      %{id: user_id} ->
-        Demo.Cart.wipe_for_user!(user_id)
-        Demo.Orders.wipe_for_user!(user_id)
-        Demo.Todos.wipe_for_user!(user_id)
-
-      _ ->
-        :ok
+      %{id: _} = user -> Demo.Accounts.reset_visitor!(user)
+      _ -> :ok
     end
 
     conn
+    |> clear_session()
     |> put_flash(:info, "Your demo data has been reset.")
     |> redirect(to: safe_referer(conn))
   end
