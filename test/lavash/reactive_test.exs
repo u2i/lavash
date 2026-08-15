@@ -636,4 +636,33 @@ defmodule Lavash.ReactiveTest do
       assert :not_handled = Reactive.handle_async(socket, {:something_else, :data})
     end
   end
+
+  describe "invalidate/2" do
+    test "re-runs a derive whose external source changed, plus its dependents" do
+      {:ok, agent} = Agent.start_link(fn -> "first" end)
+
+      graph =
+        Reactive.new()
+        |> Reactive.state(:unused, 0)
+        |> Reactive.derive(:external, [], fn _ -> Agent.get(agent, & &1) end)
+        |> Reactive.derive(:shouted, [:external], fn %{external: e} -> String.upcase(e) end)
+        |> Reactive.build()
+
+      socket =
+        Reactive.init(
+          %Phoenix.LiveView.Socket{assigns: %{__changed__: %{}}, private: %{}},
+          graph
+        )
+
+      assert socket.assigns.external == "first"
+      assert socket.assigns.shouted == "FIRST"
+
+      # No graph state changed — but the outside world did.
+      Agent.update(agent, fn _ -> "second" end)
+      socket = Reactive.invalidate(socket, :external)
+
+      assert socket.assigns.external == "second"
+      assert socket.assigns.shouted == "SECOND"
+    end
+  end
 end

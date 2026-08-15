@@ -293,6 +293,26 @@ defmodule Lavash.Reactive do
   end
 
   @doc """
+  Marks derived field(s) dirty and recomputes them (and their dependents).
+
+  This is the re-fetch primitive for derives whose value depends on the
+  outside world (a database read, an external API): after a write or a
+  PubSub invalidation message, `invalidate/2` forces them to run again
+  even though no graph *state* changed.
+
+      def handle_info({:lavash_invalidate, Product}, socket) do
+        {:noreply, Reactive.invalidate(socket, :products)}
+      end
+
+  Accepts a single field or a list.
+  """
+  def invalidate(socket, fields) do
+    socket
+    |> LSocket.mark_dirty(List.wrap(fields))
+    |> recompute()
+  end
+
+  @doc """
   Recomputes derived fields that depend (transitively) on `changed_field`.
   """
   def recompute_dependents(socket, changed_field) do
