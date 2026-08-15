@@ -38,7 +38,9 @@ defmodule DemoWeb.Router do
   scope "/", DemoWeb do
     pipe_through [:browser, :ensure_user]
 
-    live_session :home, on_mount: {DemoWeb.LiveUserAuth, :live_user_ensure} do
+    live_session :home,
+      layout: {DemoWeb.Layouts, :demo},
+      on_mount: [{DemoWeb.LiveUserAuth, :live_user_ensure}, DemoWeb.SourceLink] do
       live "/", DemosIndexLive
       live "/chat", StreamingChatLive
     end
@@ -50,7 +52,7 @@ defmodule DemoWeb.Router do
 
     live_session :storefront,
       layout: {DemoWeb.Layouts, :app},
-      on_mount: {DemoWeb.LiveUserAuth, :live_user_ensure} do
+      on_mount: [{DemoWeb.LiveUserAuth, :live_user_ensure}, DemoWeb.SourceLink] do
       live "/", StorefrontLive
       live "/products", Storefront.ProductsLive
       live "/products/:product_id", Storefront.ProductLive
@@ -58,13 +60,14 @@ defmodule DemoWeb.Router do
     end
   end
 
-  # Customer account (requires login)
   # Customer account — same anonymous identity as everywhere else, so
   # a visitor's orders/addresses are reachable without signing in.
   scope "/account", DemoWeb do
     pipe_through [:browser, :ensure_user]
 
-    live_session :account, on_mount: {DemoWeb.LiveUserAuth, :live_user_ensure} do
+    live_session :account,
+      layout: {DemoWeb.Layouts, :demo},
+      on_mount: [{DemoWeb.LiveUserAuth, :live_user_ensure}, DemoWeb.SourceLink] do
       live "/", Account.DashboardLive
       live "/orders", Account.OrdersLive
       live "/orders/:order_id", Account.OrderDetailLive
@@ -98,7 +101,9 @@ defmodule DemoWeb.Router do
   scope "/demos", DemoWeb do
     pipe_through [:browser, :ensure_user]
 
-    live_session :demos, on_mount: {DemoWeb.LiveUserAuth, :live_user_ensure} do
+    live_session :demos,
+      layout: {DemoWeb.Layouts, :demo},
+      on_mount: [{DemoWeb.LiveUserAuth, :live_user_ensure}, DemoWeb.SourceLink] do
       live "/counter", CounterLive
       live "/products", ProductsLive
       live "/products-socket", ProductsSocketLive

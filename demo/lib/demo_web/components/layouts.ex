@@ -15,7 +15,40 @@ defmodule DemoWeb.Layouts do
     ~H"""
     {@inner_content}
 
+    <.source_pill source_url={assigns[:source_url]} />
     <.flash_group flash={@flash} />
+    """
+  end
+
+  @doc """
+  Minimal layout for the demo/playground pages: the page's own content
+  plus the floating view-source pill and flash. Pages own all their
+  chrome.
+  """
+  def demo(assigns) do
+    ~H"""
+    {@inner_content}
+
+    <.source_pill source_url={assigns[:source_url]} />
+    <.flash_group flash={@flash} />
+    """
+  end
+
+  attr :source_url, :string, default: nil
+
+  defp source_pill(assigns) do
+    ~H"""
+    <a
+      :if={@source_url}
+      href={@source_url}
+      target="_blank"
+      rel="noopener"
+      class="fixed bottom-4 left-4 px-3 py-2 text-xs font-mono bg-gray-800 text-white rounded shadow-lg hover:bg-gray-700"
+      style="z-index: 99999;"
+      title="View this page's source on GitHub"
+    >
+      &lt;/&gt; source
+    </a>
     """
   end
 
