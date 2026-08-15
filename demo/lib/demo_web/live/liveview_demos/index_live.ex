@@ -43,6 +43,11 @@ defmodule DemoWeb.LiveViewDemos.IndexLive do
           <h2 class="text-xl font-semibold mb-4 border-b pb-2">State &amp; Data</h2>
           <div class="grid md:grid-cols-2 gap-4">
             <.demo_card
+              href={~p"/lv/todos"}
+              title="Todos (Pure Elixir)"
+              description="Zero macros: explicit dependency lists, plain compute functions, Ash writes with hand-wired fine-grained PubSub invalidation."
+            />
+            <.demo_card
               href={~p"/lv/products"}
               title="Products (URL State)"
               description="URL-backed filters via hand-wired handle_params, async Ash read derive with stale-while-loading, PubSub invalidation."

@@ -110,9 +110,7 @@ defmodule DemoWeb.LiveViewDemos.ProductsLive do
   end
 
   defp refetch_products(socket) do
-    socket
-    |> Lavash.Socket.mark_dirty([:products])
-    |> Reactive.recompute()
+    Reactive.invalidate(socket, :products)
   end
 
   defp patch_filters(socket, changes) do

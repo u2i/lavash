@@ -88,9 +88,10 @@ defmodule DemoWeb.Router do
     live "/orders/:order_id", OrderDetailLive
   end
 
-  # Lavash.Reactive demos (plain LiveView, no DSL)
+  # Lavash.Reactive demos (plain LiveView, no DSL). :ensure_user so
+  # the pure todos demo has the same anonymous identity as /demos.
   scope "/lv", DemoWeb.LiveViewDemos do
-    pipe_through :browser
+    pipe_through [:browser, :ensure_user]
 
     live "/", IndexLive
     live "/counter", CounterLive
@@ -98,6 +99,7 @@ defmodule DemoWeb.Router do
     live "/plain-counter", PlainCounterLive
     live "/form-validation", FormValidationLive
     live "/products", ProductsLive
+    live "/todos", TodosLive
   end
 
   # Demo/playground routes — same anonymous identity as the home scope.

@@ -145,6 +145,54 @@ defmodule DemoWeb.LiveViewDemosTest do
     end
   end
 
+  describe "todos (pure Elixir)" do
+    defp todos_user(conn) do
+      conn = get(conn, "/lv/todos")
+      {conn, conn.assigns.current_user}
+    end
+
+    test "adds, toggles, filters, and clears todos", %{conn: conn} do
+      {conn, _user} = todos_user(conn)
+      {:ok, view, html} = live(conn, "/lv/todos")
+      assert html =~ "Nothing here."
+
+      view |> form("#todo-form", %{"title" => "Write docs"}) |> render_submit()
+      html = view |> form("#todo-form", %{"title" => "Ship it"}) |> render_submit()
+      assert html =~ "Write docs"
+      assert html =~ "Ship it"
+      assert html =~ "2 remaining"
+
+      # Toggle the first todo done
+      html =
+        view
+        |> element("li:first-child input[type=checkbox]")
+        |> render_click()
+
+      assert html =~ "1 remaining"
+      assert html =~ "Clear 1 done"
+
+      # The "done" filter shows only the completed one
+      html = view |> element("button[phx-value-filter=done]") |> render_click()
+      assert html =~ "line-through"
+      refute html =~ "2 remaining"
+
+      # Clear done removes it
+      html = view |> element("button[phx-click=clear_done]") |> render_click()
+      assert html =~ "Nothing here."
+    end
+
+    test "another view of the same user updates via pubsub", %{conn: conn} do
+      {conn, _user} = todos_user(conn)
+      {:ok, view_a, _} = live(conn, "/lv/todos")
+      {:ok, view_b, _} = live(conn, "/lv/todos")
+
+      view_a |> form("#todo-form", %{"title" => "Cross-tab hello"}) |> render_submit()
+
+      # view_b hears the user_id-topic broadcast and re-fetches
+      assert render(view_b) =~ "Cross-tab hello"
+    end
+  end
+
   # The products list is an async derive — poll until the AsyncResult
   # lands (the task sends {:lavash_reactive, ...} back to the view).
   defp render_async_products(view, attempts \\ 50) do
