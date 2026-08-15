@@ -36,7 +36,13 @@ defmodule Demo.Orders.Order do
   end
 
   actions do
-    defaults [:read, :destroy]
+    defaults [:read]
+
+    destroy :destroy do
+      primary? true
+      # Items go first — SQLite enforces the FK.
+      change cascade_destroy(:items, after_action?: false, return_notifications?: false)
+    end
 
     create :place do
       accept [:subtotal, :tax, :shipping, :total, :payment_method, :card_last_four]

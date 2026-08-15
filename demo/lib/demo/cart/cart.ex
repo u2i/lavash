@@ -21,7 +21,13 @@ defmodule Demo.Cart.Cart do
   # Note: SQLite doesn't support aggregates on has_many, calculate these in LiveView
 
   actions do
-    defaults [:read, :destroy]
+    defaults [:read]
+
+    destroy :destroy do
+      primary? true
+      # Items go first — SQLite enforces the FK.
+      change cascade_destroy(:items, after_action?: false, return_notifications?: false)
+    end
 
     create :create do
       accept []
