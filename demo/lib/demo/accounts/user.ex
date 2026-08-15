@@ -75,6 +75,11 @@ defmodule Demo.Accounts.User do
     # request mints a fresh anonymous user; the broadcast lets other
     # open sessions re-read.
     destroy :reset do
+      # The after_action broadcast (and the cascades) can't run
+      # atomically — fine here: reset is a single-visitor dev tool,
+      # not a concurrent hot path.
+      require_atomic? false
+
       change cascade_destroy(:todos, after_action?: false, return_notifications?: false)
       change cascade_destroy(:carts, after_action?: false, return_notifications?: false)
       change cascade_destroy(:orders, after_action?: false, return_notifications?: false)
