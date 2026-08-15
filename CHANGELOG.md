@@ -4,6 +4,18 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0-rc.6](https://github.com/u2i/lavash/compare/v0.4.0-rc.5...v0.4.0-rc.6) (2026-08-15)
+
+
+### Features
+
+* add Reactive.invalidate/2 as the public re-fetch primitive ([fce872b](https://github.com/u2i/lavash/commit/fce872b6de76ced88e87543d46680a566159f0b7))
+
+
+### Bug Fixes
+
+* make Explicit's mount/handle_info actually overridable with super ([0c4523b](https://github.com/u2i/lavash/commit/0c4523b79773950844aa177c022196666493bdc7))
+
 ## [Unreleased]
 
 ### Added
