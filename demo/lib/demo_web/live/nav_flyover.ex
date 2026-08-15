@@ -47,7 +47,6 @@ defmodule DemoWeb.NavFlyover do
             <details open>
               <summary class="text-base font-medium">Forms</summary>
               <ul>
-                <li><a href="/demos/checkout">Checkout</a></li>
                 <li><a href="/demos/form-validation">Form Validation</a></li>
                 <li><a href="/demos/bindings">Bindings</a></li>
               </ul>
