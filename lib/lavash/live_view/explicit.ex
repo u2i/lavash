@@ -78,6 +78,27 @@ defmodule Lavash.LiveView.Explicit do
       @before_compile Lavash.LiveView.Explicit
       @after_compile {Lavash.Reactive, :erase_graph}
       @after_compile {Lavash.Rx.Cache, :erase}
+
+      # The default mount/handle_info are defined HERE (not in
+      # __before_compile__) so a user's own definition comes after
+      # them and `super(...)` works. They call
+      # `__lavash_reactive_graph__/0`, which __before_compile__
+      # generates later in the module — fine, since the call is only
+      # resolved at runtime.
+      @impl Phoenix.LiveView
+      def mount(_params, _session, socket) do
+        {:ok, Lavash.Reactive.init(socket, __lavash_reactive_graph__())}
+      end
+
+      @impl Phoenix.LiveView
+      def handle_info({:lavash_reactive, _, _} = msg, socket) do
+        case Lavash.Reactive.handle_async(socket, msg) do
+          {:ok, socket} -> {:noreply, socket}
+          :not_handled -> {:noreply, socket}
+        end
+      end
+
+      defoverridable mount: 3, handle_info: 2
     end
   end
 
@@ -146,21 +167,6 @@ defmodule Lavash.LiveView.Explicit do
           Lavash.Reactive.build(builder)
         end)
       end
-
-      @impl Phoenix.LiveView
-      def mount(_params, _session, socket) do
-        {:ok, Lavash.Reactive.init(socket, __lavash_reactive_graph__())}
-      end
-
-      @impl Phoenix.LiveView
-      def handle_info({:lavash_reactive, _, _} = msg, socket) do
-        case Lavash.Reactive.handle_async(socket, msg) do
-          {:ok, socket} -> {:noreply, socket}
-          :not_handled -> {:noreply, socket}
-        end
-      end
-
-      defoverridable mount: 3, handle_info: 2
     end
   end
 
