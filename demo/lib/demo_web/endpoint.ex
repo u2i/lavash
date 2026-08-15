@@ -4,11 +4,17 @@ defmodule DemoWeb.Endpoint do
   # The session will be stored in the cookie and signed,
   # this means its contents can be read but not tampered with.
   # Set :encryption_salt if you would also like to encrypt it.
+  # max_age makes the anonymous identity persistent: without it the
+  # session cookie dies with the browser and every restart mints a new
+  # visitor — orphaning their todos, cart, and orders. A year keeps
+  # the same user (and their data) across visits; Reset is the
+  # deliberate way to start over.
   @session_options [
     store: :cookie,
     key: "_demo_key",
     signing_salt: "cY27hOt0",
-    same_site: "Lax"
+    same_site: "Lax",
+    max_age: 60 * 60 * 24 * 365
   ]
 
   socket "/live", Phoenix.LiveView.Socket,
