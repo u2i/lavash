@@ -182,7 +182,6 @@ defmodule DemoWeb.Storefront.ProductsLive do
               type="text"
               name="value"
               value={@search}
-              data-lavash-bind="search"
               placeholder="Search coffees..."
               autocomplete="off"
               class="input input-bordered w-full"

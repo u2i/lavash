@@ -213,7 +213,7 @@ defmodule DemoWeb.Storefront.ProductLive do
                     <button
                       phx-click="dec_quantity"
                       class="btn btn-sm join-item"
-                      data-lavash-enabled="quantity_gt_1"
+                      disabled={not @quantity_gt_1}
                     >
                       -
                     </button>

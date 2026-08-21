@@ -42,8 +42,12 @@ defmodule DemoWeb.CategoryEditModal do
         <CoreComponents.input field={@form[:slug]} label="Slug" placeholder="category-slug" />
 
         <div class="flex gap-3 pt-4 border-t">
+          <%!-- disabled= keeps the dead render correct; the manual
+               data-lavash-enabled stays because auto-injection only
+               fires on HTML tags, not component calls (#114) --%>
           <CoreComponents.button
             type="submit"
+            disabled={not @form_valid}
             data-lavash-enabled="form_valid"
             phx-disable-with="Saving..."
             class="flex-1 btn-primary"

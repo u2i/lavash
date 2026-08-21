@@ -67,7 +67,6 @@ defmodule DemoWeb.Dsl.CounterLive do
               min="1"
               max="10"
               value={@multiplier}
-              data-lavash-bind="multiplier"
               class="w-32"
             />
           </form>
