@@ -417,28 +417,28 @@ defmodule Lavash.Optimistic.DataAttrTransformer do
   # ============================================
 
   defp parse_form_field_expr(expr) do
-    case Regex.run(~r/@(\w+)\[:(\w+)\]\.name/, expr) do
+    case Regex.run(~r/@(\w+[?!]?)\[:(\w+[?!]?)\]\.name/, expr) do
       [_, form, field] -> {:ok, String.to_atom(form), String.to_atom(field)}
       nil -> :error
     end
   end
 
   defp parse_form_field_string(name) do
-    case Regex.run(~r/^(\w+)\[(\w+)\]$/, name) do
+    case Regex.run(~r/^(\w+[?!]?)\[(\w+[?!]?)\]$/, name) do
       [_, form, field] -> {:ok, form, field}
       nil -> :error
     end
   end
 
   defp parse_form_field_access_expr(expr) do
-    case Regex.run(~r/@(\w+)\[:(\w+)\]$/, String.trim(expr)) do
+    case Regex.run(~r/@(\w+[?!]?)\[:(\w+[?!]?)\]$/, String.trim(expr)) do
       [_, form, field] -> {:ok, String.to_atom(form), String.to_atom(field)}
       nil -> :error
     end
   end
 
   defp parse_negated_field(expr) do
-    case Regex.run(~r/^not\s+@(\w+)$/, String.trim(expr)) do
+    case Regex.run(~r/^not\s+@(\w+[?!]?)$/, String.trim(expr)) do
       [_, field] -> {:ok, field}
       nil -> :error
     end
