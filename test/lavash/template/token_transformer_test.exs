@@ -491,6 +491,105 @@ defmodule Lavash.Template.TokenTransformerTest do
   end
 
   # ============================================
+  # select/textarea binding injection (#112)
+  # ============================================
+
+  describe "select binding from option selected exprs" do
+    defp sort_select(selected_exprs) do
+      options =
+        Enum.map(selected_exprs, fn expr ->
+          tag("option", [string_attr("value", "x"), expr_attr("selected", expr)])
+        end)
+
+      tag("select", [string_attr("name", "value")], children: options)
+    end
+
+    test "injects bind when all options agree on one optimistic field" do
+      tokens = [sort_select(["@sort == :name", "@sort == :price"])]
+      result = transform(tokens, optimistic_metadata([{:sort, :atom}]))
+
+      [{:block, :tag, "select", attrs, _children, _, _}] = result
+
+      assert Enum.any?(attrs, fn
+               {"data-lavash-bind", {:string, "sort", _}, _} -> true
+               _ -> false
+             end)
+    end
+
+    test "skips when options reference different fields" do
+      tokens = [sort_select(["@sort == :name", "@other == :x"])]
+      result = transform(tokens, optimistic_metadata([{:sort, :atom}, {:other, :atom}]))
+
+      [{:block, :tag, "select", attrs, _children, _, _}] = result
+      refute Enum.any?(attrs, fn {name, _, _} -> name == "data-lavash-bind" end)
+    end
+
+    test "skips when the field is not optimistic state" do
+      tokens = [sort_select(["@sort == :name"])]
+      result = transform(tokens, optimistic_metadata([]))
+
+      [{:block, :tag, "select", attrs, _children, _, _}] = result
+      refute Enum.any?(attrs, fn {name, _, _} -> name == "data-lavash-bind" end)
+    end
+
+    test "leaves an existing hand-written bind alone" do
+      select =
+        tag("select", [string_attr("data-lavash-bind", "custom")],
+          children: [tag("option", [expr_attr("selected", "@sort == :name")])]
+        )
+
+      result = transform([select], optimistic_metadata([{:sort, :atom}]))
+
+      [{:block, :tag, "select", attrs, _children, _, _}] = result
+
+      assert Enum.count(attrs, fn {name, _, _} -> name == "data-lavash-bind" end) == 1
+    end
+  end
+
+  describe "form-field select via explicit name (address-modal shape)" do
+    test "select with name={@form[:field].name} gets the full form attrs" do
+      select =
+        tag("select", [expr_attr("name", "@address_form[:state].name")],
+          children: [tag("option", [expr_attr("selected", "opt.code == @region_selected")])]
+        )
+
+      metadata = optimistic_metadata([], forms: %{address_form: %{fields: [:state]}})
+      result = transform([select], metadata)
+
+      [{:block, :tag, "select", attrs, _children, _, _}] = result
+
+      assert Enum.any?(attrs, fn
+               {"data-lavash-bind", {:string, "address_form_params.state", _}, _} -> true
+               _ -> false
+             end)
+
+      assert Enum.any?(attrs, fn {name, _, _} -> name == "data-lavash-valid" end)
+    end
+  end
+
+  describe "textarea binding from body expression" do
+    test "injects bind for a bare optimistic body expr" do
+      textarea = tag("textarea", [], children: [{:body_expr, "@notes", %{}}])
+      result = transform([textarea], optimistic_metadata([{:notes, :string}]))
+
+      [{:block, :tag, "textarea", attrs, _children, _, _}] = result
+
+      assert Enum.any?(attrs, fn
+               {"data-lavash-bind", {:string, "notes", _}, _} -> true
+               _ -> false
+             end)
+    end
+
+    test "skips non-bare expressions" do
+      textarea = tag("textarea", [], children: [{:body_expr, "@notes <> \"!\"", %{}}])
+      result = transform([textarea], optimistic_metadata([{:notes, :string}]))
+
+      [{:block, :tag, "textarea", attrs, _children, _, _}] = result
+      refute Enum.any?(attrs, fn {name, _, _} -> name == "data-lavash-bind" end)
+    end
+  end
+
+  # ============================================
   # phx-target injection
   # ============================================
 
