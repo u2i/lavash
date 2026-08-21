@@ -61,11 +61,14 @@ defmodule Lavash.ChipSet do
   template do
     ~H"""
     <div class="flex flex-wrap gap-2">
+      <%!-- data-lavash-member is auto-injected from the class
+           expression: prop-ref branches become an interpolated
+           directive, and the loop-var value rides phx-value-val
+           (#129) --%>
       <button
         :for={value <- @values}
         type="button"
         class={if value in (@selected || []), do: @active_class, else: @inactive_class}
-        data-lavash-member={"selected|#{@active_class}|#{@inactive_class}"}
         phx-click="toggle"
         phx-value-val={value}
       >

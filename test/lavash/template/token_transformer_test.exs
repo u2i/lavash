@@ -589,6 +589,62 @@ defmodule Lavash.Template.TokenTransformerTest do
     end
   end
 
+  describe "class member injection — ChipSet shapes (#129)" do
+    test "loop-var value + prop-ref branches + nil-safe list" do
+      tokens = [
+        tag("button", [
+          expr_attr(
+            "class",
+            "if value in (@selected || []), do: @active_class, else: @inactive_class"
+          ),
+          expr_attr("phx-value-val", "value")
+        ])
+      ]
+
+      metadata = optimistic_metadata([{:selected, :list}])
+      [{:block, :tag, "button", attrs, _, _, _}] = transform(tokens, metadata)
+
+      expected_directive =
+        "\"selected|\" <> (@active_class || \"\") <> \"|\" <> (@inactive_class || \"\")"
+
+      assert {"data-lavash-member", {:expr, ^expected_directive, _}, _} =
+               Enum.find(attrs, &match?({"data-lavash-member", _, _}, &1))
+
+      # loop-var value rides phx-value-val — no member-value injected
+      refute Enum.any?(attrs, &match?({"data-lavash-member-value", _, _}, &1))
+    end
+
+    test "loop-var value WITHOUT phx-value-val gets no injection" do
+      tokens = [
+        tag("button", [
+          expr_attr("class", "if value in @selected, do: \"on\", else: \"off\"")
+        ])
+      ]
+
+      metadata = optimistic_metadata([{:selected, :list}])
+      [{:block, :tag, "button", attrs, _, _, _}] = transform(tokens, metadata)
+
+      refute Enum.any?(attrs, &match?({"data-lavash-member", _, _}, &1))
+    end
+
+    test "literal value and classes still inject the static directive" do
+      tokens = [
+        tag("span", [
+          expr_attr("class", "if \"x\" in @items, do: \"sel\", else: \"unsel\"")
+        ])
+      ]
+
+      metadata = optimistic_metadata([{:items, :list}])
+      [{:block, :tag, "span", attrs, _, _, _}] = transform(tokens, metadata)
+
+      assert {"data-lavash-member", {:string, "items|sel|unsel", _}, _} =
+               Enum.find(attrs, &match?({"data-lavash-member", _, _}, &1))
+
+      assert {"data-lavash-member-value", {:string, "x", _}, _} =
+               Enum.find(attrs, &match?({"data-lavash-member-value", _, _}, &1))
+    end
+  end
+
   # ============================================
   # phx-target injection
   # ============================================
