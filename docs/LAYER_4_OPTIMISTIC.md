@@ -181,25 +181,79 @@ Transitional escape hatch (restores warn-and-demote):
 config :lavash, :untranspilable_optimistic, :warn
 ```
 
-## Auto-injected DOM annotations
+## DOM annotations
 
-The layer-4 reach into HEEx is the family of `data-lavash-*` attributes
-the template transformer adds when an expression resolves against an
-optimistic field. You don't write them by hand for the common cases:
+The layer-4 reach into HEEx is the family of `data-lavash-*`
+attributes the JS hook reads to update the DOM without a round-trip.
+Most are **auto-injected** by the template transformer when an
+idiomatic expression resolves against an optimistic field; a small
+set are **hand-written escape hatches** for what inference can't
+reach. The annotation is the contract either way — the hook doesn't
+care who wrote it.
 
-- `data-lavash-display="field"` — wraps bare `{@field}` in a span the
-  hook can re-text directly.
-- `data-lavash-toggle="field|on|off"` — toggles class strings based on
-  a boolean optimistic field.
+### Auto-injected
+
+You don't write these by hand:
+
+- `data-lavash-display="field"` — bare `{@field}` interpolations are
+  wrapped in a span the hook re-texts directly.
+- `data-lavash-bind="field"` — inputs with `value={@field}`, selects
+  whose `<option selected={@field == …}>` expressions agree on one
+  field, and textareas with a bare `{@field}` body.
+- `data-lavash-attr-<name>="__attr_N_<name>"` — **the general
+  mechanism for reactive attributes.** Any `class=`/`disabled=`/
+  `hidden=` expression referencing optimistic fields is transpiled
+  into a derive the client re-evaluates, then re-applies to the
+  attribute (class values get Phoenix class-list semantics: flatten,
+  drop `nil`/`false`, space-join). Conditional classes of any shape —
+  `if`/`unless`, list form, string concatenation, comparisons — ride
+  this. Untranspilable expressions demote loudly to server-rendered.
+- `data-lavash-visible="field"` — from `:if={@field}`; shows/hides
+  via a `hidden` class.
+- `data-lavash-enabled="field"` — from `disabled={not @field}`.
 - `data-lavash-member="field|sel|unsel"` + `data-lavash-member-value`
-  — array membership class toggling (the ChipSet pattern).
-- `data-lavash-visible="field"` — show/hide via a `hidden` class.
-- `data-lavash-enabled="field"` — enable/disable a button without a
-  server roundtrip.
+  — from `class={if val in @list, …}` (the ChipSet pattern). Kept as
+  its own directive because chip rows live inside `:for` loops,
+  where attribute derives can't go (loop variables don't exist in
+  derive scope) — the per-row value rides `phx-value-val`.
+- Form-field wiring (`bind`/`form`/`field`/`valid`) — from
+  `field={@form[:name]}` or `name={@form[:name].name}` shorthands.
+  Note: a hand-written `data-lavash-bind` on such an element
+  *suppresses* the rest of this injection — prefer the shorthand.
 
-Hand-written `data-lavash-*` attributes still work for cases the
-inference can't reach (non-bare expressions, `unless`, complex class
-concatenation, async patterns).
+Injection fires on **HTML tags only**. Attributes on component calls
+(`<.form>`, `<.button>`) are invisible to the pipeline even when the
+component passes them through — annotate those by hand (below).
+
+### Hand-written escape hatches
+
+These are supported public API — each exists because no idiomatic
+expression can carry the information:
+
+- `data-lavash-display="field"` — around an expression the pipeline
+  won't manage itself, which in practice means **async render
+  blocks** (a `case` over an AsyncResult) and non-lavash templates:
+  tells the hook which field's changes should re-text this element
+  with the raw client value. (For *sync* optimistic fields there is
+  no gap to escape: transpilable non-bare expressions become subtree
+  derives automatically, and untranspilable ones are compile errors
+  under optimistic strictness — move those into a `calculate`.)
+- `data-lavash-toggle="field|on|off"` — class switching in places
+  the pipeline can't reach: component calls and non-lavash (`~H`)
+  templates. Inside lavash templates, write the conditional in
+  `class={…}` and let the attribute derive handle it.
+- `data-lavash-action="name"` — an input that commits an action on
+  Enter (the todos add box). Mints client row ids for `append`
+  predictions the same way `phx-click` handlers do.
+- `data-lavash-id={row.id}` — row identity for list children: opts
+  the row into provisional marking (`data-lavash-provisional` until
+  the server confirms) and lets predictions target the right node.
+- `data-lavash-valid="custom_calc"` — overrides the generated
+  `<form>_<field>_valid` with your own calculation (pairs with
+  `extend_errors`; the `valid_field` attr on `<.input>` does this
+  for you).
+- `data-lavash-manual` — opt-out: suppresses all auto-injection on
+  the element.
 
 ## Overlays (modals, flyovers)
 
