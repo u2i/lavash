@@ -145,8 +145,13 @@ defmodule DemoWeb.Dsl.ValidationDemoLive do
             <button
               type="submit"
               disabled={not @form_valid}
-              class="w-full py-3 px-4 rounded-lg font-semibold transition-colors"
-              data-lavash-toggle="form_valid|bg-primary text-primary-content hover:opacity-90|bg-base-300 text-base-content"
+              class={[
+                "w-full py-3 px-4 rounded-lg font-semibold transition-colors",
+                if(@form_valid,
+                  do: "bg-primary text-primary-content hover:opacity-90",
+                  else: "bg-base-300 text-base-content"
+                )
+              ]}
             >
               Create Account
             </button>

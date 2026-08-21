@@ -43,12 +43,21 @@ defmodule Lavash.Test.Magic.DomDirectivesLive do
       <p>Count: {@n}</p>
       <button id="bump" phx-click="bump">+</button>
 
-      <!-- class={if @bool, do: A, else: B} auto-injects data-lavash-toggle -->
+      <!-- conditional classes ride reactive attribute derives (pattern 7) -->
       <div
         id="toggle-target"
         class={if @flag, do: "on-class", else: "off-class"}
       >
         {if @flag, do: "ON", else: "OFF"}
+      </div>
+      <!-- list form: the derive computes a JS array; the client must
+           normalize it with Phoenix class-list semantics (flatten,
+           drop nil/false, space-join), never comma-join -->
+      <div
+        id="list-class-target"
+        class={["static-class", if(@flag, do: "on-class", else: "off-class")]}
+      >
+        list
       </div>
       <button id="toggle-flag" phx-click="toggle_flag">Toggle</button>
 

@@ -43,6 +43,11 @@ defmodule Lavash.Optimistic.DataAttrTransformer do
   gets `data-lavash-visible="open"` injected when `:open` is an
   optimistic boolean field.
 
+  The show/hide-by-class idiom (element kept in the DOM) is covered
+  by pattern 7 instead: `class={if !@open, do: "hidden"}` (or any
+  conditional class expression) gets a reactive attribute derive
+  that recomputes the class client-side.
+
   ### 4. Enabled/disabled
 
       <button disabled={not @valid}>...</button>
@@ -50,12 +55,14 @@ defmodule Lavash.Optimistic.DataAttrTransformer do
   gets `data-lavash-enabled="valid"` injected when `:valid` is an
   optimistic boolean field.
 
-  ### 5. Class toggle
+  ### 5. Class toggle (manual only)
 
-      <div class={if @active, do: "on", else: "off"}>...</div>
-
-  gets `data-lavash-toggle="active|on|off"` injected when
-  `:active` is an optimistic boolean field.
+  Conditional class expressions are handled generally by pattern 7
+  (a transpiled derive recomputes the full attribute client-side),
+  so no toggle is auto-injected. `data-lavash-toggle="field|on|off"`
+  remains a supported hand-written annotation for places the
+  pipeline can't reach — component calls (`<.form>`,
+  `CoreComponents.button`) and non-lavash templates.
 
   ### 6. Class membership
 
@@ -210,7 +217,6 @@ defmodule Lavash.Optimistic.DataAttrTransformer do
       |> maybe_inject_state_binding(name, metadata)
       |> maybe_inject_visibility(metadata)
       |> maybe_inject_enabled(metadata)
-      |> maybe_inject_class_toggle(metadata)
       |> maybe_inject_class_member(metadata)
       |> maybe_inject_reactive_attrs(metadata)
     end
@@ -428,27 +434,6 @@ defmodule Lavash.Optimistic.DataAttrTransformer do
   end
 
   # ============================================
-  # Pattern 5: class toggle
-  # ============================================
-
-  defp maybe_inject_class_toggle(attrs, metadata) do
-    if AttrHelpers.has_attr?(attrs, "data-lavash-toggle") do
-      attrs
-    else
-      with {:expr, expr, _meta} <- AttrHelpers.get_attr_value(attrs, "class"),
-           {:ok, field_name, true_str, false_str} <- parse_boolean_class_if(expr),
-           field_atom = safe_existing_atom(field_name),
-           true <- not is_nil(field_atom),
-           true <- optimistic_boolean?(field_atom, metadata) do
-        value = "#{field_name}|#{true_str}|#{false_str}"
-        AttrHelpers.add_attr_if_missing(attrs, "data-lavash-toggle", {:string, value})
-      else
-        _ -> attrs
-      end
-    end
-  end
-
-  # ============================================
   # Pattern 6: class membership
   # ============================================
 
@@ -547,25 +532,6 @@ defmodule Lavash.Optimistic.DataAttrTransformer do
     case Regex.run(~r/^not\s+@(\w+[?!]?)$/, String.trim(expr)) do
       [_, field] -> {:ok, field}
       nil -> :error
-    end
-  end
-
-  defp parse_boolean_class_if(source) do
-    case Code.string_to_quoted(source) do
-      {:ok,
-       {:if, _,
-        [
-          {:@, _, [{field, _, ctx}]},
-          [do: true_branch, else: false_branch]
-        ]}}
-      when is_atom(field) and is_atom(ctx) ->
-        with {:ok, t} <- as_class_string(true_branch),
-             {:ok, f} <- as_class_string(false_branch) do
-          {:ok, Atom.to_string(field), t, f}
-        end
-
-      _ ->
-        :error
     end
   end
 
