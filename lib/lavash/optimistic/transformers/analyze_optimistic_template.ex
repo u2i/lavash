@@ -150,7 +150,7 @@ defmodule Lavash.Optimistic.Transformers.AnalyzeOptimisticTemplate do
     |> Enum.with_index()
     |> Enum.flat_map(fn {[_full, attr_name, expr], index} ->
       deps =
-        Regex.scan(~r/@(\w+)/, expr)
+        Regex.scan(~r/@(\w+[?!]?)/, expr)
         |> Enum.map(fn [_, field] -> String.to_atom(field) end)
         |> Enum.filter(&MapSet.member?(optimistic_names, &1))
         |> Enum.uniq()

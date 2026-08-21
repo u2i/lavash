@@ -473,6 +473,21 @@ defmodule Lavash.Template.TokenTransformerTest do
       [{:block, :tag, "button", attrs, _children, _, _}] = result
       refute Enum.any?(attrs, fn {name, _, _} -> name == "data-lavash-enabled" end)
     end
+
+    # Regression: field names ending in ? (or !) are idiomatic Elixir —
+    # the \w-based matcher used to silently skip them (#109 audit).
+    test "injects for question-mark field names (not @input_valid?)" do
+      tokens = [tag("button", [expr_attr("disabled", "not @input_valid?")])]
+      metadata = optimistic_metadata([], calculations: %{input_valid?: %{optimistic: true}})
+      result = transform(tokens, metadata)
+
+      [{:block, :tag, "button", attrs, _children, _, _}] = result
+
+      assert Enum.any?(attrs, fn
+               {"data-lavash-enabled", {:string, "input_valid?", _}, _} -> true
+               _ -> false
+             end)
+    end
   end
 
   # ============================================
