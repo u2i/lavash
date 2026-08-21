@@ -188,9 +188,10 @@ defmodule DemoWeb.Storefront.ProductsLive do
             />
           </form>
           <form phx-change="set_sort">
+            <%!-- data-lavash-bind="sort" is auto-injected: every
+                 option's selected= references the optimistic @sort --%>
             <select
               name="value"
-              data-lavash-bind="sort"
               class="select select-bordered w-full md:w-auto"
             >
               <option value="name" selected={@sort == :name}>Name (A-Z)</option>

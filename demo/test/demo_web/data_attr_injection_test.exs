@@ -21,6 +21,11 @@ defmodule DemoWeb.DataAttrInjectionTest do
       assert html =~ ~s(data-lavash-bind="search")
     end
 
+    test "storefront products sort select (from option selected exprs)", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/storefront/products")
+      assert html =~ ~s(data-lavash-bind="sort")
+    end
+
     test "chat message input", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/chat")
       assert html =~ ~s(data-lavash-bind="input")
