@@ -11,7 +11,6 @@ defmodule Lavash.Overlay.Modal.Transformers.InjectState do
 
   The open_field uses `animated: true` which triggers ExpandAnimatedStates to add:
   - `{open_field}_phase` state field
-  - `{open_field}_visible` calculation
   - `{open_field}_animating` calculation
   """
 
