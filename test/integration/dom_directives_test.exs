@@ -60,6 +60,13 @@ defmodule Lavash.Integration.DomDirectivesTest do
     session
     |> click(css("#toggle-enabled"))
     |> assert_has(css("#enabled-button[disabled]"))
+
+    # The handler manages the disabled PROPERTY only — no
+    # design-system classes sprout from core JS (#126)
+    refute Wallabidi.Browser.has?(
+             session,
+             Wallabidi.Query.css("#enabled-button.opacity-60")
+           )
   end
 
   test "data-lavash-member: class toggles based on array membership", %{session: session} do
