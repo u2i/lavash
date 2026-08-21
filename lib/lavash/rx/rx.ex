@@ -330,17 +330,24 @@ defmodule Lavash.Rx do
   # Use Macro.var with nil context to create an unhygienic variable reference
   # that can be bound in the target context (the generated code)
 
+  @doc false
+  # Public for callers that build @-form ASTs OUTSIDE the rx macro and
+  # need the server-evaluable form (e.g. the generated form-constraint
+  # checks, #125): the transpiler consumes the @-form directly, the
+  # server compiles the rewritten form via Lavash.Rx.Cache.
+  def transform_at_refs(ast), do: do_transform_at_refs(ast)
+
   # Path access via bracket notation: @params["name"] → get_in(state, [:params, "name"])
-  defp transform_at_refs({{:., _, [Access, :get]}, _, [{:@, _, [{var_name, _, _}]}, key]})
+  defp do_transform_at_refs({{:., _, [Access, :get]}, _, [{:@, _, [{var_name, _, _}]}, key]})
        when is_atom(var_name) do
     state_var = Macro.var(:state, nil)
     # The key itself may contain @-refs (`@params[@field]`) — walk it.
-    key = transform_at_refs(key)
+    key = do_transform_at_refs(key)
     quote do: get_in(unquote(state_var), [unquote(var_name), unquote(key)])
   end
 
   # Nested path access: @params["address"]["city"] → get_in(state, [:params, "address", "city"])
-  defp transform_at_refs({{:., _, [Access, :get]}, _, [inner, key]}) do
+  defp do_transform_at_refs({{:., _, [Access, :get]}, _, [inner, key]}) do
     case extract_path_for_transform(inner, [key]) do
       {:ok, var_name, path} ->
         state_var = Macro.var(:state, nil)
@@ -351,15 +358,15 @@ defmodule Lavash.Rx do
 
       :not_a_path ->
         # Not a path rooted at @var, transform normally
-        transformed_inner = transform_at_refs(inner)
-        transformed_key = transform_at_refs(key)
+        transformed_inner = do_transform_at_refs(inner)
+        transformed_key = do_transform_at_refs(key)
         quote do: Access.get(unquote(transformed_inner), unquote(transformed_key))
     end
   end
 
   # Dot access: @params.name → state[:params][:name] or state[:params].name
   # Use Map.get for both levels to support both maps and structs
-  defp transform_at_refs({{:., _, [{:@, _, [{var_name, _, _}]}, field]}, _, []})
+  defp do_transform_at_refs({{:., _, [{:@, _, [{var_name, _, _}]}, field]}, _, []})
        when is_atom(var_name) and is_atom(field) do
     state_var = Macro.var(:state, nil)
     # First get the value from state, then access the field
@@ -375,24 +382,24 @@ defmodule Lavash.Rx do
   end
 
   # Simple @var reference
-  defp transform_at_refs({:@, _, [{var_name, _, _}]}) when is_atom(var_name) do
+  defp do_transform_at_refs({:@, _, [{var_name, _, _}]}) when is_atom(var_name) do
     state_var = Macro.var(:state, nil)
     quote do: Map.get(unquote(state_var), unquote(var_name), nil)
   end
 
-  defp transform_at_refs({form, meta, args}) when is_list(args) do
+  defp do_transform_at_refs({form, meta, args}) when is_list(args) do
     {form, meta, Enum.map(args, &transform_at_refs/1)}
   end
 
-  defp transform_at_refs({left, right}) do
-    {transform_at_refs(left), transform_at_refs(right)}
+  defp do_transform_at_refs({left, right}) do
+    {do_transform_at_refs(left), do_transform_at_refs(right)}
   end
 
-  defp transform_at_refs(list) when is_list(list) do
+  defp do_transform_at_refs(list) when is_list(list) do
     Enum.map(list, &transform_at_refs/1)
   end
 
-  defp transform_at_refs(other), do: other
+  defp do_transform_at_refs(other), do: other
 
   # Helper for transform - extract path from nested Access.get for transformation
   defp extract_path_for_transform({:@, _, [{var_name, _, _}]}, path) when is_atom(var_name) do

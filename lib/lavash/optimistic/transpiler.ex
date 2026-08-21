@@ -396,6 +396,16 @@ defmodule Lavash.Optimistic.Transpiler do
     "parseInt(#{ast_to_js(str)}, 10)"
   end
 
+  # Lavash.Form.Validation.parse_int(v) -> strict full-string integer
+  # parse, null when invalid — MUST mirror the Elixir implementation
+  # (Integer.parse on the trimmed string, whole-string match only).
+  def ast_to_js(
+        {{:., _, [{:__aliases__, _, [:Lavash, :Form, :Validation]}, :parse_int]}, _, [value]}
+      ) do
+    "((s) => { const t = String(s ?? '').trim(); " <>
+      "return /^[-+]?\\d+$/.test(t) ? parseInt(t, 10) : null; })(#{ast_to_js(value)})"
+  end
+
   # String.trim(str) -> str.trim()
   def ast_to_js({{:., _, [{:__aliases__, _, [:String]}, :trim]}, _, [str]}) do
     "(#{ast_to_js(str)}.trim())"

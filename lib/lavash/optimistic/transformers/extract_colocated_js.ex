@@ -1271,49 +1271,38 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
         skip_constraints = form.skip_constraints || []
 
         if CompilerHelpers.resource_available?(resource) do
-          action = Ash.Resource.Info.action(resource, create_action)
-          accepted = if action, do: action.accept || [], else: []
-
-          validations =
-            Lavash.Form.ConstraintTranspiler.extract_validations(resource)
-            |> Enum.filter(fn v -> accepted == [] or v.field in accepted end)
-
-          # Get Ash validations with custom messages
-          ash_validations =
-            Lavash.Form.ValidationTranspiler.extract_validations_for_action(
+          # Single source of truth (#125): the same fire-ASTs the
+          # server compiles (ExpandFields), transpiled to JS here.
+          form_field_checks =
+            Lavash.Form.ConstraintTranspiler.form_checks(
               resource,
-              create_action
+              create_action,
+              params_field,
+              skip_constraints
             )
 
           # Generate per-field validation and error derives
           {field_v_fns, field_e_fns, field_v_derives, field_e_derives} =
-            Enum.reduce(validations, {[], [], [], []}, fn validation, {vf, ef, vd, ed} ->
-              v_name = :"#{form_name}_#{validation.field}_valid"
-              e_name = :"#{form_name}_#{validation.field}_errors"
+            Enum.reduce(form_field_checks, {[], [], [], []}, fn %{
+                                                                  field: field,
+                                                                  checks: checks,
+                                                                  valid_ast: valid_ast
+                                                                },
+                                                                {vf, ef, vd, ed} ->
+              v_name = :"#{form_name}_#{field}_valid"
+              e_name = :"#{form_name}_#{field}_errors"
               custom_errors = Map.get(extend_errors_map, e_name, [])
-              field_ash_validations = Map.get(ash_validations, validation.field, [])
 
-              # Check if this field should skip constraint-based validation
-              skip_field_constraints = validation.field in skip_constraints
-
-              v_fn =
-                generate_field_validation_js(
-                  v_name,
-                  params_field,
-                  validation,
-                  skip_field_constraints
-                )
+              v_fn = ValidationJs.generate_field_validation_js(v_name, valid_ast)
 
               e_fn =
-                generate_field_errors_js(
+                ValidationJs.generate_field_errors_js(
                   e_name,
-                  params_field,
-                  form_name,
-                  validation,
+                  to_string(field),
+                  checks,
                   custom_errors,
-                  field_ash_validations,
-                  skip_field_constraints,
-                  defrx_map
+                  expand_defrx: &expand_defrx_in_source(&1, defrx_map),
+                  server_errors_field: "#{form_name}_server_errors"
                 )
 
               {[v_fn | vf], [e_fn | ef], [to_string(v_name) | vd], [to_string(e_name) | ed]}
@@ -1321,8 +1310,8 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
 
           # Generate combined form_valid if we have field validations
           {combined_v, combined_e, combined_v_d, combined_e_d} =
-            if validations != [] do
-              field_names = Enum.map(validations, & &1.field)
+            if form_field_checks != [] do
+              field_names = Enum.map(form_field_checks, & &1.field)
               form_valid_name = "#{form_name}_valid"
               form_errors_name = "#{form_name}_errors"
 
@@ -1365,36 +1354,6 @@ defmodule Lavash.Optimistic.Transformers.ExtractColocatedJs do
       end)
 
     {validation_fns, error_fns, validation_derives, error_derives}
-  end
-
-  # Form validation/error JS - delegate to ValidationJs
-
-  defp generate_field_validation_js(name, params_field, validation, skip_constraints) do
-    ValidationJs.generate_field_validation_js(name, params_field, validation, skip_constraints)
-  end
-
-  defp generate_field_errors_js(
-         name,
-         params_field,
-         form_name,
-         validation,
-         custom_errors,
-         ash_validations,
-         skip_constraints,
-         defrx_map
-       ) do
-    expand_defrx = &expand_defrx_in_source(&1, defrx_map)
-
-    ValidationJs.generate_field_errors_js(
-      name,
-      params_field,
-      validation,
-      custom_errors,
-      ash_validations,
-      skip_constraints,
-      expand_defrx: expand_defrx,
-      server_errors_field: "#{form_name}_server_errors"
-    )
   end
 
   defp build_graph_entries(calculations, forms, extend_errors) do
