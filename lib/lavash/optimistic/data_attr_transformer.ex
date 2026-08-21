@@ -86,10 +86,116 @@ defmodule Lavash.Optimistic.DataAttrTransformer do
     else
       Walker.walk(nodes,
         metadata: metadata,
-        attrs_callback: &inject/4
+        attrs_callback: &inject/4,
+        node_callback: &inject_node/3
       )
     end
   end
+
+  # ============================================
+  # Node-level patterns (need children access)
+  # ============================================
+
+  # Pattern 2b: select binding derived from option selected= exprs.
+  #
+  #     <select>
+  #       <option value="name" selected={@sort == :name}>...</option>
+  #       ...
+  #     </select>
+  #
+  # gets data-lavash-bind="sort" when every option's selected=
+  # expression references the same single optimistic state field.
+  # Runs after attrs_callback, so a select already bound by the
+  # form-input patterns (or by hand) is left alone.
+  defp inject_node({:block, :tag, "select", attrs, children, om, cm} = node, _parent, metadata) do
+    if AttrHelpers.has_attr?(attrs, "data-lavash-bind") or
+         AttrHelpers.has_attr?(attrs, "data-lavash-manual") do
+      [node]
+    else
+      case single_optimistic_field(option_selected_exprs(children), metadata) do
+        {:ok, field_name} ->
+          new_attrs =
+            AttrHelpers.add_attr_if_missing(attrs, "data-lavash-bind", {:string, field_name})
+
+          [{:block, :tag, "select", new_attrs, children, om, cm}]
+
+        :error ->
+          [node]
+      end
+    end
+  end
+
+  # Pattern 2c: textarea binding from a bare body expression.
+  #
+  #     <textarea>{@notes}</textarea>
+  #
+  # gets data-lavash-bind="notes" when :notes is an optimistic
+  # state field (textareas carry their value in the body, so the
+  # value={...} form of pattern 2 never applies).
+  defp inject_node({:block, :tag, "textarea", attrs, children, om, cm} = node, _parent, metadata) do
+    with false <-
+           AttrHelpers.has_attr?(attrs, "data-lavash-bind") or
+             AttrHelpers.has_attr?(attrs, "data-lavash-manual"),
+         [{:body_expr, expr, _meta}] <- Enum.reject(children, &blank_text?/1),
+         "@" <> field_name <- String.trim(expr),
+         true <- optimistic_state_field?(field_name, metadata) do
+      new_attrs =
+        AttrHelpers.add_attr_if_missing(attrs, "data-lavash-bind", {:string, field_name})
+
+      [{:block, :tag, "textarea", new_attrs, children, om, cm}]
+    else
+      _ -> [node]
+    end
+  end
+
+  defp inject_node(node, _parent, _metadata), do: [node]
+
+  defp option_selected_exprs(children) do
+    Enum.flat_map(children, fn
+      {:block, :tag, "option", opt_attrs, _children, _om, _cm} ->
+        selected_expr(opt_attrs)
+
+      {:self_close, :tag, "option", opt_attrs, _meta} ->
+        selected_expr(opt_attrs)
+
+      _ ->
+        []
+    end)
+  end
+
+  defp selected_expr(opt_attrs) do
+    case AttrHelpers.get_attr_value(opt_attrs, "selected") do
+      {:expr, expr, _meta} -> [expr]
+      _ -> []
+    end
+  end
+
+  # All expressions must agree on exactly one optimistic state field.
+  defp single_optimistic_field([], _metadata), do: :error
+
+  defp single_optimistic_field(exprs, metadata) do
+    fields =
+      exprs
+      |> Enum.flat_map(fn expr ->
+        Regex.scan(~r/@(\w+[?!]?)/, expr) |> Enum.map(fn [_, f] -> f end)
+      end)
+      |> Enum.uniq()
+
+    case fields do
+      [field_name] ->
+        if optimistic_state_field?(field_name, metadata), do: {:ok, field_name}, else: :error
+
+      _ ->
+        :error
+    end
+  end
+
+  defp optimistic_state_field?(field_name, metadata) do
+    is_map_key(metadata[:optimistic_fields] || %{}, String.to_atom(field_name))
+  end
+
+  defp blank_text?({:text, text, _meta}), do: String.trim(text) == ""
+  defp blank_text?(_), do: false
 
   # `data-lavash-manual` short-circuits the whole pipeline for the
   # element: don't inject anything. This matches the original
