@@ -42,13 +42,12 @@ defmodule DemoWeb.CategoryEditModal do
         <CoreComponents.input field={@form[:slug]} label="Slug" placeholder="category-slug" />
 
         <div class="flex gap-3 pt-4 border-t">
-          <%!-- disabled= keeps the dead render correct; the manual
-               data-lavash-enabled stays because auto-injection only
-               fires on HTML tags, not component calls (#114) --%>
+          <%!-- disabled={not @form_valid} gets the same injection as a
+               raw <button> — the annotation rides a dynamic attr
+               spread through the component's :global rest (#123) --%>
           <CoreComponents.button
             type="submit"
             disabled={not @form_valid}
-            data-lavash-enabled="form_valid"
             phx-disable-with="Saving..."
             class="flex-1 btn-primary"
           >

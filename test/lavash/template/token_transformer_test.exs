@@ -891,6 +891,114 @@ defmodule Lavash.Template.TokenTransformerTest do
     {:self_close, :local_component, name, attrs, m}
   end
 
+  describe "component-call injection via dynamic spread (#123)" do
+    defp local_component(name, attrs) do
+      m = meta(tag_name: name)
+      {:block, :local_component, name, attrs, [], m, m}
+    end
+
+    defp spread_code(attrs) do
+      case Enum.find(attrs, &match?({:root, {:expr, _, _}, _}, &1)) do
+        {:root, {:expr, code, _}, _} -> code
+        nil -> nil
+      end
+    end
+
+    test "disabled={not @field} injects an enabled annotation as a spread" do
+      tokens = [local_component("button", [expr_attr("disabled", "not @form_valid")])]
+      metadata = optimistic_metadata([], calculations: %{form_valid: %{optimistic: true}})
+
+      [{_, :local_component, "button", attrs, _}] = transform(tokens, metadata)
+
+      assert spread_code(attrs) == ~s(%{"data-lavash-enabled": "form_valid"})
+      # never as a literal attr — that would trip Phoenix's
+      # undefined-attribute validation on non-:global components
+      refute Enum.any?(attrs, &match?({"data-lavash-enabled", _, _}, &1))
+    end
+
+    test "a matching attr-class derive is attached via the spread" do
+      class_expr = ~s|["base", unless(@open, do: "hidden")]|
+
+      derive = %{
+        name: "__attr_0_class",
+        js_expr: ~s|["base", (!(state.open) ? "hidden" : null)]|,
+        deps: ["open"],
+        attr: "class",
+        source: class_expr
+      }
+
+      tokens = [local_component("form", [expr_attr("class", class_expr)])]
+      metadata = optimistic_metadata([{:open, :boolean}], attr_derives: [derive])
+
+      [{_, :local_component, "form", attrs, _}] = transform(tokens, metadata)
+
+      assert spread_code(attrs) == ~s(%{"data-lavash-attr-class": "__attr_0_class"})
+    end
+
+    test "multiple annotations merge into one spread" do
+      class_expr = ~s|if @open, do: "on", else: "off"|
+
+      derive = %{
+        name: "__attr_1_class",
+        js_expr: ~s|(state.open ? "on" : "off")|,
+        deps: ["open"],
+        attr: "class",
+        source: class_expr
+      }
+
+      tokens = [
+        local_component("button", [
+          expr_attr("class", class_expr),
+          expr_attr("disabled", "not @open")
+        ])
+      ]
+
+      metadata = optimistic_metadata([{:open, :boolean}], attr_derives: [derive])
+
+      [{_, :local_component, "button", attrs, _}] = transform(tokens, metadata)
+
+      assert spread_code(attrs) ==
+               ~s(%{"data-lavash-attr-class": "__attr_1_class", "data-lavash-enabled": "open"})
+    end
+
+    test "no optimistic references, no spread" do
+      tokens = [local_component("button", [string_attr("class", "static")])]
+
+      [{_, :local_component, "button", attrs, _}] =
+        transform(tokens, optimistic_metadata([{:open, :boolean}]))
+
+      assert spread_code(attrs) == nil
+    end
+
+    test "data-lavash-manual opts the call out" do
+      tokens = [
+        local_component("button", [
+          bool_attr("data-lavash-manual"),
+          expr_attr("disabled", "not @open")
+        ])
+      ]
+
+      [{_, :local_component, "button", attrs, _}] =
+        transform(tokens, optimistic_metadata([{:open, :boolean}]))
+
+      assert spread_code(attrs) == nil
+    end
+
+    test "a hand-written literal annotation suppresses the spread entry" do
+      tokens = [
+        local_component("button", [
+          string_attr("data-lavash-enabled", "custom"),
+          expr_attr("disabled", "not @open")
+        ])
+      ]
+
+      [{_, :local_component, "button", attrs, _}] =
+        transform(tokens, optimistic_metadata([{:open, :boolean}]))
+
+      assert spread_code(attrs) == nil
+    end
+  end
+
   describe "class toggle injection (retired — pattern 7 owns class reactivity)" do
     test "no toggle is injected for a conditional class expression" do
       # Conditional classes are handled by reactive attribute derives

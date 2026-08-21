@@ -113,9 +113,11 @@ defmodule DemoWeb.DataAttrInjectionTest do
 
       assert length(attr_class_derives) >= 5
 
-      # payment form: manual toggle — <.form> is a component call,
-      # where neither injection nor attr derives can attach
-      assert html =~ ~s(data-lavash-toggle="is_card_payment||hidden")
+      # payment form: <.form> is passthrough-registered by default, so
+      # its class conditional gets an attribute derive forwarded via
+      # :global to the rendered <form> tag (#123)
+      assert Regex.match?(~r/<form[^>]*data-lavash-attr-class="__attr_\d+_class"/, html)
+      refute html =~ "data-lavash-toggle"
 
       # the hand-written attrs are gone — derives own visibility here
       refute html =~ "data-lavash-visible"
