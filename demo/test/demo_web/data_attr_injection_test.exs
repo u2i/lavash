@@ -50,6 +50,15 @@ defmodule DemoWeb.DataAttrInjectionTest do
       assert button_disabled?(html, "Register")
     end
 
+    test "validation demo submit's conditional class rides an attr derive", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/dsl/validation")
+
+      # pattern 7: the mixed class list gets a reactive attribute derive
+      assert Regex.match?(~r/<button[^>]*data-lavash-attr-class="__attr_\d+_class"/, html)
+      # dead render carries the invalid-state classes
+      assert html =~ "bg-base-300 text-base-content"
+    end
+
     test "product page quantity decrement is dead-render disabled AND injected", %{conn: conn} do
       product =
         Demo.Catalog.Product
@@ -66,6 +75,50 @@ defmodule DemoWeb.DataAttrInjectionTest do
       assert html =~ ~s(data-lavash-enabled="quantity_gt_1")
       # quantity starts at 1 — decrement must be disabled server-side
       assert html =~ ~r/<button[^>]*phx-click="dec_quantity"[^>]*disabled/
+    end
+  end
+
+  describe "hidden-class visibility via toggle injection (#110)" do
+    test "checkout hidden-class idioms get field||hidden toggles", %{conn: conn} do
+      # First request creates the anonymous user + cart via mount
+      conn = get(conn, "/storefront/checkout")
+      user = conn.assigns.current_user
+
+      product =
+        Demo.Catalog.Product
+        |> Ash.Changeset.for_create(:create, %{name: "Toggle Beans", price: Decimal.new("20.00")})
+        |> Ash.create!()
+
+      cart =
+        Demo.Cart.Cart
+        |> Ash.Query.for_read(:for_user, %{user_id: user.id})
+        |> Ash.read_one!()
+
+      Demo.Cart.CartItem
+      |> Ash.Changeset.for_create(:create_row, %{
+        cart_id: cart.id,
+        product_id: product.id,
+        quantity: 1
+      })
+      |> Ash.create!()
+
+      {:ok, _view, html} = live(conn, "/storefront/checkout")
+
+      # Every hidden-class idiom (badges, ship-to arrows, address list)
+      # rides a reactive attribute derive now — several distinct ones
+      attr_class_derives =
+        Regex.scan(~r/data-lavash-attr-class="(__attr_\d+_class)"/, html)
+        |> Enum.map(fn [_, name] -> name end)
+        |> Enum.uniq()
+
+      assert length(attr_class_derives) >= 5
+
+      # payment form: manual toggle — <.form> is a component call,
+      # where neither injection nor attr derives can attach
+      assert html =~ ~s(data-lavash-toggle="is_card_payment||hidden")
+
+      # the hand-written attrs are gone — derives own visibility here
+      refute html =~ "data-lavash-visible"
     end
   end
 

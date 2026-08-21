@@ -16,7 +16,7 @@ defmodule Lavash.Integration.DomDirectivesTest do
     |> assert_has(css("p", text: "Count: 1"))
   end
 
-  test "data-lavash-toggle: class set flips with boolean field", %{session: session} do
+  test "conditional class flips with boolean field (attr derive)", %{session: session} do
     session
     |> visit("/magic/dom-directives")
     |> assert_has(css("#toggle-target.off-class"))
@@ -24,6 +24,19 @@ defmodule Lavash.Integration.DomDirectivesTest do
     |> assert_has(css("#toggle-target.on-class"))
     |> click(css("#toggle-flag"))
     |> assert_has(css("#toggle-target.off-class"))
+  end
+
+  test "list-form class keeps static classes and flips the conditional", %{session: session} do
+    # The derive computes a JS array — the compound selectors below
+    # fail if the client comma-joins instead of applying Phoenix
+    # class-list semantics (e.g. className = "static-class,on-class").
+    session
+    |> visit("/magic/dom-directives")
+    |> assert_has(css("#list-class-target.static-class.off-class"))
+    |> click(css("#toggle-flag"))
+    |> assert_has(css("#list-class-target.static-class.on-class"))
+    |> click(css("#toggle-flag"))
+    |> assert_has(css("#list-class-target.static-class.off-class"))
   end
 
   test "data-lavash-visible: shows/hides via hidden class", %{session: session} do

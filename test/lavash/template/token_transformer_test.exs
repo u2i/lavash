@@ -891,61 +891,58 @@ defmodule Lavash.Template.TokenTransformerTest do
     {:self_close, :local_component, name, attrs, m}
   end
 
-  describe "class toggle auto-injection" do
-    test "class={if @bool, do: A, else: B} on optimistic boolean → data-lavash-toggle" do
+  describe "class toggle injection (retired — pattern 7 owns class reactivity)" do
+    test "no toggle is injected for a conditional class expression" do
+      # Conditional classes are handled by reactive attribute derives
+      # (pattern 7), which recompute the full attribute client-side —
+      # injecting a toggle as well would double-manage the classes.
+      for expr <- [
+            ~s|if @flag, do: "on", else: "off"|,
+            ~s|["static", if(@flag, do: "on", else: "off")]|,
+            ~s|"static" <> if(@flag, do: " on", else: " off")|
+          ] do
+        tokens = [tag("div", [expr_attr("class", expr)])]
+        result = transform(tokens, optimistic_metadata([{:flag, :boolean}]))
+
+        [{:block, :tag, "div", attrs, _children, _, _}] = result
+        refute Enum.any?(attrs, &match?({"data-lavash-toggle", _, _}, &1)), expr
+      end
+    end
+
+    test "a hand-written data-lavash-toggle passes through untouched" do
+      # Still supported as manual API for component calls and
+      # non-lavash templates.
       tokens = [
         tag("div", [
-          expr_attr("class", ~s|if @flag, do: "on-class", else: "off-class"|)
+          string_attr("data-lavash-toggle", "flag|on|off"),
+          expr_attr("class", ~s|if @flag, do: "on", else: "off"|)
         ])
       ]
 
-      metadata =
-        optimistic_metadata([{:flag, :boolean}])
-        |> Map.put(:all_state_fields, %{
-          flag: %{name: :flag, type: :boolean, optimistic: true, from: :ephemeral}
-        })
-
-      result = transform(tokens, metadata)
+      result = transform(tokens, optimistic_metadata([{:flag, :boolean}]))
       [{:block, :tag, "div", attrs, _children, _, _}] = result
 
-      assert {"data-lavash-toggle", {:string, "flag|on-class|off-class", _}, _} =
-               Enum.find(attrs, &match?({"data-lavash-toggle", _, _}, &1))
+      assert [{"data-lavash-toggle", {:string, "flag|on|off", _}, _}] =
+               Enum.filter(attrs, &match?({"data-lavash-toggle", _, _}, &1))
     end
 
-    test "skipped when class is a plain string" do
-      tokens = [tag("div", [string_attr("class", "static")])]
-      metadata = optimistic_metadata([{:flag, :boolean}])
-      result = transform(tokens, metadata)
-      [{:block, :tag, "div", attrs, _children, _, _}] = result
-      refute Enum.any?(attrs, &match?({"data-lavash-toggle", _, _}, &1))
-    end
+    test "list-form class rides an attribute derive instead" do
+      list_expr = ~s|["static", if(@flag, do: "on", else: "off")]|
 
-    test "skipped when field isn't optimistic" do
-      tokens = [
-        tag("div", [
-          expr_attr("class", ~s|if @flag, do: "a", else: "b"|)
-        ])
-      ]
+      derive = %{
+        name: "__attr_0_class",
+        js_expr: ~s|["static", (state.flag ? "on" : "off")]|,
+        deps: ["flag"],
+        attr: "class",
+        source: list_expr
+      }
 
-      # No optimistic_fields — flag is declared but not optimistic
-      metadata = optimistic_metadata([])
-      result = transform(tokens, metadata)
-      [{:block, :tag, "div", attrs, _children, _, _}] = result
-      refute Enum.any?(attrs, &match?({"data-lavash-toggle", _, _}, &1))
-    end
+      tokens = [tag("div", [expr_attr("class", list_expr)])]
+      metadata = optimistic_metadata([{:flag, :boolean}], attr_derives: [derive])
 
-    test "skipped when class expression is more complex than a literal if-else" do
-      # function call branch — leave alone
-      tokens = [
-        tag("div", [
-          expr_attr("class", ~s|if @flag, do: my_class(@flag), else: "off"|)
-        ])
-      ]
+      [{:block, :tag, "div", attrs, _, _, _}] = transform(tokens, metadata)
 
-      metadata = optimistic_metadata([{:flag, :boolean}])
-      result = transform(tokens, metadata)
-      [{:block, :tag, "div", attrs, _children, _, _}] = result
-      refute Enum.any?(attrs, &match?({"data-lavash-toggle", _, _}, &1))
+      assert Enum.any?(attrs, &match?({"data-lavash-attr-class", _, _}, &1))
     end
   end
 

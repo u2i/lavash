@@ -26,6 +26,18 @@ function selectOwn(rootEl, selector) {
  * @param {Object} state - Current state object
  * @param {Object} opts - { getFormField, isFormSubmitted, isOptimistic }
  */
+// Phoenix class-list semantics for a transpiled class value: flatten,
+// drop everything that isn't a non-empty string, space-join.
+function normalizeClassValue(value) {
+  if (Array.isArray(value)) {
+    return value
+      .flat(Infinity)
+      .filter((v) => typeof v === "string" && v !== "")
+      .join(" ");
+  }
+  return value == null ? "" : value;
+}
+
 export function updateDOM(rootEl, state, opts) {
   const { getFormField, isFormSubmitted } = opts;
 
@@ -86,10 +98,14 @@ export function updateDOM(rootEl, state, opts) {
     if (value !== undefined) el.disabled = !!value;
   }
 
-  // data-lavash-attr-class: set full className from reactive derive
+  // data-lavash-attr-class: set full className from reactive derive.
+  // List-form class expressions (`class={["static", if(@x, ...)]}`)
+  // transpile to JS arrays — normalize with Phoenix's class-list
+  // semantics (flatten, drop nil/false, space-join) instead of
+  // letting `el.className = array` comma-join and break every class.
   for (const el of selectOwn(rootEl, "[data-lavash-attr-class]")) {
     const value = state[el.dataset.lavashAttrClass];
-    if (value !== undefined) el.className = value;
+    if (value !== undefined) el.className = normalizeClassValue(value);
   }
 
   // data-lavash-attr-hidden: set hidden from reactive derive

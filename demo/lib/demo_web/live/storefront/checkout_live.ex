@@ -442,22 +442,14 @@ defmodule DemoWeb.Storefront.CheckoutLive do
                         class="btn btn-ghost btn-sm"
                         aria-label="Toggle"
                       >
-                        <span
-                          data-lavash-visible="ship_to_expanded"
-                          class={if !@ship_to_expanded, do: "hidden"}
-                        >&#9652;</span>
-                        <span
-                          data-lavash-visible="ship_to_expanded"
-                          data-lavash-toggle="ship_to_expanded|hidden|"
-                          class={if @ship_to_expanded, do: "hidden"}
-                        >&#9662;</span>
+                        <span class={if !@ship_to_expanded, do: "hidden"}>&#9652;</span>
+                        <%!-- toggle auto-injected from the else-less
+                             conditional class --%>
+                        <span class={if @ship_to_expanded, do: "hidden"}>&#9662;</span>
                       </button>
                     </div>
 
-                    <div
-                      data-lavash-visible="ship_to_expanded"
-                      class={"space-y-2" <> unless @ship_to_expanded, do: " hidden", else: ""}
-                    >
+                    <div class={"space-y-2" <> unless @ship_to_expanded, do: " hidden", else: ""}>
                       <%= for address <- @addresses do %>
                         <div
                           class={"flex items-start justify-between rounded-lg border p-4 cursor-pointer transition-all " <>
@@ -519,10 +511,16 @@ defmodule DemoWeb.Storefront.CheckoutLive do
                     </div>
 
                     <!-- Credit Card Option -->
-                    <div
-                      class="rounded-lg border border-base-300 p-4 cursor-pointer transition-all"
-                      data-lavash-toggle="is_card_payment|border-primary ring-1 ring-primary|border-base-300"
-                    >
+                    <%!-- the conditional class renders the correct
+                         border server-side AND auto-injects
+                         data-lavash-toggle for instant switching --%>
+                    <div class={[
+                      "rounded-lg border p-4 cursor-pointer transition-all",
+                      if(@is_card_payment,
+                        do: "border-primary ring-1 ring-primary",
+                        else: "border-base-300"
+                      )
+                    ]}>
                       <div class="flex items-center gap-3 cursor-pointer" phx-click="select_card">
                         <input
                           type="radio"
@@ -532,36 +530,26 @@ defmodule DemoWeb.Storefront.CheckoutLive do
                         />
                         <span class="font-semibold">Credit card</span>
                         <span class="ml-auto flex items-center gap-1">
-                          <span
-                            data-lavash-visible="has_card_type"
-                            class={"text-sm font-medium text-primary" <> unless @has_card_type, do: " hidden", else: ""}
-                          >{@card_type_display}</span>
-                          <span
-                            data-lavash-visible="show_visa"
-                            class={"badge badge-outline badge-sm" <> unless @show_visa, do: " hidden", else: ""}
-                          >VISA</span>
-                          <span
-                            data-lavash-visible="show_mastercard"
-                            class={"badge badge-outline badge-sm" <> unless @show_mastercard, do: " hidden", else: ""}
-                          >MC</span>
-                          <span
-                            data-lavash-visible="show_amex"
-                            class={"badge badge-outline badge-sm" <> unless @show_amex, do: " hidden", else: ""}
-                          >AMEX</span>
-                          <span
-                            data-lavash-visible="show_discover"
-                            class={"badge badge-outline badge-sm" <> unless @show_discover, do: " hidden", else: ""}
-                          >DISC</span>
+                          <span class={"text-sm font-medium text-primary" <> unless @has_card_type, do: " hidden", else: ""}>{@card_type_display}</span>
+                          <span class={"badge badge-outline badge-sm" <> unless @show_visa, do: " hidden", else: ""}>VISA</span>
+                          <span class={"badge badge-outline badge-sm" <> unless @show_mastercard, do: " hidden", else: ""}>MC</span>
+                          <span class={"badge badge-outline badge-sm" <> unless @show_amex, do: " hidden", else: ""}>AMEX</span>
+                          <span class={"badge badge-outline badge-sm" <> unless @show_discover, do: " hidden", else: ""}>DISC</span>
                         </span>
                       </div>
 
+                      <%!-- <.form> is a component call, so the toggle
+                           can't be auto-injected from the class
+                           conditional (injection fires on HTML tags
+                           only); the class renders the dead state,
+                           the manual attr adds the optimistic half. --%>
                       <.form
                         for={@payment}
                         id="payment-form"
                         phx-change="validate_payment"
                         phx-submit="place_order"
-                        data-lavash-visible="is_card_payment"
-                        class={"mt-4 space-y-3" <> if @payment_method != "card", do: " hidden", else: ""}
+                        class={["mt-4 space-y-3", unless(@is_card_payment, do: "hidden")]}
+                        data-lavash-toggle="is_card_payment||hidden"
                       >
                         <.input
                           field={@payment[:card_number]}
@@ -628,9 +616,14 @@ defmodule DemoWeb.Storefront.CheckoutLive do
 
                     <!-- PayPal Option -->
                     <div
-                      class="flex items-center gap-3 rounded-lg border p-4 cursor-pointer transition-all"
+                      class={[
+                        "flex items-center gap-3 rounded-lg border p-4 cursor-pointer transition-all",
+                        if(@is_card_payment,
+                          do: "border-base-300",
+                          else: "border-primary ring-1 ring-primary"
+                        )
+                      ]}
                       phx-click="select_paypal"
-                      data-lavash-toggle="is_card_payment|border-base-300|border-primary ring-1 ring-primary"
                     >
                       <input
                         type="radio"
