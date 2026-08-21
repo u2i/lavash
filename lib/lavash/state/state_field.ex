@@ -25,7 +25,6 @@ defmodule Lavash.State.Field do
 
   This generates additional fields:
   - `{field}_phase` - "idle" | "entering" | "loading" | "visible" | "exiting"
-  - `{field}_visible` - calculated boolean, true when phase != "idle"
   - `{field}_animating` - calculated boolean, true during entering/exiting
   """
 
