@@ -344,38 +344,36 @@ defmodule Lavash.Transformers.ExpandFields do
     create_action = form.create
 
     if CompilerHelpers.resource_available?(resource) do
-      validations = Lavash.Form.ConstraintTranspiler.extract_validations(resource)
-
-      ash_validations =
-        Lavash.Form.ValidationTranspiler.extract_validations_for_action(
+      # Single source of truth (#125): the same fire-ASTs are
+      # transpiled to JS by ExtractColocatedJs — the server compiles
+      # them via Lavash.Rx.Cache below.
+      form_field_checks =
+        Lavash.Form.ConstraintTranspiler.form_checks(
           resource,
-          create_action
+          create_action,
+          params_dep,
+          form.skip_constraints || []
         )
 
       field_valid_specs =
-        Enum.map(validations, fn validation ->
+        Enum.map(form_field_checks, fn %{field: field, valid_ast: valid_ast} ->
           %{
             type: :form_field_valid,
-            name: :"#{form_name}_#{validation.field}_valid",
+            name: :"#{form_name}_#{field}_valid",
             depends_on: [params_dep],
             async: false,
             reads: [],
             optimistic: true,
-            params_dep: params_dep,
-            field_str: to_string(validation.field),
-            val_type: validation.type,
-            required: validation.required,
-            constraints: validation.constraints
+            valid_ast: Lavash.Rx.transform_at_refs(valid_ast)
           }
         end)
 
       server_errors_dep = :"#{form_name}_server_errors"
 
       field_errors_specs =
-        Enum.map(validations, fn validation ->
-          field_name = :"#{form_name}_#{validation.field}_errors"
+        Enum.map(form_field_checks, fn %{field: field, checks: checks} ->
+          field_name = :"#{form_name}_#{field}_errors"
           custom_errors = Map.get(extend_errors_map, field_name, [])
-          field_ash_validations = Map.get(ash_validations, validation.field, [])
 
           custom_error_deps =
             Enum.flat_map(custom_errors, fn error ->
@@ -411,20 +409,17 @@ defmodule Lavash.Transformers.ExpandFields do
             async: false,
             reads: [],
             optimistic: true,
-            params_dep: params_dep,
             server_errors_dep: server_errors_dep,
-            field_str: to_string(validation.field),
-            val_type: validation.type,
-            required: validation.required,
-            constraints: validation.constraints,
-            ash_messages: build_ash_message_lookup(field_ash_validations),
+            field_str: to_string(field),
+            constraint_checks:
+              Enum.map(checks, &{Lavash.Rx.transform_at_refs(&1.fire_ast), &1.message}),
             custom_error_specs: custom_error_specs
           }
         end)
 
       summary_specs =
-        if validations != [] do
-          field_names = Enum.map(validations, & &1.field)
+        if form_field_checks != [] do
+          field_names = Enum.map(form_field_checks, & &1.field)
 
           [
             %{
@@ -456,28 +451,6 @@ defmodule Lavash.Transformers.ExpandFields do
     else
       []
     end
-  end
-
-  defp build_ash_message_lookup(ash_validations) do
-    Enum.reduce(ash_validations, %{}, fn spec, acc ->
-      if spec.message do
-        key =
-          case spec.type do
-            :required -> :required
-            :min_length -> :min_length
-            :max_length -> :max_length
-            :length_between -> :length_between
-            :exact_length -> :exact_length
-            :match -> :match
-            :numericality -> :numericality
-            other -> other
-          end
-
-        Map.put(acc, key, spec.message)
-      else
-        acc
-      end
-    end)
   end
 
   # --- Calculation spec extraction ---
@@ -688,12 +661,8 @@ defmodule Lavash.Transformers.ExpandFields do
     }
   end
 
-  defp spec_to_field(%{type: :form_field_valid} = spec, _module) do
-    params_dep = spec.params_dep
-    field_str = spec.field_str
-    val_type = spec.val_type
-    required = spec.required
-    constraints = spec.constraints
+  defp spec_to_field(%{type: :form_field_valid} = spec, module) do
+    valid_ast = spec.valid_ast
 
     %Lavash.Derived.Field{
       name: spec.name,
@@ -701,36 +670,17 @@ defmodule Lavash.Transformers.ExpandFields do
       async: false,
       optimistic: true,
       compute: fn deps ->
-        params = Map.get(deps, params_dep, %{})
-        value = Map.get(params, field_str)
-
-        present =
-          if required do
-            not is_nil(value) and String.length(String.trim(value || "")) > 0
-          else
-            true
-          end
-
-        constraints_valid =
-          case val_type do
-            :string -> check_string_constraints(value, constraints)
-            :integer -> check_integer_constraints(value, constraints)
-            _ -> true
-          end
-
-        present and constraints_valid
+        # The SAME expression the client runs (transpiled to JS by
+        # ExtractColocatedJs) — one source of truth (#125).
+        Lavash.Rx.Cache.compile_rx(module, valid_ast).(deps)
       end
     }
   end
 
   defp spec_to_field(%{type: :form_field_errors} = spec, module) do
-    params_dep = spec.params_dep
     server_errors_dep = spec.server_errors_dep
     field_str = spec.field_str
-    val_type = spec.val_type
-    required = spec.required
-    constraints = spec.constraints
-    ash_messages = spec.ash_messages
+    constraint_checks = spec.constraint_checks
     custom_error_specs = spec.custom_error_specs
 
     %Lavash.Derived.Field{
@@ -739,30 +689,13 @@ defmodule Lavash.Transformers.ExpandFields do
       async: false,
       optimistic: true,
       compute: fn deps ->
-        params = Map.get(deps, params_dep, %{})
-        value = Map.get(params, field_str)
-
-        is_empty = is_nil(value) or String.length(String.trim(to_string(value))) == 0
-
-        errors = []
-
+        # Constraint messages from the shared fire-ASTs (#125) — the
+        # empty-value gating is encoded in the ASTs themselves, so
+        # client and server cannot disagree about when a message shows.
         errors =
-          if required and is_empty do
-            msg =
-              Map.get(ash_messages, :required) ||
-                Lavash.Form.ConstraintTranspiler.error_message(:required, nil)
-
-            [msg | errors]
-          else
-            errors
-          end
-
-        errors =
-          if is_empty do
-            errors
-          else
-            errors ++ collect_constraint_errors(val_type, value, constraints, ash_messages)
-          end
+          Enum.flat_map(constraint_checks, fn {fire_ast, message} ->
+            if Lavash.Rx.Cache.compile_rx(module, fire_ast).(deps), do: [message], else: []
+          end)
 
         custom_error_messages =
           Enum.flat_map(custom_error_specs, fn {condition_ast, message_spec} ->
@@ -787,7 +720,7 @@ defmodule Lavash.Transformers.ExpandFields do
         server_errors_map = Map.get(deps, server_errors_dep, %{})
         server_errors = Map.get(server_errors_map, field_str, [])
 
-        client_errors = Enum.reverse(errors) ++ custom_error_messages
+        client_errors = errors ++ custom_error_messages
         Enum.uniq(client_errors ++ server_errors)
       end
     }
@@ -912,156 +845,5 @@ defmodule Lavash.Transformers.ExpandFields do
       other ->
         other
     end)
-  end
-
-  defp collect_constraint_errors(:string, value, constraints, ash_messages) do
-    value_str = to_string(value || "")
-    len = value_str |> String.trim() |> String.length()
-
-    []
-    |> add_string_length_errors(len, constraints, ash_messages)
-    |> add_string_match_errors(value_str, constraints, ash_messages)
-  end
-
-  defp collect_constraint_errors(:integer, value, constraints, ash_messages) do
-    case Integer.parse(to_string(value || "0")) do
-      {num, ""} ->
-        errors = []
-
-        errors =
-          case Map.get(constraints, :min) do
-            nil ->
-              errors
-
-            min ->
-              if num < min do
-                msg =
-                  Map.get(ash_messages, :min) ||
-                    Lavash.Form.ConstraintTranspiler.error_message(:min, min)
-
-                [msg | errors]
-              else
-                errors
-              end
-          end
-
-        errors =
-          case Map.get(constraints, :max) do
-            nil ->
-              errors
-
-            max ->
-              if num > max do
-                msg =
-                  Map.get(ash_messages, :max) ||
-                    Lavash.Form.ConstraintTranspiler.error_message(:max, max)
-
-                [msg | errors]
-              else
-                errors
-              end
-          end
-
-        errors
-
-      _ ->
-        msg =
-          Map.get(ash_messages, :match) ||
-            Lavash.Form.ConstraintTranspiler.error_message(:match, nil)
-
-        [msg]
-    end
-  end
-
-  defp collect_constraint_errors(_, _, _, _), do: []
-
-  defp add_string_length_errors(errors, len, constraints, ash_messages) do
-    min_c = Map.get(constraints, :min_length)
-    max_c = Map.get(constraints, :max_length)
-
-    cond do
-      min_c && len < min_c ->
-        msg =
-          (max_c && Map.get(ash_messages, :length_between)) ||
-            Map.get(ash_messages, :min_length) ||
-            Lavash.Form.ConstraintTranspiler.error_message(:min_length, min_c)
-
-        [msg | errors]
-
-      max_c && len > max_c ->
-        msg =
-          (min_c && Map.get(ash_messages, :length_between)) ||
-            Map.get(ash_messages, :max_length) ||
-            Lavash.Form.ConstraintTranspiler.error_message(:max_length, max_c)
-
-        [msg | errors]
-
-      true ->
-        errors
-    end
-  end
-
-  defp add_string_match_errors(errors, value_str, constraints, ash_messages) do
-    case Map.get(constraints, :match) do
-      nil ->
-        errors
-
-      regex ->
-        if String.match?(value_str, regex) do
-          errors
-        else
-          msg =
-            Map.get(ash_messages, :match) ||
-              Lavash.Form.ConstraintTranspiler.error_message(:match, regex)
-
-          [msg | errors]
-        end
-    end
-  end
-
-  defp check_string_constraints(value, constraints) do
-    value = String.trim(value || "")
-
-    min_ok =
-      case Map.get(constraints, :min_length) do
-        nil -> true
-        min -> String.length(value) >= min
-      end
-
-    max_ok =
-      case Map.get(constraints, :max_length) do
-        nil -> true
-        max -> String.length(value) <= max
-      end
-
-    match_ok =
-      case Map.get(constraints, :match) do
-        nil -> true
-        regex -> String.match?(value, regex)
-      end
-
-    min_ok and max_ok and match_ok
-  end
-
-  defp check_integer_constraints(value, constraints) do
-    case Integer.parse(value || "0") do
-      {num, ""} ->
-        min_ok =
-          case Map.get(constraints, :min) do
-            nil -> true
-            min -> num >= min
-          end
-
-        max_ok =
-          case Map.get(constraints, :max) do
-            nil -> true
-            max -> num <= max
-          end
-
-        min_ok and max_ok
-
-      _ ->
-        false
-    end
   end
 end

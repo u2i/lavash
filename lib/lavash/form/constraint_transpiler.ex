@@ -69,146 +69,260 @@ defmodule Lavash.Form.ConstraintTranspiler do
   end
 
   @doc """
-  Generates an rx() expression AST for a field's validity check.
+  Per-field checks for a whole form — the shared entry point both the
+  server derive builder (`ExpandFields`) and the client JS generator
+  (`ExtractColocatedJs`) consume, so field selection is also unified:
+  only fields ACCEPTED by the create action get derives (the client
+  always filtered this way; the server used to generate junk
+  `_valid`/`_errors` derives for non-accepted fields like timestamps
+  and foreign keys), and `skip_constraints` empties a field's checks
+  on BOTH sides (it used to be client-only).
 
-  The expression references @<params_field>["<field_name>"] for the value.
+  Returns `[%{field, checks, valid_ast}]`.
   """
-  def build_valid_expression(validation, params_field) do
-    field = validation.field
+  def form_checks(resource, create_action, params_field, skip_constraints) do
+    action = Ash.Resource.Info.action(resource, create_action)
+    accepted = if action, do: action.accept || [], else: []
+
+    ash_validations =
+      Lavash.Form.ValidationTranspiler.extract_validations_for_action(resource, create_action)
+
+    resource
+    |> extract_validations()
+    |> Enum.filter(fn v -> accepted == [] or v.field in accepted end)
+    |> Enum.map(fn validation ->
+      checks =
+        if validation.field in skip_constraints do
+          []
+        else
+          ash_messages =
+            ash_validations
+            |> Map.get(validation.field, [])
+            |> build_ash_message_lookup()
+
+          field_checks(validation, params_field, ash_messages)
+        end
+
+      %{field: validation.field, checks: checks, valid_ast: valid_ast(checks)}
+    end)
+  end
+
+  defp build_ash_message_lookup(ash_validations) do
+    Enum.reduce(ash_validations, %{}, fn spec, acc ->
+      if spec.message do
+        message = Lavash.Form.ValidationTranspiler.get_message(spec)
+        Map.put(acc, spec.type, message)
+      else
+        acc
+      end
+    end)
+  end
+
+  @doc """
+  THE single source of truth for a field's constraint checks (#125).
+
+  Returns a list of `%{kind, fire_ast, message}` where `fire_ast` is
+  a quoted expression that is TRUE when the error fires. The same AST
+  is compiled for the server derive (via `Lavash.Rx.Cache`) and
+  transpiled to JS for the client (via `Lavash.Optimistic.Transpiler`),
+  so client/server drift in constraint semantics is structurally
+  impossible. `valid_ast/1` derives the field's `_valid` expression
+  from the same checks, so `_valid == (errors == [])` by construction.
+
+  Encoded semantics (matching the pre-consolidation server, with the
+  drift points unified):
+
+  - `required` fires when the trimmed value is empty
+  - constraint checks fire only when the value is NON-empty (empty is
+    the required check's business)
+  - string checks operate on the TRIMMED value (`_errors` used to
+    match untrimmed while `_valid` matched trimmed)
+  - integer parsing is strict full-string via
+    `Lavash.Form.Validation.parse_int/1` on both sides (the client
+    used to `parseInt` leniently to `NaN`); an unparseable non-empty
+    value fires the `:not_number` check with the `:match` message,
+    and min/max only fire once parsed
+
+  Messages resolve `ash_messages` overrides at build time.
+  """
+  def field_checks(validation, params_field, ash_messages \\ %{}) do
+    value = value_access_ast(validation.field, params_field)
+
+    required_checks =
+      if validation.required do
+        [
+          %{
+            kind: :required,
+            fire_ast: empty_ast(value),
+            message: message(ash_messages, :required, nil)
+          }
+        ]
+      else
+        []
+      end
+
+    required_checks ++ constraint_fire_checks(validation, value, ash_messages)
+  end
+
+  @doc """
+  Derives the `_valid` expression from `field_checks/3` output:
+  no check fires. Returns `true` when there are no checks.
+  """
+  def valid_ast([]), do: quote(do: true)
+
+  def valid_ast(checks) do
+    fired =
+      checks
+      |> Enum.map(& &1.fire_ast)
+      |> Enum.reduce(fn ast, acc -> quote(do: unquote(acc) or unquote(ast)) end)
+
+    quote(do: not unquote(fired))
+  end
+
+  defp value_access_ast(field, params_field) do
     field_str = to_string(field)
 
-    # Build the base value access: @params_field["field"]
-    value_access =
-      quote do
-        (@unquote(Macro.var(params_field, nil)))[unquote(field_str)]
-      end
-
-    # Build individual checks
-    checks = []
-
-    # Required check
-    checks =
-      if validation.required do
-        check =
-          quote do
-            not is_nil(unquote(value_access)) and
-              String.length(String.trim(unquote(value_access) || "")) > 0
-          end
-
-        [check | checks]
-      else
-        checks
-      end
-
-    # Type-specific constraints
-    checks = checks ++ build_constraint_checks(validation, value_access)
-
-    # Combine with `and`
-    case checks do
-      [] ->
-        quote(do: true)
-
-      [single] ->
-        single
-
-      multiple ->
-        Enum.reduce(multiple, fn check, acc ->
-          quote(do: unquote(acc) and unquote(check))
-        end)
+    quote do
+      (@unquote(Macro.var(params_field, nil)))[unquote(field_str)]
     end
   end
 
-  defp build_constraint_checks(validation, value_access) do
-    case validation.type do
-      :string -> build_string_checks(validation.constraints, value_access)
-      :integer -> build_integer_checks(validation.constraints, value_access)
-      _ -> []
-    end
+  defp trimmed_ast(value), do: quote(do: String.trim(unquote(value) || ""))
+
+  defp empty_ast(value),
+    do: quote(do: String.length(unquote(trimmed_ast(value))) == 0)
+
+  defp non_empty_ast(value),
+    do: quote(do: String.length(unquote(trimmed_ast(value))) > 0)
+
+  defp gated(value, fire), do: quote(do: unquote(non_empty_ast(value)) and unquote(fire))
+
+  defp message(ash_messages, kind, constraint) do
+    Map.get(ash_messages, kind) || error_message(kind, constraint)
   end
 
-  defp build_string_checks(constraints, value_access) do
-    checks = []
+  defp constraint_fire_checks(%{type: :string, constraints: constraints}, value, ash_messages) do
+    trimmed = trimmed_ast(value)
 
-    # min_length
-    checks =
+    [
       case Map.get(constraints, :min_length) do
         nil ->
-          checks
+          []
 
         min ->
-          check =
-            quote do
-              String.length(String.trim(unquote(value_access) || "")) >= unquote(min)
-            end
-
-          [check | checks]
-      end
-
-    # max_length
-    checks =
+          [
+            %{
+              kind: :min_length,
+              fire_ast: gated(value, quote(do: String.length(unquote(trimmed)) < unquote(min))),
+              message: message(ash_messages, :min_length, min)
+            }
+          ]
+      end,
       case Map.get(constraints, :max_length) do
         nil ->
-          checks
+          []
 
         max ->
-          check =
-            quote do
-              String.length(String.trim(unquote(value_access) || "")) <= unquote(max)
-            end
-
-          [check | checks]
-      end
-
-    # match (regex)
-    checks =
+          [
+            %{
+              kind: :max_length,
+              fire_ast: gated(value, quote(do: String.length(unquote(trimmed)) > unquote(max))),
+              message: message(ash_messages, :max_length, max)
+            }
+          ]
+      end,
       case Map.get(constraints, :match) do
         nil ->
-          checks
+          []
 
         regex ->
-          check =
-            quote do
-              String.match?(unquote(value_access) || "", unquote(Macro.escape(regex)))
-            end
+          sigil = regex_sigil_ast(regex)
 
-          [check | checks]
+          [
+            %{
+              kind: :match,
+              fire_ast:
+                gated(value, quote(do: not String.match?(unquote(trimmed), unquote(sigil)))),
+              message: message(ash_messages, :match, regex)
+            }
+          ]
       end
-
-    checks
+    ]
+    |> List.flatten()
   end
 
-  defp build_integer_checks(constraints, value_access) do
-    checks = []
+  defp constraint_fire_checks(%{type: :integer, constraints: constraints}, value, ash_messages) do
+    parsed = quote(do: Lavash.Form.Validation.parse_int(unquote(value)))
 
-    # For integers, parse the string value
-    parsed =
-      quote do
-        String.to_integer(unquote(value_access) || "0")
-      end
+    not_number = [
+      %{
+        kind: :not_number,
+        fire_ast: gated(value, quote(do: is_nil(unquote(parsed)))),
+        message: message(ash_messages, :match, nil)
+      }
+    ]
 
-    # min
-    checks =
-      case Map.get(constraints, :min) do
-        nil ->
-          checks
+    bounds =
+      [
+        case Map.get(constraints, :min) do
+          nil ->
+            []
 
-        min ->
-          check = quote(do: unquote(parsed) >= unquote(min))
-          [check | checks]
-      end
+          min ->
+            [
+              %{
+                kind: :min,
+                fire_ast:
+                  gated(
+                    value,
+                    quote(
+                      do:
+                        not is_nil(unquote(parsed)) and
+                          unquote(parsed) < unquote(min)
+                    )
+                  ),
+                message: message(ash_messages, :min, min)
+              }
+            ]
+        end,
+        case Map.get(constraints, :max) do
+          nil ->
+            []
 
-    # max
-    checks =
-      case Map.get(constraints, :max) do
-        nil ->
-          checks
+          max ->
+            [
+              %{
+                kind: :max,
+                fire_ast:
+                  gated(
+                    value,
+                    quote(
+                      do:
+                        not is_nil(unquote(parsed)) and
+                          unquote(parsed) > unquote(max)
+                    )
+                  ),
+                message: message(ash_messages, :max, max)
+              }
+            ]
+        end
+      ]
+      |> List.flatten()
 
-        max ->
-          check = quote(do: unquote(parsed) <= unquote(max))
-          [check | checks]
-      end
+    # The parse gate only matters when a bound exists — a bare
+    # :integer field without min/max accepted anything before.
+    if bounds == [], do: [], else: not_number ++ bounds
+  end
 
-    checks
+  defp constraint_fire_checks(_validation, _value, _ash_messages), do: []
+
+  # String.match? transpilation requires a literal ~r sigil in the
+  # AST (the JS mapping reads the pattern out of the sigil node), and
+  # the server compiles the sigil back into the same regex. inspect/1
+  # of a regex is its sigil literal — round-trip through the parser.
+  defp regex_sigil_ast(regex) do
+    {:ok, ast} = Code.string_to_quoted(inspect(regex))
+    ast
   end
 
   @doc """
@@ -220,71 +334,4 @@ defmodule Lavash.Form.ConstraintTranspiler do
   def error_message(:min, min), do: "must be at least #{min}"
   def error_message(:max, max), do: "must be at most #{max}"
   def error_message(:match, _), do: "is invalid"
-
-  @doc """
-  Returns all error checks with their messages for a validation.
-
-  Each check is a tuple of {check_type, constraint_value, error_message}.
-  Used to generate error list calculations.
-  """
-  def error_checks(validation) do
-    checks = []
-
-    # Required check
-    checks =
-      if validation.required do
-        [{:required, nil, error_message(:required, nil)} | checks]
-      else
-        checks
-      end
-
-    # Type-specific constraints
-    checks = checks ++ constraint_error_checks(validation.type, validation.constraints)
-
-    Enum.reverse(checks)
-  end
-
-  defp constraint_error_checks(:string, constraints) do
-    checks = []
-
-    checks =
-      case Map.get(constraints, :min_length) do
-        nil -> checks
-        min -> [{:min_length, min, error_message(:min_length, min)} | checks]
-      end
-
-    checks =
-      case Map.get(constraints, :max_length) do
-        nil -> checks
-        max -> [{:max_length, max, error_message(:max_length, max)} | checks]
-      end
-
-    checks =
-      case Map.get(constraints, :match) do
-        nil -> checks
-        regex -> [{:match, regex, error_message(:match, regex)} | checks]
-      end
-
-    checks
-  end
-
-  defp constraint_error_checks(:integer, constraints) do
-    checks = []
-
-    checks =
-      case Map.get(constraints, :min) do
-        nil -> checks
-        min -> [{:min, min, error_message(:min, min)} | checks]
-      end
-
-    checks =
-      case Map.get(constraints, :max) do
-        nil -> checks
-        max -> [{:max, max, error_message(:max, max)} | checks]
-      end
-
-    checks
-  end
-
-  defp constraint_error_checks(_, _), do: []
 end
