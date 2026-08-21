@@ -126,9 +126,12 @@ defmodule DemoWeb.Storefront.AddressEditModal do
                subtree derive and re-renders client-side. --%>
           <div>
             <label class="floating-label w-full">
+              <%!-- bind/form/field/valid are auto-injected from the
+                   name={@address_form[:state].name} shorthand — the
+                   old hand-written bind actually BLOCKED the fuller
+                   injection (the has-bind guard short-circuits) --%>
               <select
                 name={@address_form[:state].name}
-                data-lavash-bind="address_form_params.state"
                 class="select select-bordered w-full"
               >
                 <option
