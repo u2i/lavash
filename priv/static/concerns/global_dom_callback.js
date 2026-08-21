@@ -59,13 +59,9 @@ export function installGlobalDomCallback(liveSocket) {
     if (hook && hook.hasPendingSources && hook.state) {
       const fieldName = fromEl.getAttribute('data-lavash-enabled');
       if (fieldName && hook.fns[fieldName]) {
+        // disabled property only — no design-system classes in core (#126)
         const enabled = hook.state[fieldName] === true;
         toEl.disabled = !enabled;
-        if (enabled) {
-          toEl.classList.remove('btn-disabled', 'opacity-60', 'cursor-not-allowed');
-        } else {
-          toEl.classList.add('opacity-60', 'cursor-not-allowed');
-        }
         if (debugEnabled()) console.debug(`[LavashOptimistic] onBeforeElUpdated: Applied client state for data-lavash-enabled="${fieldName}" (enabled=${enabled})`);
       }
 

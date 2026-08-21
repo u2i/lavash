@@ -56,15 +56,12 @@ export function updateDOM(rootEl, state, opts) {
     }
   }
 
-  // data-lavash-enabled: enable/disable based on boolean state
+  // data-lavash-enabled: enable/disable based on boolean state.
+  // The disabled PROPERTY only — visual disabled styling belongs to
+  // the author's class expression (reactive attribute derives handle
+  // it), never to design-system class names hardcoded in core (#126).
   for (const el of selectOwn(rootEl, "[data-lavash-enabled]")) {
-    const enabled = state[el.dataset.lavashEnabled] === true;
-    el.disabled = !enabled;
-    if (enabled) {
-      el.classList.remove('btn-disabled', 'opacity-60', 'cursor-not-allowed');
-    } else {
-      el.classList.add('opacity-60', 'cursor-not-allowed');
-    }
+    el.disabled = state[el.dataset.lavashEnabled] !== true;
   }
 
   // data-lavash-toggle: toggle classes based on boolean
