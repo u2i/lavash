@@ -227,8 +227,13 @@ defmodule Lavash.Form.ValidationJs do
         checks
 
       regex ->
+        # RegExp.test(value) — NOT value-as-regex. The old code called
+        # String.prototype.match ON the pattern with the user's value
+        # as the regex, so this check was permanently false for valid
+        # and invalid input alike (#124). The errors generator below
+        # always had it right; the two must agree.
         pattern = Regex.source(regex)
-        ["(#{Jason.encode!(pattern)}).match(#{value_expr} || '')" | checks]
+        ["new RegExp(#{Jason.encode!(pattern)}).test(#{value_expr} || '')" | checks]
     end
   end
 
