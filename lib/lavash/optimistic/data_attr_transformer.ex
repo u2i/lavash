@@ -155,7 +155,95 @@ defmodule Lavash.Optimistic.DataAttrTransformer do
     end
   end
 
+  # Component-call injection (#123) — same patterns as HTML tags.
+  #
+  # Component calls are opaque at transform time (Phoenix defers its
+  # own component-call validation to post-compile verification, so
+  # target attrs can't be resolved here), and injecting a LITERAL
+  # `data-lavash-*` attr would trip "undefined attribute" warnings on
+  # components without a `:global` rest.
+  #
+  # So the annotations are injected as a single **dynamic attr
+  # spread** — `{%{"data-lavash-enabled" => "valid"}}` — which
+  # compile-time validation ignores by construction (spread contents
+  # are unknowable), and which at runtime merges into assigns and
+  # follows the component's own `:global` forwarding. The result is
+  # exactly HTML-tag parity in Phoenix's sense: the annotation lands
+  # wherever the component splats `:rest` — the same place a
+  # hand-written `phx-click` or `data-*` attr would go — and on a
+  # component that doesn't forward, it goes nowhere, just like any
+  # other passthrough attr.
+  defp inject_node({:block, comp_type, name, attrs, children, om, cm}, _parent, metadata)
+       when comp_type in [:local_component, :remote_component] do
+    [{:block, comp_type, name, inject_component_attrs(attrs, metadata), children, om, cm}]
+  end
+
+  defp inject_node({:self_close, comp_type, name, attrs, meta}, _parent, metadata)
+       when comp_type in [:local_component, :remote_component] do
+    [{:self_close, comp_type, name, inject_component_attrs(attrs, metadata), meta}]
+  end
+
   defp inject_node(node, _parent, _metadata), do: [node]
+
+  defp inject_component_attrs(attrs, metadata) do
+    if AttrHelpers.has_attr?(attrs, "data-lavash-manual") do
+      attrs
+    else
+      annotations =
+        %{}
+        |> put_component_enabled(attrs, metadata)
+        |> put_component_attr_derives(attrs, metadata)
+
+      if annotations == %{} do
+        attrs
+      else
+        attrs ++ [component_annotation_spread(annotations)]
+      end
+    end
+  end
+
+  defp put_component_enabled(annotations, attrs, metadata) do
+    with false <- AttrHelpers.has_attr?(attrs, "data-lavash-enabled"),
+         {:expr, expr, _meta} <- AttrHelpers.get_attr_value(attrs, "disabled"),
+         {:ok, field_name} <- parse_negated_field(expr),
+         field_atom = safe_existing_atom(field_name),
+         true <- not is_nil(field_atom),
+         true <- optimistic_boolean?(field_atom, metadata) do
+      Map.put(annotations, "data-lavash-enabled", field_name)
+    else
+      _ -> annotations
+    end
+  end
+
+  defp put_component_attr_derives(annotations, attrs, metadata) do
+    Enum.reduce(metadata[:attr_derives] || [], annotations, fn derive, acc ->
+      lavash_attr = "data-lavash-attr-#{derive.attr}"
+
+      with false <- AttrHelpers.has_attr?(attrs, lavash_attr),
+           {:expr, expr, _meta} <- AttrHelpers.get_attr_value(attrs, derive.attr),
+           true <- derive_matches_expr?(derive, expr) do
+        Map.put(acc, lavash_attr, derive.name)
+      else
+        _ -> acc
+      end
+    end)
+  end
+
+  defp component_annotation_spread(annotations) do
+    # Component assigns are atom-keyed (string keys blow up inside
+    # components that Keyword-process their extras, e.g. <.form>'s
+    # to_form options) — emit atom keys; :global matching is by the
+    # "data-" prefix of the stringified name either way.
+    entries =
+      annotations
+      |> Enum.sort()
+      |> Enum.map_join(", ", fn {key, value} ->
+        "#{inspect(key)}: #{inspect(value)}"
+      end)
+
+    meta = %{line: 0, column: 0}
+    {:root, {:expr, "%{#{entries}}", meta}, meta}
+  end
 
   defp option_selected_exprs(children) do
     Enum.flat_map(children, fn

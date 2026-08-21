@@ -512,8 +512,8 @@ defmodule DemoWeb.Storefront.CheckoutLive do
 
                     <!-- Credit Card Option -->
                     <%!-- the conditional class renders the correct
-                         border server-side AND auto-injects
-                         data-lavash-toggle for instant switching --%>
+                         border server-side AND gets a reactive
+                         attribute derive for instant switching --%>
                     <div class={[
                       "rounded-lg border p-4 cursor-pointer transition-all",
                       if(@is_card_payment,
@@ -538,18 +538,16 @@ defmodule DemoWeb.Storefront.CheckoutLive do
                         </span>
                       </div>
 
-                      <%!-- <.form> is a component call, so the toggle
-                           can't be auto-injected from the class
-                           conditional (injection fires on HTML tags
-                           only); the class renders the dead state,
-                           the manual attr adds the optimistic half. --%>
+                      <%!-- the class conditional gets its attribute
+                           derive attached like any raw tag — the
+                           annotation rides a dynamic attr spread
+                           through <.form>'s :global rest (#123) --%>
                       <.form
                         for={@payment}
                         id="payment-form"
                         phx-change="validate_payment"
                         phx-submit="place_order"
                         class={["mt-4 space-y-3", unless(@is_card_payment, do: "hidden")]}
-                        data-lavash-toggle="is_card_payment||hidden"
                       >
                         <.input
                           field={@payment[:card_number]}
