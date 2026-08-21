@@ -72,6 +72,13 @@ defmodule Lavash.Optimistic.DataAttrTransformer do
   `data-lavash-member-value="x"` injected when `:selected` is an
   optimistic array field.
 
+  Also matched (#129): the nil-safe list (`value in (@selected ||
+  [])`), prop-ref class branches (`do: @active_class` — the
+  directive becomes an interpolated expression resolved at render),
+  and a loop-variable value — which injects no `member-value` and
+  requires the element to carry `phx-value-val`, the per-row value
+  the JS reads inside `:for` loops (the ChipSet shape).
+
   ### 7. Reactive attribute derives
 
   For any attr listed in `metadata[:attr_derives]` (computed by
@@ -530,20 +537,53 @@ defmodule Lavash.Optimistic.DataAttrTransformer do
       attrs
     else
       with {:expr, expr, _meta} <- AttrHelpers.get_attr_value(attrs, "class"),
-           {:ok, value_str, field_name, true_str, false_str} <- parse_membership_class_if(expr),
+           {:ok, member_value, field_name, true_cls, false_cls} <-
+             parse_membership_class_if(expr),
            field_atom = safe_existing_atom(field_name),
            true <- not is_nil(field_atom),
-           true <- is_map_key(metadata[:optimistic_fields] || %{}, field_atom) do
-        directive = "#{field_name}|#{true_str}|#{false_str}"
-
-        attrs
-        |> AttrHelpers.add_attr_if_missing("data-lavash-member", {:string, directive})
-        |> AttrHelpers.add_attr_if_missing("data-lavash-member-value", {:string, value_str})
+           true <- is_map_key(metadata[:optimistic_fields] || %{}, field_atom),
+           {:ok, attrs} <- add_member_value(attrs, member_value) do
+        AttrHelpers.add_attr_if_missing(
+          attrs,
+          "data-lavash-member",
+          member_directive(field_name, true_cls, false_cls)
+        )
       else
         _ -> attrs
       end
     end
   end
+
+  # Literal member values ride data-lavash-member-value; a loop
+  # variable (the ChipSet shape — `value in @selected` inside :for)
+  # can't be injected statically, so the element must already carry
+  # phx-value-val, which the JS reads as the per-row value (#129).
+  defp add_member_value(attrs, {:literal, value_str}) do
+    {:ok,
+     AttrHelpers.add_attr_if_missing(attrs, "data-lavash-member-value", {:string, value_str})}
+  end
+
+  defp add_member_value(attrs, :loop_var) do
+    if AttrHelpers.has_attr?(attrs, "phx-value-val"), do: {:ok, attrs}, else: :error
+  end
+
+  # Literal class branches produce a static directive; prop-ref
+  # branches (`do: @active_class`) produce an interpolated expression
+  # attr so the directive resolves at render time (#129).
+  defp member_directive(field_name, true_cls, false_cls) do
+    if match?({:literal, _}, true_cls) and match?({:literal, _}, false_cls) do
+      {:literal, t} = true_cls
+      {:literal, f} = false_cls
+      {:string, "#{field_name}|#{t}|#{f}"}
+    else
+      {:expr,
+       ~s("#{field_name}|" <> #{member_cls_source(true_cls)} <> "|" <> #{member_cls_source(false_cls)}),
+       %{line: 0, column: 0}}
+    end
+  end
+
+  defp member_cls_source({:literal, s}), do: inspect(s)
+  defp member_cls_source({:prop, name}), do: "(@#{name} || \"\")"
 
   # ============================================
   # Pattern 7: reactive attribute derives
@@ -626,15 +666,11 @@ defmodule Lavash.Optimistic.DataAttrTransformer do
   defp parse_membership_class_if(source) do
     case Code.string_to_quoted(source) do
       {:ok,
-       {:if, _,
-        [
-          {:in, _, [value_ast, {:@, _, [{field, _, ctx}]}]},
-          [do: true_branch, else: false_branch]
-        ]}}
-      when is_atom(field) and is_atom(ctx) ->
-        with {:ok, val} <- as_member_value(value_ast),
-             {:ok, t} <- as_class_string(true_branch),
-             {:ok, f} <- as_class_string(false_branch) do
+       {:if, _, [{:in, _, [value_ast, selected_ast]}, [do: true_branch, else: false_branch]]}} ->
+        with {:ok, field} <- member_field(selected_ast),
+             {:ok, val} <- as_member_value(value_ast),
+             {:ok, t} <- as_member_class(true_branch),
+             {:ok, f} <- as_member_class(false_branch) do
           {:ok, val, Atom.to_string(field), t, f}
         end
 
@@ -643,12 +679,36 @@ defmodule Lavash.Optimistic.DataAttrTransformer do
     end
   end
 
+  # `value in @selected` and the nil-safe `value in (@selected || [])`
+  defp member_field({:@, _, [{field, _, ctx}]}) when is_atom(field) and is_atom(ctx),
+    do: {:ok, field}
+
+  defp member_field({:||, _, [{:@, _, [{field, _, ctx}]}, []]})
+       when is_atom(field) and is_atom(ctx),
+       do: {:ok, field}
+
+  defp member_field(_), do: :error
+
+  # Class branches: string literals, or prop refs like @active_class
+  # (resolved at render time via an interpolated directive)
+  defp as_member_class({:@, _, [{name, _, ctx}]}) when is_atom(name) and is_atom(ctx),
+    do: {:ok, {:prop, name}}
+
+  defp as_member_class(branch) do
+    with {:ok, s} <- as_class_string(branch), do: {:ok, {:literal, s}}
+  end
+
   defp as_class_string(s) when is_binary(s), do: {:ok, s}
   defp as_class_string(nil), do: {:ok, ""}
   defp as_class_string(_), do: :error
 
-  defp as_member_value(s) when is_binary(s), do: {:ok, s}
-  defp as_member_value(a) when is_atom(a), do: {:ok, Atom.to_string(a)}
+  defp as_member_value(s) when is_binary(s), do: {:ok, {:literal, s}}
+
+  # A bare lowercase variable (no @) is a :for loop binding — the
+  # per-row value must come from phx-value-val at runtime (#129)
+  defp as_member_value({name, _, ctx}) when is_atom(name) and is_atom(ctx), do: {:ok, :loop_var}
+
+  defp as_member_value(a) when is_atom(a), do: {:ok, {:literal, Atom.to_string(a)}}
   defp as_member_value(_), do: :error
 
   defp optimistic_boolean?(field_atom, metadata) do
