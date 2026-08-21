@@ -77,8 +77,13 @@ defmodule DemoWeb.Dsl.ProductEditModal do
         <CoreComponents.input field={@form[:in_stock]} type="checkbox" label="In Stock" />
 
         <div class="flex gap-3 pt-4 border-t">
+          <%!-- disabled= keeps the dead render correct (JS not loaded
+               yet / unavailable); the manual data-lavash-enabled stays
+               because auto-injection only fires on HTML tags, not
+               component calls (#113) --%>
           <CoreComponents.button
             type="submit"
+            disabled={not @edit_form_valid}
             data-lavash-enabled="edit_form_valid"
             phx-disable-with="Saving..."
             class="flex-1 btn-primary"

@@ -173,11 +173,13 @@ defmodule DemoWeb.Dsl.FormValidationDemoLive do
             </div>
           </div>
 
-          <%!-- Submit Button - disabled when form invalid via data-lavash-enabled --%>
+          <%!-- disabled={not @form_valid} renders the dead state
+               correctly AND auto-injects data-lavash-enabled for
+               instant client-side toggling --%>
           <div class="pt-4">
             <button
               type="submit"
-              data-lavash-enabled="form_valid"
+              disabled={not @form_valid}
               class="w-full py-3 px-4 rounded-lg font-semibold transition-colors"
               data-lavash-toggle="form_valid|bg-primary text-primary-content hover:opacity-90|bg-base-300 text-base-content"
             >

@@ -190,7 +190,6 @@ defmodule DemoWeb.StreamingChatLive do
           type="text"
           name="input"
           value={@input}
-          data-lavash-bind="input"
           placeholder={if @streaming?, do: "streaming…", else: "Type a message"}
           disabled={@streaming?}
           autocomplete="off"
@@ -200,7 +199,6 @@ defmodule DemoWeb.StreamingChatLive do
           :if={not @streaming?}
           type="submit"
           disabled={not @input_valid?}
-          data-lavash-enabled="input_valid?"
           class="px-4 py-2 bg-blue-500 text-white rounded disabled:bg-gray-300"
         >
           Send
