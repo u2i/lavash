@@ -86,7 +86,7 @@ file-by-file inventory, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 ```elixir
 def deps do
   [
-    {:lavash, "~> 0.4.0-rc.6"} # x-release-please-version
+    {:lavash, "~> 0.4.0-rc.7"} # x-release-please-version
   ]
 end
 ```
