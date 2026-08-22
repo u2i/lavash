@@ -4,6 +4,30 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0-rc.7](https://github.com/u2i/lavash/compare/v0.4.0-rc.6...v0.4.0-rc.7) (2026-08-22)
+
+
+### ⚠ BREAKING CHANGES
+
+* consolidate form constraint validation on shared rx ASTs (closes #125)
+
+### Features
+
+* auto-inject bindings for select and textarea (closes [#112](https://github.com/u2i/lavash/issues/112)) ([924aaef](https://github.com/u2i/lavash/commit/924aaeffc6a7ff840fd32753a92786b48c44ef72))
+* component calls get the same injection as HTML tags (closes [#123](https://github.com/u2i/lavash/issues/123)) ([99020e7](https://github.com/u2i/lavash/commit/99020e766358185d5910b271f933615f4a558c09))
+* consolidate form constraint validation on shared rx ASTs (closes [#125](https://github.com/u2i/lavash/issues/125)) ([333bafb](https://github.com/u2i/lavash/commit/333bafbb772bb8603bebdafb447e99eefdf24fe6))
+* member injection covers the ChipSet shapes (closes [#129](https://github.com/u2i/lavash/issues/129)) ([767cb25](https://github.com/u2i/lavash/commit/767cb252bbc692f7cc8054b99954ceb3b6ebe123))
+
+
+### Bug Fixes
+
+* client _valid was permanently false for match: constraints (closes [#124](https://github.com/u2i/lavash/issues/124)) ([9e952ea](https://github.com/u2i/lavash/commit/9e952ea35319460e3d86b9d914f5e55238eecd58))
+* consolidate conditional class reactivity on attribute derives ([b912f03](https://github.com/u2i/lavash/commit/b912f03768d5dee540823c5112825e61b71339f5))
+* data-lavash injection skipped fields named with ? or ! ([ead7854](https://github.com/u2i/lavash/commit/ead78540fb472f649d5cbe7c109498737a60b1b6))
+* enabled handler manages the disabled property only (closes [#126](https://github.com/u2i/lavash/issues/126)) ([7f81dbf](https://github.com/u2i/lavash/commit/7f81dbf889341a9cf3bbad23003b2ab2090dcb77))
+* retire data-lavash-visible auto-injection — subtree derives own :if (closes [#127](https://github.com/u2i/lavash/issues/127)) ([62e4034](https://github.com/u2i/lavash/commit/62e403462e3f125f64d9d91136b3bb72b3130397))
+* stop generating dead {field}_visible / {field}_animating derives (closes [#128](https://github.com/u2i/lavash/issues/128)) ([c36a2a6](https://github.com/u2i/lavash/commit/c36a2a61ab8ba777afee724a79010d0ae3ba9f6d))
+
 ## [0.4.0-rc.6](https://github.com/u2i/lavash/compare/v0.4.0-rc.5...v0.4.0-rc.6) (2026-08-15)
 
 

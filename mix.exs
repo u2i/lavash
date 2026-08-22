@@ -2,7 +2,7 @@ defmodule Lavash.MixProject do
   use Mix.Project
 
   # x-release-please-start-version
-  @version "0.4.0-rc.6"
+  @version "0.4.0-rc.7"
   # x-release-please-end
   @source_url "https://github.com/u2i/lavash"
 
