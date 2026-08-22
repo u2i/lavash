@@ -39,7 +39,7 @@ defmodule Lavash.Integration.DomDirectivesTest do
     |> assert_has(css("#list-class-target.static-class.off-class"))
   end
 
-  test "data-lavash-visible: shows/hides via hidden class", %{session: session} do
+  test ":if over an optimistic field re-renders via subtree derive", %{session: session} do
     # Fixture uses `:if={@hidden_flag}` so when the flag is false the
     # element isn't in the DOM at all. After the toggle, it appears.
     session = visit(session, "/magic/dom-directives")

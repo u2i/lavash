@@ -208,8 +208,6 @@ You don't write these by hand:
   drop `nil`/`false`, space-join). Conditional classes of any shape —
   `if`/`unless`, list form, string concatenation, comparisons — ride
   this. Untranspilable expressions demote loudly to server-rendered.
-- `data-lavash-visible="field"` — from `:if={@field}`; shows/hides
-  via a `hidden` class.
 - `data-lavash-enabled="field"` — from `disabled={not @field}`.
 - `data-lavash-member="field|sel|unsel"` + `data-lavash-member-value`
   — from `class={if val in @list, …}` (the ChipSet pattern). Kept as
@@ -225,10 +223,18 @@ Injection fires on **HTML tags only**. Attributes on component calls
 (`<.form>`, `<.button>`) are invisible to the pipeline even when the
 component passes them through — annotate those by hand (below).
 
+Note on `:if={@field}`: those blocks ride **subtree derives** — the
+block re-renders client-side in both directions — so no annotation
+is injected for them at all.
+
 ### Hand-written escape hatches
 
 These are supported public API — each exists because no idiomatic
 expression can carry the information:
+
+- `data-lavash-visible="field"` — show/hide via a `hidden` class in
+  **non-lavash templates** (inside lavash templates, `:if` subtree
+  derives and hidden-class attribute derives cover both shapes).
 
 - `data-lavash-display="field"` — around an expression the pipeline
   won't manage itself, which in practice means **async render
