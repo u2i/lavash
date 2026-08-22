@@ -41,6 +41,14 @@ defmodule Lavash.TestLayouts do
             params: () => ({ _csrf_token: token, _lavash_state: getState() }),
             hooks: getHooks(lavashDecorator)
           });
+          // Wire capture for e2e evidence dumps (#96): registered
+          // BEFORE connect so join replies and every diff are recorded
+          // with zero test-side timing perturbation.
+          window.__msgs = [];
+          liveSocket.socket.onMessage((m) => {
+            try { window.__msgs.push(JSON.stringify(m)); } catch (e) {}
+          });
+
           liveSocket.connect();
           window.liveSocket = liveSocket;
         </script>

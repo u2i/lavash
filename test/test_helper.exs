@@ -49,13 +49,16 @@ if e2e? do
   {:ok, _} = Application.ensure_all_started(:wallabidi)
 end
 
-# `:parity_gap` marks tests that document a known divergence
+# `:issue_96` marks the join-adjacent stream-removal race repros —
+# they fail intermittently BY DESIGN (they reproduce an upstream
+# LiveView client bug, #96); opt in with --include issue_96 when
+# investigating. `:parity_gap` marks tests that document a known divergence
 # between lavash and vanilla `Phoenix.LiveView` — the assertion is
 # what we WANT to be true, but the lavash side hasn't grown the
 # DSL surface to express it yet. Always excluded so they don't
 # fail CI; opt in with `mix test --include parity_gap` to see the
 # remaining gaps.
-default_excludes = [:parity_gap]
+default_excludes = [:parity_gap, :issue_96]
 
 excludes =
   if e2e?, do: default_excludes, else: [:e2e | default_excludes]
