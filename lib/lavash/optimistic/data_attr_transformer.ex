@@ -36,17 +36,18 @@ defmodule Lavash.Optimistic.DataAttrTransformer do
   gets `data-lavash-bind="count"` injected when `:count` is an
   optimistic state field.
 
-  ### 3. Conditional visibility
+  ### 3. Conditional visibility (manual only)
 
-      <div :if={@open}>...</div>
+  `:if={@open}` blocks over optimistic fields ride subtree derives —
+  the block is re-rendered client-side, which handles BOTH directions
+  (a class-based directive can't show an element `:if` removed from
+  the DOM), so no `data-lavash-visible` is auto-injected. The
+  show/hide-by-class idiom (`class={if !@open, do: "hidden"}`) rides
+  pattern-7 attribute derives.
 
-  gets `data-lavash-visible="open"` injected when `:open` is an
-  optimistic boolean field.
-
-  The show/hide-by-class idiom (element kept in the DOM) is covered
-  by pattern 7 instead: `class={if !@open, do: "hidden"}` (or any
-  conditional class expression) gets a reactive attribute derive
-  that recomputes the class client-side.
+  `data-lavash-visible="field"` remains a supported hand-written
+  annotation for non-lavash templates; its JS toggles a `hidden`
+  class.
 
   ### 4. Enabled/disabled
 
@@ -310,7 +311,6 @@ defmodule Lavash.Optimistic.DataAttrTransformer do
       attrs
       |> maybe_inject_form_input(name, metadata)
       |> maybe_inject_state_binding(name, metadata)
-      |> maybe_inject_visibility(metadata)
       |> maybe_inject_enabled(metadata)
       |> maybe_inject_class_member(metadata)
       |> maybe_inject_reactive_attrs(metadata)
@@ -469,30 +469,6 @@ defmodule Lavash.Optimistic.DataAttrTransformer do
   end
 
   defp maybe_inject_state_binding(attrs, _name, _metadata), do: attrs
-
-  # ============================================
-  # Pattern 3: visibility
-  # ============================================
-
-  defp maybe_inject_visibility(attrs, metadata) do
-    if AttrHelpers.has_attr?(attrs, "data-lavash-visible") do
-      attrs
-    else
-      case AttrHelpers.get_attr_value(attrs, ":if") do
-        {:expr, "@" <> field_name, _meta} ->
-          field_atom = String.to_atom(field_name)
-
-          if optimistic_boolean?(field_atom, metadata) do
-            AttrHelpers.add_attr_if_missing(attrs, "data-lavash-visible", {:string, field_name})
-          else
-            attrs
-          end
-
-        _ ->
-          attrs
-      end
-    end
-  end
 
   # ============================================
   # Pattern 4: enabled

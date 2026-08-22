@@ -61,7 +61,9 @@ defmodule Lavash.Test.Magic.DomDirectivesLive do
       </div>
       <button id="toggle-flag" phx-click="toggle_flag">Toggle</button>
 
-      <!-- :if={@bool} auto-injects data-lavash-visible -->
+      <!-- :if={@bool} over an optimistic field rides a subtree
+           derive: the block re-renders client-side in BOTH
+           directions (no data-lavash-visible involved, #127) -->
       <div id="hidden-section" :if={@hidden_flag}>
         Sometimes visible
       </div>

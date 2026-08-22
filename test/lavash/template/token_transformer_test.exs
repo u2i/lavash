@@ -409,45 +409,29 @@ defmodule Lavash.Template.TokenTransformerTest do
   # Visibility injection
   # ============================================
 
-  describe "visibility injection" do
-    test "injects data-lavash-visible for :if={@bool_field} on optimistic boolean" do
+  describe "visibility injection (retired — subtree derives own :if)" do
+    test ":if={@bool_field} gets no data-lavash-visible" do
+      # :if blocks over optimistic fields are re-rendered client-side
+      # as subtree derives, which handles BOTH directions — a
+      # class-based directive can't show an element :if removed from
+      # the DOM. Injecting visible= was dead weight (#127).
       tokens = [tag("span", [expr_attr(":if", "@visible")])]
       metadata = optimistic_metadata([{:visible, :boolean}])
-      result = transform(tokens, metadata)
-
-      [{:block, :tag, "span", attrs, _children, _, _}] = result
-      assert Enum.any?(attrs, fn {name, _, _} -> name == "data-lavash-visible" end)
-    end
-
-    test "skips when field is not boolean" do
-      tokens = [tag("span", [expr_attr(":if", "@count")])]
-      metadata = optimistic_metadata([{:count, :integer}])
       result = transform(tokens, metadata)
 
       [{:block, :tag, "span", attrs, _children, _, _}] = result
       refute Enum.any?(attrs, fn {name, _, _} -> name == "data-lavash-visible" end)
     end
 
-    test "recognizes optimistic calculations as boolean-capable" do
-      tokens = [tag("span", [expr_attr(":if", "@form_valid")])]
-      metadata = optimistic_metadata([], calculations: %{form_valid: %{optimistic: true}})
-      result = transform(tokens, metadata)
-
-      [{:block, :tag, "span", attrs, _children, _, _}] = result
-      assert Enum.any?(attrs, fn {name, _, _} -> name == "data-lavash-visible" end)
-    end
-
-    test "skips when data-lavash-visible already present" do
-      tokens = [
-        tag("span", [expr_attr(":if", "@visible"), string_attr("data-lavash-visible", "visible")])
-      ]
-
+    test "a hand-written data-lavash-visible passes through untouched" do
+      tokens = [tag("span", [string_attr("data-lavash-visible", "visible")])]
       metadata = optimistic_metadata([{:visible, :boolean}])
       result = transform(tokens, metadata)
 
       [{:block, :tag, "span", attrs, _children, _, _}] = result
-      vis_count = Enum.count(attrs, fn {name, _, _} -> name == "data-lavash-visible" end)
-      assert vis_count == 1
+
+      assert [{"data-lavash-visible", {:string, "visible", _}, _}] =
+               Enum.filter(attrs, &match?({"data-lavash-visible", _, _}, &1))
     end
   end
 
