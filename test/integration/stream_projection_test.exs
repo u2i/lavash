@@ -33,10 +33,25 @@ defmodule Lavash.Integration.StreamProjectionTest do
     Enum.each(1..n, fn i -> seed_one!(list_id, "row #{i}") end)
   end
 
-  defp seed_one!(list_id, body) do
+  defp seed_one!(list_id, body), do: seed_one!(list_id, body, _retry? = true)
+
+  # `Ash.DataLayer.Ets.stop/1` (the per-test table wipe) tears the
+  # table-owner process down asynchronously; under load the next create
+  # can look up the dying owner and insert into a dead table
+  # (:table_not_found). One retry lands after the owner registry has
+  # caught up.
+  defp seed_one!(list_id, body, retry?) do
     Entry
     |> Ash.Changeset.for_create(:create, %{list_id: list_id, body: body})
     |> Ash.create!()
+  rescue
+    e in Ash.Error.Unknown ->
+      if retry? and Exception.message(e) =~ "table_not_found" do
+        Process.sleep(50)
+        seed_one!(list_id, body, false)
+      else
+        reraise e, __STACKTRACE__
+      end
   end
 
   defp unique_list, do: "list-#{System.unique_integer([:positive])}"
