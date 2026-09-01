@@ -101,8 +101,14 @@ defmodule Lavash.Optimistic.JsValidator do
   end
 
   defp check({kind, bin}, js_code) do
-    hash = :crypto.hash(:md5, js_code) |> Base.encode32(case: :lower, padding: false)
-    path = Path.join(System.tmp_dir!(), "lavash_jscheck_#{hash}.mjs")
+    # The name must be unique per INVOCATION, not per content: two
+    # concurrent compiles of the same project (e.g. parallel test
+    # runs) generate identical JS, and with a content-hashed name one
+    # process's cleanup deletes the file out from under the other's
+    # validator run. OS pid disambiguates across VMs, unique_integer
+    # within one.
+    unique = "#{:os.getpid()}#{System.unique_integer([:positive])}"
+    path = Path.join(System.tmp_dir!(), "lavash_jscheck_#{unique}.mjs")
 
     args =
       case kind do
