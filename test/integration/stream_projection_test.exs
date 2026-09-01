@@ -33,10 +33,25 @@ defmodule Lavash.Integration.StreamProjectionTest do
     Enum.each(1..n, fn i -> seed_one!(list_id, "row #{i}") end)
   end
 
-  defp seed_one!(list_id, body) do
+  defp seed_one!(list_id, body), do: seed_one!(list_id, body, _retry? = true)
+
+  # `Ash.DataLayer.Ets.stop/1` (the per-test table wipe) tears the
+  # table-owner process down asynchronously; under load the next create
+  # can look up the dying owner and insert into a dead table
+  # (:table_not_found). One retry lands after the owner registry has
+  # caught up.
+  defp seed_one!(list_id, body, retry?) do
     Entry
     |> Ash.Changeset.for_create(:create, %{list_id: list_id, body: body})
     |> Ash.create!()
+  rescue
+    e in Ash.Error.Unknown ->
+      if retry? and Exception.message(e) =~ "table_not_found" do
+        Process.sleep(50)
+        seed_one!(list_id, body, false)
+      else
+        reraise e, __STACKTRACE__
+      end
   end
 
   defp unique_list, do: "list-#{System.unique_integer([:positive])}"
@@ -251,16 +266,105 @@ defmodule Lavash.Integration.StreamProjectionTest do
     Lavash.PubSub.broadcast_record(Entry, {:written, other.id})
 
     refute_has(session, css("#items-#{other.id}", wait: 500))
+  end
 
-    # Cross-process ROW REMOVAL ({:deleted, id} → reset re-stream) is
-    # covered at the LiveViewTest level (stream_invalidation_test) —
-    # the server-side semantics are deterministic there. At the
-    # browser layer the removal intermittently fails to apply in this
-    # harness (both lightpanda and Chrome; a captured wire trace shows
-    # the diff arriving and the node surviving) — tracked as a
-    # follow-up investigation into LiveView client stream-removal
-    # application, see the issue referenced in
-    # docs/STREAM_PROJECTIONS.md.
+  # Reload + rejoin shape. Fails intermittently — it reproduces the
+  # upstream join-adjacent stream-diff loss (#96), which affects the
+  # reset workaround too. Excluded by default; --include issue_96.
+  @tag :issue_96
+  test "delete applies after a reload+rejoin (#96 variant A)", %{session: session} do
+    list = unique_list()
+    doomed = seed_one!(list, "doomed row")
+
+    session = visit(session, "/magic/stream-list?list_id=#{list}")
+    session = assert_has(session, css("[data-phx-main].phx-connected", wait: 5_000))
+
+    # Reload: fresh dead render + rejoin, stream re-rendered from scratch
+    session = visit(session, "/magic/stream-list?list_id=#{list}")
+    session = assert_has(session, css("[data-phx-main].phx-connected", wait: 5_000))
+    session = assert_has(session, css("#items-#{doomed.id} .body", text: "doomed row"))
+
+    Ash.destroy!(doomed)
+    Lavash.PubSub.broadcast_record(Entry, {:deleted, doomed.id})
+
+    survived? =
+      Enum.reduce_while(1..20, true, fn _, _ ->
+        if Wallabidi.Browser.has?(session, Wallabidi.Query.css("#items-#{doomed.id}")) do
+          Process.sleep(150)
+          {:cont, true}
+        else
+          {:halt, false}
+        end
+      end)
+
+    if survived? do
+      msgs = eval(session, "JSON.stringify(window.__msgs)")
+
+      flunk("""
+      #96 REPRODUCED (A/reload): row #items-#{doomed.id} survived
+
+      WIRE TRACE:
+      #{msgs}
+      """)
+    end
+  end
+
+  # Post-join-inserted row shape. Same intermittent upstream loss as
+  # variant A (#96). Excluded by default; --include issue_96.
+  @tag :issue_96
+  test "delete applies to a row inserted post-join (#96 variant B)", %{session: session} do
+    list = unique_list()
+    seed_one!(list, "anchor")
+
+    session = visit(session, "/magic/stream-list?list_id=#{list}")
+    session = assert_has(session, css("[data-phx-main].phx-connected", wait: 5_000))
+
+    doomed = seed_one!(list, "late arrival")
+    Lavash.PubSub.broadcast_record(Entry, {:written, doomed.id})
+    session = assert_has(session, css("#items-#{doomed.id} .body", text: "late arrival"))
+
+    Ash.destroy!(doomed)
+    Lavash.PubSub.broadcast_record(Entry, {:deleted, doomed.id})
+
+    survived? =
+      Enum.reduce_while(1..20, true, fn _, _ ->
+        if Wallabidi.Browser.has?(session, Wallabidi.Query.css("#items-#{doomed.id}")) do
+          Process.sleep(150)
+          {:cont, true}
+        else
+          {:halt, false}
+        end
+      end)
+
+    if survived? do
+      msgs = eval(session, "JSON.stringify(window.__msgs)")
+
+      flunk("""
+      #96 REPRODUCED (B/post-join-insert): row #items-#{doomed.id} survived
+
+      WIRE TRACE:
+      #{msgs}
+      """)
+    end
+  end
+
+  # Cross-process removals ride reset re-streams (the #96 workaround);
+  # these three tests pin browser-level removal across the shapes that
+  # broke targeted deletes: plain, reload+rejoin, post-join-inserted.
+  test "a cross-process delete removes the row in the browser (#96)", %{session: session} do
+    list = unique_list()
+    doomed = seed_one!(list, "doomed row")
+    seed_one!(list, "survivor")
+
+    session = visit(session, "/magic/stream-list?list_id=#{list}")
+    session = assert_has(session, css("[data-phx-main].phx-connected", wait: 5_000))
+    session = assert_has(session, css("#items-#{doomed.id} .body", text: "doomed row"))
+
+    Ash.destroy!(doomed)
+    Lavash.PubSub.broadcast_record(Entry, {:deleted, doomed.id})
+
+    session = assert_has(session, css("#items .entry .body", text: "survivor"))
+    refute_has(session, css("#items-#{doomed.id}", wait: 2_000))
   end
 
   # ── Phase 4: ordering + limit ──────────────────────────────────
